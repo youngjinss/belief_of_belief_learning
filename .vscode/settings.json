@@ -3,5 +3,8 @@
     "[python]": {
         "editor.defaultFormatter": "ms-python.black-formatter"
     },
-    "flake8.args": [ "--ignore=E501" ]
+    "flake8.args": [
+        "--ignore=E501"
+    ],
+    "notebook.defaultFormatter": "ms-python.black-formatter"
 }

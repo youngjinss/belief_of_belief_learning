@@ -34,8 +34,16 @@ class Agent:
     Following the model described in Section 3.2
     """
 
-    def __init__(self, agent_id, risk_coefficient, initial_cash,
-                 portfolio=None, beliefs=None, refresh_rate=10, step_size=1.0):
+    def __init__(
+        self,
+        agent_id,
+        risk_coefficient,
+        initial_cash,
+        portfolio=None,
+        beliefs=None,
+        refresh_rate=10,
+        step_size=1.0,
+    ):
         self.agent_id = agent_id
         self.risk_coefficient = risk_coefficient  # Risk aversion parameter r
         self.cash = initial_cash  # Quantity of risk-free asset (τ_A)
@@ -76,14 +84,16 @@ class Agent:
                 expected_return = asset.payoff / asset.price
 
             asset_expected_returns[asset_id] = expected_return
-            asset_variances[asset_id] = asset.variance / (asset.price ** 2)
+            asset_variances[asset_id] = asset.variance / (asset.price**2)
 
         # For simplicity, we're using a diagonal covariance matrix (no correlations)
         # In a more complex model, we would calculate the full covariance matrix
 
         # Calculate the market portfolio weights
-        er_minus_rf = {asset_id: er - risk_free_rate for asset_id,
-                       er in asset_expected_returns.items()}
+        er_minus_rf = {
+            asset_id: er - risk_free_rate
+            for asset_id, er in asset_expected_returns.items()
+        }
 
         # Calculate optimal weights based on formula: w = (ER_M - R_f) / (r * σ²_M)
         total_portfolio_value = self.calculate_portfolio_value(market)
@@ -92,14 +102,13 @@ class Agent:
         for asset_id in assets:
             # Calculate optimal weight for this asset
             if asset_id in asset_variances and asset_variances[asset_id] > 0:
-                weight = er_minus_rf[asset_id] / \
-                    (self.risk_coefficient * asset_variances[asset_id])
+                weight = er_minus_rf[asset_id] / (
+                    self.risk_coefficient * asset_variances[asset_id]
+                )
 
                 # Convert weight to quantity (number of shares)
-                asset_price = self.beliefs.get(
-                    asset_id, assets[asset_id].price)
-                optimal_quantity = int(
-                    (weight * total_portfolio_value) / asset_price)
+                asset_price = self.beliefs.get(asset_id, assets[asset_id].price)
+                optimal_quantity = int((weight * total_portfolio_value) / asset_price)
 
                 # Ensure non-negative holdings
                 optimal_portfolio[asset_id] = max(0, optimal_quantity)
@@ -121,32 +130,34 @@ class Agent:
             if current_quantity < optimal_quantity:
                 # Buy order
                 quantity_to_buy = optimal_quantity - current_quantity
-                price = self.beliefs.get(
-                    asset_id, market.assets[asset_id].price)
+                price = self.beliefs.get(asset_id, market.assets[asset_id].price)
 
-                orders.append({
-                    'agent_id': self.agent_id,
-                    'asset_id': asset_id,
-                    'type': 'buy',
-                    'quantity': quantity_to_buy,
-                    'price': price,
-                    'timestamp': market.current_time
-                })
+                orders.append(
+                    {
+                        "agent_id": self.agent_id,
+                        "asset_id": asset_id,
+                        "type": "buy",
+                        "quantity": quantity_to_buy,
+                        "price": price,
+                        "timestamp": market.current_time,
+                    }
+                )
 
             elif current_quantity > optimal_quantity:
                 # Sell order
                 quantity_to_sell = current_quantity - optimal_quantity
-                price = self.beliefs.get(
-                    asset_id, market.assets[asset_id].price)
+                price = self.beliefs.get(asset_id, market.assets[asset_id].price)
 
-                orders.append({
-                    'agent_id': self.agent_id,
-                    'asset_id': asset_id,
-                    'type': 'sell',
-                    'quantity': quantity_to_sell,
-                    'price': price,
-                    'timestamp': market.current_time
-                })
+                orders.append(
+                    {
+                        "agent_id": self.agent_id,
+                        "asset_id": asset_id,
+                        "type": "sell",
+                        "quantity": quantity_to_sell,
+                        "price": price,
+                        "timestamp": market.current_time,
+                    }
+                )
 
         return orders
 
@@ -160,33 +171,30 @@ class Agent:
             self.beliefs[asset_id] = trade_price
         elif timeout:
             # If order timed out, adjust price accordingly
-            if trade_type == 'buy':
+            if trade_type == "buy":
                 # Increase buy price
                 current_belief = self.beliefs.get(asset_id)
                 if current_belief:
-                    self.beliefs[asset_id] = current_belief * \
-                        (1 + self.step_size / 100)
+                    self.beliefs[asset_id] = current_belief * (1 + self.step_size / 100)
             else:  # sell order
                 # Decrease sell price
                 current_belief = self.beliefs.get(asset_id)
                 if current_belief:
-                    self.beliefs[asset_id] = current_belief * \
-                        (1 - self.step_size / 100)
+                    self.beliefs[asset_id] = current_belief * (1 - self.step_size / 100)
 
     def execute_trade(self, order, trade_price):
         """Execute a completed trade"""
-        asset_id = order['asset_id']
-        quantity = order['quantity']
+        asset_id = order["asset_id"]
+        quantity = order["quantity"]
 
-        if order['type'] == 'buy':
+        if order["type"] == "buy":
             # Buy order execution
             cost = quantity * trade_price
             if self.cash >= cost:
                 self.cash -= cost
-                self.portfolio[asset_id] = self.portfolio.get(
-                    asset_id, 0) + quantity
+                self.portfolio[asset_id] = self.portfolio.get(asset_id, 0) + quantity
                 # Update belief
-                self.update_beliefs(asset_id, 'buy', trade_price)
+                self.update_beliefs(asset_id, "buy", trade_price)
                 return True
             else:
                 return False  # Not enough cash
@@ -195,10 +203,9 @@ class Agent:
             if self.portfolio.get(asset_id, 0) >= quantity:
                 proceeds = quantity * trade_price
                 self.cash += proceeds
-                self.portfolio[asset_id] = self.portfolio.get(
-                    asset_id, 0) - quantity
+                self.portfolio[asset_id] = self.portfolio.get(asset_id, 0) - quantity
                 # Update belief
-                self.update_beliefs(asset_id, 'sell', trade_price)
+                self.update_beliefs(asset_id, "sell", trade_price)
                 return True
             else:
                 return False  # Not enough assets
@@ -209,11 +216,26 @@ class NoiseTrader(Agent):
     A noise trader is an agent with imperfect (biased) information about asset payoffs
     """
 
-    def __init__(self, agent_id, risk_coefficient, initial_cash,
-                 portfolio=None, beliefs=None, refresh_rate=10, step_size=1.0,
-                 payoff_bias=None):
-        super().__init__(agent_id, risk_coefficient, initial_cash,
-                         portfolio, beliefs, refresh_rate, step_size)
+    def __init__(
+        self,
+        agent_id,
+        risk_coefficient,
+        initial_cash,
+        portfolio=None,
+        beliefs=None,
+        refresh_rate=10,
+        step_size=1.0,
+        payoff_bias=None,
+    ):
+        super().__init__(
+            agent_id,
+            risk_coefficient,
+            initial_cash,
+            portfolio,
+            beliefs,
+            refresh_rate,
+            step_size,
+        )
         self.payoff_bias = payoff_bias if payoff_bias is not None else {}
 
     def calculate_optimal_portfolio(self, market):
@@ -239,11 +261,13 @@ class NoiseTrader(Agent):
                 expected_return = payoff / asset.price
 
             asset_expected_returns[asset_id] = expected_return
-            asset_variances[asset_id] = asset.variance / (asset.price ** 2)
+            asset_variances[asset_id] = asset.variance / (asset.price**2)
 
         # Calculate the market portfolio weights
-        er_minus_rf = {asset_id: er - risk_free_rate for asset_id,
-                       er in asset_expected_returns.items()}
+        er_minus_rf = {
+            asset_id: er - risk_free_rate
+            for asset_id, er in asset_expected_returns.items()
+        }
 
         # Calculate optimal weights
         total_portfolio_value = self.calculate_portfolio_value(market)
@@ -251,12 +275,11 @@ class NoiseTrader(Agent):
         optimal_portfolio = {}
         for asset_id in assets:
             if asset_id in asset_variances and asset_variances[asset_id] > 0:
-                weight = er_minus_rf[asset_id] / \
-                    (self.risk_coefficient * asset_variances[asset_id])
-                asset_price = self.beliefs.get(
-                    asset_id, assets[asset_id].price)
-                optimal_quantity = int(
-                    (weight * total_portfolio_value) / asset_price)
+                weight = er_minus_rf[asset_id] / (
+                    self.risk_coefficient * asset_variances[asset_id]
+                )
+                asset_price = self.beliefs.get(asset_id, assets[asset_id].price)
+                optimal_quantity = int((weight * total_portfolio_value) / asset_price)
                 optimal_portfolio[asset_id] = max(0, optimal_quantity)
             else:
                 optimal_portfolio[asset_id] = 0
@@ -273,7 +296,7 @@ class AssetMarket:
     def __init__(self, risk_free_rate=0.01, order_timeout=100):
         self.assets = {}  # Dictionary of assets by ID
         self.agents = []  # List of agents
-        self.order_book = {'buy': defaultdict(list), 'sell': defaultdict(list)}
+        self.order_book = {"buy": defaultdict(list), "sell": defaultdict(list)}
         self.risk_free_rate = risk_free_rate
         self.current_time = 0
         self.order_timeout = order_timeout
@@ -297,8 +320,8 @@ class AssetMarket:
 
     def submit_order(self, order):
         """Submit an order to the order book"""
-        asset_id = order['asset_id']
-        order_type = order['type']
+        asset_id = order["asset_id"]
+        order_type = order["type"]
         self.order_book[order_type][asset_id].append(order)
 
     def match_orders(self, asset_id):
@@ -306,45 +329,49 @@ class AssetMarket:
         Match buy and sell orders for an asset
         Using a simplified ProRata matching algorithm
         """
-        buy_orders = sorted(self.order_book['buy'][asset_id],
-                            key=lambda x: x['price'], reverse=True)
-        sell_orders = sorted(self.order_book['sell'][asset_id],
-                             key=lambda x: x['price'])
+        buy_orders = sorted(
+            self.order_book["buy"][asset_id], key=lambda x: x["price"], reverse=True
+        )
+        sell_orders = sorted(
+            self.order_book["sell"][asset_id], key=lambda x: x["price"]
+        )
 
         if not buy_orders or not sell_orders:
             return []
 
         # Check if highest bid >= lowest ask
-        if buy_orders[0]['price'] >= sell_orders[0]['price']:
+        if buy_orders[0]["price"] >= sell_orders[0]["price"]:
             # Determine trading price (midpoint)
-            trade_price = (buy_orders[0]['price'] + sell_orders[0]['price']) / 2
+            trade_price = (buy_orders[0]["price"] + sell_orders[0]["price"]) / 2
 
             # Match orders (simplified version)
             trades = []
-            remaining_buy = buy_orders[0]['quantity']
-            remaining_sell = sell_orders[0]['quantity']
+            remaining_buy = buy_orders[0]["quantity"]
+            remaining_sell = sell_orders[0]["quantity"]
 
             # Execute the trade with minimum of buy and sell quantities
             trade_quantity = min(remaining_buy, remaining_sell)
 
-            trades.append({
-                'buyer_id': buy_orders[0]['agent_id'],
-                'seller_id': sell_orders[0]['agent_id'],
-                'asset_id': asset_id,
-                'quantity': trade_quantity,
-                'price': trade_price,
-                'timestamp': self.current_time
-            })
+            trades.append(
+                {
+                    "buyer_id": buy_orders[0]["agent_id"],
+                    "seller_id": sell_orders[0]["agent_id"],
+                    "asset_id": asset_id,
+                    "quantity": trade_quantity,
+                    "price": trade_price,
+                    "timestamp": self.current_time,
+                }
+            )
 
             # Update order quantities
-            buy_orders[0]['quantity'] -= trade_quantity
-            sell_orders[0]['quantity'] -= trade_quantity
+            buy_orders[0]["quantity"] -= trade_quantity
+            sell_orders[0]["quantity"] -= trade_quantity
 
             # Remove filled orders
-            if buy_orders[0]['quantity'] == 0:
-                self.order_book['buy'][asset_id].remove(buy_orders[0])
-            if sell_orders[0]['quantity'] == 0:
-                self.order_book['sell'][asset_id].remove(sell_orders[0])
+            if buy_orders[0]["quantity"] == 0:
+                self.order_book["buy"][asset_id].remove(buy_orders[0])
+            if sell_orders[0]["quantity"] == 0:
+                self.order_book["sell"][asset_id].remove(sell_orders[0])
 
             # Update asset price
             self.assets[asset_id].update_price(trade_price, self.current_time)
@@ -357,52 +384,57 @@ class AssetMarket:
         """Execute the trades and update agent portfolios"""
         for trade in trades:
             buyer = next(
-                (agent for agent in self.agents if agent.agent_id == trade['buyer_id']), None)
+                (agent for agent in self.agents if agent.agent_id == trade["buyer_id"]),
+                None,
+            )
             seller = next(
-                (agent for agent in self.agents if agent.agent_id == trade['seller_id']), None)
+                (
+                    agent
+                    for agent in self.agents
+                    if agent.agent_id == trade["seller_id"]
+                ),
+                None,
+            )
 
             if buyer and seller:
                 buyer_order = {
-                    'asset_id': trade['asset_id'],
-                    'type': 'buy',
-                    'quantity': trade['quantity']
+                    "asset_id": trade["asset_id"],
+                    "type": "buy",
+                    "quantity": trade["quantity"],
                 }
 
                 seller_order = {
-                    'asset_id': trade['asset_id'],
-                    'type': 'sell',
-                    'quantity': trade['quantity']
+                    "asset_id": trade["asset_id"],
+                    "type": "sell",
+                    "quantity": trade["quantity"],
                 }
 
-                buyer_success = buyer.execute_trade(
-                    buyer_order, trade['price'])
-                seller_success = seller.execute_trade(
-                    seller_order, trade['price'])
+                buyer_success = buyer.execute_trade(buyer_order, trade["price"])
+                seller_success = seller.execute_trade(seller_order, trade["price"])
 
                 if buyer_success and seller_success:
                     self.trade_history.append(trade)
                     # Update both agents' beliefs
-                    buyer.update_beliefs(
-                        trade['asset_id'], 'buy', trade['price'])
-                    seller.update_beliefs(
-                        trade['asset_id'], 'sell', trade['price'])
+                    buyer.update_beliefs(trade["asset_id"], "buy", trade["price"])
+                    seller.update_beliefs(trade["asset_id"], "sell", trade["price"])
 
     def handle_timeouts(self):
         """Handle orders that have timed out"""
         current_time = self.current_time
 
-        for order_type in ['buy', 'sell']:
+        for order_type in ["buy", "sell"]:
             for asset_id in list(self.order_book[order_type].keys()):
                 for order in list(self.order_book[order_type][asset_id]):
-                    if current_time - order['timestamp'] > self.order_timeout:
+                    if current_time - order["timestamp"] > self.order_timeout:
                         # Find the agent who placed the order
                         agent = next(
-                            (a for a in self.agents if a.agent_id == order['agent_id']), None)
+                            (a for a in self.agents if a.agent_id == order["agent_id"]),
+                            None,
+                        )
 
                         if agent:
                             # Update agent's beliefs based on timeout
-                            agent.update_beliefs(
-                                asset_id, order_type, timeout=True)
+                            agent.update_beliefs(asset_id, order_type, timeout=True)
 
                         # Remove the timed out order
                         self.order_book[order_type][asset_id].remove(order)
@@ -463,8 +495,7 @@ class AssetMarket:
         for asset_id, asset in self.assets.items():
             if len(asset.trade_history) > 1:
                 prices = [price for _, price in asset.trade_history]
-                returns[asset_id] = [
-                    100 * asset.payoff / price for price in prices]
+                returns[asset_id] = [100 * asset.payoff / price for price in prices]
             else:
                 returns[asset_id] = []
         return returns
@@ -489,21 +520,21 @@ class AssetMarket:
                 if asset_id in self.assets and quantity > 0:
                     asset = self.assets[asset_id]
                     asset_weight = (quantity * asset.price) / portfolio_value
-                    expected_return += asset_weight * \
-                        (asset.payoff / asset.price)
-                    variance += (asset_weight ** 2) * \
-                        (asset.variance / (asset.price ** 2))
+                    expected_return += asset_weight * (asset.payoff / asset.price)
+                    variance += (asset_weight**2) * (asset.variance / (asset.price**2))
 
             # Add risk-free component
             rf_weight = agent.cash / portfolio_value
             expected_return += rf_weight * self.risk_free_rate
 
-            portfolio_characteristics.append({
-                'agent_id': agent.agent_id,
-                'expected_return': expected_return,
-                'variance': variance,
-                'risk_coef': agent.risk_coefficient
-            })
+            portfolio_characteristics.append(
+                {
+                    "agent_id": agent.agent_id,
+                    "expected_return": expected_return,
+                    "variance": variance,
+                    "risk_coef": agent.risk_coefficient,
+                }
+            )
 
         return portfolio_characteristics
 
@@ -513,16 +544,15 @@ class AssetMarket:
         Returns the net trade volume between agents
         """
         # Filter trades for the specified asset
-        asset_trades = [
-            t for t in self.trade_history if t['asset_id'] == asset_id]
+        asset_trades = [t for t in self.trade_history if t["asset_id"] == asset_id]
 
         # Calculate net trade volume between agents
         flow_network = defaultdict(float)
 
         for trade in asset_trades:
-            buyer_id = trade['buyer_id']
-            seller_id = trade['seller_id']
-            quantity = trade['quantity']
+            buyer_id = trade["buyer_id"]
+            seller_id = trade["seller_id"]
+            quantity = trade["quantity"]
 
             # Create a directed edge from seller to buyer
             edge = (seller_id, buyer_id)
@@ -532,6 +562,7 @@ class AssetMarket:
 
 
 # Example usage
+
 
 def create_simple_market():
     """Create a simple market with 3 assets and 30 agents"""
@@ -565,7 +596,7 @@ def create_simple_market():
         beliefs = {
             0: asset0.price * np.random.uniform(0.95, 1.05),
             1: asset1.price * np.random.uniform(0.95, 1.05),
-            2: asset2.price * np.random.uniform(0.95, 1.05)
+            2: asset2.price * np.random.uniform(0.95, 1.05),
         }
 
         agent = Agent(i, risk_coef, initial_cash, portfolio, beliefs)
@@ -601,7 +632,7 @@ def create_market_with_noise_traders():
         beliefs = {
             0: asset0.price * np.random.uniform(0.95, 1.05),
             1: asset1.price * np.random.uniform(0.95, 1.05),
-            2: asset2.price * np.random.uniform(0.95, 1.05)
+            2: asset2.price * np.random.uniform(0.95, 1.05),
         }
 
         agent = Agent(i, risk_coef, initial_cash, portfolio, beliefs)
@@ -621,14 +652,15 @@ def create_market_with_noise_traders():
         beliefs = {
             0: asset0.price * np.random.uniform(0.95, 1.05),
             1: asset1.price * np.random.uniform(0.95, 1.05),
-            2: asset2.price * np.random.uniform(0.95, 1.05)
+            2: asset2.price * np.random.uniform(0.95, 1.05),
         }
 
         # Create payoff bias - 10% higher payoff belief for asset 0
         payoff_bias = {0: 0.10}
 
         noise_trader = NoiseTrader(
-            i, risk_coef, initial_cash, portfolio, beliefs, payoff_bias=payoff_bias)
+            i, risk_coef, initial_cash, portfolio, beliefs, payoff_bias=payoff_bias
+        )
         market.add_agent(noise_trader)
 
     return market
@@ -660,11 +692,11 @@ def run_shock_experiment():
     for asset_id, asset_returns in returns.items():
         plt.figure(figsize=(10, 6))
         plt.plot(asset_returns)
-        plt.axvline(x=5000, color='r', linestyle='--', label='Negative Shock')
-        plt.axvline(x=10000, color='g', linestyle='--', label='Positive Shock')
-        plt.title(f'Asset {asset_id} Returns')
-        plt.ylabel('Return (%)')
-        plt.xlabel('Time')
+        plt.axvline(x=5000, color="r", linestyle="--", label="Negative Shock")
+        plt.axvline(x=10000, color="g", linestyle="--", label="Positive Shock")
+        plt.title(f"Asset {asset_id} Returns")
+        plt.ylabel("Return (%)")
+        plt.xlabel("Time")
         plt.legend()
         plt.show()
 
@@ -681,10 +713,10 @@ if __name__ == "__main__":
     # Plot portfolio characteristics
     plt.figure(figsize=(10, 6))
     for p in portfolios:
-        plt.scatter(p['variance'], p['expected_return'], alpha=0.5)
-    plt.title('Portfolio Mean-Variance Characteristics')
-    plt.xlabel('Portfolio Variance')
-    plt.ylabel('Expected Portfolio Return')
+        plt.scatter(p["variance"], p["expected_return"], alpha=0.5)
+    plt.title("Portfolio Mean-Variance Characteristics")
+    plt.xlabel("Portfolio Variance")
+    plt.ylabel("Expected Portfolio Return")
     plt.show()
 
     # Run simulation with noise traders
@@ -697,16 +729,14 @@ if __name__ == "__main__":
     # Plot portfolio characteristics with noise traders
     plt.figure(figsize=(10, 6))
     for p in noise_portfolios:
-        if p['agent_id'] < 25:
-            plt.scatter(p['variance'], p['expected_return'],
-                        color='blue', alpha=0.5)
+        if p["agent_id"] < 25:
+            plt.scatter(p["variance"], p["expected_return"], color="blue", alpha=0.5)
         else:
-            plt.scatter(p['variance'], p['expected_return'],
-                        color='red', alpha=0.5)
-    plt.title('Portfolio Mean-Variance Characteristics with Noise Traders')
-    plt.xlabel('Portfolio Variance')
-    plt.ylabel('Expected Portfolio Return')
-    plt.legend(['Regular Agents', 'Noise Traders'])
+            plt.scatter(p["variance"], p["expected_return"], color="red", alpha=0.5)
+    plt.title("Portfolio Mean-Variance Characteristics with Noise Traders")
+    plt.xlabel("Portfolio Variance")
+    plt.ylabel("Expected Portfolio Return")
+    plt.legend(["Regular Agents", "Noise Traders"])
     plt.show()
 
     # Run the shock experiment

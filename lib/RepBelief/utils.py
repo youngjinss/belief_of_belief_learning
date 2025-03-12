@@ -5,6 +5,7 @@ import itertools
 import torch
 import numpy as np
 
+
 def colorize(text, color):
     colors = {
         "blue": "\033[94m",
@@ -15,8 +16,10 @@ def colorize(text, color):
     }
     return colors[color] + text + colors["end"]
 
+
 def print_colored(text, color):
     print(colorize(text, color))
+
 
 def ensure_dir(path):
     """
@@ -26,17 +29,18 @@ def ensure_dir(path):
     """
     if not os.path.exists(path):
         os.makedirs(path)
-        
+
+
 def get_interventions_dict(all_activations, top_heads, directions):
     device = "cuda"
     directions = normalize_vectors(directions)
     interventions_dict = {}
     for (layer, head), val_acc in top_heads:
-        dir = directions[layer, head]                     # Assuming normalized
+        dir = directions[layer, head]  # Assuming normalized
         activations = all_activations[:, layer, head, :]  # N x 128
         proj_vals = activations @ dir.T
         proj_val_std = np.std(proj_vals)
-    
+
         # Check if the layer key exists in the dictionary, if not, initialize an empty list
         if layer not in interventions_dict:
             interventions_dict[layer] = []
@@ -44,11 +48,13 @@ def get_interventions_dict(all_activations, top_heads, directions):
         # Append the tuple (head, val_acc, proj_val_std) to the list corresponding to the layer
         interventions_dict[layer].append((head, dir, proj_val_std, val_acc))
     return interventions_dict
-    
+
+
 def blend_directions(a, b, t):
     v = (1 - t) * a + t * b
     return v
-    
+
+
 def normalize_vectors(arr):
     """
     Normalizes the last dimension of a numpy array
@@ -62,6 +68,7 @@ def normalize_vectors(arr):
     # Normalize the vectors
     normalized_arr = arr / norms
     return normalized_arr
+
 
 def calculate_cosine_similarity(vector_a, vector_b):
     """
@@ -79,6 +86,7 @@ def calculate_cosine_similarity(vector_a, vector_b):
     norm_b = np.linalg.norm(vector_b)
     cosine_similarity = dot_product / (norm_a * norm_b)
     return cosine_similarity
+
 
 def diff_directions(d1, d2):
     # Ensure d1 and d2 have the same shape
@@ -104,10 +112,10 @@ def diff_directions(d1, d2):
 
 def edit_csv_row(filename, row_to_edit, new_data):
     if not os.path.exists(filename):
-        raise Exception('No csv file found', filename)
+        raise Exception("No csv file found", filename)
     # Read the CSV file and store the data in a list
-    with open(filename, 'r') as csvfile:
-        reader = csv.reader(csvfile, delimiter=';')
+    with open(filename, "r") as csvfile:
+        reader = csv.reader(csvfile, delimiter=";")
         data = [row for row in reader]
 
     # Update the data in the desired row
@@ -118,10 +126,11 @@ def edit_csv_row(filename, row_to_edit, new_data):
         data.append(new_data)
 
     # Write the updated data back to the CSV file
-    print('writing to', filename)
-    with open(filename, 'w') as csvfile:
-        writer = csv.writer(csvfile, delimiter=';')
+    print("writing to", filename)
+    with open(filename, "w") as csvfile:
+        writer = csv.writer(csvfile, delimiter=";")
         writer.writerows(data)
+
 
 def push_data(data_dir: str, repo_url: str):
 
@@ -132,19 +141,25 @@ def push_data(data_dir: str, repo_url: str):
     os.chdir(data_dir)
 
     # pull changes from GitHub
-    p = Popen(['git', 'pull'], stdout=PIPE, stderr=PIPE) # needs to be '.' to add all files from data directory
+    p = Popen(
+        ["git", "pull"], stdout=PIPE, stderr=PIPE
+    )  # needs to be '.' to add all files from data directory
     p.communicate()
 
     # Stage all changes (can send them somwhere better than github i guess?)
-    p = Popen(['git', 'add', '.'], stdout=PIPE, stderr=PIPE) # needs to be '.' to add all files from data directory
+    p = Popen(
+        ["git", "add", "."], stdout=PIPE, stderr=PIPE
+    )  # needs to be '.' to add all files from data directory
     p.communicate()
 
     # Commit changes
-    p = Popen(['git', 'commit', '-m', 'auto-commit-csv-change'], stdout=PIPE, stderr=PIPE)
+    p = Popen(
+        ["git", "commit", "-m", "auto-commit-csv-change"], stdout=PIPE, stderr=PIPE
+    )
     p.communicate()
 
     # Push changes to GitHub
-    p = Popen(['git', 'push', repo_url], stdout=PIPE, stderr=PIPE)
+    p = Popen(["git", "push", repo_url], stdout=PIPE, stderr=PIPE)
     p.communicate()
 
     # Change back to the original working directory
@@ -153,28 +168,30 @@ def push_data(data_dir: str, repo_url: str):
 
 def get_num_items(file_name: str) -> int:
     # Open the CSV file in append mode
-    csv_file = f'{file_name}'
+    csv_file = f"{file_name}"
     print(csv_file)
     if not os.path.exists(csv_file):
         return 0
     num_rows = 0
-    with open(csv_file, 'r') as csvfile:
+    with open(csv_file, "r") as csvfile:
         reader = csv.reader(csvfile)
         for row in reader:
             num_rows += 1
     return num_rows
 
-def get_vars_from_out(out:str, var_list: list, stage_1=False):
+
+def get_vars_from_out(out: str, var_list: list, stage_1=False):
     # Get the variables from the output
     var_dict = {}
     for lines in out.splitlines():
         for var in var_list:
-            if f'{var}:' in lines:
+            if f"{var}:" in lines:
                 if stage_1:
                     var_dict[var] = ": ".join(lines.split(": ")[1:])
                 else:
-                    var_dict[var] = lines.split(': ')[1].strip()
+                    var_dict[var] = lines.split(": ")[1].strip()
     return var_dict
+
 
 def find_largest_k_items(arr, k):
     """
@@ -189,8 +206,7 @@ def find_largest_k_items(arr, k):
     """
     # Flatten the array and get the indices of the largest k values
     indices = np.unravel_index(np.argsort(arr.ravel())[-k:], arr.shape)
-    
+
     # Zip the indices together and get the corresponding values
     largest_items = [(index, arr[index]) for index in zip(*indices)]
     return largest_items[::-1]
-

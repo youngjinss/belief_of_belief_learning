@@ -48,6 +48,7 @@ gym_types = {
 # "pnl": 손익,
 # "reward": 정규화된 손익(pnl / parent_order_size)
 
+
 def print_state(state: list, env_type: str) -> None:
     """
     - 주어진 상태(state) 리스트의 각 요소와 해당 환경 유형에 맞는 이름을 출력.

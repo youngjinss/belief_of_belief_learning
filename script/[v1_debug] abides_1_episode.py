@@ -2,13 +2,9 @@ import os
 import sys
 import time
 import numpy as np
-import pandas as pd
-from matplotlib import pyplot as plt
-from matplotlib.lines import Line2D
 
 # ray 관련 라이브러리 임포트
 import ray
-from ray import tune
 from ray.tune.registry import register_env
 
 # 프로젝트 루트 디렉토리 설정
@@ -27,7 +23,10 @@ from abides_gym.envs.markets_execution_environment_v0 import (
 
 # 경로를 직접 지정하여 모듈 로드
 import importlib.util
-spec = importlib.util.spec_from_file_location("utils", os.path.join(project_root, "lib/utils/__init__.py"))
+
+spec = importlib.util.spec_from_file_location(
+    "utils", os.path.join(project_root, "lib/utils/__init__.py")
+)
 utils = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(utils)
 
@@ -39,6 +38,10 @@ flatten_dict = utils.flatten_dict
 seed = 0
 gym_type_str = "markets-execution-v0"
 
+# 함수 init
+ray.shutdown()
+ray.init()
+
 np.random.seed(seed)
 
 gym_type_abb = gym_types[gym_type_str]
@@ -48,44 +51,9 @@ register_env(
     lambda config: SubGymMarketsExecutionEnv_v0(**config),
 )
 
+
 # policy 정의
-class policyPassive:
-    """
-    패시브 정책은 항상 1을 반환 (시장 가격에 영향을 최소화, 소극적으로 주문을 실행하는 전략)
-    """
-
-    def __init__(self):
-        self.name = "passive"
-
-    def get_action(self, state):
-        return 1
-
-
-class policyAggressive:
-    """
-    공격적 정책은 항상 0을 반환 (적극적으로 주문을 처리하는 전략, 시장 충격이 클 수 있음)
-    """
-
-    def __init__(self):
-        self.name = "aggressive"
-
-    def get_action(self, state):
-        return 0
-
-
-class policyRandom:
-    """
-    무작위 정책은 0과 1 중에서 무작위로 선택 (패시브와 공격적 전략을 무작위로 혼합하는 방식)
-    """
-
-    def __init__(self):
-        self.name = "random"
-
-    def get_action(self, state):
-        return np.random.choice([0, 1])
-
-
-class policyRandomWithNoAction:
+class PolicyRandom:
     """
     완전 무작위 정책은 -2 ~ 2 중에서 무작위로 선택 (관망하며 시장 상황을 지켜보는 옵션을 포함)
     """
@@ -98,7 +66,8 @@ class policyRandomWithNoAction:
         if state[0] < 0 and action < 0:
             action = 0
         return action
-    
+
+
 # 강화학습 관련 변수 선언
 env = gym.make(
     gym_type_str,
@@ -108,12 +77,12 @@ env = gym.make(
     parent_order_size=2000,
     order_fixed_size=50,
     not_enough_reward_update=-100,  # penalty
-    debug_mode=True
+    debug_mode=True,
 )
 
 env.seed(seed)
 
-target_agent = policyRandomWithNoAction()
+target_agent = PolicyRandom()
 
 # 시뮬레이션 시작
 state = env.reset()
@@ -132,24 +101,18 @@ history_dict = {
     "time": [],
     "action": [],
     "order_size": [],  # debuging
-    "direction": [], # debuging
-    "executed": [], # debuging
-    "executed_size": [], # debuging
+    "direction": [],  # debuging
 }
 
 # 1개 에피소드 실행 (소요 시간 측정)
-start_time = time.time()    
+start_time = time.time()
 while not done:
     action_ = target_agent.get_action(state)
-    # env.direction action_이 양수면, "BUY", 음수면, "SELL", "HOLD"는 고려 안함
-    if action_ > 0:
-        env.direction = "BUY"
-    elif action_ < 0:
-        env.direction = "SELL"
+    env.direction = "BUY" if action_ > 0 else "SELL" if action_ < 0 else env.direction
     action = abs(action_)
     state, reward, done, info = env.step(action)
     episode_reward += reward
-    
+
     # 현재 상태에서 필요한 정보 추출
     mid_price = (info["best_bid"] + info["best_ask"]) / 2  # 중간 가격 계산
     history_dict["mid_price"].append(mid_price)
@@ -163,9 +126,7 @@ while not done:
     history_dict["action"].append(action_)
     history_dict["order_size"].append(env.parent_order_size)  # debuging
     history_dict["direction"].append(env.direction)  # debuging
-    # history_dict["executed"].append(info["orders_executed"])  # debuging
-    # history_dict["executed_size"].append(env.metrics_tracker.executed_quantity)  # debuging
-                
+
 end_time = time.time()
 print(f"Execution time: {end_time - start_time} seconds")
 

@@ -3,7 +3,6 @@ import pandas as pd
 from collections.abc import MutableMapping
 
 # Daily Investor Environment
-# holdings_t, imbalance_t, spread_t, directionFeature_t, R^k_t
 # holdings_t: 실험 에이전트가 t 시점에 보유한 주식의 수
 # imbalance_t = bids_volume / (bids_volume + asks_volume)로, 주문장의 첫 3단계 수준을 사용함. 호가 없음, 매도 호가 없음, 주문장 비어있음에 따라 각각 0, 1, 0.5로 설정됨
 # spread_t = bestAsk_t - bestBid_t
@@ -12,13 +11,15 @@ from collections.abc import MutableMapping
 die = ["holdings_t", "imbalance_t", "spread_t", "directionFeature_t", "R^k_t"]
 
 # Algorithmic Execution Environment
-# holdingsPct_t, timePct_t, differencePct_t, imbalance5_t, imbalanceAll_t, priceImpact_t, spread_t, directionFeature_t, R^k_t
-# holdingsPct_t = holdings_t / parentOrderSize: 실행 진행도
-# timePct_t = (t - startingTime) / timeWindow: 시간 진행도
-# differencePct_t = holdingsPct_t - timePct_t
-# priceImpact_t = midPrice_t - entryPrice
-# imbalance5_t와 imbalanceAll_t는 4.1.2에 정의된 것과 유사하지만 주문장의 첫 5단계와 모든 단계를 각각 사용
-# spread_t, directionFeature_t, R^k_t는 4.1.2에 정의된 것과 동일하며, k = 3
+# holdings_pct: 현재 보유 수량 / 총 주문량 (parent_order_size)
+# time_pct: 경과 시간 / 총 실행 시간 (execution_window)
+# diff_pct: 보유량 진행률과 시간 진행률의 차이 (holdings_pct - time_pct)
+# imbalance_all: 전체 호가창에서의 매수-매도 불균형 지표
+# imbalance_5: 5단계 깊이까지의 호가 불균형
+# price_impact: 시장 진입 가격 대비 중간가격 변화 (매수/매도 방향에 따라 다름)
+# spread: 최우선 매도호가와 매수호가의 차이
+# direction_feature: 중간가격과 마지막 거래가격의 차이
+# returns: 중간가격의 변화율(과거 데이터 포함)
 aee = [
     "holdingsPct_t",
     "timePct_t",
@@ -37,6 +38,15 @@ gym_types = {
     "markets-execution-v0": "aee",
 }
 
+# info 메모 (debug mode)
+# "last_transaction": 마지막 거래 가격,
+# "best_bid": 최우선 매수호가,
+# "best_ask": 최우선 매도호가,
+# "current_time": 현재 시간,
+# "holdings": 현재 보유량,
+# "parent_size": 총 주문량,
+# "pnl": 손익,
+# "reward": 정규화된 손익(pnl / parent_order_size)
 
 def print_state(state: list, env_type: str) -> None:
     """

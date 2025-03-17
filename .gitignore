@@ -1,2 +1,7 @@
 .vscode
-lib/UNKNOWN.egg-info
+lib/abides-jpmc-public/
+lib/build/
+lib/multi-agent-framework/
+lib/RepBelief/
+lib/UNKNOWN.egg-info/
+log/*

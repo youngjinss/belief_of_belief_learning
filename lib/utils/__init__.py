@@ -48,6 +48,21 @@ gym_types = {
 # "pnl": 손익,
 # "reward": 정규화된 손익(pnl / parent_order_size)
 
+# 데이터 추적을 위한 히스토리 딕셔너리 초기화
+history_dict = {
+    "mid_price": [],
+    "best_bid": [],
+    "best_ask": [],
+    "reward": [],
+    "cumulative_reward": [],
+    "pnl": [],
+    "holdings": [],
+    "time": [],
+    "action": [],
+    "order_size": [],  # debuging
+    "direction": [],  # debuging
+}
+
 
 def print_state(state: list, env_type: str) -> None:
     """

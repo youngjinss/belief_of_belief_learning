@@ -1,3 +1,7 @@
+import pandas as pd
+
+from collections.abc import MutableMapping
+
 # Daily Investor Environment
 # holdings_t, imbalance_t, spread_t, directionFeature_t, R^k_t
 # holdings_t: 실험 에이전트가 t 시점에 보유한 주식의 수
@@ -34,8 +38,19 @@ gym_types = {
 }
 
 
-# print all state name and value from state 2-d list using for loop (state와 die, aee의 길이가 안맞다면, R^k_t의 k > 1이므로, 이 부분에 대해서 k 숫자에 따른 프린터를 하도록 구현 추가)
 def print_state(state: list, env_type: str) -> None:
+    """
+    - 주어진 상태(state) 리스트의 각 요소와 해당 환경 유형에 맞는 이름을 출력.
+    - 환경 유형에 따라 die(Daily Investor Environment) 또는 aee(Algorithmic Execution Environment)의 상태 이름을 사용하여 상태 값을 출력
+    - R^k_t의 경우 k가 1보다 클 때 여러 값이 있을 수 있으며, 이 경우 모든 값을 함께 출력합니다.
+
+    Args:
+        state (list): 출력할 상태 값들의 리스트
+        env_type (str): 환경 유형 ("die" 또는 "aee")
+
+    Raises:
+        ValueError: 유효하지 않은 환경 유형이 제공될 경우 발생
+    """
     if env_type == "die":
         for i in range(len(state)):
             if i < len(die) - 1:
@@ -50,3 +65,19 @@ def print_state(state: list, env_type: str) -> None:
                 print(f"R^k_t: {state[i]}")
     else:
         raise ValueError(f"Invalid environment type: {env_type}")
+
+
+def flatten_dict(d: MutableMapping, sep: str = ".") -> MutableMapping:
+    """
+    - 중첩된 딕셔너리를 평탄화(flatten)
+    - 중첩된 딕셔너리의 키를 구분자(separator)로 연결하여 단일 레벨의 딕셔너리로 변환
+
+    Args:
+        d (MutableMapping): 평탄화할 중첩 딕셔너리
+        sep (str, optional): 중첩 키를 연결할 때 사용할 구분자. 기본값은 "."
+
+    Returns:
+        MutableMapping: 평탄화된 딕셔너리
+    """
+    [flat_dict] = pd.json_normalize(d, sep=sep).to_dict(orient="records")
+    return flat_dict

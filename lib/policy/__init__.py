@@ -391,7 +391,9 @@ class PolicyTobinToCAPM:
             # Adjust action based on current holdings
             # Prevent short selling if not allowed (similar to the random policy)
             if current_holdings < 0 and action < 0:
-                print(f"Short selling not allowed. Current holdings: {current_holdings}, Action: {action}")
+                print(
+                    f"Short selling not allowed. Current holdings: {current_holdings}, Action: {action}"
+                )
                 action = 0
 
             self.previous_action = action

@@ -35,7 +35,8 @@ aee = [
 # gym의 종류 dictionary
 gym_types = {
     "daily-investor-v0": "die",
-    "markets-execution-v0": "aee",
+    "markets-execution-v0": "ae0",
+    "markets-execution-v1": "ae1",
 }
 
 # info 메모 (debug mode)
@@ -83,7 +84,7 @@ def print_state(state: list, env_type: str) -> None:
                 print(f"{die[i]}: {state[i]}")
             else:
                 print(f"R^k_t: {state[i]}")
-    elif env_type == "aee":
+    elif env_type == "ae0" or env_type == "ae1":
         for i in range(len(state)):
             if i < len(aee) - 1:
                 print(f"{aee[i]}: {state[i]}")

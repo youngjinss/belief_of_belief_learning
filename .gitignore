@@ -5,3 +5,5 @@ lib/multi-agent-framework/
 lib/RepBelief/
 lib/UNKNOWN.egg-info/
 log/*
+lib/maxe/
+lib/pymarketsim/

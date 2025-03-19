@@ -61,9 +61,7 @@ class PolicyTobinToCAPM:
     using principles from Tobin's separation theorem to determine optimal trading actions.
     """
 
-    def __init__(
-        self, window_size=20, rf_rate=0.01, risk_aversion=1.0, alpha_threshold=0.005
-    ):
+    def __init__(self, window_size=20, rf_rate=0.01, risk_aversion=1.0):
         """
         Initialize the Tobin to CAPM policy.
 
@@ -71,7 +69,6 @@ class PolicyTobinToCAPM:
             window_size (int): Size of the rolling window for estimating parameters
             rf_rate (float): Risk-free rate (annualized)
             risk_aversion (float): Risk aversion parameter (λ) for the utility function
-            alpha_threshold (float): Threshold for alpha to trigger trading decisions
         """
         self.name = "tobin_to_capm"
         self.window_size = window_size
@@ -79,9 +76,10 @@ class PolicyTobinToCAPM:
         self.market_return_history = deque(maxlen=window_size)
         self.rf_rate = rf_rate / 252  # Daily risk-free rate (assuming 252 trading days)
         self.risk_aversion = risk_aversion
-        self.alpha_threshold = alpha_threshold
         self.beta = 1.0  # Initialize beta
         self.previous_action = 0
+        self.previous_optimal_weight = 0.0  # Store previous optimal weight
+        self.trade_proportion = 0.0  # Store proportion to trade
 
     def update_histories(self, returns, market_returns=None):
         """
@@ -147,14 +145,14 @@ class PolicyTobinToCAPM:
 
     def estimate_parameters(self):
         """
-        Estimate CAPM parameters: beta and alpha
+        Estimate CAPM parameters: beta, expected_return, and volatility
 
         Returns:
-            tuple: (alpha, beta, expected_return, volatility)
+            tuple: (beta, expected_return, volatility)
         """
         # Need sufficient history to estimate parameters
         if len(self.return_history) < self.window_size // 2:
-            return 0, 1.0, self.rf_rate, 0.001
+            return 1.0, self.rf_rate, 0.001
 
         # Convert histories to numpy arrays for calculations
         returns = np.array(self.return_history)
@@ -166,7 +164,7 @@ class PolicyTobinToCAPM:
 
         # If we don't have enough valid data after filtering, return default values
         if len(returns) < 2:
-            return 0, 1.0, self.rf_rate, 0.001
+            return 1.0, self.rf_rate, 0.001
 
         if len(market_returns) == 0:
             # If market returns not available, use default values
@@ -176,7 +174,6 @@ class PolicyTobinToCAPM:
             if np.isnan(mean_return):
                 mean_return = 0
 
-            alpha = mean_return - (self.rf_rate + beta * (mean_return - self.rf_rate))
             volatility = np.nanstd(returns) if len(returns) > 0 else 0.001
             if np.isnan(volatility) or volatility < 0.0001:
                 volatility = 0.001
@@ -186,7 +183,7 @@ class PolicyTobinToCAPM:
             # Ensure the arrays have the same length for calculation
             min_length = min(len(returns), len(market_returns))
             if min_length < 2:  # Need at least 2 data points for meaningful calculation
-                return 0, 1.0, self.rf_rate, 0.001
+                return 1.0, self.rf_rate, 0.001
 
             returns = returns[-min_length:]
             market_returns = market_returns[-min_length:]
@@ -208,18 +205,14 @@ class PolicyTobinToCAPM:
             except:
                 beta = 1.0
 
-            # Calculate alpha (excess return) with error handling
+            # Calculate mean returns and volatility
             try:
                 mean_return = np.nanmean(returns)
                 mean_market_return = np.nanmean(market_returns)
                 if np.isnan(mean_return) or np.isnan(mean_market_return):
-                    alpha = 0
-                else:
-                    alpha = mean_return - (
-                        self.rf_rate + beta * (mean_market_return - self.rf_rate)
-                    )
+                    mean_return = 0
+                    mean_market_return = 0
             except:
-                alpha = 0
                 mean_return = 0
                 mean_market_return = 0
 
@@ -244,8 +237,6 @@ class PolicyTobinToCAPM:
         beta = max(0.1, min(3.0, beta))
 
         # Handle any remaining NaN values
-        if np.isnan(alpha):
-            alpha = 0
         if np.isnan(beta):
             beta = 1.0
         if np.isnan(expected_return):
@@ -253,7 +244,7 @@ class PolicyTobinToCAPM:
         if np.isnan(volatility):
             volatility = 0.001
 
-        return alpha, beta, expected_return, volatility
+        return beta, expected_return, volatility
 
     def calculate_optimal_weight(self, expected_excess_return, volatility):
         """
@@ -294,22 +285,22 @@ class PolicyTobinToCAPM:
             print(f"Error in calculate_optimal_weight: {e}")
             return 0.0
 
-    def determine_action(self, alpha, beta, expected_return, volatility):
+    def determine_action(self, beta, expected_return, volatility):
         """
         Determine trading action based on CAPM parameters and Tobin's theorem
 
         Args:
-            alpha (float): Alpha (abnormal return) estimate
             beta (float): Beta (systematic risk) estimate
             expected_return (float): Expected return based on CAPM
             volatility (float): Volatility estimate
 
         Returns:
             int: Action value between -2 and 2
+            float: Trade proportion relative to current holdings
         """
         # Check for NaN values and set defaults if needed
-        if np.isnan(alpha) or np.isnan(expected_return) or np.isnan(volatility):
-            return 0  # Default to no action if we have NaN values
+        if np.isnan(expected_return) or np.isnan(volatility):
+            return 0, 0.0  # Default to no action if we have NaN values
 
         # Calculate expected excess return
         expected_excess_return = expected_return - self.rf_rate
@@ -319,26 +310,20 @@ class PolicyTobinToCAPM:
             expected_excess_return, volatility
         )
 
-        # Determine action based on alpha (mispricing signal) and optimal weight
-        if abs(alpha) < self.alpha_threshold:
-            # Small alpha: No strong mispricing signal
-            action = 0
+        # Calculate trade proportion based on difference from previous optimal weight
+        self.trade_proportion = optimal_weight - self.previous_optimal_weight
+
+        # Update previous optimal weight for next round
+        self.previous_optimal_weight = optimal_weight
+
+        # Determine action based on weight difference
+        if abs(self.trade_proportion) < 0.05:  # Small threshold for meaningful action
+            action = 0  # No significant change needed
         else:
-            # Significant alpha: Asset is potentially mispriced
-            if alpha > 0:  # Positive alpha: asset is undervalued
-                # Safely convert to integer with NaN handling
-                alpha_ratio = abs(alpha) / self.alpha_threshold
-                action_strength = (
-                    min(2, max(1, int(alpha_ratio))) if not np.isnan(alpha_ratio) else 1
-                )
-                action = action_strength if optimal_weight > 0 else 0
-            else:  # Negative alpha: asset is overvalued
-                # Safely convert to integer with NaN handling
-                alpha_ratio = abs(alpha) / self.alpha_threshold
-                action_strength = (
-                    min(2, max(1, int(alpha_ratio))) if not np.isnan(alpha_ratio) else 1
-                )
-                action = -action_strength if optimal_weight < 0 else 0
+            if self.trade_proportion > 0:  # Need to increase position
+                action = 2
+            else:  # Need to decrease position
+                action = -2
 
         # Apply mean reversion adjustment based on beta
         if not np.isnan(beta):
@@ -360,10 +345,11 @@ class PolicyTobinToCAPM:
 
         Returns:
             int: Action value between -2 and 2
+            float: Trade proportion to execute
         """
         try:
             # Extract relevant information from state
-            current_holdings = state[0] if not np.isnan(state[0]) else 0
+            current_holdings = state[0][0] if not np.isnan(state[0][0]) else 0
 
             # Get returns directly from state[8:]
             returns = state[8:] if len(state) > 8 else []
@@ -383,18 +369,16 @@ class PolicyTobinToCAPM:
                 self.update_histories(returns)
 
             # Estimate CAPM parameters
-            alpha, beta, expected_return, volatility = self.estimate_parameters()
+            beta, expected_return, volatility = self.estimate_parameters()
 
-            # Determine action based on the parameters
-            action = self.determine_action(alpha, beta, expected_return, volatility)
+            # Determine action and trade proportion based on the parameters
+            action = self.determine_action(beta, expected_return, volatility)
 
             # Adjust action based on current holdings
             # Prevent short selling if not allowed (similar to the random policy)
-            if current_holdings < 0 and action < 0:
-                print(
-                    f"Short selling not allowed. Current holdings: {current_holdings}, Action: {action}"
-                )
+            if current_holdings <= 0 and action < 0:
                 action = 0
+                self.trade_proportion = 0.0
 
             self.previous_action = action
 
@@ -402,4 +386,4 @@ class PolicyTobinToCAPM:
         except Exception as e:
             # If any error occurs, log it and return a safe default action
             print(f"Error in get_action: {e}")
-            return 0
+            return 0, 0.0

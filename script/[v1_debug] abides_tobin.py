@@ -17,8 +17,8 @@ sys.path.append("/home/youngjins/project/belief_trading/lib/abides_jpmc_public")
 
 # 환경 임포트
 import gym
-from abides_gym.envs.markets_execution_environment_v0 import (
-    SubGymMarketsExecutionEnv_v0,
+from abides_gym.envs.markets_execution_environment_v1 import (
+    SubGymMarketsExecutionEnv_v1,
 )
 
 # 경로를 직접 지정하여 모듈 로드
@@ -46,15 +46,34 @@ PolicyTobinToCAPM = policy.PolicyTobinToCAPM
 seed = 0
 np.random.seed(seed)
 
+# 매개 변수 선언
+seed = 0
+np.random.seed(seed)
+
 # window size 선언
-window_size = 20
+state_window_size = 20
+market_data_length = 10
+parent_order_size = 5000
+order_fixed_size = 50
 
 # 환경 선언
-gym_type_str = "markets-execution-v0"
+gym_type_str = "markets-execution-v1"
 gym_type_abb = gym_types[gym_type_str]
 register_env(
     gym_type_str,
-    lambda config: SubGymMarketsExecutionEnv_v0(**config),
+    lambda config: SubGymMarketsExecutionEnv_v1(**config),
+)
+
+# ray init
+ray.shutdown()
+ray.init()
+
+# 환경 선언
+gym_type_str = "markets-execution-v1"
+gym_type_abb = gym_types[gym_type_str]
+register_env(
+    gym_type_str,
+    lambda config: SubGymMarketsExecutionEnv_v1(**config),
 )
 
 # ray init
@@ -68,15 +87,16 @@ env = gym.make(
     background_config="rmsc04",
     timestep_duration="10S",
     execution_window="04:00:00",
-    parent_order_size=2000,
-    order_fixed_size=50,
+    parent_order_size=parent_order_size,
+    order_fixed_size=order_fixed_size,
     not_enough_reward_update=-100,  # penalty
-    state_history_length=window_size,
+    state_history_length=state_window_size,
+    market_data_buffer_length=market_data_length,
     debug_mode=True,
 )
 env.seed(seed)
 
-target_agent = PolicyTobinToCAPM(window_size=window_size)
+target_agent = PolicyTobinToCAPM(window_size=state_window_size)
 
 # 시뮬레이션 시작
 state = env.reset()
@@ -87,14 +107,36 @@ episode_reward = 0
 start_time = time.time()
 while not done:
     action_ = target_agent.get_action(state)
-    env.direction = "BUY" if action_ > 0 else "SELL" if action_ < 0 else env.direction
+    env.direction = (
+        "BUY" if action_ > 0 else "SELL" if action_ < 0 else env.direction
+    )  # 매수 / 매도 방향 설정
+
+    # 방어 코드 시작
+    # 매수 / 매도 크기 설정 (holdings = state[0] (holdings_pct) * parent_order_size)
+    holdings = round(state[0][0] * parent_order_size)
+    if action_ != 0 and holdings > 0:
+        env.order_fixed_size = max(0, (
+            int(parent_order_size * abs(target_agent.trade_proportion) - holdings)
+        ))  # 매수 / 매도 크기 설정
+    else:
+        env.order_fixed_size = order_fixed_size
+    
+    # 매도 & env.order_fixed_size > holdings 인 경우, 매수 / 매도 크기를 holdings 만큼 줄임
+    if action_ < 0 and holdings > 0 and env.order_fixed_size > holdings:
+        env.order_fixed_size = holdings - 1
+    
+    # 매수 / 매도 크기가 0인 경우, action을 0으로 설정
+    if env.order_fixed_size == 0:
+        action_ = 0
+    # 방어 코드 종료
+
+    print(f"env.order_fixed_size: {env.order_fixed_size}, holdings: {holdings}, action: {action_}")
     action = abs(action_)
     state, reward, done, info = env.step(action)
     episode_reward += reward
 
     # 현재 상태에서 필요한 정보 추출
-    mid_price = (info["best_bid"] + info["best_ask"]) / 2  # 중간 가격 계산
-    history_dict["mid_price"].append(mid_price)
+    history_dict["mid_price"].append((info["best_bid"] + info["best_ask"]) / 2)
     history_dict["best_bid"].append(info["best_bid"])
     history_dict["best_ask"].append(info["best_ask"])
     history_dict["reward"].append(reward)

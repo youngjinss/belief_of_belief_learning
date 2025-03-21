@@ -17,8 +17,8 @@ sys.path.append("/home/youngjins/project/belief_trading/lib/abides_jpmc_public")
 
 # 환경 임포트
 import gym
-from abides_gym.envs.markets_execution_environment_v0 import (
-    SubGymMarketsExecutionEnv_v0,
+from abides_gym.envs.markets_execution_environment_v1 import (
+    SubGymMarketsExecutionEnv_v1,
 )
 
 # 경로를 직접 지정하여 모듈 로드
@@ -30,13 +30,22 @@ spec = importlib.util.spec_from_file_location(
 utils = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(utils)
 
+spec = importlib.util.spec_from_file_location(
+    "policy", os.path.join(project_root, "lib/policy/__init__.py")
+)
+policy = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(policy)
+
 # utils 모듈에서 필요한 함수 가져오기
 gym_types = utils.gym_types
 flatten_dict = utils.flatten_dict
+policyRandom2 = policy.policyRandom2
 
 # 매개 변수 선언
 seed = 0
-gym_type_str = "markets-execution-v0"
+gym_type_str = "markets-execution-v1"
+parent_order_size = 2000
+order_fixed_size = 10
 
 # 함수 init
 ray.shutdown()
@@ -48,24 +57,8 @@ gym_type_abb = gym_types[gym_type_str]
 
 register_env(
     gym_type_str,
-    lambda config: SubGymMarketsExecutionEnv_v0(**config),
+    lambda config: SubGymMarketsExecutionEnv_v1(**config),
 )
-
-
-# policy 정의
-class PolicyRandom:
-    """
-    완전 무작위 정책은 -2 ~ 2 중에서 무작위로 선택 (관망하며 시장 상황을 지켜보는 옵션을 포함)
-    """
-
-    def __init__(self):
-        self.name = "random_no_action"
-
-    def get_action(self, state):
-        action = np.random.choice([-2, -1, 0, 1, 2])
-        if state[0] < 0 and action < 0:
-            action = 0
-        return action
 
 
 # 강화학습 관련 변수 선언
@@ -73,8 +66,8 @@ env = gym.make(
     gym_type_str,
     background_config="rmsc04",
     timestep_duration="10S",
-    execution_window="04:00:00",
-    parent_order_size=2000,
+    execution_window="16:00:00",
+    parent_order_size=1000,
     order_fixed_size=50,
     not_enough_reward_update=-100,  # penalty
     debug_mode=True,
@@ -82,7 +75,7 @@ env = gym.make(
 
 env.seed(seed)
 
-target_agent = PolicyRandom()
+target_agent = policyRandom2()
 
 # 시뮬레이션 시작
 state = env.reset()
@@ -109,6 +102,14 @@ start_time = time.time()
 while not done:
     action_ = target_agent.get_action(state)
     env.direction = "BUY" if action_ > 0 else "SELL" if action_ < 0 else env.direction
+
+    # 방어 코드 시작
+    # holdings > parent_order_size 인 경우, action을 0으로 설정
+    holdings = round(state[0][0] * parent_order_size)
+    if action_ > 0 and holdings + env.parent_order_size > parent_order_size:
+        action_ = 0
+    # 방어 코드 종료
+    
     action = abs(action_)
     state, reward, done, info = env.step(action)
     episode_reward += reward

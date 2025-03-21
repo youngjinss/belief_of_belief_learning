@@ -16,7 +16,8 @@ import importlib.util
 
 # utils, policy 모듈 로드
 spec = importlib.util.spec_from_file_location(
-    "mm_wrapper", os.path.join(project_root, "lib/pymarketsim/marketsim/wrappers/MM_wrapper.py")
+    "mm_wrapper",
+    os.path.join(project_root, "lib/pymarketsim/marketsim/wrappers/MM_wrapper.py"),
 )
 mm_wrapper = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mm_wrapper)
@@ -52,7 +53,7 @@ env = MMEnv(
     shade=[250, 500],
     normalizers=normalizers,
     beta_params=beta_params,
-    reset_fundamental=True, 
+    reset_fundamental=True,
 )
 
 target_agent = policyRandom1()

@@ -1,5 +1,6 @@
 # policy 정의
 import numpy as np
+import pandas as pd
 from collections import deque
 
 
@@ -34,7 +35,7 @@ class policyRandom1:
     """
 
     def __init__(self):
-        self.name = "random_no_action"
+        self.name = "random_pms"
 
     def get_action(self, state):
         action = np.random.uniform(-1, 1, 1)
@@ -50,12 +51,59 @@ class policyRandom2:
     """
 
     def __init__(self):
-        self.name = "random_no_action"
+        self.name = "random_abides"
 
     def get_action(self, state):
         action = np.random.choice([-2, -1, 0, 1, 2])
         if state[0] < 0 and action < 0:
             action = 0
+        return action
+
+
+class policyMACD:
+    """
+    장기 트렌드 - 단기 트렌드 정책
+    for ABIDES
+    """
+
+    def __init__(self, short_window=12, long_window=26, signal_window=9, delta=0.05):
+        self.name = "random_macd"
+        self.short_window = short_window
+        self.long_window = long_window
+        self.signal_window = signal_window
+        self.trade_proportion = 0.0  # Store proportion to trade
+        self.prev_signal = 0.0
+        self.delta = delta
+
+    def get_action(self, state):
+        # state[8:]: 주식 시장 return데이터 -> price 데이터로 변환
+        prices = pd.Series(np.cumprod(1 + np.array(state[8:])))
+
+        # 단기 지수 계산
+        short_ema = prices.ewm(span=self.short_window, adjust=False).mean()
+        long_ema = prices.ewm(span=self.long_window, adjust=False).mean()
+
+        # MACD 계산
+        macd = short_ema - long_ema
+
+        # MACD 시그널 계산
+        signal = macd.ewm(span=self.signal_window, adjust=False).mean()
+
+        # 현재 시점의 MACD 시그널 값
+        current_signal = signal[-1:].item()
+
+        # 현재 시점의 시그널 값이 0보다 크면 매수, 0보다 작으면 매도
+        if current_signal - self.prev_signal + self.delta > 0:
+            action = 2
+        elif current_signal - self.prev_signal - self.delta < 0:
+            action = -2
+        else:
+            action = 0
+
+        # 비율을 signal 값으로 저장
+        self.trade_proportion = current_signal - self.prev_signal
+        self.prev_signal = current_signal
+
         return action
 
 

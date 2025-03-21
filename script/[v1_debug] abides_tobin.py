@@ -115,22 +115,24 @@ while not done:
     # 매수 / 매도 크기 설정 (holdings = state[0] (holdings_pct) * parent_order_size)
     holdings = round(state[0][0] * parent_order_size)
     if action_ != 0 and holdings > 0:
-        env.order_fixed_size = max(0, (
-            int(parent_order_size * abs(target_agent.trade_proportion) - holdings)
-        ))  # 매수 / 매도 크기 설정
+        env.order_fixed_size = max(
+            0, (int(parent_order_size * abs(target_agent.trade_proportion) - holdings))
+        )  # 매수 / 매도 크기 설정
     else:
         env.order_fixed_size = order_fixed_size
-    
+
     # 매도 & env.order_fixed_size > holdings 인 경우, 매수 / 매도 크기를 holdings 만큼 줄임
     if action_ < 0 and holdings > 0 and env.order_fixed_size > holdings:
         env.order_fixed_size = holdings - 1
-    
+
     # 매수 / 매도 크기가 0인 경우, action을 0으로 설정
     if env.order_fixed_size == 0:
         action_ = 0
     # 방어 코드 종료
 
-    print(f"env.order_fixed_size: {env.order_fixed_size}, holdings: {holdings}, action: {action_}")
+    print(
+        f"env.order_fixed_size: {env.order_fixed_size}, holdings: {holdings}, action: {action_}"
+    )
     action = abs(action_)
     state, reward, done, info = env.step(action)
     episode_reward += reward

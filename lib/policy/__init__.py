@@ -24,24 +24,29 @@ class policyAggressive:
         self.name = "aggressive"
 
     def get_action(self, state):
-        return 0
+        return 2
 
 
-class policyRandom:
+class policyRandom1:
     """
-    무작위 정책은 0과 1 중에서 무작위로 선택 (패시브와 공격적 전략을 무작위로 혼합하는 방식)
+    완전 무작위 정책은 -1 ~ 1 중에서 무작위로 선택 (관망하며 시장 상황을 지켜보는 옵션을 포함)
+    for PyMarketSim
     """
 
     def __init__(self):
-        self.name = "random"
+        self.name = "random_no_action"
 
     def get_action(self, state):
-        return np.random.choice([0, 1])
+        action = np.random.uniform(-1, 1, 1)
+        if state[0] < 0 and action < 0:
+            action = 0
+        return action
 
 
-class policyRandomWithNoAction:
+class policyRandom2:
     """
     완전 무작위 정책은 -2 ~ 2 중에서 무작위로 선택 (관망하며 시장 상황을 지켜보는 옵션을 포함)
+    for ABIDES
     """
 
     def __init__(self):

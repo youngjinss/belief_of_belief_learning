@@ -72,7 +72,7 @@ class policyMACD:
         self.long_window = long_window
         self.signal_window = signal_window
         self.trade_proportion = 0.0  # Store proportion to trade
-        self.prev_signal = 0.0
+        self.prev_signal = 1
         self.delta = delta
 
     def get_action(self, state):
@@ -91,6 +91,10 @@ class policyMACD:
 
         # 현재 시점의 MACD 시그널 값
         current_signal = signal[-1:].item()
+        
+        # 시그널이 0인 경우 1로 변환
+        if current_signal == 0:
+            current_signal = 1
 
         # 현재 시점의 시그널 값이 0보다 크면 매수, 0보다 작으면 매도
         if current_signal - self.prev_signal + self.delta > 0:
@@ -101,7 +105,7 @@ class policyMACD:
             action = 0
 
         # 비율을 signal 값으로 저장
-        self.trade_proportion = current_signal - self.prev_signal
+        self.trade_proportion = (current_signal - self.prev_signal) / self.prev_signal
         self.prev_signal = current_signal
 
         return action

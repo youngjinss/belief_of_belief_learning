@@ -98,7 +98,7 @@ env = gym.make(
 )
 env.seed(seed)
 
-target_agent = policyMACD(  
+target_agent = policyMACD(
     long_window=long_window, short_window=short_window, signal_window=signal_window
 )
 

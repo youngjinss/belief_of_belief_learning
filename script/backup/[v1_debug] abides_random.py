@@ -109,7 +109,7 @@ while not done:
     if action_ > 0 and holdings + env.parent_order_size > parent_order_size:
         action_ = 0
     # 방어 코드 종료
-    
+
     action = abs(action_)
     state, reward, done, info = env.step(action)
     episode_reward += reward

@@ -92,7 +92,7 @@ class policyMACD:
 
         # 현재 시점의 MACD 시그널 값
         current_signal = signal[-1:].item()
-        
+
         # 시그널이 0인 경우 1로 변환
         if current_signal == 0:
             current_signal = 1

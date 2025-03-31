@@ -53,7 +53,6 @@ env = MMEnv(
     shade=[250, 500],
     normalizers=normalizers,
     beta_params=beta_params,
-    reset_fundamental=True,
 )
 
 target_agent = policyRandom1()

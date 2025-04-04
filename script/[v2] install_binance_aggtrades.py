@@ -10,7 +10,7 @@ data_dumper = BinanceDataDumper(
 
 data_dumper.dump_data(
     tickers=["BTCUSDT"],
-    date_start=datetime.date(2023, 10, 1),
+    date_start=datetime.date(2024, 4, 1),
     date_end=None,
     is_to_update_existing=True,
 )

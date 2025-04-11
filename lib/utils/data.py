@@ -1,0 +1,169 @@
+import torch
+import pandas as pd
+import yaml
+from torch.utils.data import Dataset, DataLoader
+from sklearn.preprocessing import StandardScaler
+
+
+class MarketDataset(Dataset):
+    """Custom dataset for market behavior prediction."""
+
+    def __init__(self, df, config, target_cols=None, transform=True, source_type=None):
+        """
+        데이터셋을 초기화합니다.
+
+        Args:
+            df (pd.DataFrame): 시장 데이터가 포함된 DataFrame
+            config (dict): 모델 설정이 포함된 구성 딕셔너리
+            target_cols (list): 타겟 변수의 열 이름 목록
+            transform (bool): OHLCV 데이터를 표준화할지 여부
+            source_type (str): 데이터 소스 유형 ('retail' 또는 'institutional')
+        """
+        self.df = df
+        self.context_length = config["model"]["training"]["context_length"]
+        self.source_type = source_type  # 데이터 소스 유형 저장
+
+        # 설정 파일에서 특성 카테고리 분리
+        if config["columns"]["ohlcv_cols"] is not None:
+            self.ohlcv_cols = config["columns"]["ohlcv_cols"]
+        else:
+            # 기본 OHLCV 열
+            self.ohlcv_cols = [
+                "open",
+                "high",
+                "low",
+                "close",
+                "volume",
+                "quote_volume",
+                "count",
+                "taker_buy_volume",
+                "taker_buy_quote_volume",
+            ]
+
+        # 행동 분포 열 (l_0부터 l_19까지 롱, s_0부터 s_19까지 숏)
+        n_bins = config["model"]["tft"]["n_bins"]
+        self.long_cols = [f"l_{i}" for i in range(n_bins)]
+        self.short_cols = [f"s_{i}" for i in range(n_bins)]
+        self.self_action_cols = self.long_cols + self.short_cols
+
+        # 타겟의 경우, 다음 단계의 에이전트 행동을 예측합니다
+        if target_cols is None:
+            self.target_cols = self.self_action_cols
+        else:
+            self.target_cols = target_cols
+
+        # 데이터 표준화 여부 설정
+        self.transform = transform
+        # 표준화를 위한 스케일러 초기화 (각 윈도우마다 적용할 예정)
+        if self.transform:
+            self.ohlcv_scaler = StandardScaler()
+
+        # 단일 샘플을 만들기 위해 최소한 context_length+1 행이 필요합니다
+        self.valid_indices = list(range(self.context_length, len(df)))
+
+    def __len__(self):
+        return len(self.valid_indices)
+
+    def __getitem__(self, idx):
+        """데이터셋에서 샘플을 가져옵니다."""
+        idx = self.valid_indices[idx]
+
+        # 과거 데이터의 컨텍스트 윈도우 추출
+        context_start = idx - self.context_length
+        context_end = idx
+
+        # 컨텍스트 윈도우의 OHLCV 데이터 추출
+        ohlcv_window = self.df.iloc[context_start:context_end][self.ohlcv_cols]
+
+        # 현재 윈도우에 대해 정규화 적용
+        if self.transform:
+            ohlcv_data = self.ohlcv_scaler.fit_transform(ohlcv_window)
+        else:
+            ohlcv_data = ohlcv_window.values
+
+        # 컨텍스트 윈도우에 대한 에이전트 자신의 행동 분포 추출
+        self_actions = self.df.iloc[context_start:context_end][
+            self.self_action_cols
+        ].values
+
+        # 이 구현에서는 다른 플레이어의 행동도 사용 가능하다고 가정합니다
+        # 실제 시나리오에서는 이를 다르게 계산해야 할 수도 있습니다
+        other_actions = self.df.iloc[context_start:context_end][
+            self.self_action_cols
+        ].values
+
+        # 타겟: 다음 단계의 에이전트 행동 분포
+        target = self.df.iloc[idx][self.target_cols].values
+
+        # torch 텐서로 변환
+        ohlcv_tensor = torch.FloatTensor(ohlcv_data)
+        self_actions_tensor = torch.FloatTensor(self_actions)
+        other_actions_tensor = torch.FloatTensor(other_actions)
+        target_tensor = torch.FloatTensor(target)
+
+        return {
+            "ohlcv": ohlcv_tensor,
+            "self_actions": self_actions_tensor,
+            "other_actions": other_actions_tensor,
+            "target": target_tensor,
+            "timestamp": self.df.index[idx],
+            "source_type": self.source_type,  # 소스 타입 정보 추가
+        }
+
+
+def prepare_dataloaders(data_sources, config=None):
+    """
+    여러 데이터 소스에 대한 데이터로더를 준비합니다.
+
+    Args:
+        data_sources (dict): 데이터 소스 딕셔너리 {'retail': retail_df, 'institutional': institutional_df}
+        config (dict): 모델 설정
+
+    Returns:
+        dict: 데이터 소스별 데이터로더 딕셔너리
+    """
+    if config is None:
+        raise ValueError("config is None")
+
+    # 설정에서 매개변수 추출
+    batch_size = config["model"]["training"]["batch_size"]
+    val_ratio = config["model"]["training"]["val_ratio"]
+
+    loaders = {}
+
+    for source_name, df in data_sources.items():
+        # 데이터프레임 전처리 (타임스탬프 설정 등)
+        if not isinstance(df.index, pd.DatetimeIndex):
+            df.index = pd.to_datetime(df.index)
+
+        # 데이터 분할 및 로더 생성
+        context_length = config["model"]["training"]["context_length"]
+        n_samples = len(df) - context_length
+
+        if val_ratio <= 0:
+            # 검증 데이터셋 없이 전체 데이터셋 사용
+            dataset = MarketDataset(df, config=config, source_type=source_name)
+            loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+            loaders[source_name] = {"train": loader, "val": None}
+        else:
+            # 데이터를 학습 및 검증 세트로 분할
+            val_size = int(n_samples * val_ratio)
+            data_size = n_samples - val_size
+
+            # 데이터셋 생성
+            data_df = df.iloc[: data_size + context_length]
+            val_df = df.iloc[data_size:]
+
+            # 데이터셋 생성
+            dataset = MarketDataset(data_df, config=config, source_type=source_name)
+            val_dataset = MarketDataset(
+                val_df, config=config, transform=True, source_type=source_name
+            )
+
+            # 데이터로더 생성
+            train_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+            valid_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True)
+
+            loaders[source_name] = {"train": train_loader, "val": valid_loader}
+
+    return loaders

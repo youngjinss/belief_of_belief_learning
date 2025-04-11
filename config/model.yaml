@@ -1,38 +1,71 @@
+# 데이터 컬럼
+columns:
+  ohlcv_cols:
+    - "open"
+    - "high"
+    - "low"
+    - "close"
+    - "volume"
+    - "quote_volume"
+    - "count"
+    - "taker_buy_volume"
+    - "taker_buy_quote_volume"
+  agent_action_cols: null  # 자동 생성: [f"l_{i}" for i in range(20)] + [f"s_{i}" for i in range(20)]
+
+
 # 모델 설정
 model:
-  # TFT 모델 구조
-  tft:
-    ohlcv_features: 9  # OHLCV 관련 특성 수
-    n_bins: 20          # 히스토그램 구간 수
-    agent_actions: 40   # 에이전트 행동 특성 수 (20 long + 20 short)
-    other_actions: 40   # 다른 에이전트 행동 특성 수 (20 long + 20 short)
-    hidden_size: 64     # 은닉층 크기
-    dropout: 0.1        # 드롭아웃 비율
+  select: "hbt"
 
-  # 학습 설정
-  training:
-    context_length: 5   # 과거 타임스텝 수
-    batch_size: 64      # 배치 크기
-    num_epochs: 50      # 최대 에폭 수
-    patience: 10        # 조기 종료 대기 에폭 수
-    learning_rate: 0.001  # 학습률
-    test_ratio: 0.2     # 테스트 데이터 비율
-    val_ratio: 0.1      # 검증 데이터 비율
-    device: "cuda"      # 학습 장치 (cuda 또는 cpu)
+  # HBT 모델 구조
+  hbt:
+    ohlcv_dim: 9          # OHLCV 데이터 차원
+    action_dim: 40         # 행동 분포 차원 (20 롱 + 20 숏)
+    hidden_dim: 64         # 은닉층 차원 크기
+    output_dim: 40         # 출력 차원 (행동 분포와 동일)
+    context_length: 5      # 컨텍스트 창의 시간 단계 수
+    num_heads: 4           # 어텐션 헤드 수
+    dropout: 0.1           # 드롭아웃 비율
+    use_other_player_beliefs: true  # 다른 플레이어 신념 사용 여부
+    
+    # 벤치마크 모델 설정
+    benchmark:
+      enabled: true        # 벤치마크 모델 사용 여부
+      
+    # 학습 설정
+    training:
+      batch_size: 64       # 배치 크기
+      num_epochs: 50       # 에폭 수
+      learning_rate: 0.001  # 학습률
+      patience: 10         # 조기 종료 대기 에폭 수
+      test_ratio: 0.2      # 테스트 데이터 비율
+      val_ratio: 0.1       # 검증 데이터 비율
+      device: "cuda3"       # 학습 장치 (cuda 또는 cpu)
+    
+    # 모델 저장/로드 경로
+    save_path:
+      proposed: "best_hbt_model.pth"
+      benchmark: "best_hbt_benchmark.pth"
 
-  # 데이터 컬럼
-  columns:
-    ohlcv_cols:
-      - "open"
-      - "high"
-      - "low"
-      - "close"
-      - "volume"
-      - "quote_volume"
-      - "count"
-      - "taker_buy_volume"
-      - "taker_buy_quote_volume"
-    agent_action_cols: null  # 자동 생성: [f"l_{i}" for i in range(20)] + [f"s_{i}" for i in range(20)]
+  # # TFT 모델 구조
+  # tft:
+  #   ohlcv_features: 9  # OHLCV 관련 특성 수
+  #   n_bins: 20          # 히스토그램 구간 수
+  #   agent_actions: 40   # 에이전트 행동 특성 수 (20 long + 20 short)
+  #   other_actions: 40   # 다른 에이전트 행동 특성 수 (20 long + 20 short)
+  #   hidden_size: 64     # 은닉층 크기
+  #   dropout: 0.1        # 드롭아웃 비율
 
-  # 모델 저장/로드 경로
-  save_path: "best_tft_model.pth"
+  # # 학습 설정
+  # training:
+  #   context_length: 5   # 과거 타임스텝 수
+  #   batch_size: 64      # 배치 크기
+  #   num_epochs: 50      # 최대 에폭 수
+  #   patience: 10        # 조기 종료 대기 에폭 수
+  #   learning_rate: 0.001  # 학습률
+  #   test_ratio: 0.2     # 테스트 데이터 비율
+  #   val_ratio: 0.1      # 검증 데이터 비율
+  #   device: "cuda3"      # 학습 장치 (cuda 또는 cpu)
+    
+  # # 모델 저장/로드 경로
+  # save_path: "best_tft_model.pth"

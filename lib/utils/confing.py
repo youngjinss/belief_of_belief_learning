@@ -60,9 +60,7 @@ def load_config(config_name):
             n_bins = config["dataloader"]["n_bins"]
             long_cols = [f"l_{i}" for i in range(n_bins)]
             short_cols = [f"s_{i}" for i in range(n_bins)]
-            config["dataloader"]["columns"]["target_cols"] = (
-                long_cols + short_cols
-            )
+            config["dataloader"]["columns"]["target_cols"] = long_cols + short_cols
 
         # 선택된 모델에 따라 관련 설정 지정
         selected_model = config["model"]["select"]

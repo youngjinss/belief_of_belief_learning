@@ -8,7 +8,15 @@ from sklearn.preprocessing import StandardScaler
 class MarketDataset(Dataset):
     """Custom dataset for market behavior prediction."""
 
-    def __init__(self, df, config, target_cols=None, transform=True, ohlcv_scaler=None, source_type=None):
+    def __init__(
+        self,
+        df,
+        config,
+        target_cols=None,
+        transform=True,
+        ohlcv_scaler=None,
+        source_type=None,
+    ):
         """
         데이터셋을 초기화합니다.
 
@@ -89,7 +97,9 @@ class MarketDataset(Dataset):
         self_actions_tensor = torch.FloatTensor(self_actions)
         other_actions_tensor = torch.FloatTensor(other_actions)
         target_tensor = torch.FloatTensor(target)
-        source_type_tensor = torch.ones(1) if self.source_type == "retail" else torch.zeros(1)
+        source_type_tensor = (
+            torch.ones(1) if self.source_type == "retail" else torch.zeros(1)
+        )
 
         return {
             "ohlcv": ohlcv_tensor,
@@ -132,7 +142,9 @@ def prepare_dataloaders(data_sources, config=None):
 
         if val_ratio <= 0:
             # 검증 데이터셋 없이 전체 데이터셋 사용
-            dataset = MarketDataset(df, config=config, source_type=source_name, target_cols=target_cols)
+            dataset = MarketDataset(
+                df, config=config, source_type=source_name, target_cols=target_cols
+            )
             loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
             loaders[source_name] = {"train": loader, "val": None}
         else:
@@ -145,7 +157,9 @@ def prepare_dataloaders(data_sources, config=None):
             val_df = df.iloc[data_size:]
 
             # 데이터셋 생성
-            dataset = MarketDataset(data_df, config=config, source_type=source_name, target_cols=target_cols)
+            dataset = MarketDataset(
+                data_df, config=config, source_type=source_name, target_cols=target_cols
+            )
             val_dataset = MarketDataset(
                 val_df, config=config, source_type=source_name, target_cols=target_cols
             )

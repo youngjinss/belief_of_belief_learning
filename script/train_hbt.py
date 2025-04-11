@@ -16,6 +16,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader, ConcatDataset
 from sklearn.preprocessing import StandardScaler
 
+
 def create_directory(directory_path):
     """디렉토리가 존재하지 않으면 생성하는 함수"""
     if not os.path.exists(directory_path):
@@ -24,39 +25,51 @@ def create_directory(directory_path):
     else:
         logger.info(f"[PROCESS] 디렉토리가 이미 존재함: {directory_path}")
 
+
 def load_data(retail_path, institutional_path):
     """소매 및 기관 투자자 데이터를 로드하는 함수"""
     # 데이터 로드
     logger.info(f"[PROCESS] 소매 투자자 데이터 로드: {retail_path}")
     retail_df = pd.read_csv(retail_path, index_col=0)
-    
+
     logger.info(f"[PROCESS] 기관 투자자 데이터 로드: {institutional_path}")
     institutional_df = pd.read_csv(institutional_path, index_col=0)
-    
+
     # 데이터 기본 정보 확인
     logger.info(f"[RESULT] 소매 투자자 데이터 크기: {retail_df.shape}")
     logger.info(f"[RESULT] 기관 투자자 데이터 크기: {institutional_df.shape}")
-    
+
     # 타임스탬프 변환 (필요한 경우)
     if "timestamp" in retail_df.columns:
         retail_df["timestamp"] = pd.to_datetime(retail_df["timestamp"])
         retail_df.set_index("timestamp", inplace=True)
-    
+
     if "timestamp" in institutional_df.columns:
         institutional_df["timestamp"] = pd.to_datetime(institutional_df["timestamp"])
         institutional_df.set_index("timestamp", inplace=True)
-    
+
     logger.info("[RESULT] 데이터 로드 완료")
-    
+
     return retail_df, institutional_df
 
-def train_and_save_model(model_type, train_loader, val_loader, ohlcv_dim, action_dim, 
-                         hidden_dim, context_length, learning_rate, config):
+
+def train_and_save_model(
+    model_type,
+    train_loader,
+    val_loader,
+    ohlcv_dim,
+    action_dim,
+    hidden_dim,
+    context_length,
+    learning_rate,
+    config,
+):
     """모델 생성, 학습 및 저장 함수"""
     logger.info(f"[PROCESS] {model_type} 모델 생성 중...")
-    
+
     if model_type == "proposed":
         from lib.model.hbt import create_proposed_model, HierarchicalModelTrainer
+
         model = create_proposed_model(
             ohlcv_dim=ohlcv_dim,
             action_dim=action_dim,
@@ -66,6 +79,7 @@ def train_and_save_model(model_type, train_loader, val_loader, ohlcv_dim, action
         trainer = HierarchicalModelTrainer(model=model, lr=learning_rate)
     elif model_type == "benchmark":
         from lib.model.hbt import create_benchmark_model, HierarchicalModelTrainer
+
         model = create_benchmark_model(
             ohlcv_dim=ohlcv_dim,
             action_dim=action_dim,
@@ -76,27 +90,33 @@ def train_and_save_model(model_type, train_loader, val_loader, ohlcv_dim, action
     else:
         logger.error(f"[ERROR] 지원되지 않는 모델 유형: {model_type}")
         return None
-    
+
     # 모델 학습
     logger.info(f"[PROCESS] {model_type} 모델 학습 시작...")
     from lib.utils.train import train_model
+
     trainer, history = train_model(
         trainer=trainer,
         train_loader=train_loader,
         val_loader=val_loader,
         config=config,
     )
-    
+
     # 모델 저장
     save_path = config["model"][config["model"]["select"]]["save_path"]
     trainer.save_model(save_path)
-    logger.info(f"[RESULT] 모델이 성공적으로 학습되었으며 {save_path}에 저장되었습니다.")
-    
+    logger.info(
+        f"[RESULT] 모델이 성공적으로 학습되었으며 {save_path}에 저장되었습니다."
+    )
+
     return trainer, history
+
 
 def main():
     # 명령줄 인자 파싱
-    parser = argparse.ArgumentParser(description="계층적 신념 트랜스포머(HBT) 학습 스크립트")
+    parser = argparse.ArgumentParser(
+        description="계층적 신념 트랜스포머(HBT) 학습 스크립트"
+    )
     parser.add_argument(
         "--project_dir",
         type=str,
@@ -123,69 +143,77 @@ def main():
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
             "log",
             datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-    ),
-    help="로그 파일 저장 디렉토리 경로",
-)
+        ),
+        help="로그 파일 저장 디렉토리 경로",
+    )
     args = parser.parse_args()
-    
+
     # 프로젝트 디렉토리 경로 설정
     project_dir = args.project_dir
     os.chdir(project_dir)
-    
+
     # lib 폴더 경로 추가
     sys.path.append(project_dir + "/lib")
-    
+
     # 로그 디렉토리 생성
     log_dir = os.path.join(project_dir, args.log_dir)
     create_directory(log_dir)
-    log_file = os.path.join(log_dir, f"train_hbt_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
-    
+    log_file = os.path.join(
+        log_dir, f"train_hbt_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+    )
+
     # 로거 설정
     global logger
     logger = logging.getLogger("train_hbt")
     logger.setLevel(logging.DEBUG)
-    
+
     # 파일 핸들러 설정
     file_handler = logging.FileHandler(log_file)
     file_handler.setLevel(logging.DEBUG)
-    
+
     # 콘솔 핸들러 설정
     console_handler = logging.StreamHandler()
     console_handler.setLevel(logging.INFO)
-    
+
     # 포맷 설정
     formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
     file_handler.setFormatter(formatter)
     console_handler.setFormatter(formatter)
-    
+
     # 핸들러 추가
     logger.addHandler(file_handler)
     logger.addHandler(console_handler)
-    
+
     logger.info("[PROCESS] HBT 모델 학습 시작")
     logger.info(f"[PROCESS] 프로젝트 디렉토리: {project_dir}")
-    
+
     # 설정 로드
     from lib.utils.confing import load_config
+
     config_path = os.path.join(project_dir, args.config_path)
     logger.info(f"[PROCESS] 설정 파일 로드: {config_path}")
     config = load_config("train")
-    
+
     # 소매 및 기관 투자자 데이터 경로
-    retail_path = os.path.join(project_dir, "data/binance/futures/um/dataset/retail_train.csv")
-    institutional_path = os.path.join(project_dir, "data/binance/futures/um/dataset/institutional_train.csv")
-    
+    retail_path = os.path.join(
+        project_dir, "data/binance/futures/um/dataset/retail_train.csv"
+    )
+    institutional_path = os.path.join(
+        project_dir, "data/binance/futures/um/dataset/institutional_train.csv"
+    )
+
     # 데이터 로드
     retail_df, institutional_df = load_data(retail_path, institutional_path)
-    
+
     # 데이터 소스 딕셔너리 생성
     data_sources = {"retail": retail_df, "institutional": institutional_df}
-    
+
     # 데이터로더 준비
     from lib.utils.data import prepare_dataloaders
+
     logger.info("[PROCESS] 데이터로더 준비 중...")
     loaders = prepare_dataloaders(data_sources, config)
-    
+
     # 학습 데이터셋 통합
     combined_train_dataset = ConcatDataset(
         [loaders["retail"]["train"].dataset, loaders["institutional"]["train"].dataset]
@@ -195,7 +223,7 @@ def main():
         batch_size=config["model"]["training"]["batch_size"],
         shuffle=True,
     )
-    
+
     combined_val_dataset = ConcatDataset(
         [loaders["retail"]["val"].dataset, loaders["institutional"]["val"].dataset]
     )
@@ -204,7 +232,7 @@ def main():
         batch_size=config["model"]["training"]["batch_size"],
         shuffle=True,
     )
-    
+
     # 모델 파라미터 추출
     model_config = config["model"]["hbt"]
     ohlcv_dim = config["dataloader"]["ohlcv_dim"]
@@ -212,7 +240,7 @@ def main():
     hidden_dim = model_config["hidden_dim"]
     context_length = model_config["context_length"]
     learning_rate = config["model"]["training"]["learning_rate"]
-    
+
     # 선택된 모델 유형에 따라 모델 학습
     if args.model_type == "proposed" or args.model_type == "both":
         proposed_trainer, proposed_history = train_and_save_model(
@@ -226,7 +254,7 @@ def main():
             learning_rate=learning_rate,
             config=config,
         )
-    
+
     if args.model_type == "benchmark" or args.model_type == "both":
         benchmark_trainer, benchmark_history = train_and_save_model(
             model_type="benchmark",
@@ -239,8 +267,9 @@ def main():
             learning_rate=learning_rate,
             config=config,
         )
-    
+
     logger.info("[RESULT] 모든 모델 학습 완료")
+
 
 if __name__ == "__main__":
     start_time = datetime.now()

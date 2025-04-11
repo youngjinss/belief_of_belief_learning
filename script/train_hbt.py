@@ -208,10 +208,10 @@ def main():
     # 모델 저장 디렉토리를 log_dir 밑에 생성
     selected_model = config["model"]["select"]
     config["model"][selected_model]["save_path"]["proposed"] = os.path.join(
-        log_dir, "proposed"
+        log_dir, f"best_{selected_model}_model.pth"
     )
     config["model"][selected_model]["save_path"]["benchmark"] = os.path.join(
-        log_dir, "benchmark"
+        log_dir, f"best_{selected_model}_benchmark.pth"
     )
     # 모델 저장 디렉토리 업데이트 알림
     logger.info(

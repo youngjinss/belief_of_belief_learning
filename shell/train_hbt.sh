@@ -10,6 +10,7 @@ CONFIG_PATH="config/train.yaml"
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_DIR="${PROJECT_DIR}/log/${START_TIME}"
 LOG_FILE="${LOG_DIR}/result.log"
+TELEGRAMBOT="true"
 
 # 도움말 함수
 show_help() {
@@ -70,14 +71,14 @@ mkdir -p "$LOG_DIR"
 echo "백그라운드에서 스크립트 실행을 시작합니다."
 echo "시작 시간: $START_TIME"
 echo "파이썬 스크립트: $SCRIPT_NAME"
-echo "사용 인자: --model_type $MODEL_TYPE --config_path $CONFIG_PATH --project_dir $PROJECT_DIR --log_dir $LOG_DIR"
+echo "사용 인자: --model_type $MODEL_TYPE --config_path $CONFIG_PATH --project_dir $PROJECT_DIR --log_dir $LOG_DIR --telegrambot $TELEGRAMBOT"
 
 # 파이썬 스크립트 백그라운드에서 실행
 nohup python "script/${SCRIPT_NAME}" \
     --model_type "$MODEL_TYPE" \
     --config_path "$CONFIG_PATH" \
     --project_dir "$PROJECT_DIR" \
-    --telegrambot true \
+    --telegrambot "$TELEGRAMBOT" \
     --log_dir "$LOG_DIR" > "$LOG_FILE" 2>&1 &
 
 # 프로세스 ID 저장

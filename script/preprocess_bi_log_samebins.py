@@ -1,4 +1,4 @@
-# todo: telegram으로 오류, 결과 메세지 전송 하는 기능 추가 
+# todo: telegram으로 오류, 결과 메세지 전송 하는 기능 추가
 
 
 import os
@@ -142,19 +142,21 @@ def process_file(file_path):
         ).reset_index()
 
         # transact_time을 datetime으로 변환
-        df.loc[:, "transact_time"] = pd.to_datetime(df.loc[:, "transact_time"], unit="ms")
+        df.loc[:, "transact_time"] = pd.to_datetime(
+            df.loc[:, "transact_time"], unit="ms"
+        )
 
         # df를 윈도우 크기 단위로 그룹화 - 윈도우 내에 발생한 것 중에서 거래량 * 가격으로 개인/기관으로 분류 후, long/short 행동 분포를 list로 분류
         df.loc[:, "quantity_price"] = df.loc[:, "quantity"] * df.loc[:, "price"]
 
         # 윈도우 크기를 밀리초에서 시간 단위로 변환
         window_size_timedelta = pd.Timedelta(milliseconds=window_size)
-        
+
         # 결과 데이터 프레임 생성
         # - index: 윈도우 크기에 맞게 조정된 시간 간격
         # - columns: retail_long, retail_short, institutional_long, institutional_short
-        result_start = df.iloc[0]["transact_time"].floor(f'{window_size}ms')
-        result_end = df.iloc[-1]["transact_time"].floor(f'{window_size}ms')
+        result_start = df.iloc[0]["transact_time"].floor(f"{window_size}ms")
+        result_end = df.iloc[-1]["transact_time"].floor(f"{window_size}ms")
 
         result_df = pd.DataFrame(
             index=pd.date_range(
@@ -258,10 +260,20 @@ def process_file(file_path):
             )
 
             # 배열을 DataFrame에 저장 후 나중에 한 번에 JSON으로 변환
-            result_df.at[pivot_time, "retail_long"] = json.dumps((retail_long_count / retail_sum).tolist(), ensure_ascii=False)
-            result_df.at[pivot_time, "retail_short"] = json.dumps((retail_short_count / retail_sum).tolist(), ensure_ascii=False)
-            result_df.at[pivot_time, "institutional_long"] = json.dumps((institutional_long_count / institutional_sum).tolist(), ensure_ascii=False)
-            result_df.at[pivot_time, "institutional_short"] = json.dumps((institutional_short_count / institutional_sum).tolist(), ensure_ascii=False)
+            result_df.at[pivot_time, "retail_long"] = json.dumps(
+                (retail_long_count / retail_sum).tolist(), ensure_ascii=False
+            )
+            result_df.at[pivot_time, "retail_short"] = json.dumps(
+                (retail_short_count / retail_sum).tolist(), ensure_ascii=False
+            )
+            result_df.at[pivot_time, "institutional_long"] = json.dumps(
+                (institutional_long_count / institutional_sum).tolist(),
+                ensure_ascii=False,
+            )
+            result_df.at[pivot_time, "institutional_short"] = json.dumps(
+                (institutional_short_count / institutional_sum).tolist(),
+                ensure_ascii=False,
+            )
 
         # result_df의 row 중에서 nan이 있다면, 해당 row 삭제
         result_df = result_df.dropna()

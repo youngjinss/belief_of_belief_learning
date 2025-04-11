@@ -55,12 +55,12 @@ def load_config(config_name):
             ).tolist()  # numpy 배열을 리스트로 변환
 
     elif config_name == "train":
-        # dataloader.agent_action_cols 자동 생성
-        if config["dataloader"]["columns"]["agent_action_cols"] is None:
+        # dataloader.target_cols 자동 생성
+        if config["dataloader"]["columns"]["target_cols"] is None:
             n_bins = config["dataloader"]["n_bins"]
             long_cols = [f"l_{i}" for i in range(n_bins)]
             short_cols = [f"s_{i}" for i in range(n_bins)]
-            config["dataloader"]["columns"]["agent_action_cols"] = (
+            config["dataloader"]["columns"]["target_cols"] = (
                 long_cols + short_cols
             )
 

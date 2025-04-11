@@ -8,7 +8,7 @@ from sklearn.preprocessing import StandardScaler
 class MarketDataset(Dataset):
     """Custom dataset for market behavior prediction."""
 
-    def __init__(self, df, config, target_cols=None, transform=True, source_type=None):
+    def __init__(self, df, config, target_cols=None, transform=True, ohlcv_scaler=None, source_type=None):
         """
         데이터셋을 초기화합니다.
 
@@ -23,6 +23,9 @@ class MarketDataset(Dataset):
         self.context_length = config["model"][config["model"]["select"]][
             "context_length"
         ]
+        self.target_cols = target_cols
+        self.transform = transform
+        self.ohlcv_scaler = StandardScaler() if ohlcv_scaler is None else ohlcv_scaler
         self.source_type = source_type  # 데이터 소스 유형 저장
 
         # 설정 파일에서 특성 카테고리 분리
@@ -114,6 +117,7 @@ def prepare_dataloaders(data_sources, config=None):
     # 설정에서 매개변수 추출
     batch_size = config["model"]["training"]["batch_size"]
     val_ratio = config["model"]["training"]["val_ratio"]
+    target_cols = config["dataloader"]["columns"]["target_cols"]
 
     loaders = {}
 
@@ -128,7 +132,7 @@ def prepare_dataloaders(data_sources, config=None):
 
         if val_ratio <= 0:
             # 검증 데이터셋 없이 전체 데이터셋 사용
-            dataset = MarketDataset(df, config=config, source_type=source_name)
+            dataset = MarketDataset(df, config=config, source_type=source_name, target_cols=target_cols)
             loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
             loaders[source_name] = {"train": loader, "val": None}
         else:
@@ -141,9 +145,9 @@ def prepare_dataloaders(data_sources, config=None):
             val_df = df.iloc[data_size:]
 
             # 데이터셋 생성
-            dataset = MarketDataset(data_df, config=config, source_type=source_name)
+            dataset = MarketDataset(data_df, config=config, source_type=source_name, target_cols=target_cols)
             val_dataset = MarketDataset(
-                val_df, config=config, transform=True, source_type=source_name
+                val_df, config=config, source_type=source_name, target_cols=target_cols
             )
 
             # 데이터로더 생성

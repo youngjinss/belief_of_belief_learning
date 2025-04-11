@@ -11,7 +11,7 @@ dataloader:
       - "count"
       - "taker_buy_volume"
       - "taker_buy_quote_volume"
-    agent_action_cols: null  # 자동 생성: [f"l_{i}" for i in range(20)] + [f"s_{i}" for i in range(20)]
+    target_cols: null  # 자동 생성: [f"l_{i}" for i in range(20)] + [f"s_{i}" for i in range(20)]
     
   n_bins: 20          # 히스토그램 구간 수
   ohlcv_dim: 9          # OHLCV 데이터 차원

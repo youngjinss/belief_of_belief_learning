@@ -89,14 +89,14 @@ class MarketDataset(Dataset):
         self_actions_tensor = torch.FloatTensor(self_actions)
         other_actions_tensor = torch.FloatTensor(other_actions)
         target_tensor = torch.FloatTensor(target)
+        source_type_tensor = torch.ones(1) if self.source_type == "retail" else torch.zeros(1)
 
         return {
             "ohlcv": ohlcv_tensor,
             "self_actions": self_actions_tensor,
             "other_actions": other_actions_tensor,
             "target": target_tensor,
-            "timestamp": self.df.index[idx],
-            "source_type": self.source_type,  # 소스 타입 정보 추가
+            "source_type": source_type_tensor,  # 소스 타입 정보 추가
         }
 
 

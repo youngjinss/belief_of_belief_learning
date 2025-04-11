@@ -160,7 +160,7 @@ def main():
         "--log_dir",
         type=str,
         default=None,
-        help="로그 파일 저장 디렉토리 경로 (설정 파일의 log_dir이 우선 사용됨)",
+        help="로그 파일 저장 디렉토리 경로",
     )
     args = parser.parse_args()
 
@@ -177,13 +177,16 @@ def main():
     config_path = os.path.join(project_dir, args.config_path)
     logger.info(f"[PROCESS] 설정 파일 로드: {config_path}")
     config = load_config("train")
-    
+
     # 로그 디렉토리 생성
-    log_dir = config["log_dir"]
-    create_directory(log_dir)
+    if args.log_dir is None:
+        raise ValueError("log_dir 인자가 제공되지 않았습니다.")
+    else:
+        log_dir = args.log_dir
+        create_directory(log_dir)
 
     # 파일 로그 핸들러 추가
-    log_file = os.path.join(log_dir, f"result.log")
+    log_file = os.path.join(log_dir, "result.log")
     file_handler = logging.FileHandler(log_file)
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(formatter)
@@ -191,6 +194,32 @@ def main():
 
     logger.info(f"[PROCESS] 로그 디렉토리: {log_dir}")
     logger.info(f"[PROCESS] 로그 파일: {log_file}")
+
+    # tensorboard 디렉토리를 log_dir 밑에 생성
+    tensorboard_dir = os.path.join(log_dir, "tensorboard")
+    create_directory(tensorboard_dir)
+    config["model"]["training"]["tensorboard"]["log_dir"] = tensorboard_dir
+    tensorboard_port = config["model"]["training"]["tensorboard"]["port"]
+    logger.info(f"[PROCESS] 텐서보드 활성화됨 - 로그 디렉토리: {tensorboard_dir}")
+    logger.info(
+        f"[HELP] 학습 진행 상황을 보려면 다음 명령어 실행: tensorboard --logdir={tensorboard_dir} --port={tensorboard_port}"
+    )
+
+    # 모델 저장 디렉토리를 log_dir 밑에 생성
+    selected_model = config["model"]["select"]
+    config["model"][selected_model]["save_path"]["proposed"] = os.path.join(
+        log_dir, "proposed"
+    )
+    config["model"][selected_model]["save_path"]["benchmark"] = os.path.join(
+        log_dir, "benchmark"
+    )
+    # 모델 저장 디렉토리 업데이트 알림
+    logger.info(
+        f"[PROCESS] proposed 모델 저장 경로 업데이트: {config['model'][selected_model]['save_path']['proposed']}"
+    )
+    logger.info(
+        f"[PROCESS] benchmark 모델 저장 경로 업데이트: {config['model'][selected_model]['save_path']['benchmark']}"
+    )
 
     # 소매 및 기관 투자자 데이터 경로
     retail_path = os.path.join(
@@ -237,17 +266,6 @@ def main():
     hidden_dim = model_config["hidden_dim"]
     context_length = model_config["context_length"]
     learning_rate = config["model"]["training"]["learning_rate"]
-
-    # 텐서보드 설정 확인 및 안내
-    if config["model"]["training"].get("tensorboard", {}).get("enabled", False):
-        tensorboard_port = config["model"]["training"]["tensorboard"].get("port", 6006)
-        tensorboard_log_dir = config["model"]["training"]["tensorboard"]["log_dir"]
-        logger.info(
-            f"[PROCESS] 텐서보드 활성화됨 - 포트: {tensorboard_port}, 로그 디렉토리: {tensorboard_log_dir}"
-        )
-        logger.info(
-            f"[HELP] 학습 진행 상황을 보려면 다음 명령어 실행: tensorboard --logdir={tensorboard_log_dir} --port={tensorboard_port}"
-        )
 
     # 선택된 모델 유형에 따라 모델 학습
     if args.model_type == "proposed" or args.model_type == "both":

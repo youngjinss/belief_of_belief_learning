@@ -21,7 +21,7 @@ parser = argparse.ArgumentParser(description="바이낸스 데이터 전처리 �
 parser.add_argument(
     "--window_size",
     type=int,
-    default=3600000,
+    default=1800000,
     help="윈도우 크기(밀리초), 기본값: 1시간",
 )
 parser.add_argument(
@@ -116,7 +116,7 @@ def create_directory(directory_path):
 def process_file(file_path):
     """
     데이터 전처리 함수:
-    - 1시간 단위로 거래 데이터 그룹화
+    - arg.window_size 단위로 거래 데이터 그룹화
     - 거래량×가격 기준으로 상위 20%는 기관, 나머지는 개인 투자자로 분류
     - 거래 체결자를 기준으로 주문자(is_buyer_maker)가 false면 매수(long), true면 매도(short)로 분류
     - 각 시간 윈도우 내 투자자 유형별 매수/매도 분포 계산 (log1p 적용)
@@ -144,18 +144,17 @@ def process_file(file_path):
         # transact_time을 datetime으로 변환
         df.loc[:, "transact_time"] = pd.to_datetime(df.loc[:, "transact_time"], unit="ms")
 
-        # df를 1시간 단위로 그룹화 - 1시간 내에 발생한 것 중에서 거래량 * 가격으로 개인/기관으로 분류 후, long/short 행동 분포를 list로 분류
+        # df를 윈도우 크기 단위로 그룹화 - 윈도우 내에 발생한 것 중에서 거래량 * 가격으로 개인/기관으로 분류 후, long/short 행동 분포를 list로 분류
         df.loc[:, "quantity_price"] = df.loc[:, "quantity"] * df.loc[:, "price"]
 
+        # 윈도우 크기를 밀리초에서 시간 단위로 변환
+        window_size_timedelta = pd.Timedelta(milliseconds=window_size)
+        
         # 결과 데이터 프레임 생성
-        # - index: df.index를 1시간 단위로 그룹화한 것
+        # - index: 윈도우 크기에 맞게 조정된 시간 간격
         # - columns: retail_long, retail_short, institutional_long, institutional_short
-        result_start = (df.iloc[0]["transact_time"] + pd.Timedelta(hours=1)).strftime(
-            "%Y-%m-%d %H"
-        )
-        result_end = (df.iloc[-1]["transact_time"] + pd.Timedelta(hours=1)).strftime(
-            "%Y-%m-%d %H"
-        )
+        result_start = df.iloc[0]["transact_time"].floor(f'{window_size}ms')
+        result_end = df.iloc[-1]["transact_time"].floor(f'{window_size}ms')
 
         result_df = pd.DataFrame(
             index=pd.date_range(
@@ -171,12 +170,11 @@ def process_file(file_path):
             ],
         )
 
-        # df의 한시간 단위로 for loop 돌리기
+        # df의 윈도우 단위로 for loop 돌리기
         for pivot_time in result_df.index:
-
             df_subset = df.loc[
                 (df.loc[:, "transact_time"] < pivot_time)
-                & (df.loc[:, "transact_time"] >= pivot_time - pd.Timedelta(hours=1))
+                & (df.loc[:, "transact_time"] >= pivot_time - window_size_timedelta)
             ]
 
             if df_subset.empty:

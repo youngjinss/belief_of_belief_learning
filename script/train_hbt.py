@@ -235,6 +235,13 @@ def main():
     context_length = model_config["context_length"]
     learning_rate = config["model"]["training"]["learning_rate"]
 
+    # 텐서보드 설정 확인 및 안내
+    if config["model"]["training"].get("tensorboard", {}).get("enabled", False):
+        tensorboard_port = config["model"]["training"]["tensorboard"].get("port", 6006)
+        tensorboard_log_dir = config["model"]["training"]["tensorboard"].get("log_dir", "runs")
+        logger.info(f"[PROCESS] 텐서보드 활성화됨 - 포트: {tensorboard_port}, 로그 디렉토리: {tensorboard_log_dir}")
+        logger.info(f"[HELP] 학습 진행 상황을 보려면 다음 명령어 실행: tensorboard --logdir={tensorboard_log_dir} --port={tensorboard_port}")
+
     # 선택된 모델 유형에 따라 모델 학습
     if args.model_type == "proposed" or args.model_type == "both":
         proposed_trainer, proposed_history = train_and_save_model(

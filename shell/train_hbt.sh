@@ -20,6 +20,8 @@ show_help() {
     echo "  -c, --config-path PATH     설정 파일 경로, 기본값: config/train.yaml"
     echo "  -p, --project-dir PATH     프로젝트 디렉토리 경로"
     echo "  -l, --log-dir PATH         로그 디렉토리 경로"
+    echo "  -t, --tensorboard-port PORT 텐서보드 포트 번호, 기본값: 6006"
+    echo "  -d, --tensorboard-logdir DIR 텐서보드 로그 디렉토리, 기본값: runs"
 }
 
 # 인자 파싱
@@ -43,6 +45,14 @@ while [[ $# -gt 0 ]]; do
             ;;
         -l|--log-dir)
             LOG_DIR="$2"
+            shift 2
+            ;;
+        -t|--tensorboard-port)
+            TENSORBOARD_PORT="$2"
+            shift 2
+            ;;
+        -d|--tensorboard-logdir)
+            TENSORBOARD_LOGDIR="$2"
             shift 2
             ;;
         *)

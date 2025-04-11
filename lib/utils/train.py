@@ -1,4 +1,7 @@
 import torch
+import os
+from torch.utils.tensorboard import SummaryWriter
+from datetime import datetime
 
 
 def train_model(trainer, train_loader, val_loader, config=None):
@@ -23,6 +26,16 @@ def train_model(trainer, train_loader, val_loader, config=None):
     patience = config["model"]["training"]["patience"]
     device = config["model"]["training"]["device"]
     save_path = config["model"][config["model"]["select"]]["save_path"]
+    
+    # 텐서보드 설정
+    tensorboard_enabled = config["model"]["training"].get("tensorboard", {}).get("enabled", False)
+    tensorboard_log_dir = config["model"]["training"].get("tensorboard", {}).get("log_dir", "runs")
+    
+    # 텐서보드 로거 설정
+    if tensorboard_enabled:
+        log_dir = os.path.join(tensorboard_log_dir, f'{config["model"]["select"]}_{datetime.now().strftime("%Y%m%d-%H%M%S")}')
+        writer = SummaryWriter(log_dir=log_dir)
+        print(f"텐서보드 로그: {log_dir}")
 
     # 모델을 장치에 전송
     trainer.model.to(device)
@@ -69,6 +82,15 @@ def train_model(trainer, train_loader, val_loader, config=None):
         avg_val_loss = sum(val_losses) / len(val_losses)
         history["val_loss"].append(avg_val_loss)
 
+        # 텐서보드에 로깅
+        if tensorboard_enabled:
+            writer.add_scalar('Loss/train', avg_train_loss, epoch)
+            writer.add_scalar('Loss/validation', avg_val_loss, epoch)
+            
+            # 모델 파라미터의 히스토그램 추가 (선택적)
+            for name, param in trainer.model.named_parameters():
+                writer.add_histogram(f'Parameters/{name}', param.data, epoch)
+
         # Print progress
         print(
             f"Epoch {epoch+1}/{num_epochs}: Train Loss: {avg_train_loss:.4f}, Val Loss: {avg_val_loss:.4f}"
@@ -86,6 +108,10 @@ def train_model(trainer, train_loader, val_loader, config=None):
                 print(f"Early stopping at epoch {epoch+1}")
                 break
 
+    # 텐서보드 종료
+    if tensorboard_enabled:
+        writer.close()
+        
     # Load the best model
     trainer.load_model(save_path)
     return trainer, history

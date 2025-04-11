@@ -119,6 +119,7 @@ def train_and_save_model(
         train_loader=train_loader,
         val_loader=val_loader,
         config=config,
+        logger=logger,  # 로거 전달
     )
 
     # 모델 저장
@@ -158,12 +159,8 @@ def main():
     parser.add_argument(
         "--log_dir",
         type=str,
-        default=os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "log",
-            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        ),
-        help="로그 파일 저장 디렉토리 경로",
+        default=None,
+        help="로그 파일 저장 디렉토리 경로 (설정 파일의 log_dir이 우선 사용됨)",
     )
     args = parser.parse_args()
 
@@ -174,20 +171,32 @@ def main():
     # lib 폴더 경로 추가
     sys.path.append(project_dir + "/lib")
 
-    # 로그 디렉토리 생성
-    log_dir = os.path.join(project_dir, args.log_dir)
-    create_directory(log_dir)
-    log_file = os.path.join(
-        log_dir, f"train_hbt_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
-    )
-
     logger.info("[PROCESS] HBT 모델 학습 시작")
     logger.info(f"[PROCESS] 프로젝트 디렉토리: {project_dir}")
-
 
     config_path = os.path.join(project_dir, args.config_path)
     logger.info(f"[PROCESS] 설정 파일 로드: {config_path}")
     config = load_config("train")
+
+    # 커맨드 라인 인자로 log_dir이 지정된 경우 우선 적용
+    if args.log_dir is not None:
+        config["log_dir"] = args.log_dir
+
+    # 로그 디렉토리 생성
+    log_dir = config["log_dir"]
+    create_directory(log_dir)
+
+    # 파일 로그 핸들러 추가
+    log_file = os.path.join(
+        log_dir, f"result_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+    )
+    file_handler = logging.FileHandler(log_file)
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+
+    logger.info(f"[PROCESS] 로그 디렉토리: {log_dir}")
+    logger.info(f"[PROCESS] 로그 파일: {log_file}")
 
     # 소매 및 기관 투자자 데이터 경로
     retail_path = os.path.join(
@@ -238,9 +247,13 @@ def main():
     # 텐서보드 설정 확인 및 안내
     if config["model"]["training"].get("tensorboard", {}).get("enabled", False):
         tensorboard_port = config["model"]["training"]["tensorboard"].get("port", 6006)
-        tensorboard_log_dir = config["model"]["training"]["tensorboard"].get("log_dir", "runs")
-        logger.info(f"[PROCESS] 텐서보드 활성화됨 - 포트: {tensorboard_port}, 로그 디렉토리: {tensorboard_log_dir}")
-        logger.info(f"[HELP] 학습 진행 상황을 보려면 다음 명령어 실행: tensorboard --logdir={tensorboard_log_dir} --port={tensorboard_port}")
+        tensorboard_log_dir = config["model"]["training"]["tensorboard"]["log_dir"]
+        logger.info(
+            f"[PROCESS] 텐서보드 활성화됨 - 포트: {tensorboard_port}, 로그 디렉토리: {tensorboard_log_dir}"
+        )
+        logger.info(
+            f"[HELP] 학습 진행 상황을 보려면 다음 명령어 실행: tensorboard --logdir={tensorboard_log_dir} --port={tensorboard_port}"
+        )
 
     # 선택된 모델 유형에 따라 모델 학습
     if args.model_type == "proposed" or args.model_type == "both":

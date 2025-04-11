@@ -67,15 +67,17 @@ class MarketDataset(Dataset):
 
         # 인덱스 조정: context_length를 고려하여 실제 인덱스 계산
         actual_idx = idx + self.context_length
-        
+
         # 과거 데이터의 컨텍스트 윈도우 추출
         context_start = actual_idx - self.context_length
         context_end = actual_idx
-        
+
         # 유효한 인덱스 범위 확인
         if context_start < 0:
-            raise IndexError(f"인덱스 {idx}는 context_length {self.context_length}보다 작아 접근할 수 없습니다.")
-        
+            raise IndexError(
+                f"인덱스 {idx}는 context_length {self.context_length}보다 작아 접근할 수 없습니다."
+            )
+
         # 컨텍스트 윈도우의 OHLCV 데이터 추출
         ohlcv_window = self.df.iloc[context_start:context_end][self.ohlcv_cols]
         if ohlcv_window.shape[0] == 0:

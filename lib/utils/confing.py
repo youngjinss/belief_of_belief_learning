@@ -62,11 +62,45 @@ def load_config(config_name):
             short_cols = [f"s_{i}" for i in range(n_bins)]
             config["dataloader"]["columns"]["target_cols"] = long_cols + short_cols
 
-        # 선택된 모델에 따라 관련 설정 지정
+        # log_dir 자동 설정
+        if "log_dir" not in config:
+            config["log_dir"] = os.path.join(
+                project_dir, "log", datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            )
+
+        # 모델 저장 경로 자동 설정
         selected_model = config["model"]["select"]
         if selected_model in ["hbt", "tft"]:
             config["active_model"] = selected_model
             config["active_model_config"] = config["model"][selected_model]
+
+            # 모델 저장 경로를 log_dir 안에 설정
+            if "save_path" in config["model"][selected_model]:
+                proposed_filename = f"best_{selected_model}_model.pth"
+                benchmark_filename = f"best_{selected_model}_benchmark.pth"
+
+                if isinstance(config["model"][selected_model]["save_path"], dict):
+                    config["model"][selected_model]["save_path"]["proposed"] = (
+                        os.path.join(config["log_dir"], proposed_filename)
+                    )
+                    if "benchmark" in config["model"][selected_model]["save_path"]:
+                        config["model"][selected_model]["save_path"]["benchmark"] = (
+                            os.path.join(config["log_dir"], benchmark_filename)
+                        )
+                else:
+                    config["model"][selected_model]["save_path"] = os.path.join(
+                        config["log_dir"], proposed_filename
+                    )
+
+            # 텐서보드 로그 디렉토리 설정
+            if (
+                "training" in config["model"]
+                and "tensorboard" in config["model"]["training"]
+            ):
+                if config["model"]["training"]["tensorboard"].get("enabled", False):
+                    config["model"]["training"]["tensorboard"]["log_dir"] = (
+                        os.path.join(config["log_dir"], "tensorboard")
+                    )
         else:
             raise ValueError(
                 f"지원되지 않는 모델 타입입니다: {selected_model}. 'hbt' 또는 'tft'를 선택하세요."

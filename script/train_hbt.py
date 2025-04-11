@@ -37,6 +37,7 @@ console_handler.setFormatter(formatter)
 # 핸들러 추가
 logger.addHandler(console_handler)
 
+
 def create_directory(directory_path):
     """디렉토리가 존재하지 않으면 생성하는 함수"""
     if not os.path.exists(directory_path):
@@ -200,14 +201,14 @@ def main():
 
     if args.telegrambot:
         from lib.utils.telegrambot import TelegramBotHandler
-        
+
         # 텔레그램 봇 핸들러 추가
         telegram_handler = TelegramBotHandler()
         telegram_handler.setLevel(logging.INFO)
         telegram_handler.setFormatter(formatter)
         logger.addHandler(telegram_handler)
         logger.info("[PROCESS] 텔레그램 봇 로깅 활성화됨")
-    
+
     # tensorboard 디렉토리를 log_dir 밑에 생성
     tensorboard_dir = os.path.join(log_dir, "tensorboard")
     create_directory(tensorboard_dir)

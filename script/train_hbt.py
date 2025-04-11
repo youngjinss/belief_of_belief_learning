@@ -3,18 +3,38 @@
 
 import os
 import sys
-import yaml
 import argparse
 import logging
 from datetime import datetime
-import numpy as np
 import pandas as pd
-from pathlib import Path
-import matplotlib.pyplot as plt
 
-import torch
-from torch.utils.data import Dataset, DataLoader, ConcatDataset
-from sklearn.preprocessing import StandardScaler
+from torch.utils.data import DataLoader, ConcatDataset
+
+# 프로젝트 디렉토리 경로 설정
+project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+os.chdir(project_dir)
+# lib 폴더 경로 추가
+sys.path.insert(0, project_dir)
+
+# 설정 로드
+from lib.utils.confing import load_config
+from lib.utils.train import train_model
+from lib.utils.data import prepare_dataloaders
+
+# 로거 설정
+logger = logging.getLogger("train_hbt")
+logger.setLevel(logging.DEBUG)
+
+# 콘솔 핸들러 설정
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+
+# 포맷 설정
+formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+console_handler.setFormatter(formatter)
+
+# 핸들러 추가
+logger.addHandler(console_handler)
 
 
 def create_directory(directory_path):
@@ -93,7 +113,6 @@ def train_and_save_model(
 
     # 모델 학습
     logger.info(f"[PROCESS] {model_type} 모델 학습 시작...")
-    from lib.utils.train import train_model
 
     trainer, history = train_model(
         trainer=trainer,
@@ -120,7 +139,7 @@ def main():
     parser.add_argument(
         "--project_dir",
         type=str,
-        default=os.path.dirname(os.path.abspath(__file__)),
+        default=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
         help="프로젝트 디렉토리 경로",
     )
     parser.add_argument(
@@ -162,33 +181,9 @@ def main():
         log_dir, f"train_hbt_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
     )
 
-    # 로거 설정
-    global logger
-    logger = logging.getLogger("train_hbt")
-    logger.setLevel(logging.DEBUG)
-
-    # 파일 핸들러 설정
-    file_handler = logging.FileHandler(log_file)
-    file_handler.setLevel(logging.DEBUG)
-
-    # 콘솔 핸들러 설정
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.INFO)
-
-    # 포맷 설정
-    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-    file_handler.setFormatter(formatter)
-    console_handler.setFormatter(formatter)
-
-    # 핸들러 추가
-    logger.addHandler(file_handler)
-    logger.addHandler(console_handler)
-
     logger.info("[PROCESS] HBT 모델 학습 시작")
     logger.info(f"[PROCESS] 프로젝트 디렉토리: {project_dir}")
 
-    # 설정 로드
-    from lib.utils.confing import load_config
 
     config_path = os.path.join(project_dir, args.config_path)
     logger.info(f"[PROCESS] 설정 파일 로드: {config_path}")
@@ -209,7 +204,6 @@ def main():
     data_sources = {"retail": retail_df, "institutional": institutional_df}
 
     # 데이터로더 준비
-    from lib.utils.data import prepare_dataloaders
 
     logger.info("[PROCESS] 데이터로더 준비 중...")
     loaders = prepare_dataloaders(data_sources, config)

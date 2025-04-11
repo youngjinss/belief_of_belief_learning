@@ -60,7 +60,7 @@ class MarketDataset(Dataset):
         self.self_action_cols = self.long_cols + self.short_cols
 
     def __len__(self):
-        return len(self.df)
+        return len(self.df - self.context_length)
 
     def __getitem__(self, idx):
         """데이터셋에서 샘플을 가져옵니다."""
@@ -97,16 +97,13 @@ class MarketDataset(Dataset):
         self_actions_tensor = torch.FloatTensor(self_actions)
         other_actions_tensor = torch.FloatTensor(other_actions)
         target_tensor = torch.FloatTensor(target)
-        source_type_tensor = (
-            torch.ones(1) if self.source_type == "retail" else torch.zeros(1)
-        )
 
         return {
             "ohlcv": ohlcv_tensor,
             "self_actions": self_actions_tensor,
             "other_actions": other_actions_tensor,
             "target": target_tensor,
-            "source_type": source_type_tensor,  # 소스 타입 정보 추가
+            "source_type": self.source_type,  # 소스 타입 정보 추가
         }
 
 

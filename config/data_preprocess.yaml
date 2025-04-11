@@ -1,0 +1,57 @@
+# 파일 경로 설정
+paths:
+  project_dir: "/home/youngjins/project/belief_trading"
+  data_dir: "${paths.project_dir}/data/binance/futures/um/monthly/aggTrades/BTCUSDT"
+  output_dir:   "${paths.project_dir}/data/binance/futures/um/monthly/position_distribution/${preprocess.window_size}"
+  log_dir: "${paths.project_dir}/log/{current_time}"
+
+# 원본 데이터 설정
+original_data:
+  item: "BTCUSDT"
+  path: "${paths.project_dir}/data/binance/futures/um/monthly/aggTrades/BTCUSDT"
+  usecols:
+    - "price"
+    - "quantity"
+    - "transact_time"
+    - "is_buyer_maker"
+
+# 데이터 전처리 설정
+preprocess:
+  window_size: 1800000  # 30분을 밀리초로 변환 (30 * 60 * 1000)
+  type_threshold: 0.25  # 기관/개인 투자자 분류 임계값
+  quantile: 20  # 분위수 구간 수
+
+  aggtrades:
+    path: null  # 기본값: "{project_dir}/data/binance/futures/um/monthly/aggTrades/BTCUSDT"
+    usecols:
+      - "price"
+      - "quantity"
+      - "transact_time"
+      - "is_buyer_maker"
+    quantile_bins: null  # 기본값: np.linspace(-1, 1, 2 * quantile + 1)
+
+  klines: # klines 파일 설정
+    path: null  # 기본값: "{project_dir}/data/binance/futures/um/monthly/klines/BTCUSDT/30m"
+    use_columns:
+      - "open_time"
+      - "open"
+      - "high"
+      - "low"
+      - "close"
+      - "volume"
+      - "quote_volume"
+      - "count"
+      - "taker_buy_volume"
+      - "taker_buy_quote_volume"
+
+  # position distribution 파일 설정
+  position_distribution:
+    path: null  # 기본값: "{project_dir}/data/binance/futures/um/monthly/position_distribution/{window_size}"
+    action_dims: 20
+
+  # 데이터셋 저장 경로
+  result_path: null  # 기본값: "{project_dir}/data/binance/futures/um/dataset/"
+  
+  # 학습/테스트 분할 비율
+  train_test_split:
+    ratio: 0.9

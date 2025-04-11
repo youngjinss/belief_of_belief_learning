@@ -1,3 +1,6 @@
+# todo: telegram으로 오류, 결과 메세지 전송 하는 기능 추가 
+
+
 import os
 import re
 import numpy as np
@@ -10,7 +13,6 @@ import argparse
 import multiprocessing
 from concurrent.futures import ProcessPoolExecutor
 from tqdm import tqdm
-import atexit
 
 # 명령줄 인자 파싱
 parser = argparse.ArgumentParser(description="바이낸스 데이터 전처리 스크립트")
@@ -310,8 +312,6 @@ def main():
     # CPU 코어 수 확인
     num_cores = multiprocessing.cpu_count()
     logger.info(f"[PROCESS] CPU 코어 수: {num_cores}")
-
-    # 다음 줄 제거: atexit.register(cleanup_pool)
 
     # 병렬 처리 실행 (tqdm으로 진행 상황 표시)
     with ProcessPoolExecutor(max_workers=num_cores) as executor:

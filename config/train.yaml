@@ -40,7 +40,7 @@ model:
     action_dim: 40         # 행동 분포 차원 (20 롱 + 20 숏)
     hidden_dim: 128         # 은닉층 차원 크기
     output_dim: 40         # 출력 차원 (행동 분포와 동일)
-    context_length: 336      # 컨텍스트 창의 시간 단계 수
+    context_length: 240      # 컨텍스트 창의 시간 단계 수
     num_heads: 8           # 어텐션 헤드 수
     dropout: 0.1           # 드롭아웃 비율
     use_other_player_beliefs: true  # 다른 플레이어 신념 사용 여부

@@ -55,9 +55,8 @@ def train_model(trainer, train_loader, val_loader, config=None, logger=None):
     counter = 0
     history = {"train_loss": [], "val_loss": []}
 
-    log_info(f"[PROCESS] 총 {num_epochs}개 에폭 학습을 시작합니다")
-
     for epoch in range(num_epochs):
+        log_info(f"[PROCESS] [{epoch}/{num_epochs}] 에폭 학습 시작")
         # Training
         trainer.model.train()
         train_losses = []
@@ -80,6 +79,7 @@ def train_model(trainer, train_loader, val_loader, config=None, logger=None):
         trainer.model.eval()
         val_losses = []
 
+        log_info(f"[PROCESS] [{epoch}/{num_epochs}] 에폭 평가 시작")
         with torch.no_grad():
             for batch in val_loader:
                 x_ohlcv = batch["ohlcv"].to(device)
@@ -99,21 +99,6 @@ def train_model(trainer, train_loader, val_loader, config=None, logger=None):
         if tensorboard_enabled:
             writer.add_scalar("Loss/train", avg_train_loss, epoch)
             writer.add_scalar("Loss/validation", avg_val_loss, epoch)
-
-            # First instance
-            for name, param in trainer.model.named_parameters():
-                writer.add_histogram(f"Parameters/{name}", param.data, epoch)
-                writer.add_scalar(
-                    "Loss/validation", avg_val_loss, epoch
-                )  # This is also duplicated inside the loop
-
-                # Second instance (duplicated)
-                for name, param in trainer.model.named_parameters():
-                    writer.add_histogram(
-                        f"Parameters/{name}",
-                        param.data.detach().cpu().numpy(),
-                        epoch,
-                    )
 
         # 에피소드 진행 로깅
         log_info(

@@ -177,11 +177,7 @@ def main():
     config_path = os.path.join(project_dir, args.config_path)
     logger.info(f"[PROCESS] 설정 파일 로드: {config_path}")
     config = load_config("train")
-
-    # 커맨드 라인 인자로 log_dir이 지정된 경우 우선 적용
-    if args.log_dir is not None:
-        config["log_dir"] = args.log_dir
-
+    
     # 로그 디렉토리 생성
     log_dir = config["log_dir"]
     create_directory(log_dir)

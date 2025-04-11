@@ -12,14 +12,23 @@ dataloader:
       - "taker_buy_volume"
       - "taker_buy_quote_volume"
     agent_action_cols: null  # 자동 생성: [f"l_{i}" for i in range(20)] + [f"s_{i}" for i in range(20)]
-  
+    
   n_bins: 20          # 히스토그램 구간 수
-    ohlcv_dim: 9          # OHLCV 데이터 차원
+  ohlcv_dim: 9          # OHLCV 데이터 차원
 
 # 모델 설정
 model:
   select: "hbt"
 
+  # 학습 설정
+  training:
+    batch_size: 64       # 배치 크기
+    num_epochs: 50       # 에폭 수
+    learning_rate: 0.001  # 학습률
+    patience: 10         # 조기 종료 대기 에폭 수
+    val_ratio: 0.1       # 검증 데이터 비율
+    device: "cuda3"       # 학습 장치 (cuda 또는 cpu)
+    
   # HBT 모델 구조
   hbt:
     action_dim: 40         # 행동 분포 차원 (20 롱 + 20 숏)
@@ -33,15 +42,6 @@ model:
     # 벤치마크 모델 설정
     benchmark:
       enabled: true        # 벤치마크 모델 사용 여부
-      
-    # 학습 설정
-    training:
-      batch_size: 64       # 배치 크기
-      num_epochs: 50       # 에폭 수
-      learning_rate: 0.001  # 학습률
-      patience: 10         # 조기 종료 대기 에폭 수
-      val_ratio: 0.1       # 검증 데이터 비율
-      device: "cuda3"       # 학습 장치 (cuda 또는 cpu)
     
     # 모델 저장/로드 경로
     save_path:

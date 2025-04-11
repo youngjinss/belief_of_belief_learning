@@ -20,12 +20,14 @@ class MarketDataset(Dataset):
             source_type (str): 데이터 소스 유형 ('retail' 또는 'institutional')
         """
         self.df = df
-        self.context_length = config["model"]["training"]["context_length"]
+        self.context_length = config["model"][config["model"]["select"]][
+            "context_length"
+        ]
         self.source_type = source_type  # 데이터 소스 유형 저장
 
         # 설정 파일에서 특성 카테고리 분리
-        if config["columns"]["ohlcv_cols"] is not None:
-            self.ohlcv_cols = config["columns"]["ohlcv_cols"]
+        if config["dataloader"]["columns"]["ohlcv_cols"] is not None:
+            self.ohlcv_cols = config["dataloader"]["columns"]["ohlcv_cols"]
         else:
             # 기본 OHLCV 열
             self.ohlcv_cols = [
@@ -41,32 +43,16 @@ class MarketDataset(Dataset):
             ]
 
         # 행동 분포 열 (l_0부터 l_19까지 롱, s_0부터 s_19까지 숏)
-        n_bins = config["model"]["tft"]["n_bins"]
+        n_bins = config["dataloader"]["n_bins"]
         self.long_cols = [f"l_{i}" for i in range(n_bins)]
         self.short_cols = [f"s_{i}" for i in range(n_bins)]
         self.self_action_cols = self.long_cols + self.short_cols
 
-        # 타겟의 경우, 다음 단계의 에이전트 행동을 예측합니다
-        if target_cols is None:
-            self.target_cols = self.self_action_cols
-        else:
-            self.target_cols = target_cols
-
-        # 데이터 표준화 여부 설정
-        self.transform = transform
-        # 표준화를 위한 스케일러 초기화 (각 윈도우마다 적용할 예정)
-        if self.transform:
-            self.ohlcv_scaler = StandardScaler()
-
-        # 단일 샘플을 만들기 위해 최소한 context_length+1 행이 필요합니다
-        self.valid_indices = list(range(self.context_length, len(df)))
-
     def __len__(self):
-        return len(self.valid_indices)
+        return len(self.df)
 
     def __getitem__(self, idx):
         """데이터셋에서 샘플을 가져옵니다."""
-        idx = self.valid_indices[idx]
 
         # 과거 데이터의 컨텍스트 윈도우 추출
         context_start = idx - self.context_length
@@ -137,7 +123,7 @@ def prepare_dataloaders(data_sources, config=None):
             df.index = pd.to_datetime(df.index)
 
         # 데이터 분할 및 로더 생성
-        context_length = config["model"]["training"]["context_length"]
+        context_length = config["model"][config["model"]["select"]]["context_length"]
         n_samples = len(df) - context_length
 
         if val_ratio <= 0:

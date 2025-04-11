@@ -72,7 +72,6 @@ class MarketDataset(Dataset):
         # 컨텍스트 윈도우의 OHLCV 데이터 추출
         ohlcv_window = self.df.iloc[context_start:context_end][self.ohlcv_cols]
         if ohlcv_window.shape[0] == 0:
-            print(context_start, context_end)
             print(idx, ohlcv_window)
 
         # 현재 윈도우에 대해 정규화 적용

@@ -22,7 +22,7 @@ def train_model(trainer, train_loader, val_loader, config=None):
     num_epochs = config["model"]["training"]["num_epochs"]
     patience = config["model"]["training"]["patience"]
     device = config["model"]["training"]["device"]
-    save_path = config["model"]["save_path"]
+    save_path = config["model"][config["model"]["select"]]["save_path"]
 
     # 모델을 장치에 전송
     trainer.model.to(device)

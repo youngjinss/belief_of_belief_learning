@@ -22,7 +22,7 @@ model:
 
   # 학습 설정
   training:
-    batch_size: 128       # 배치 크기
+    batch_size: 512       # 배치 크기
     num_epochs: 100       # 에폭 수
     learning_rate: 0.001  # 학습률
     patience: 10         # 조기 종료 대기 에폭 수
@@ -32,7 +32,7 @@ model:
     # 텐서보드 설정
     tensorboard:
       enabled: true       # 텐서보드 활성화 여부
-      port: 6006          # 텐서보드 실행 포트
+      port: 8888          # 텐서보드 실행 포트
       log_dir: "runs"     # 텐서보드 로그 디렉토리
     
   # HBT 모델 구조
@@ -41,7 +41,7 @@ model:
     hidden_dim: 128         # 은닉층 차원 크기
     output_dim: 40         # 출력 차원 (행동 분포와 동일)
     context_length: 336      # 컨텍스트 창의 시간 단계 수
-    num_heads: 4           # 어텐션 헤드 수
+    num_heads: 8           # 어텐션 헤드 수
     dropout: 0.1           # 드롭아웃 비율
     use_other_player_beliefs: true  # 다른 플레이어 신념 사용 여부
     

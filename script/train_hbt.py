@@ -187,9 +187,7 @@ def main():
     create_directory(log_dir)
 
     # 파일 로그 핸들러 추가
-    log_file = os.path.join(
-        log_dir, f"result_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
-    )
+    log_file = os.path.join(log_dir, f"result.log")
     file_handler = logging.FileHandler(log_file)
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(formatter)

@@ -105,6 +105,20 @@ def train_model(trainer, train_loader, val_loader, config=None, logger=None):
             # 모델 파라미터의 히스토그램 추가 (선택적)
             for name, param in trainer.model.named_parameters():
                 writer.add_histogram(f"Parameters/{name}", param.data, epoch)
+                writer.add_scalar("Loss/validation", avg_val_loss, epoch)
+
+                # 모델 파라미터의 히스토그램 추가 (선택적)
+                for name, param in trainer.model.named_parameters():
+                    try:
+                        # NaN이나 Inf 값이 있는지 확인
+                        if torch.isfinite(param.data).all():
+                            writer.add_histogram(
+                                f"Parameters/{name}",
+                                param.data.detach().cpu().numpy(),
+                                epoch,
+                            )
+                    except Exception as e:
+                        log_info(f"히스토그램 추가 중 오류 발생: {name}, {e}")
 
         # 에피소드 진행 로깅
         log_info(

@@ -1,10 +1,8 @@
 import torch
 import os
 from torch.utils.tensorboard import SummaryWriter
-from datetime import datetime
 
 
-# ... existing code ...
 def train_model(trainer, train_loader, val_loader, config=None, logger=None):
     """
     Train the model with early stopping.
@@ -44,7 +42,7 @@ def train_model(trainer, train_loader, val_loader, config=None, logger=None):
     if tensorboard_enabled:
         log_dir = os.path.join(
             tensorboard_log_dir,
-            f'{config["model"]["select"]}_{datetime.now().strftime("%Y%m%d-%H%M%S")}',
+            f'{config["model"]["select"]}',
         )
         writer = SummaryWriter(log_dir=log_dir)
         log_info(f"텐서보드 로그: {log_dir}")
@@ -102,23 +100,20 @@ def train_model(trainer, train_loader, val_loader, config=None, logger=None):
             writer.add_scalar("Loss/train", avg_train_loss, epoch)
             writer.add_scalar("Loss/validation", avg_val_loss, epoch)
 
-            # 모델 파라미터의 히스토그램 추가 (선택적)
+            # First instance
             for name, param in trainer.model.named_parameters():
                 writer.add_histogram(f"Parameters/{name}", param.data, epoch)
-                writer.add_scalar("Loss/validation", avg_val_loss, epoch)
+                writer.add_scalar(
+                    "Loss/validation", avg_val_loss, epoch
+                )  # This is also duplicated inside the loop
 
-                # 모델 파라미터의 히스토그램 추가 (선택적)
+                # Second instance (duplicated)
                 for name, param in trainer.model.named_parameters():
-                    try:
-                        # NaN이나 Inf 값이 있는지 확인
-                        if torch.isfinite(param.data).all():
-                            writer.add_histogram(
-                                f"Parameters/{name}",
-                                param.data.detach().cpu().numpy(),
-                                epoch,
-                            )
-                    except Exception as e:
-                        log_info(f"히스토그램 추가 중 오류 발생: {name}, {e}")
+                    writer.add_histogram(
+                        f"Parameters/{name}",
+                        param.data.detach().cpu().numpy(),
+                        epoch,
+                    )
 
         # 에피소드 진행 로깅
         log_info(

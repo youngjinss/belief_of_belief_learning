@@ -65,7 +65,7 @@ def load_config(config_name):
         # log_dir 자동 설정
         if "log_dir" not in config:
             config["log_dir"] = os.path.join(
-                project_dir, "log", datetime.now().strftime("%Y-%m-%d %H-%M-%S")
+                project_dir, "log", datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             )
 
         # 모델 저장 경로 자동 설정

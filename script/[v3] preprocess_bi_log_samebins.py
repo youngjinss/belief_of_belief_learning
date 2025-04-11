@@ -9,6 +9,8 @@ import glob
 from datetime import datetime
 import logging
 import argparse
+import json
+import csv
 
 import multiprocessing
 from concurrent.futures import ProcessPoolExecutor
@@ -82,7 +84,7 @@ usecols = [
 # 경로 관련 변수 선언
 project_dir = args.project_dir
 data_dir = args.data_dir
-output_dir = args.output_dir
+output_dir = args.output_dir + f"/{window_size}"
 log_dir = args.log_dir
 
 # 로거 설정
@@ -257,21 +259,18 @@ def process_file(file_path):
                 institutional_long_count.sum() + institutional_short_count.sum()
             )
 
-            result_df.loc[pivot_time, "retail_long"] = retail_long_count / retail_sum
-            result_df.loc[pivot_time, "retail_short"] = retail_short_count / retail_sum
-            result_df.loc[pivot_time, "institutional_long"] = (
-                institutional_long_count / institutional_sum
-            )
-            result_df.loc[pivot_time, "institutional_short"] = (
-                institutional_short_count / institutional_sum
-            )
+            # 배열을 DataFrame에 저장 후 나중에 한 번에 JSON으로 변환
+            result_df.at[pivot_time, "retail_long"] = json.dumps((retail_long_count / retail_sum).tolist(), ensure_ascii=False)
+            result_df.at[pivot_time, "retail_short"] = json.dumps((retail_short_count / retail_sum).tolist(), ensure_ascii=False)
+            result_df.at[pivot_time, "institutional_long"] = json.dumps((institutional_long_count / institutional_sum).tolist(), ensure_ascii=False)
+            result_df.at[pivot_time, "institutional_short"] = json.dumps((institutional_short_count / institutional_sum).tolist(), ensure_ascii=False)
 
         # 결과 저장 경로
         output_filename = f"BTCUSDT-pd-{year}-{month}.csv"
         output_path = os.path.join(output_dir, output_filename)
 
-        # 결과 저장
-        result_df.to_csv(output_path, index=True)
+        # 결과를 CSV 파일로 저장 (JSON 형식의 문자열이 포함됨)
+        result_df.to_csv(output_path, index=True, quoting=csv.QUOTE_NONNUMERIC)
         logger.info(f"[RESULT] 처리 완료: {output_path}")
 
         return output_path
@@ -280,10 +279,8 @@ def process_file(file_path):
         import traceback
 
         error_info = traceback.extract_tb(e.__traceback__)
-        error_line = error_info[-1].lineno
-        error_code = error_info[-1].line
         logger.error(
-            f"\n\n[ERROR] 파일 처리 중 오류 발생: {file_path}\n오류: {str(e)}\n라인: {error_line}\n코드: {error_code}"
+            f"\n\n[ERROR] 파일 처리 중 오류 발생: {file_path}\n오류: {str(e)}\n코드: {error_info}"
         )
         return None
 

@@ -10,7 +10,7 @@ TYPE_THRESHOLD="0.25"
 QUANTILE="20"
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DATA_DIR="${PROJECT_DIR}/data/binance/futures/um/monthly/aggTrades/BTCUSDT"
-OUTPUT_DIR="${PROJECT_DIR}/data/binance/futures/um/monthly/position_distribution"
+OUTPUT_DIR="${PROJECT_DIR}/data/binance/futures/um/monthly/position_distribution/${WINDOW_SIZE}"
 LOG_DIR="${PROJECT_DIR}/log/${START_TIME}"
 LOG_FILE="${LOG_DIR}/result.log"
 

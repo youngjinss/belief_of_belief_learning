@@ -2,10 +2,10 @@
 
 # 스크립트 실행 시간 기록
 START_TIME=$(date +"%Y-%m-%d %H:%M:%S")
-SCRIPT_NAME="[v3] preprocess_bi_log_samebins.py"
+SCRIPT_NAME="preprocess_bi_log_samebins.py"
 
 # 기본값 설정
-WINDOW_SIZE="3600000"
+WINDOW_SIZE="1800000"
 TYPE_THRESHOLD="0.25"
 QUANTILE="20"
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -94,3 +94,6 @@ echo "백그라운드에서 실행 중입니다. 다음 명령어로 로그를 �
 echo "tail -f $LOG_FILE"
 echo "다음 명령어로 프로세스 상태를 확인할 수 있습니다:"
 echo "ps -p $PID"
+
+echo "다음 명령어로 프로세스를 종료할 수 있습니다:"
+echo "pgrep -f \"${SCRIPT_NAME}\" | xargs kill -9"

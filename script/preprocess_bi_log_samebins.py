@@ -265,6 +265,9 @@ def process_file(file_path):
             result_df.at[pivot_time, "institutional_long"] = json.dumps((institutional_long_count / institutional_sum).tolist(), ensure_ascii=False)
             result_df.at[pivot_time, "institutional_short"] = json.dumps((institutional_short_count / institutional_sum).tolist(), ensure_ascii=False)
 
+        # result_df의 row 중에서 nan이 있다면, 해당 row 삭제
+        result_df = result_df.dropna()
+
         # 결과 저장 경로
         output_filename = f"BTCUSDT-pd-{year}-{month}.csv"
         output_path = os.path.join(output_dir, output_filename)

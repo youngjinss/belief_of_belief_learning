@@ -1,17 +1,20 @@
 # 데이터 컬럼
-columns:
-  ohlcv_cols:
-    - "open"
-    - "high"
-    - "low"
-    - "close"
-    - "volume"
-    - "quote_volume"
-    - "count"
-    - "taker_buy_volume"
-    - "taker_buy_quote_volume"
-  agent_action_cols: null  # 자동 생성: [f"l_{i}" for i in range(20)] + [f"s_{i}" for i in range(20)]
-
+dataloader:
+  columns:
+    ohlcv_cols:
+      - "open"
+      - "high"
+      - "low"
+      - "close"
+      - "volume"
+      - "quote_volume"
+      - "count"
+      - "taker_buy_volume"
+      - "taker_buy_quote_volume"
+    agent_action_cols: null  # 자동 생성: [f"l_{i}" for i in range(20)] + [f"s_{i}" for i in range(20)]
+  
+  n_bins: 20          # 히스토그램 구간 수
+    ohlcv_dim: 9          # OHLCV 데이터 차원
 
 # 모델 설정
 model:
@@ -19,7 +22,6 @@ model:
 
   # HBT 모델 구조
   hbt:
-    ohlcv_dim: 9          # OHLCV 데이터 차원
     action_dim: 40         # 행동 분포 차원 (20 롱 + 20 숏)
     hidden_dim: 64         # 은닉층 차원 크기
     output_dim: 40         # 출력 차원 (행동 분포와 동일)
@@ -38,7 +40,6 @@ model:
       num_epochs: 50       # 에폭 수
       learning_rate: 0.001  # 학습률
       patience: 10         # 조기 종료 대기 에폭 수
-      test_ratio: 0.2      # 테스트 데이터 비율
       val_ratio: 0.1       # 검증 데이터 비율
       device: "cuda3"       # 학습 장치 (cuda 또는 cpu)
     
@@ -50,7 +51,6 @@ model:
   # # TFT 모델 구조
   # tft:
   #   ohlcv_features: 9  # OHLCV 관련 특성 수
-  #   n_bins: 20          # 히스토그램 구간 수
   #   agent_actions: 40   # 에이전트 행동 특성 수 (20 long + 20 short)
   #   other_actions: 40   # 다른 에이전트 행동 특성 수 (20 long + 20 short)
   #   hidden_size: 64     # 은닉층 크기

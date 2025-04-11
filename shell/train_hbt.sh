@@ -77,6 +77,7 @@ nohup python "script/${SCRIPT_NAME}" \
     --model_type "$MODEL_TYPE" \
     --config_path "$CONFIG_PATH" \
     --project_dir "$PROJECT_DIR" \
+    --telegrambot true \
     --log_dir "$LOG_DIR" > "$LOG_FILE" 2>&1 &
 
 # 프로세스 ID 저장

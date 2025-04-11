@@ -13,6 +13,7 @@ from torch.utils.data import DataLoader, ConcatDataset
 # 프로젝트 디렉토리 경로 설정
 project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(project_dir)
+
 # lib 폴더 경로 추가
 sys.path.insert(0, project_dir)
 
@@ -35,7 +36,6 @@ console_handler.setFormatter(formatter)
 
 # 핸들러 추가
 logger.addHandler(console_handler)
-
 
 def create_directory(directory_path):
     """디렉토리가 존재하지 않으면 생성하는 함수"""
@@ -162,14 +162,17 @@ def main():
         default=None,
         help="로그 파일 저장 디렉토리 경로",
     )
+    parser.add_argument(
+        "--telegrambot",
+        type=bool,
+        default=False,
+        help="텔레그램 봇 활성화 여부",
+    )
     args = parser.parse_args()
 
     # 프로젝트 디렉토리 경로 설정
     project_dir = args.project_dir
     os.chdir(project_dir)
-
-    # lib 폴더 경로 추가
-    sys.path.append(project_dir + "/lib")
 
     logger.info("[PROCESS] HBT 모델 학습 시작")
     logger.info(f"[PROCESS] 프로젝트 디렉토리: {project_dir}")
@@ -195,6 +198,16 @@ def main():
     logger.info(f"[PROCESS] 로그 디렉토리: {log_dir}")
     logger.info(f"[PROCESS] 로그 파일: {log_file}")
 
+    if args.telegrambot:
+        from lib.utils.telegrambot import TelegramBotHandler
+        
+        # 텔레그램 봇 핸들러 추가
+        telegram_handler = TelegramBotHandler()
+        telegram_handler.setLevel(logging.INFO)
+        telegram_handler.setFormatter(formatter)
+        logger.addHandler(telegram_handler)
+        logger.info("[PROCESS] 텔레그램 봇 로깅 활성화됨")
+    
     # tensorboard 디렉토리를 log_dir 밑에 생성
     tensorboard_dir = os.path.join(log_dir, "tensorboard")
     create_directory(tensorboard_dir)
@@ -237,7 +250,7 @@ def main():
 
     # 데이터로더 준비
 
-    logger.info("[PROCESS] 데이터로더 준비 중...")
+    logger.info("[PROCESS] 데이터 로더 준비 중...")
     loaders = prepare_dataloaders(data_sources, config)
 
     # 학습 데이터셋 통합

@@ -9,4 +9,4 @@ lib/maxe/
 lib/pymarketsim/
 data/
 log/
-lib/utils/telegram.py
+lib/utils/telegrambot.py

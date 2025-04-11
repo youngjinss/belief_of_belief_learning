@@ -84,7 +84,7 @@ usecols = [
 # 경로 관련 변수 선언
 project_dir = args.project_dir
 data_dir = args.data_dir
-output_dir = args.output_dir + f"/{window_size}"
+output_dir = args.output_dir
 log_dir = args.log_dir
 
 # 로거 설정

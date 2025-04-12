@@ -165,8 +165,7 @@ def main():
     )
     parser.add_argument(
         "--telegrambot",
-        type=bool,
-        default=False,
+        action="store_true",
         help="텔레그램 봇 활성화 여부",
     )
     args = parser.parse_args()

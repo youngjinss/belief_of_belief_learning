@@ -10,7 +10,6 @@ CONFIG_PATH="config/train.yaml"
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_DIR="${PROJECT_DIR}/log/${START_TIME}"
 LOG_FILE="${LOG_DIR}/result.log"
-TELEGRAMBOT="true"
 
 # 도움말 함수
 show_help() {
@@ -78,7 +77,7 @@ nohup python "script/${SCRIPT_NAME}" \
     --model_type "$MODEL_TYPE" \
     --config_path "$CONFIG_PATH" \
     --project_dir "$PROJECT_DIR" \
-    --telegrambot "$TELEGRAMBOT" \
+    --telegrambot \
     --log_dir "$LOG_DIR" > "$LOG_FILE" 2>&1 &
 
 # 프로세스 ID 저장

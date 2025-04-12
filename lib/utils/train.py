@@ -1,9 +1,10 @@
 import torch
 import os
+import random
 from torch.utils.tensorboard import SummaryWriter
 
 
-def train_model(trainer, train_loader, val_loader, config=None, logger=None):
+def train_model(trainer, train_loader, val_loader, config=None, logger=None, save_path=None):
     """
     Train the model with early stopping.
 
@@ -13,7 +14,7 @@ def train_model(trainer, train_loader, val_loader, config=None, logger=None):
         val_loader: DataLoader for validation data
         config: 모델 설정 파일 경로
         logger: 로깅을 위한 로거 객체
-
+        save_path: 모델 저장 경로
     Returns:
         model: Trained model
         history: Training history
@@ -23,12 +24,12 @@ def train_model(trainer, train_loader, val_loader, config=None, logger=None):
 
     # 로거가 없으면 기본 print 사용
     log_info = logger.info if logger else print
+    log_warning = logger.warning if logger else print
 
     # 설정에서 매개변수 추출
     num_epochs = config["model"]["training"]["num_epochs"]
     patience = config["model"]["training"]["patience"]
     device = config["model"]["training"]["device"]
-    save_path = config["model"][config["model"]["select"]]["save_path"]
 
     # 텐서보드 설정
     tensorboard_enabled = (
@@ -60,8 +61,9 @@ def train_model(trainer, train_loader, val_loader, config=None, logger=None):
         # Training
         trainer.model.train()
         train_losses = []
-
-        for batch in train_loader:
+        
+        # index도 출력
+        for idx, batch in enumerate(train_loader):
             x_ohlcv = batch["ohlcv"].to(device)
             x_self_actions = batch["self_actions"].to(device)
             x_other_actions = batch["other_actions"].to(device)
@@ -70,6 +72,12 @@ def train_model(trainer, train_loader, val_loader, config=None, logger=None):
             loss = trainer.train_step(
                 x_ohlcv, x_self_actions, x_other_actions, y_target
             )
+            
+            # 10% 확률로 loss 출력
+            if random.random() < 0.1:
+                log_warning(f"[PROCESS] 학습 손실: {loss:.4f}")
+                writer.add_scalar("Loss/train", loss, epoch * len(train_loader) + idx)
+
             train_losses.append(loss)
 
         avg_train_loss = sum(train_losses) / len(train_losses)
@@ -97,8 +105,8 @@ def train_model(trainer, train_loader, val_loader, config=None, logger=None):
 
         # 텐서보드에 로깅
         if tensorboard_enabled:
-            writer.add_scalar("Loss/train", avg_train_loss, epoch)
-            writer.add_scalar("Loss/validation", avg_val_loss, epoch)
+            writer.add_scalar("Loss/train", avg_train_loss, epoch * len(train_loader))
+            writer.add_scalar("Loss/validation", avg_val_loss, epoch * len(val_loader))
 
         # 에피소드 진행 로깅
         log_info(

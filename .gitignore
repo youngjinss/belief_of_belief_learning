@@ -10,3 +10,15 @@ lib/pymarketsim/
 data/
 log/
 lib/utils/telegrambot.py
+
+# 모든 하위 폴더의 __pycache__ 폴더 무시
+__pycache__/
+
+# 모든 하위 폴더의 .DS_Store 파일 무시
+.DS_Store
+
+# 모든 하위 폴더의 .idea 폴더 무시
+.idea/
+
+# 모든 하위 폴더의 .pytest_cache 폴더 무시
+.pytest_cache/

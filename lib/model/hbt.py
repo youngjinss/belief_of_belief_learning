@@ -228,6 +228,9 @@ class HierarchicalTransformerModel(nn.Module):
             "cross_attention": cross_attn_weights,
         }
 
+        # softmax 적용
+        predictions = F.softmax(predictions, dim=-1)
+
         return predictions, attention_weights
 
 
@@ -257,19 +260,13 @@ class HierarchicalModelTrainer:
 
         predictions, _ = self.model(ohlcv, agent_actions, other_actions)
 
-        # KL divergence loss for distribution prediction
-        # Add small epsilon to avoid numerical instability
-        epsilon = 1e-8
-        predictions = predictions + epsilon
-        targets = targets + epsilon
-
-        # Normalize both distributions to ensure they sum to 1
-        predictions = predictions / predictions.sum(dim=1, keepdim=True)
-        targets = targets / targets.sum(dim=1, keepdim=True)
-
         # Calculate KL divergence loss
-        loss = F.kl_div(predictions.log(), targets, reduction="batchmean")
+        loss = F.kl_div(torch.log(predictions + 1e-10), torch.log(targets + 1e-10), reduction="batchmean")
 
+        # NaN 값 검사 및 로깅
+        if torch.isnan(loss):
+            print(f"[경고] NaN 손실 값 발견: {loss.item()}")
+        
         loss.backward()
         self.optimizer.step()
 
@@ -290,18 +287,13 @@ class HierarchicalModelTrainer:
         """
         predictions, attention_weights = self.model(ohlcv, agent_actions, other_actions)
 
-        # KL divergence loss for distribution prediction
-        epsilon = 1e-8
-        predictions = predictions + epsilon
-        targets = targets + epsilon
-
-        # Normalize both distributions to ensure they sum to 1
-        predictions = predictions / predictions.sum(dim=1, keepdim=True)
-        targets = targets / targets.sum(dim=1, keepdim=True)
-
         # Calculate KL divergence loss
-        loss = F.kl_div(predictions.log(), targets, reduction="batchmean")
+        loss = F.kl_div(torch.log(predictions + 1e-10), torch.log(targets + 1e-10), reduction="batchmean")
 
+        # NaN 값 검사 및 로깅
+        if torch.isnan(loss):
+            print(f"[경고] NaN 손실 값 발견: {loss.item()}")
+            
         return loss.item(), attention_weights
 
     def save_model(self, filepath):

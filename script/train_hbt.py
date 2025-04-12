@@ -98,6 +98,7 @@ def train_and_save_model(
             context_length=context_length,
         )
         trainer = HierarchicalModelTrainer(model=model, lr=learning_rate)
+        save_path = config["model"][config["model"]["select"]]["save_path"]["proposed"]
     elif model_type == "benchmark":
         from lib.model.hbt import create_benchmark_model, HierarchicalModelTrainer
 
@@ -121,10 +122,10 @@ def train_and_save_model(
         val_loader=val_loader,
         config=config,
         logger=logger,  # 로거 전달
+        save_path=save_path,
     )
 
     # 모델 저장
-    save_path = config["model"][config["model"]["select"]]["save_path"]
     trainer.save_model(save_path)
     logger.info(
         f"[RESULT] 모델이 성공적으로 학습되었으며 {save_path}에 저장되었습니다."
@@ -160,7 +161,7 @@ def main():
     parser.add_argument(
         "--log_dir",
         type=str,
-        default=None,
+        default="/logs/test/",
         help="로그 파일 저장 디렉토리 경로",
     )
     parser.add_argument(

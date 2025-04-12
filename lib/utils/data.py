@@ -95,8 +95,7 @@ class MarketDataset(Dataset):
             self.self_action_cols
         ].values
 
-        # 이 구현에서는 다른 플레이어의 행동도 사용 가능하다고 가정합니다
-        # 실제 시나리오에서는 이를 다르게 계산해야 할 수도 있습니다
+        # 다른 플레이어의 행동도 관측 가능
         other_actions = self.df.iloc[context_start:context_end][
             self.self_action_cols
         ].values
@@ -110,6 +109,9 @@ class MarketDataset(Dataset):
         other_actions_tensor = torch.FloatTensor(other_actions)
         target_tensor = torch.FloatTensor(target)
 
+        if sum(abs(self_actions[-1, :] - target)) == 0:
+            print(f"idx: {idx}, target: {target}, self_actions: {self_actions[-1]}")
+        
         return {
             "ohlcv": ohlcv_tensor,
             "self_actions": self_actions_tensor,

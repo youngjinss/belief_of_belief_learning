@@ -12,8 +12,9 @@ dataloader:
       - "taker_buy_volume"
       - "taker_buy_quote_volume"
     target_cols: null  # 자동 생성: [f"l_{i}" for i in range(20)] + [f"s_{i}" for i in range(20)]
-    
-  n_bins: 20          # 히스토그램 구간 수
+  
+  timeframe: "15m"
+  n_bins: 50          # 히스토그램 구간 수
   ohlcv_dim: 9          # OHLCV 데이터 차원
 
 # 모델 설정
@@ -23,11 +24,11 @@ model:
   # 학습 설정
   training:
     batch_size: 512       # 배치 크기
-    num_epochs: 100       # 에폭 수
-    learning_rate: 0.001  # 학습률
-    patience: 20         # 조기 종료 대기 에폭 수
+    num_epochs: 200       # 에폭 수
+    learning_rate: 0.0001  # 학습률
+    patience: 50         # 조기 종료 대기 에폭 수
     val_ratio: 0.1       # 검증 데이터 비율
-    device: "cuda:3"       # 학습 장치 (cuda 또는 cpu)
+    device: "cuda:2"       # 학습 장치 (cuda 또는 cpu)
 
     # 텐서보드 설정
     tensorboard:
@@ -37,9 +38,9 @@ model:
     
   # HBT 모델 구조
   hbt:
-    action_dim: 40         # 행동 분포 차원 (20 롱 + 20 숏)
+    action_dim: 100         # 행동 분포 차원 (20 롱 + 20 숏)
     hidden_dim: 512         # 은닉층 차원 크기
-    output_dim: 40         # 출력 차원 (행동 분포와 동일)
+    output_dim: 100         # 출력 차원 (행동 분포와 동일)
     context_length: 240      # 컨텍스트 창의 시간 단계 수
     num_heads: 8           # 어텐션 헤드 수
     dropout: 0.1           # 드롭아웃 비율

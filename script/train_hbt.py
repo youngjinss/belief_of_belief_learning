@@ -286,10 +286,12 @@ def main():
 
     # 소매 및 기관 투자자 데이터 경로
     retail_path = os.path.join(
-        project_dir, "data/binance/futures/um/dataset/retail_train.csv"
+        project_dir,
+        f"data/binance/futures/um/dataset/retail_train_{config['dataloader']['timeframe']}.csv",
     )
     institutional_path = os.path.join(
-        project_dir, "data/binance/futures/um/dataset/institutional_train.csv"
+        project_dir,
+        f"data/binance/futures/um/dataset/institutional_train_{config['dataloader']['timeframe']}.csv",
     )
 
     # 데이터 로드
@@ -332,7 +334,7 @@ def main():
     hidden_dim = model_config["hidden_dim"]
     context_length = model_config["context_length"]
     learning_rate = config["model"]["training"]["learning_rate"]
-    
+
     # args.model_type에 따라 config 내의 학습 모델 유형 업데이트
     if args.model_type == "proposed" or args.model_type == "both":
         config["model"]["hbt"]["use_other_player_beliefs"] = True

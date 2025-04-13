@@ -3,3 +3,9 @@
 [v2] 데이터 탐색 (e.g., WRDS, COT, Binance, 등등)
 [v3] Binance TAQ 데이터 기준 데이터 정제 및 확인
 [v4] concatenate_ohlcv_w_pd.ipynb -> 개인, 기관별 klines(ohlcv) + position distribuiton concat
+
+
+## 학습 기록
+1. i_df, -i_df 수정 후 기록
+2025-04-13 16:22:36: benchmark
+2025-04-13 16:24:02: proposed 

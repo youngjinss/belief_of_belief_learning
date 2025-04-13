@@ -5,7 +5,7 @@ START_TIME=$(date +"%Y-%m-%d %H:%M:%S")
 SCRIPT_NAME="train_hbt.py"
 
 # 기본값 설정
-MODEL_TYPE="proposed"
+MODEL_TYPE="benchmark"
 CONFIG_PATH="config/train.yaml"
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_DIR="${PROJECT_DIR}/log/${START_TIME}"

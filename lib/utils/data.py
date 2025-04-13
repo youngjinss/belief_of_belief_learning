@@ -108,12 +108,6 @@ class MarketDataset(Dataset):
         self_actions_tensor = torch.FloatTensor(self_actions)
         other_actions_tensor = torch.FloatTensor(other_actions)
         target_tensor = torch.FloatTensor(target)
-
-        # self_actions, other_actions에서 nan 값이 있는지
-        if self_actions_tensor.isnan().any():
-            print(f"[경고] self_actions에 NaN 값이 있습니다: {self_actions_tensor}")
-        if other_actions_tensor.isnan().any():
-            print(f"[경고] other_actions에 NaN 값이 있습니다: {other_actions_tensor}")
         
         return {
             "ohlcv": ohlcv_tensor,

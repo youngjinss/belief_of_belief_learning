@@ -143,6 +143,7 @@ def train_and_save_model(
             context_length=context_length,
         )
         trainer = HierarchicalModelTrainer(model=model, lr=learning_rate)
+        save_path = config["model"][config["model"]["select"]]["save_path"]["benchmark"]
     else:
         logger.error(f"[ERROR] 지원되지 않는 모델 유형: {model_type}")
         return None

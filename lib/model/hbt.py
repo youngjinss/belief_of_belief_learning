@@ -227,7 +227,7 @@ class HierarchicalTransformerModel(nn.Module):
             "other_actions_weights": other_weights,
             "cross_attention": cross_attn_weights,
         }
-            
+
         return predictions, attention_weights
 
 
@@ -257,8 +257,13 @@ class HierarchicalModelTrainer:
 
         predictions, _ = self.model(ohlcv, agent_actions, other_actions)
 
-        loss = F.kl_div(torch.log(predictions + 1e-10), targets, reduction="batchmean", log_target=False)
-        
+        loss = F.kl_div(
+            torch.log(predictions + 1e-10),
+            targets,
+            reduction="batchmean",
+            log_target=False,
+        )
+
         loss.backward()
         self.optimizer.step()
 
@@ -279,8 +284,13 @@ class HierarchicalModelTrainer:
         """
         predictions, attention_weights = self.model(ohlcv, agent_actions, other_actions)
 
-        loss = F.kl_div(torch.log(predictions + 1e-10), targets, reduction="batchmean", log_target=False)
-            
+        loss = F.kl_div(
+            torch.log(predictions + 1e-10),
+            targets,
+            reduction="batchmean",
+            log_target=False,
+        )
+
         return loss.item(), attention_weights
 
     def save_model(self, filepath):

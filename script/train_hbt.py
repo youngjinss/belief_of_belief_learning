@@ -59,47 +59,61 @@ def load_data(retail_path, institutional_path):
     # 데이터 기본 정보 확인
     logger.info(f"[RESULT] 소매 투자자 데이터 크기: {retail_df.shape}")
     logger.info(f"[RESULT] 기관 투자자 데이터 크기: {institutional_df.shape}")
-    
+
     # NaN 값 확인 및 처리
     retail_nan_count = retail_df.isna().sum().sum()
     institutional_nan_count = institutional_df.isna().sum().sum()
-    
+
     if retail_nan_count > 0:
-        logger.info(f"[PROCESS] 소매 투자자 데이터에서 {retail_nan_count}개의 NaN 값 발견")
-        
+        logger.info(
+            f"[PROCESS] 소매 투자자 데이터에서 {retail_nan_count}개의 NaN 값 발견"
+        )
+
         # 시간 순으로 앞뒤 값의 평균으로 NaN 값 처리 (선형 보간)
-        retail_df = retail_df.interpolate(method='linear', axis=0, limit_direction='both')
-        
+        retail_df = retail_df.interpolate(
+            method="linear", axis=0, limit_direction="both"
+        )
+
         # 보간 후에도 NaN이 남아있는 경우 (시계열의 시작이나 끝에 NaN이 있는 경우)
         remaining_nan = retail_df.isna().sum().sum()
         if remaining_nan > 0:
-            logger.info(f"[PROCESS] 선형 보간 후 {remaining_nan}개의 NaN 값이 남아있음, 앞/뒤 채우기 적용")
+            logger.info(
+                f"[PROCESS] 선형 보간 후 {remaining_nan}개의 NaN 값이 남아있음, 앞/뒤 채우기 적용"
+            )
             # 앞의 값으로 채우기
-            retail_df = retail_df.fillna(method='ffill') 
+            retail_df = retail_df.fillna(method="ffill")
             # 뒤의 값으로 채우기 (앞의 값이 없는 경우)
-            retail_df = retail_df.fillna(method='bfill')
-    
+            retail_df = retail_df.fillna(method="bfill")
+
     if institutional_nan_count > 0:
-        logger.info(f"[PROCESS] 기관 투자자 데이터에서 {institutional_nan_count}개의 NaN 값 발견")
-        
+        logger.info(
+            f"[PROCESS] 기관 투자자 데이터에서 {institutional_nan_count}개의 NaN 값 발견"
+        )
+
         # 시간 순으로 앞뒤 값의 평균으로 NaN 값 처리 (선형 보간)
-        institutional_df = institutional_df.interpolate(method='linear', axis=0, limit_direction='both')
-        
+        institutional_df = institutional_df.interpolate(
+            method="linear", axis=0, limit_direction="both"
+        )
+
         # 보간 후에도 NaN이 남아있는 경우
         remaining_nan = institutional_df.isna().sum().sum()
         if remaining_nan > 0:
-            logger.info(f"[PROCESS] 선형 보간 후 {remaining_nan}개의 NaN 값이 남아있음, 앞/뒤 채우기 적용")
+            logger.info(
+                f"[PROCESS] 선형 보간 후 {remaining_nan}개의 NaN 값이 남아있음, 앞/뒤 채우기 적용"
+            )
             # 앞의 값으로 채우기
-            institutional_df = institutional_df.fillna(method='ffill')
+            institutional_df = institutional_df.fillna(method="ffill")
             # 뒤의 값으로 채우기 (앞의 값이 없는 경우)
-            institutional_df = institutional_df.fillna(method='bfill')
-    
+            institutional_df = institutional_df.fillna(method="bfill")
+
     # 최종 NaN 값 확인
     final_retail_nan = retail_df.isna().sum().sum()
     final_institutional_nan = institutional_df.isna().sum().sum()
-    
+
     if final_retail_nan > 0 or final_institutional_nan > 0:
-        logger.warning(f"[경고] 처리 후에도 NaN 값이 남아있습니다: 소매={final_retail_nan}, 기관={final_institutional_nan}")
+        logger.warning(
+            f"[경고] 처리 후에도 NaN 값이 남아있습니다: 소매={final_retail_nan}, 기관={final_institutional_nan}"
+        )
     else:
         logger.info("[RESULT] 모든 NaN 값이 성공적으로 처리되었습니다")
 
@@ -281,8 +295,11 @@ def main():
     # 데이터 로드
     retail_df, institutional_df = load_data(retail_path, institutional_path)
 
-    # 데이터 소스 딕셔너리 생성
-    data_sources = {"retail": retail_df, "institutional": institutional_df}
+    # 데이터 소스 딕셔너리 생성 (i, -i 플레이어에 대한 정보, 현재는 1:1 경우를 가정)
+    data_sources = {
+        "retail": (retail_df, institutional_df),
+        "institutional": (institutional_df, retail_df),
+    }
 
     # 데이터로더 준비
 

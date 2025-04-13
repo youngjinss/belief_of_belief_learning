@@ -10,7 +10,8 @@ class MarketDataset(Dataset):
 
     def __init__(
         self,
-        df,
+        i_df,
+        minus_i_df,
         config,
         target_cols=None,
         transform=True,
@@ -21,13 +22,15 @@ class MarketDataset(Dataset):
         데이터셋을 초기화합니다.
 
         Args:
-            df (pd.DataFrame): 시장 데이터가 포함된 DataFrame
+            i_df (pd.DataFrame): 플레이어 i의 시장 데이터 및 행동 분포 데이터가 포함된 DataFrame
+            minus_i_df (pd.DataFrame): 플레이어 -i의 시장 데이터 및 행동 분포 데이터가 포함된 DataFrame
             config (dict): 모델 설정이 포함된 구성 딕셔너리
             target_cols (list): 타겟 변수의 열 이름 목록
             transform (bool): OHLCV 데이터를 표준화할지 여부
             source_type (str): 데이터 소스 유형 ('retail' 또는 'institutional')
         """
-        self.df = df
+        self.i_df = i_df
+        self.minus_i_df = minus_i_df
         self.context_length = config["model"][config["model"]["select"]][
             "context_length"
         ]
@@ -60,7 +63,7 @@ class MarketDataset(Dataset):
         self.self_action_cols = self.long_cols + self.short_cols
 
     def __len__(self):
-        return max(0, len(self.df) - self.context_length)
+        return max(0, len(self.i_df) - self.context_length)
 
     def __getitem__(self, idx):
         """데이터셋에서 샘플을 가져옵니다."""
@@ -79,7 +82,7 @@ class MarketDataset(Dataset):
             )
 
         # 컨텍스트 윈도우의 OHLCV 데이터 추출
-        ohlcv_window = self.df.iloc[context_start:context_end][self.ohlcv_cols]
+        ohlcv_window = self.i_df.iloc[context_start:context_end][self.ohlcv_cols]
         if ohlcv_window.shape[0] == 0:
             print(context_start, context_end)
             print(idx, ohlcv_window)
@@ -91,24 +94,24 @@ class MarketDataset(Dataset):
             ohlcv_data = ohlcv_window.values
 
         # 컨텍스트 윈도우에 대한 에이전트 자신의 행동 분포 추출
-        self_actions = self.df.iloc[context_start:context_end][
+        self_actions = self.i_df.iloc[context_start:context_end][
             self.self_action_cols
         ].values
 
         # 다른 플레이어의 행동도 관측 가능
-        other_actions = self.df.iloc[context_start:context_end][
+        other_actions = self.minus_i_df.iloc[context_start:context_end][
             self.self_action_cols
         ].values
 
         # 타겟: 다음 단계의 에이전트 행동 분포
-        target = self.df.iloc[idx][self.target_cols].values
+        target = self.i_df.iloc[idx][self.target_cols].values
 
         # torch 텐서로 변환
         ohlcv_tensor = torch.FloatTensor(ohlcv_data)
         self_actions_tensor = torch.FloatTensor(self_actions)
         other_actions_tensor = torch.FloatTensor(other_actions)
         target_tensor = torch.FloatTensor(target)
-        
+
         return {
             "ohlcv": ohlcv_tensor,
             "self_actions": self_actions_tensor,
@@ -139,19 +142,25 @@ def prepare_dataloaders(data_sources, config=None):
 
     loaders = {}
 
-    for source_name, df in data_sources.items():
+    for source_name, (i_df, minus_i_df) in data_sources.items():
         # 데이터프레임 전처리 (타임스탬프 설정 등)
-        if not isinstance(df.index, pd.DatetimeIndex):
-            df.index = pd.to_datetime(df.index)
+        if not isinstance(i_df.index, pd.DatetimeIndex):
+            i_df.index = pd.to_datetime(i_df.index)
+        if not isinstance(minus_i_df.index, pd.DatetimeIndex):
+            minus_i_df.index = pd.to_datetime(minus_i_df.index)
 
         # 데이터 분할 및 로더 생성
         context_length = config["model"][config["model"]["select"]]["context_length"]
-        n_samples = len(df) - context_length
+        n_samples = len(i_df) - context_length
 
         if val_ratio <= 0:
             # 검증 데이터셋 없이 전체 데이터셋 사용
             dataset = MarketDataset(
-                df, config=config, source_type=source_name, target_cols=target_cols
+                i_df,
+                minus_i_df,
+                config=config,
+                source_type=source_name,
+                target_cols=target_cols,
             )
             loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
             loaders[source_name] = {"train": loader, "val": None}
@@ -161,15 +170,26 @@ def prepare_dataloaders(data_sources, config=None):
             data_size = n_samples - val_size
 
             # 데이터셋 생성
-            data_df = df.iloc[: data_size + context_length]
-            val_df = df.iloc[data_size:]
+            i_data_df = i_df.iloc[: data_size + context_length]
+            i_val_df = i_df.iloc[data_size:]
+
+            minus_i_data_df = minus_i_df.iloc[: data_size + context_length]
+            minus_i_val_df = minus_i_df.iloc[data_size:]
 
             # 데이터셋 생성
             dataset = MarketDataset(
-                data_df, config=config, source_type=source_name, target_cols=target_cols
+                i_data_df,
+                minus_i_data_df,
+                config=config,
+                source_type=source_name,
+                target_cols=target_cols,
             )
             val_dataset = MarketDataset(
-                val_df, config=config, source_type=source_name, target_cols=target_cols
+                i_val_df,
+                minus_i_val_df,
+                config=config,
+                source_type=source_name,
+                target_cols=target_cols,
             )
 
             # 데이터로더 생성

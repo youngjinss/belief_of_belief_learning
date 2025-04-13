@@ -4,7 +4,9 @@ import random
 from torch.utils.tensorboard import SummaryWriter
 
 
-def train_model(trainer, train_loader, val_loader, config=None, logger=None, save_path=None):
+def train_model(
+    trainer, train_loader, val_loader, config=None, logger=None, save_path=None
+):
     """
     Train the model with early stopping.
 
@@ -61,7 +63,7 @@ def train_model(trainer, train_loader, val_loader, config=None, logger=None, sav
         # Training
         trainer.model.train()
         train_losses = []
-        
+
         # index도 출력
         for idx, batch in enumerate(train_loader):
             x_ohlcv = batch["ohlcv"].to(device)
@@ -72,7 +74,7 @@ def train_model(trainer, train_loader, val_loader, config=None, logger=None, sav
             loss = trainer.train_step(
                 x_ohlcv, x_self_actions, x_other_actions, y_target
             )
-            
+
             # 10% 확률로 loss 출력
             if random.random() < 0.1:
                 log_warning(f"[PROCESS] 학습 손실: {loss:.4f}")

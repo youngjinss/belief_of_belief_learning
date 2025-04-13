@@ -228,9 +228,9 @@ class HierarchicalTransformerModel(nn.Module):
             "cross_attention": cross_attn_weights,
         }
 
-        # softmax 적용
-        predictions = F.softmax(predictions, dim=-1)
-
+        if predictions.isnan().any():  # fixme debug
+            print(f"[경고] NaN 예측 값 발견: {predictions}")
+            
         return predictions, attention_weights
 
 
@@ -260,12 +260,15 @@ class HierarchicalModelTrainer:
 
         predictions, _ = self.model(ohlcv, agent_actions, other_actions)
 
-        # Calculate KL divergence loss
-        loss = F.kl_div(torch.log(predictions + 1e-10), torch.log(targets + 1e-10), reduction="batchmean")
+        loss = F.kl_div(torch.log(predictions + 1e-10), targets, reduction="batchmean", log_target=False)
 
-        # NaN 값 검사 및 로깅
-        if torch.isnan(loss):
+        # NaN 값 검사 및 로깅  # fixme debug
+        if loss.item() == 0:
             print(f"[경고] NaN 손실 값 발견: {loss.item()}")
+            print("predictions: ", predictions)
+            print("log predictions: ", torch.log(predictions + 1e-10))
+            print("targets: ", targets)
+            print("log targets: ", torch.log(targets + 1e-10))
         
         loss.backward()
         self.optimizer.step()
@@ -287,12 +290,15 @@ class HierarchicalModelTrainer:
         """
         predictions, attention_weights = self.model(ohlcv, agent_actions, other_actions)
 
-        # Calculate KL divergence loss
-        loss = F.kl_div(torch.log(predictions + 1e-10), torch.log(targets + 1e-10), reduction="batchmean")
+        loss = F.kl_div(torch.log(predictions + 1e-10), targets, reduction="batchmean", log_target=False)
 
-        # NaN 값 검사 및 로깅
-        if torch.isnan(loss):
+        # NaN 값 검사 및 로깅   # fixme debug  # fixme debug
+        if loss.item() == 0:
             print(f"[경고] NaN 손실 값 발견: {loss.item()}")
+            print("predictions: ", predictions)
+            print("log predictions: ", torch.log(predictions + 1e-10))
+            print("targets: ", targets)
+            print("log targets: ", torch.log(targets + 1e-10))
             
         return loss.item(), attention_weights
 

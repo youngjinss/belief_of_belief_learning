@@ -38,7 +38,7 @@ model:
   # HBT 모델 구조
   hbt:
     action_dim: 40         # 행동 분포 차원 (20 롱 + 20 숏)
-    hidden_dim: 128         # 은닉층 차원 크기
+    hidden_dim: 256         # 은닉층 차원 크기
     output_dim: 40         # 출력 차원 (행동 분포와 동일)
     context_length: 240      # 컨텍스트 창의 시간 단계 수
     num_heads: 8           # 어텐션 헤드 수

@@ -5,9 +5,9 @@ START_TIME=$(date +"%Y-%m-%d %H:%M:%S")
 SCRIPT_NAME="preprocess_bi_log_samebins.py"
 
 # 기본값 설정
-WINDOW_SIZE="1800000"
-TYPE_THRESHOLD="0.25"
-QUANTILE="20"
+WINDOW_SIZE="900000"
+TYPE_THRESHOLD="0.20"
+QUANTILE="50"
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DATA_DIR="${PROJECT_DIR}/data/binance/futures/um/monthly/aggTrades/BTCUSDT"
 OUTPUT_DIR="${PROJECT_DIR}/data/binance/futures/um/monthly/position_distribution/${WINDOW_SIZE}"

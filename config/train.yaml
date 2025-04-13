@@ -27,7 +27,7 @@ model:
     learning_rate: 0.001  # 학습률
     patience: 20         # 조기 종료 대기 에폭 수
     val_ratio: 0.1       # 검증 데이터 비율
-    device: "cuda:2"       # 학습 장치 (cuda 또는 cpu)
+    device: "cuda:3"       # 학습 장치 (cuda 또는 cpu)
 
     # 텐서보드 설정
     tensorboard:
@@ -43,11 +43,11 @@ model:
     context_length: 240      # 컨텍스트 창의 시간 단계 수
     num_heads: 8           # 어텐션 헤드 수
     dropout: 0.1           # 드롭아웃 비율
-    use_other_player_beliefs: false  # 다른 플레이어 신념 사용 여부
+    use_other_player_beliefs: true  # 다른 플레이어 신념 사용 여부
     
     # 벤치마크 모델 설정
     benchmark:
-      enabled: true        # 벤치마크 모델 사용 여부
+      enabled: false        # 벤치마크 모델 사용 여부
     
     # 모델 저장/로드 경로
     save_path:

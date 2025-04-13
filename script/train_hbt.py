@@ -332,6 +332,16 @@ def main():
     hidden_dim = model_config["hidden_dim"]
     context_length = model_config["context_length"]
     learning_rate = config["model"]["training"]["learning_rate"]
+    
+    # args.model_type에 따라 config 내의 학습 모델 유형 업데이트
+    if args.model_type == "proposed" or args.model_type == "both":
+        config["model"]["hbt"]["use_other_player_beliefs"] = True
+        config["model"]["hbt"]["benchmark"]["enabled"] = False
+    elif args.model_type == "benchmark":
+        config["model"]["hbt"]["use_other_player_beliefs"] = False
+        config["model"]["hbt"]["benchmark"]["enabled"] = True
+    else:
+        raise ValueError(f"지원되지 않는 모델 유형: {args.model_type}")
 
     # 선택된 모델 유형에 따라 모델 학습
     if args.model_type == "proposed" or args.model_type == "both":

@@ -21,12 +21,11 @@ dataloader:
 model:
   select: "hbt"
 
-  # 학습 설정
-  inference:
-    batch_size: 512       # 배치 크기
-    num_epochs: 200       # 에폭 수
-    val_ratio: 0.1       # 검증 데이터 비율
-    device: "cuda:3"       # 학습 장치 (cuda 또는 cpu)
+  # 추론 설정
+  batch_size: 512       # 배치 크기
+  num_epochs: 200       # 에폭 수
+  val_ratio: 0.1       # 검증 데이터 비율
+  device: "cuda:3"       # 학습 장치 (cuda 또는 cpu)
     
   # HBT 모델 구조
   hbt:
@@ -45,6 +44,7 @@ model:
     # 모델 저장/로드 경로
     save_path:
       version: "2025-04-14 00:36:31"
+      path: null
       proposed: "best_hbt_model.pth"
       benchmark: "best_hbt_benchmark.pth"
 

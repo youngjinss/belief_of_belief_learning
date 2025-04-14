@@ -136,8 +136,8 @@ def prepare_dataloaders(data_sources, config=None):
         raise ValueError("config is None")
 
     # 설정에서 매개변수 추출
-    batch_size = config["model"]["training"]["batch_size"]
-    val_ratio = config["model"]["training"]["val_ratio"]
+    batch_size = config["model"]["batch_size"]
+    val_ratio = config["model"]["val_ratio"]
     target_cols = config["dataloader"]["columns"]["target_cols"]
 
     loaders = {}
@@ -153,7 +153,7 @@ def prepare_dataloaders(data_sources, config=None):
         context_length = config["model"][config["model"]["select"]]["context_length"]
         n_samples = len(i_df) - context_length
 
-        if val_ratio <= 0:
+        if val_ratio == 0:
             # 검증 데이터셋 없이 전체 데이터셋 사용
             dataset = MarketDataset(
                 i_df,
@@ -164,6 +164,16 @@ def prepare_dataloaders(data_sources, config=None):
             )
             loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
             loaders[source_name] = {"train": loader, "val": None}
+        elif val_ratio < 0:
+            # test dataset 사용
+            dataset = MarketDataset(
+                i_df,
+                minus_i_df,
+                config=config,
+                source_type=source_name,
+            )
+            loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
+            loaders[source_name] = {"test": loader}
         else:
             # 데이터를 학습 및 검증 세트로 분할
             val_size = int(n_samples * val_ratio)

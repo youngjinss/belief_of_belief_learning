@@ -22,19 +22,18 @@ model:
   select: "hbt"
 
   # 학습 설정
-  training:
-    batch_size: 512       # 배치 크기
-    num_epochs: 200       # 에폭 수
-    learning_rate: 0.0001  # 학습률
-    patience: 50         # 조기 종료 대기 에폭 수
-    val_ratio: 0.1       # 검증 데이터 비율
-    device: "cuda:2"       # 학습 장치 (cuda 또는 cpu)
+  batch_size: 512       # 배치 크기
+  num_epochs: 200       # 에폭 수
+  learning_rate: 0.0001  # 학습률
+  patience: 50         # 조기 종료 대기 에폭 수
+  val_ratio: 0.1       # 검증 데이터 비율
+  device: "cuda:2"       # 학습 장치 (cuda 또는 cpu)
 
-    # 텐서보드 설정
-    tensorboard:
-      enabled: true       # 텐서보드 활성화 여부
-      port: 8888          # 텐서보드 실행 포트
-      log_dir: "runs"     # 텐서보드 로그 디렉토리
+  # 텐서보드 설정
+  tensorboard:
+    enabled: true       # 텐서보드 활성화 여부
+    port: 8888          # 텐서보드 실행 포트
+    log_dir: "runs"     # 텐서보드 로그 디렉토리
     
   # HBT 모델 구조
   hbt:

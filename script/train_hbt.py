@@ -210,7 +210,7 @@ def main():
     parser.add_argument(
         "--log_dir",
         type=str,
-        default="./log/test/",
+        default="./log/train/test/",
         help="로그 파일 저장 디렉토리 경로",
     )
     parser.add_argument(
@@ -261,8 +261,8 @@ def main():
     # tensorboard 디렉토리를 log_dir 밑에 생성
     tensorboard_dir = os.path.join(log_dir, "tensorboard")
     create_directory(tensorboard_dir)
-    config["model"]["training"]["tensorboard"]["log_dir"] = tensorboard_dir
-    tensorboard_port = config["model"]["training"]["tensorboard"]["port"]
+    config["model"]["tensorboard"]["log_dir"] = tensorboard_dir
+    tensorboard_port = config["model"]["tensorboard"]["port"]
     logger.info(f"[PROCESS] 텐서보드 활성화됨 - 로그 디렉토리: {tensorboard_dir}")
     logger.info(
         f"[HELP] 학습 진행 상황을 보려면 다음 명령어 실행: tensorboard --logdir={tensorboard_dir} --port={tensorboard_port}"
@@ -314,7 +314,7 @@ def main():
     )
     combined_train_loader = DataLoader(
         combined_train_dataset,
-        batch_size=config["model"]["training"]["batch_size"],
+        batch_size=config["model"]["batch_size"],
         shuffle=True,
     )
 
@@ -323,7 +323,7 @@ def main():
     )
     combined_val_loader = DataLoader(
         combined_val_dataset,
-        batch_size=config["model"]["training"]["batch_size"],
+        batch_size=config["model"]["batch_size"],
         shuffle=True,
     )
 
@@ -333,7 +333,7 @@ def main():
     action_dim = model_config["action_dim"]
     hidden_dim = model_config["hidden_dim"]
     context_length = model_config["context_length"]
-    learning_rate = config["model"]["training"]["learning_rate"]
+    learning_rate = config["model"]["learning_rate"]
 
     # args.model_type에 따라 config 내의 학습 모델 유형 업데이트
     if args.model_type == "proposed" or args.model_type == "both":

@@ -11,7 +11,7 @@ log/*
 lib/maxe/
 lib/pymarketsim/
 lib/utils/telegrambot.py
-lib/lb-forecasting/
+lib/lb-foraging/
 
 # 데이터 폴더 무시
 data/

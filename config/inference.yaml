@@ -24,7 +24,7 @@ model:
   # 추론 설정
   batch_size: 512       # 배치 크기
   num_epochs: 200       # 에폭 수
-  val_ratio: 0.1       # 검증 데이터 비율
+  val_ratio: -1         # test dataset 사용
   device: "cuda:3"       # 학습 장치 (cuda 또는 cpu)
     
   # HBT 모델 구조

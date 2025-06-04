@@ -1,15 +1,24 @@
 .vscode
+
+# lib 폴더 내 폴더 무시
 lib/abides-jpmc-public/
 lib/build/
 lib/multi-agent-framework/
 lib/RepBelief/
 lib/UNKNOWN.egg-info/
+lib/AmortizedNestedReasoning/
 log/*
 lib/maxe/
 lib/pymarketsim/
-data/
-log/
 lib/utils/telegrambot.py
+lib/lb-foraging/
+lib/pogema/
+
+# 데이터 폴더 무시
+data/
+
+# 로그 폴더 무시
+log/
 
 # 모든 하위 폴더의 __pycache__ 폴더 무시
 __pycache__/

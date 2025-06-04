@@ -6,6 +6,8 @@
 [v4] concatenate_ohlcv_w_pd.ipynb -> 개인, 기관별 klines(ohlcv) + position distribuiton concat
 [v5] train /inference model
 
+[v6] 수식 결합 피드백 -> construction.py는 너무 복잡함 (돌리기엔 부적합))
+
 ## 학습 기록
 1. [data 1, v5] 30m, i_df, -i_df 수정 후 기록
 2025-04-13 16:22:36: benchmark

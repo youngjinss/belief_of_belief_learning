@@ -14,12 +14,12 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Constants
-N_SAMPLES = 10
+N_SAMPLES = 15
 DEFAULT_BETA = 2.0
 DEFAULT_N_ITEMS = 2
 DEFAULT_MAX_VALUE = 10.0
-DEFAULT_N_PREFERENCE_POINTS = 21
-DEFAULT_N_PRICE_POINTS = 21
+DEFAULT_N_PREFERENCE_POINTS = 71
+DEFAULT_N_PRICE_POINTS = 41
 EPSILON = 1e-10
 EXPERIMENT_TIME = datetime.now().strftime("%Y%m%d_%H%M")
 RESULT_DIR = f"./results/exp2/{EXPERIMENT_TIME}/"

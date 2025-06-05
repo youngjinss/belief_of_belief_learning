@@ -16,6 +16,7 @@ lib/pogema/
 
 # 데이터 폴더 무시
 data/
+results/
 
 # 로그 폴더 무시
 log/

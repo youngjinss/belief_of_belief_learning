@@ -1,4 +1,7 @@
-## 전반적인 버전 기록 
+## exp2 버전 기록
+[v0] synthetic data 연구
+
+## exp1 버전 기록 (archive) 
 [v0] 시뮬레이션 기반 추론 연구
 [v1] 데이터 기반 예측 연구
 [v2] 데이터 탐색 (e.g., WRDS, COT, Binance, 등등)

@@ -76,7 +76,7 @@ echo "파이썬 스크립트: $SCRIPT_NAME"
 echo "사용 인자: --window_size $WINDOW_SIZE --type_threshold $TYPE_THRESHOLD --quantile $QUANTILE --project_dir $PROJECT_DIR --data_dir $DATA_DIR --output_dir $OUTPUT_DIR"
 
 # 파이썬 스크립트 백그라운드에서 실행
-nohup python "script/${SCRIPT_NAME}" \
+nohup python "script/exp1/${SCRIPT_NAME}" \
     --window_size "$WINDOW_SIZE" \
     --type_threshold "$TYPE_THRESHOLD" \
     --quantile "$QUANTILE" \

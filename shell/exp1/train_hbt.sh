@@ -73,7 +73,7 @@ echo "파이썬 스크립트: $SCRIPT_NAME"
 echo "사용 인자: --model_type $MODEL_TYPE --config_path $CONFIG_PATH --project_dir $PROJECT_DIR --log_dir $LOG_DIR --telegrambot $TELEGRAMBOT"
 
 # 파이썬 스크립트 백그라운드에서 실행
-nohup python "script/${SCRIPT_NAME}" \
+nohup python "script/exp1/${SCRIPT_NAME}" \
     --model_type "$MODEL_TYPE" \
     --config_path "$CONFIG_PATH" \
     --project_dir "$PROJECT_DIR" \

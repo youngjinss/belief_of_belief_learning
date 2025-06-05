@@ -4,7 +4,8 @@ from datetime import datetime
 from typing import Dict, Tuple, Protocol, Optional
 import matplotlib.pyplot as plt
 import logging
-from tqdm import tqdm, trange
+from tqdm import tqdm
+import multiprocessing as mp
 
 import numpy as np
 from scipy.special import softmax
@@ -14,12 +15,13 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Constants
+MAX_LEVEL = 2
 N_SAMPLES = 15
 DEFAULT_BETA = 2.0
 DEFAULT_N_ITEMS = 2
 DEFAULT_MAX_VALUE = 10.0
-DEFAULT_N_PREFERENCE_POINTS = 71
-DEFAULT_N_PRICE_POINTS = 41
+DEFAULT_N_PREFERENCE_POINTS = 81
+DEFAULT_N_PRICE_POINTS = 51
 EPSILON = 1e-10
 EXPERIMENT_TIME = datetime.now().strftime("%Y%m%d_%H%M")
 RESULT_DIR = f"./results/exp2/{EXPERIMENT_TIME}/"
@@ -511,10 +513,85 @@ def create_agent_hierarchy(max_level: int, beta: float = DEFAULT_BETA) -> Dict:
     return agents
 
 
+def compute_single_combination(args):
+    """각 (r_apple, d_apple) 조합에 대한 계산을 수행하는 worker 함수"""
+    r_apple, d_apple, beta, max_level = args
+
+    # Create generalized agent hierarchy for this worker
+    agents = create_agent_hierarchy(max_level=max_level, beta=beta)
+
+    vector_r = np.array([r_apple, DEFAULT_MAX_VALUE - r_apple])
+    vector_d = np.array([d_apple, DEFAULT_MAX_VALUE - d_apple])
+
+    # Get policies P^{agent,t=1} from generalized agents
+    P_level0_current = agents["buyer_l0"].get_P_t1(vector_d, vector_r)
+    P_level1_current = agents["buyer_l1"].get_P_t1(vector_d, vector_r)
+    P_level1_advanced_current = agents["buyer_l1_advanced"].get_P_t1(vector_d, vector_r)
+    P_level2_advanced_current = agents["buyer_l2_advanced"].get_P_t1(vector_d, vector_r)
+
+    # Calculate belief updates D_KL for both actions a_1
+    belief_updates_level1 = []
+    belief_updates_level1_def = []
+    belief_updates_level2_def = []
+
+    for action_a1 in range(DEFAULT_N_ITEMS):
+        # Level1 seller belief update
+        _, posterior_p_r_given_a_level1 = agents["seller_l1"].p_r_given_a(
+            action_a1, vector_d
+        )
+        prior_p_r = NotationUtils.create_uniform_prior_p_r(
+            len(posterior_p_r_given_a_level1)
+        )
+        belief_update_D_KL_level1 = InformationTheoryMetrics.update_belief(
+            prior_p_r, posterior_p_r_given_a_level1
+        )
+        belief_updates_level1.append(belief_update_D_KL_level1)
+
+        # Level1 defensive seller belief update
+        _, posterior_p_r_given_a_defensive = agents["seller_l1_defensive"].p_r_given_a(
+            action_a1, vector_d
+        )
+        belief_update_D_KL_defensive = InformationTheoryMetrics.update_belief(
+            prior_p_r, posterior_p_r_given_a_defensive
+        )
+        belief_updates_level1_def.append(belief_update_D_KL_defensive)
+
+        # Level2 defensive seller belief update
+        _, posterior_p_r_given_a_level2_def = agents["seller_l2_defensive"].p_r_given_a(
+            action_a1, vector_d
+        )
+        belief_update_D_KL_level2_def = InformationTheoryMetrics.update_belief(
+            prior_p_r, posterior_p_r_given_a_level2_def
+        )
+        belief_updates_level2_def.append(belief_update_D_KL_level2_def)
+
+    return {
+        "r_apple": r_apple,
+        "d_apple": d_apple,
+        "policies": {
+            "P_level0": P_level0_current,
+            "P_level1": P_level1_current,
+            "P_level1_advanced": P_level1_advanced_current,
+            "P_level2_advanced": P_level2_advanced_current,
+        },
+        "belief_updates": {
+            "level1": belief_updates_level1,
+            "level1_def": belief_updates_level1_def,
+            "level2_def": belief_updates_level2_def,
+        },
+    }
+
+
 def run_systematic_analysis(
-    beta: float = DEFAULT_BETA, n_samples: int = 20, max_level: int = 2
+    beta: float = DEFAULT_BETA,
+    n_samples: int = 20,
+    max_level: int = 2,
+    n_processes: int = None,
 ):
-    """Run systematic analysis with generalized level-l agents"""
+    """Run systematic analysis with generalized level-l agents using parallel processing"""
+
+    if n_processes is None:
+        n_processes = mp.cpu_count() - 1  # 하나의 CPU는 남겨둠
 
     # Create parameter grids for **r** and **d**
     candidate_vector_r = np.linspace(1, 9, n_samples)
@@ -544,93 +621,71 @@ def run_systematic_analysis(
         },
     }
 
-    # Create generalized agent hierarchy
-    agents = create_agent_hierarchy(max_level=max_level, beta=beta)
+    logger.info(f"Starting parallel computation with {n_processes} processes")
+    logger.info(
+        f"Total combinations: {len(candidate_vector_r)} × {len(candidate_vector_d)} = {len(candidate_vector_r) * len(candidate_vector_d)}"
+    )
 
-    logger.info(f"Created agent hierarchy up to level {max_level}")
-    for agent_name in agents.keys():
-        logger.info(f"  - {agent_name}")
+    # 모든 (r_apple, d_apple) 조합 생성
+    all_combinations = [
+        (r_apple, d_apple, beta, max_level)
+        for r_apple in candidate_vector_r
+        for d_apple in candidate_vector_d
+    ]
 
+    # 병렬 처리
+    with mp.Pool(processes=n_processes) as pool:
+        # tqdm으로 진행 상황 표시
+        parallel_results = list(
+            tqdm(
+                pool.imap(compute_single_combination, all_combinations),
+                total=len(all_combinations),
+                desc="Processing combinations in parallel",
+            )
+        )
+
+    logger.info("Parallel computation completed. Aggregating results...")
+
+    # 결과를 r_apple별로 그룹화하고 집계
     for pref_idx, r_apple in tqdm(
         enumerate(candidate_vector_r),
-        desc="Processing preference vectors **r**",
+        desc="Aggregating results by preference",
         total=len(candidate_vector_r),
     ):
-        vector_r = np.array([r_apple, DEFAULT_MAX_VALUE - r_apple])
 
-        # Calculate policies P^{agent,t=1} for different distances **d**
-        P_level0 = []
-        P_level1 = []
-        P_level1_advanced = []
-        P_level2_advanced = []
+        # 현재 r_apple에 해당하는 결과들 필터링
+        current_r_results = [
+            r for r in parallel_results if np.isclose(r["r_apple"], r_apple)
+        ]
 
+        # 정렬 (d_apple 순서대로)
+        current_r_results.sort(key=lambda x: x["d_apple"])
+
+        # 각 레벨의 정책들 수집
+        P_level0 = np.array([r["policies"]["P_level0"] for r in current_r_results])
+        P_level1 = np.array([r["policies"]["P_level1"] for r in current_r_results])
+        P_level1_advanced = np.array(
+            [r["policies"]["P_level1_advanced"] for r in current_r_results]
+        )
+        P_level2_advanced = np.array(
+            [r["policies"]["P_level2_advanced"] for r in current_r_results]
+        )
+
+        # Belief updates 수집
         belief_updates_D_KL_level1_seller = []
         belief_updates_D_KL_level1_seller_defensive = []
         belief_updates_D_KL_level2_seller_defensive = []
 
-        for dist_idx in trange(
-            len(candidate_vector_d), desc="Processing distance vectors **d**"
-        ):
-            d_apple = candidate_vector_d[dist_idx]
-            vector_d = np.array([d_apple, DEFAULT_MAX_VALUE - d_apple])
-
-            # Get policies P^{agent,t=1} from generalized agents
-            P_level0_current = agents["buyer_l0"].get_P_t1(vector_d, vector_r)
-            P_level1_current = agents["buyer_l1"].get_P_t1(vector_d, vector_r)
-            P_level1_advanced_current = agents["buyer_l1_advanced"].get_P_t1(
-                vector_d, vector_r
+        for r in current_r_results:
+            belief_updates_D_KL_level1_seller.extend(r["belief_updates"]["level1"])
+            belief_updates_D_KL_level1_seller_defensive.extend(
+                r["belief_updates"]["level1_def"]
             )
-            P_level2_advanced_current = agents["buyer_l2_advanced"].get_P_t1(
-                vector_d, vector_r
+            belief_updates_D_KL_level2_seller_defensive.extend(
+                r["belief_updates"]["level2_def"]
             )
-
-            P_level0.append(P_level0_current)
-            P_level1.append(P_level1_current)
-            P_level1_advanced.append(P_level1_advanced_current)
-            P_level2_advanced.append(P_level2_advanced_current)
-
-            # Calculate belief updates D_KL for both actions a_1
-            for action_a1 in range(DEFAULT_N_ITEMS):
-                # Level1 seller belief update
-                _, posterior_p_r_given_a_level1 = agents["seller_l1"].p_r_given_a(
-                    action_a1, vector_d
-                )
-                prior_p_r = NotationUtils.create_uniform_prior_p_r(
-                    len(posterior_p_r_given_a_level1)
-                )
-                belief_update_D_KL_level1 = InformationTheoryMetrics.update_belief(
-                    prior_p_r, posterior_p_r_given_a_level1
-                )
-                belief_updates_D_KL_level1_seller.append(belief_update_D_KL_level1)
-
-                # Level1 defensive seller belief update
-                _, posterior_p_r_given_a_defensive = agents[
-                    "seller_l1_defensive"
-                ].p_r_given_a(action_a1, vector_d)
-                belief_update_D_KL_defensive = InformationTheoryMetrics.update_belief(
-                    prior_p_r, posterior_p_r_given_a_defensive
-                )
-                belief_updates_D_KL_level1_seller_defensive.append(
-                    belief_update_D_KL_defensive
-                )
-
-                # Level2 defensive seller belief update
-                _, posterior_p_r_given_a_level2_def = agents[
-                    "seller_l2_defensive"
-                ].p_r_given_a(action_a1, vector_d)
-                belief_update_D_KL_level2_def = InformationTheoryMetrics.update_belief(
-                    prior_p_r, posterior_p_r_given_a_level2_def
-                )
-                belief_updates_D_KL_level2_seller_defensive.append(
-                    belief_update_D_KL_level2_def
-                )
 
         # Calculate mutual information I(**r**, a_1)
-        P_level0 = np.array(P_level0)
-        P_level1 = np.array(P_level1)
-        P_level1_advanced = np.array(P_level1_advanced)
-        P_level2_advanced = np.array(P_level2_advanced)
-
         mi_I_r_a1_level0 = InformationTheoryMetrics.compute_I_r_a1(
             np.array([r_apple]), P_level0
         )
@@ -670,7 +725,7 @@ def run_systematic_analysis(
         results["L2B_vs_L2S_D"]["policies_P"].append(P_level2_advanced.mean(axis=0))
 
         logger.info(
-            f"[Systematic Analysis] Completed {pref_idx + 1}/{len(candidate_vector_r)}"
+            f"[Systematic Analysis] Aggregated results for preference {pref_idx + 1}/{len(candidate_vector_r)}"
         )
 
     # Save results with notation
@@ -743,16 +798,15 @@ def plot_results(results: Dict, candidate_vector_r: np.ndarray):
     ax = axes[1, 1]
     naive_mi_I_r_a1 = results["L0B_vs_L1S"]["mutual_info_I_r_a1"]
     for key in results.keys():
-        if "L1B" in key or "L2B" in key:
-            deception_delta_I = np.array(naive_mi_I_r_a1) - np.array(
-                results[key]["mutual_info_I_r_a1"]
-            )
-            ax.plot(
-                candidate_vector_r,
-                deception_delta_I,
-                label=key,
-                linewidth=2,
-            )
+        deception_delta_I = np.array(naive_mi_I_r_a1) - np.array(
+            results[key]["mutual_info_I_r_a1"]
+        )
+        ax.plot(
+            candidate_vector_r,
+            deception_delta_I,
+            label=key,
+            linewidth=2,
+        )
     ax.set_xlabel("Buyer Preference for Apple (**r**[apple])")
     ax.set_ylabel("Deception Effectiveness (ΔI)")
     ax.set_title("Information Hiding: Deception vs Naive")
@@ -768,9 +822,12 @@ def plot_results(results: Dict, candidate_vector_r: np.ndarray):
 if __name__ == "__main__":
     logger.info("Running systematic analysis with generalized level-l agents...")
 
-    # Run analysis with level hierarchy up to 2
+    # Run analysis with level hierarchy up to 2 and parallel processing
     results, candidate_vector_r = run_systematic_analysis(
-        beta=2.0, n_samples=N_SAMPLES, max_level=2
+        beta=DEFAULT_BETA,
+        n_samples=N_SAMPLES,
+        max_level=MAX_LEVEL,
+        n_processes=None,  # None = CPU 수 - 1
     )
 
     logger.info("Plotting results...")

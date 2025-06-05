@@ -14,11 +14,12 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Constants
+N_SAMPLES = 10
 DEFAULT_BETA = 2.0
 DEFAULT_N_ITEMS = 2
 DEFAULT_MAX_VALUE = 10.0
-DEFAULT_N_PREFERENCE_POINTS = 101
-DEFAULT_N_PRICE_POINTS = 51
+DEFAULT_N_PREFERENCE_POINTS = 51
+DEFAULT_N_PRICE_POINTS = 31
 EPSILON = 1e-10
 EXPERIMENT_TIME = datetime.now().strftime("%Y%m%d_%H%M")
 RESULT_DIR = f"./results/exp2/{EXPERIMENT_TIME}/"
@@ -591,9 +592,17 @@ def run_systematic_analysis(beta: float = DEFAULT_BETA, n_samples: int = 20):
             f"[Systematic Analysis] Completed {pref_idx + 1}/{len(preference_values)}"
         )
 
-    # save result data in json file
+    # save result data in json file - convert numpy arrays to lists
+    results_serializable = {}
+    for key, value in results.items():
+        results_serializable[key] = {
+            "mutual_info": [float(x) for x in value["mutual_info"]],
+            "belief_updates": [float(x) for x in value["belief_updates"]],
+            "policies": [policy.tolist() for policy in value["policies"]],
+        }
+
     with open(DATA_DIR, "w") as f:
-        json.dump(results, f)
+        json.dump(results_serializable, f, indent=2)
 
     return results, preference_values
 
@@ -677,7 +686,7 @@ if __name__ == "__main__":
     logger.info("Running systematic analysis to reproduce paper results...")
 
     # Run analysis
-    results, preference_values = run_systematic_analysis(beta=2.0, n_samples=15)
+    results, preference_values = run_systematic_analysis(beta=2.0, n_samples=N_SAMPLES)
 
     logger.info("Plotting results...")
     # Plot results

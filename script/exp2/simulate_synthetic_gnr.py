@@ -20,8 +20,8 @@ N_SAMPLES = 15
 DEFAULT_BETA = 2.0
 DEFAULT_N_ITEMS = 2
 DEFAULT_MAX_VALUE = 10.0
-DEFAULT_N_PREFERENCE_POINTS = 81
-DEFAULT_N_PRICE_POINTS = 51
+DEFAULT_N_PREFERENCE_POINTS = 101
+DEFAULT_N_PRICE_POINTS = 81
 EPSILON = 1e-10
 EXPERIMENT_TIME = datetime.now().strftime("%Y%m%d_%H%M")
 RESULT_DIR = f"./results/exp2/{EXPERIMENT_TIME}/"
@@ -35,7 +35,8 @@ if not os.path.exists(RESULT_DIR):
 class BuyerAgentProtocol(Protocol):
     """Protocol for buyer agents based on notation"""
 
-    def get_P_t1(self, vector_d: np.ndarray, vector_r: np.ndarray) -> np.ndarray: ...
+    def get_P_t1(self, vector_d: np.ndarray, vector_r: np.ndarray) -> np.ndarray:
+        ...
 
 
 class SellerAgentProtocol(Protocol):
@@ -43,11 +44,13 @@ class SellerAgentProtocol(Protocol):
 
     def p_r_given_a(
         self, observed_action_a1: int, vector_d: np.ndarray
-    ) -> Tuple[np.ndarray, np.ndarray]: ...
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        ...
 
     def compute_m_star(
         self, preference_grid_r: np.ndarray, posterior_p_r_given_a: np.ndarray
-    ) -> np.ndarray: ...
+    ) -> np.ndarray:
+        ...
 
 
 class NotationUtils:
@@ -477,6 +480,11 @@ class InformationTheoryMetrics:
         """Measure D_KL(p(**r** | a_1) || p(**r**))"""
         return InformationTheoryMetrics.D_KL(posterior_p_r_given_a, prior_p_r)
 
+    @staticmethod
+    def policy_mismatch(assumed_policy: np.ndarray, actual_policy: np.ndarray) -> float:
+        """Measure D_KL(actual_policy || assumed_policy) - for Figure 3H"""
+        return InformationTheoryMetrics.D_KL(actual_policy, assumed_policy)
+
 
 def create_agent_hierarchy(max_level: int, beta: float = DEFAULT_BETA) -> Dict:
     """Create agent hierarchy up to max_level recursively"""
@@ -529,41 +537,52 @@ def compute_single_combination(args):
     P_level1_advanced_current = agents["buyer_l1_advanced"].get_P_t1(vector_d, vector_r)
     P_level2_advanced_current = agents["buyer_l2_advanced"].get_P_t1(vector_d, vector_r)
 
-    # Calculate belief updates D_KL for both actions a_1
-    belief_updates_level1 = []
-    belief_updates_level1_def = []
-    belief_updates_level2_def = []
+    # Determine which item is closer (for Figure 3G)
+    closer_item = 0 if d_apple < (DEFAULT_MAX_VALUE - d_apple) else 1
 
-    for action_a1 in range(DEFAULT_N_ITEMS):
-        # Level1 seller belief update
-        _, posterior_p_r_given_a_level1 = agents["seller_l1"].p_r_given_a(
-            action_a1, vector_d
-        )
-        prior_p_r = NotationUtils.create_uniform_prior_p_r(
-            len(posterior_p_r_given_a_level1)
-        )
-        belief_update_D_KL_level1 = InformationTheoryMetrics.update_belief(
-            prior_p_r, posterior_p_r_given_a_level1
-        )
-        belief_updates_level1.append(belief_update_D_KL_level1)
+    # Calculate belief updates D_KL only for the closer item selection
+    # Level1 seller belief update when closer item is chosen
+    _, posterior_p_r_given_a_level1 = agents["seller_l1"].p_r_given_a(
+        closer_item, vector_d
+    )
+    prior_p_r = NotationUtils.create_uniform_prior_p_r(
+        len(posterior_p_r_given_a_level1)
+    )
+    belief_update_level1 = InformationTheoryMetrics.update_belief(
+        prior_p_r, posterior_p_r_given_a_level1
+    )
 
-        # Level1 defensive seller belief update
-        _, posterior_p_r_given_a_defensive = agents["seller_l1_defensive"].p_r_given_a(
-            action_a1, vector_d
-        )
-        belief_update_D_KL_defensive = InformationTheoryMetrics.update_belief(
-            prior_p_r, posterior_p_r_given_a_defensive
-        )
-        belief_updates_level1_def.append(belief_update_D_KL_defensive)
+    # Level1 defensive seller belief update when closer item is chosen
+    _, posterior_p_r_given_a_defensive = agents["seller_l1_defensive"].p_r_given_a(
+        closer_item, vector_d
+    )
+    belief_update_level1_def = InformationTheoryMetrics.update_belief(
+        prior_p_r, posterior_p_r_given_a_defensive
+    )
 
-        # Level2 defensive seller belief update
-        _, posterior_p_r_given_a_level2_def = agents["seller_l2_defensive"].p_r_given_a(
-            action_a1, vector_d
-        )
-        belief_update_D_KL_level2_def = InformationTheoryMetrics.update_belief(
-            prior_p_r, posterior_p_r_given_a_level2_def
-        )
-        belief_updates_level2_def.append(belief_update_D_KL_level2_def)
+    # Level2 defensive seller belief update when closer item is chosen
+    _, posterior_p_r_given_a_level2_def = agents["seller_l2_defensive"].p_r_given_a(
+        closer_item, vector_d
+    )
+    belief_update_level2_def = InformationTheoryMetrics.update_belief(
+        prior_p_r, posterior_p_r_given_a_level2_def
+    )
+
+    # Calculate policy mismatch (for Figure 3H)
+    # What Lv1 seller assumes vs actual Lv1 buyer
+    policy_mismatch_l0_vs_l1 = InformationTheoryMetrics.policy_mismatch(
+        P_level0_current, P_level1_current
+    )
+
+    # What Lv1 seller assumes vs actual Lv1 advanced buyer
+    policy_mismatch_l0_vs_l1_adv = InformationTheoryMetrics.policy_mismatch(
+        P_level0_current, P_level1_advanced_current
+    )
+
+    # What Lv2 defensive seller assumes vs actual Lv2 buyer
+    policy_mismatch_l1_adv_vs_l2_adv = InformationTheoryMetrics.policy_mismatch(
+        P_level1_advanced_current, P_level2_advanced_current
+    )
 
     return {
         "r_apple": r_apple,
@@ -575,10 +594,16 @@ def compute_single_combination(args):
             "P_level2_advanced": P_level2_advanced_current,
         },
         "belief_updates": {
-            "level1": belief_updates_level1,
-            "level1_def": belief_updates_level1_def,
-            "level2_def": belief_updates_level2_def,
+            "level1": belief_update_level1,
+            "level1_def": belief_update_level1_def,
+            "level2_def": belief_update_level2_def,
         },
+        "policy_mismatches": {
+            "l0_vs_l1": policy_mismatch_l0_vs_l1,
+            "l0_vs_l1_adv": policy_mismatch_l0_vs_l1_adv,
+            "l1_adv_vs_l2_adv": policy_mismatch_l1_adv_vs_l2_adv,
+        },
+        "closer_item": closer_item,
     }
 
 
@@ -591,33 +616,37 @@ def run_systematic_analysis(
     """Run systematic analysis with generalized level-l agents using parallel processing"""
 
     if n_processes is None:
-        n_processes = mp.cpu_count() - 1  # 하나의 CPU는 남겨둠
+        n_processes = mp.cpu_count() - 1
 
     # Create parameter grids for **r** and **d**
     candidate_vector_r = np.linspace(1, 9, n_samples)
     candidate_vector_d = np.linspace(1, 9, n_samples)
 
-    # Store results
+    # Store results - x축을 distance로 변경
     results = {
         "L0B_vs_L1S": {
-            "mutual_info_I_r_a1": [],
-            "belief_updates_D_KL": [],
-            "policies_P": [],
+            "mutual_info_I_r_a1": [],  # distance별 MI
+            "belief_updates_D_KL": [],  # distance별 belief update (closer item chosen)
+            "policies_P": [],  # distance별 평균 policy
+            "seller_error": [],  # distance별 policy mismatch (Figure 3H)
         },
         "L1B_vs_L1S": {
             "mutual_info_I_r_a1": [],
             "belief_updates_D_KL": [],
             "policies_P": [],
+            "seller_error": [],
         },
         "L1B_vs_L1S_D": {
             "mutual_info_I_r_a1": [],
             "belief_updates_D_KL": [],
             "policies_P": [],
+            "seller_error": [],
         },
         "L2B_vs_L2S_D": {
             "mutual_info_I_r_a1": [],
             "belief_updates_D_KL": [],
             "policies_P": [],
+            "seller_error": [],
         },
     }
 
@@ -635,7 +664,6 @@ def run_systematic_analysis(
 
     # 병렬 처리
     with mp.Pool(processes=n_processes) as pool:
-        # tqdm으로 진행 상황 표시
         parallel_results = list(
             tqdm(
                 pool.imap(compute_single_combination, all_combinations),
@@ -646,86 +674,98 @@ def run_systematic_analysis(
 
     logger.info("Parallel computation completed. Aggregating results...")
 
-    # 결과를 r_apple별로 그룹화하고 집계
-    for pref_idx, r_apple in tqdm(
-        enumerate(candidate_vector_r),
-        desc="Aggregating results by preference",
-        total=len(candidate_vector_r),
+    # 결과를 d_apple별로 그룹화하고 집계
+    for dist_idx, d_apple in tqdm(
+        enumerate(candidate_vector_d),
+        desc="Aggregating results by distance",
+        total=len(candidate_vector_d),
     ):
-
-        # 현재 r_apple에 해당하는 결과들 필터링
-        current_r_results = [
-            r for r in parallel_results if np.isclose(r["r_apple"], r_apple)
+        # 현재 d_apple에 해당하는 결과들 필터링
+        current_d_results = [
+            r for r in parallel_results if np.isclose(r["d_apple"], d_apple)
         ]
 
-        # 정렬 (d_apple 순서대로)
-        current_r_results.sort(key=lambda x: x["d_apple"])
+        # 정렬 (r_apple 순서대로)
+        current_d_results.sort(key=lambda x: x["r_apple"])
 
-        # 각 레벨의 정책들 수집
-        P_level0 = np.array([r["policies"]["P_level0"] for r in current_r_results])
-        P_level1 = np.array([r["policies"]["P_level1"] for r in current_r_results])
-        P_level1_advanced = np.array(
-            [r["policies"]["P_level1_advanced"] for r in current_r_results]
+        # 각 레벨의 정책들 수집 (모든 preference에 대한 정책)
+        P_level0_all_prefs = np.array(
+            [r["policies"]["P_level0"] for r in current_d_results]
         )
-        P_level2_advanced = np.array(
-            [r["policies"]["P_level2_advanced"] for r in current_r_results]
+        P_level1_all_prefs = np.array(
+            [r["policies"]["P_level1"] for r in current_d_results]
+        )
+        P_level1_advanced_all_prefs = np.array(
+            [r["policies"]["P_level1_advanced"] for r in current_d_results]
+        )
+        P_level2_advanced_all_prefs = np.array(
+            [r["policies"]["P_level2_advanced"] for r in current_d_results]
         )
 
-        # Belief updates 수집
-        belief_updates_D_KL_level1_seller = []
-        belief_updates_D_KL_level1_seller_defensive = []
-        belief_updates_D_KL_level2_seller_defensive = []
+        # Calculate mutual information I(**r**, a_1) for current distance
+        preference_values = np.array([r["r_apple"] for r in current_d_results])
 
-        for r in current_r_results:
-            belief_updates_D_KL_level1_seller.extend(r["belief_updates"]["level1"])
-            belief_updates_D_KL_level1_seller_defensive.extend(
-                r["belief_updates"]["level1_def"]
-            )
-            belief_updates_D_KL_level2_seller_defensive.extend(
-                r["belief_updates"]["level2_def"]
-            )
-
-        # Calculate mutual information I(**r**, a_1)
         mi_I_r_a1_level0 = InformationTheoryMetrics.compute_I_r_a1(
-            np.array([r_apple]), P_level0
+            preference_values, P_level0_all_prefs
         )
         mi_I_r_a1_level1 = InformationTheoryMetrics.compute_I_r_a1(
-            np.array([r_apple]), P_level1
+            preference_values, P_level1_all_prefs
         )
         mi_I_r_a1_level1_advanced = InformationTheoryMetrics.compute_I_r_a1(
-            np.array([r_apple]), P_level1_advanced
+            preference_values, P_level1_advanced_all_prefs
         )
         mi_I_r_a1_level2_advanced = InformationTheoryMetrics.compute_I_r_a1(
-            np.array([r_apple]), P_level2_advanced
+            preference_values, P_level2_advanced_all_prefs
+        )
+
+        # Get belief updates and policy mismatches (averages)
+        belief_updates_level1 = np.mean(
+            [r["belief_updates"]["level1"] for r in current_d_results]
+        )
+        belief_updates_level1_def = np.mean(
+            [r["belief_updates"]["level1_def"] for r in current_d_results]
+        )
+        belief_updates_level2_def = np.mean(
+            [r["belief_updates"]["level2_def"] for r in current_d_results]
+        )
+
+        policy_mismatch_l0_vs_l1 = np.mean(
+            [r["policy_mismatches"]["l0_vs_l1"] for r in current_d_results]
+        )
+        policy_mismatch_l0_vs_l1_adv = np.mean(
+            [r["policy_mismatches"]["l0_vs_l1_adv"] for r in current_d_results]
+        )
+        policy_mismatch_l1_adv_vs_l2_adv = np.mean(
+            [r["policy_mismatches"]["l1_adv_vs_l2_adv"] for r in current_d_results]
         )
 
         # Store results
         results["L0B_vs_L1S"]["mutual_info_I_r_a1"].append(mi_I_r_a1_level0)
-        results["L0B_vs_L1S"]["belief_updates_D_KL"].append(
-            np.mean(belief_updates_D_KL_level1_seller)
-        )
-        results["L0B_vs_L1S"]["policies_P"].append(P_level0.mean(axis=0))
+        results["L0B_vs_L1S"]["belief_updates_D_KL"].append(belief_updates_level1)
+        results["L0B_vs_L1S"]["policies_P"].append(P_level0_all_prefs.mean(axis=0))
+        results["L0B_vs_L1S"]["seller_error"].append(0.0)  # No error for baseline
 
         results["L1B_vs_L1S"]["mutual_info_I_r_a1"].append(mi_I_r_a1_level1)
-        results["L1B_vs_L1S"]["belief_updates_D_KL"].append(
-            np.mean(belief_updates_D_KL_level1_seller)
-        )
-        results["L1B_vs_L1S"]["policies_P"].append(P_level1.mean(axis=0))
+        results["L1B_vs_L1S"]["belief_updates_D_KL"].append(belief_updates_level1)
+        results["L1B_vs_L1S"]["policies_P"].append(P_level1_all_prefs.mean(axis=0))
+        results["L1B_vs_L1S"]["seller_error"].append(policy_mismatch_l0_vs_l1)
 
         results["L1B_vs_L1S_D"]["mutual_info_I_r_a1"].append(mi_I_r_a1_level1_advanced)
-        results["L1B_vs_L1S_D"]["belief_updates_D_KL"].append(
-            np.mean(belief_updates_D_KL_level1_seller_defensive)
+        results["L1B_vs_L1S_D"]["belief_updates_D_KL"].append(belief_updates_level1_def)
+        results["L1B_vs_L1S_D"]["policies_P"].append(
+            P_level1_advanced_all_prefs.mean(axis=0)
         )
-        results["L1B_vs_L1S_D"]["policies_P"].append(P_level1_advanced.mean(axis=0))
+        results["L1B_vs_L1S_D"]["seller_error"].append(policy_mismatch_l0_vs_l1_adv)
 
         results["L2B_vs_L2S_D"]["mutual_info_I_r_a1"].append(mi_I_r_a1_level2_advanced)
-        results["L2B_vs_L2S_D"]["belief_updates_D_KL"].append(
-            np.mean(belief_updates_D_KL_level2_seller_defensive)
+        results["L2B_vs_L2S_D"]["belief_updates_D_KL"].append(belief_updates_level2_def)
+        results["L2B_vs_L2S_D"]["policies_P"].append(
+            P_level2_advanced_all_prefs.mean(axis=0)
         )
-        results["L2B_vs_L2S_D"]["policies_P"].append(P_level2_advanced.mean(axis=0))
+        results["L2B_vs_L2S_D"]["seller_error"].append(policy_mismatch_l1_adv_vs_l2_adv)
 
         logger.info(
-            f"[Systematic Analysis] Aggregated results for preference {pref_idx + 1}/{len(candidate_vector_r)}"
+            f"[Systematic Analysis] Aggregated results for distance {dist_idx + 1}/{len(candidate_vector_d)}"
         )
 
     # Save results with notation
@@ -735,83 +775,131 @@ def run_systematic_analysis(
             "mutual_info_I_r_a1": [float(x) for x in value["mutual_info_I_r_a1"]],
             "belief_updates_D_KL": [float(x) for x in value["belief_updates_D_KL"]],
             "policies_P": [policy.tolist() for policy in value["policies_P"]],
+            "seller_error": [float(x) for x in value["seller_error"]],
         }
 
     with open(DATA_DIR, "w") as f:
         json.dump(results_serializable, f, indent=2)
 
-    return results, candidate_vector_r
+    return results, candidate_vector_d
 
 
-def plot_results(results: Dict, candidate_vector_r: np.ndarray):
-    """Plot results following notation"""
+def plot_results(results: Dict, candidate_vector_d: np.ndarray):
+    """Plot results following notation - including Figure 3G,H"""
 
-    fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+    fig, axes = plt.subplots(2, 3, figsize=(15, 10))
 
-    # Plot mutual information I(**r**, a₁)
+    # Plot mutual information I(**r**, a₁) - Figure 3F
     ax = axes[0, 0]
-    for key in results.keys():
-        ax.plot(
-            candidate_vector_r,
-            results[key]["mutual_info_I_r_a1"],
-            label=key,
-            linewidth=2,
-        )
-    ax.set_xlabel("Buyer Preference for Apple (**r**[apple])")
-    ax.set_ylabel("Mutual Information I(**r**, a₁)")
-    ax.set_title("Mutual Information: Preference Revelation")
+    ax.plot(
+        candidate_vector_d,
+        results["L0B_vs_L1S"]["mutual_info_I_r_a1"],
+        label="Lv0 buyer",
+        linewidth=2,
+        color="darkgreen",
+    )
+    ax.plot(
+        candidate_vector_d,
+        results["L1B_vs_L1S"]["mutual_info_I_r_a1"],
+        label="Lv1 buyer",
+        linewidth=2,
+        color="orange",
+    )
+    ax.plot(
+        candidate_vector_d,
+        results["L2B_vs_L2S_D"]["mutual_info_I_r_a1"],
+        label="Lv2 buyer",
+        linewidth=2,
+        color="lightgreen",
+    )
+    ax.set_xlabel("Distance to Apple")
+    ax.set_ylabel("Mutual Information I(r, a₁)")
+    ax.set_title("Figure 3F: Preference-Policy MI")
     ax.legend()
     ax.grid(True, alpha=0.3)
 
-    # Plot belief updates D_KL
+    # Plot belief updates D_KL - Figure 3G
     ax = axes[0, 1]
-    for key in results.keys():
-        ax.plot(
-            candidate_vector_r,
-            results[key]["belief_updates_D_KL"],
-            label=key,
-            linewidth=2,
-        )
-    ax.set_xlabel("Buyer Preference for Apple (**r**[apple])")
-    ax.set_ylabel("KL Divergence D_KL(p(**r**|a₁)||p(**r**))")
-    ax.set_title("Seller Skepticism: Belief Update Strength")
+    ax.plot(
+        candidate_vector_d,
+        results["L0B_vs_L1S"]["belief_updates_D_KL"],
+        label="Lv1 seller",
+        linewidth=2,
+        color="darkblue",
+    )
+    ax.plot(
+        candidate_vector_d,
+        results["L2B_vs_L2S_D"]["belief_updates_D_KL"],
+        label="Lv2 seller",
+        linewidth=2,
+        color="lightblue",
+    )
+    ax.set_xlabel("Distance to Apple")
+    ax.set_ylabel("KL Divergence")
+    ax.set_title("Figure 3G: Seller Skepticism")
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+
+    # Plot seller error - Figure 3H
+    ax = axes[0, 2]
+    ax.plot(
+        candidate_vector_d,
+        results["L1B_vs_L1S"]["seller_error"],
+        label="Lv1 seller error",
+        linewidth=2,
+        color="darkgreen",
+    )
+    ax.plot(
+        candidate_vector_d,
+        results["L2B_vs_L2S_D"]["seller_error"],
+        label="Lv2 seller error",
+        linewidth=2,
+        color="lightgreen",
+    )
+    ax.set_xlabel("Distance to Apple")
+    ax.set_ylabel("KL Divergence")
+    ax.set_title("Figure 3H: Seller Error")
     ax.legend()
     ax.grid(True, alpha=0.3)
 
     # Plot action probabilities P^{agent,t=1}
     ax = axes[1, 0]
-    for key in results.keys():
+    for key in ["L0B_vs_L1S", "L1B_vs_L1S", "L2B_vs_L2S_D"]:
         policies_P = np.array(results[key]["policies_P"])
         ax.plot(
-            candidate_vector_r,
+            candidate_vector_d,
             policies_P[:, 0],
-            label=f"{key.split('_vs_')[0]} P(Apple|t=1)",
+            label=f"{key.split('_vs_')[0]}",
             linewidth=2,
         )
-    ax.set_xlabel("Buyer Preference for Apple (**r**[apple])")
-    ax.set_ylabel("P^{b,t=1}(Choose Apple)")
-    ax.set_title("Strategic Behavior: Action Probabilities")
+    ax.set_xlabel("Distance to Apple")
+    ax.set_ylabel("P(Choose Apple)")
+    ax.set_title("Buyer Policies")
     ax.legend()
     ax.grid(True, alpha=0.3)
 
     # Plot deception effectiveness (ΔI)
     ax = axes[1, 1]
     naive_mi_I_r_a1 = results["L0B_vs_L1S"]["mutual_info_I_r_a1"]
-    for key in results.keys():
+    for key in ["L1B_vs_L1S", "L2B_vs_L2S_D"]:
         deception_delta_I = np.array(naive_mi_I_r_a1) - np.array(
             results[key]["mutual_info_I_r_a1"]
         )
         ax.plot(
-            candidate_vector_r,
+            candidate_vector_d,
             deception_delta_I,
-            label=key,
+            label=key.split("_vs_")[0],
             linewidth=2,
         )
-    ax.set_xlabel("Buyer Preference for Apple (**r**[apple])")
+    ax.set_xlabel("Distance to Apple")
     ax.set_ylabel("Deception Effectiveness (ΔI)")
-    ax.set_title("Information Hiding: Deception vs Naive")
+    ax.set_title("Information Hiding")
     ax.legend()
     ax.grid(True, alpha=0.3)
+
+    # Empty plot for layout
+    ax = axes[1, 2]
+    ax.axis("off")
 
     plt.tight_layout()
     plt.savefig(PLOT_DIR, dpi=300, bbox_inches="tight")
@@ -823,25 +911,27 @@ if __name__ == "__main__":
     logger.info("Running systematic analysis with generalized level-l agents...")
 
     # Run analysis with level hierarchy up to 2 and parallel processing
-    results, candidate_vector_r = run_systematic_analysis(
+    results, candidate_vector_d = run_systematic_analysis(
         beta=DEFAULT_BETA,
         n_samples=N_SAMPLES,
         max_level=MAX_LEVEL,
-        n_processes=None,  # None = CPU 수 - 1
+        n_processes=None,
     )
 
     logger.info("Plotting results...")
     # Plot results
-    plot_results(results, candidate_vector_r)
+    plot_results(results, candidate_vector_d)
 
     # Log summary statistics
     logger.info("\n=== Summary Statistics (Generalized Level-l Notation) ===")
     for key in results.keys():
         mi_I_r_a1_avg = np.mean(results[key]["mutual_info_I_r_a1"])
         belief_D_KL_avg = np.mean(results[key]["belief_updates_D_KL"])
+        seller_error_avg = np.mean(results[key]["seller_error"])
         logger.info(f"{key}:")
         logger.info(f"  Average I(**r**, a₁): {mi_I_r_a1_avg:.3f}")
         logger.info(f"  Average D_KL(p(**r**|a₁)||p(**r**)): {belief_D_KL_avg:.3f}")
+        logger.info(f"  Average Seller Error: {seller_error_avg:.3f}")
 
     # Demonstrate specific example with generalized agents
     logger.info("\n=== Example Interaction (Generalized Level-l) ===")

@@ -277,6 +277,7 @@ class LevelLSeller(BaseAgent, BayesianIRLMixin, PriceOptimizationMixin):
         self.level_l = level_l
         self.buyer_model = buyer_model
         self.n_preference_points = n_preference_points
+        self.prior_p_r = NotationUtils.create_uniform_prior_p_r(n_preference_points)
 
     def p_r_given_a(
         self, observed_action_a1: int, vector_d: np.ndarray
@@ -309,6 +310,10 @@ class LevelLSeller(BaseAgent, BayesianIRLMixin, PriceOptimizationMixin):
             return self.optimize_vector_m_star(
                 preference_grid_r, posterior_p_r_given_a, self.beta
             )
+
+    def get_prior(self) -> np.ndarray:
+        """Return the seller's prior belief over preferences"""
+        return self.prior_p_r.copy()
 
 
 class InformationTheoryMetrics:
@@ -396,21 +401,20 @@ def compute_single_combination(args):
     a_1_buyer = 0 if d_apple < (DEFAULT_MAX_VALUE - d_apple) else 1
 
     # Calculate belief updates
+    prior_p_r_level1 = agents["seller_l1"].get_prior()
     _, posterior_p_r_given_a_level1 = agents["seller_l1"].p_r_given_a(
         a_1_buyer, vector_d
     )
-    prior_p_r = NotationUtils.create_uniform_prior_p_r(
-        len(posterior_p_r_given_a_level1)
-    )
     belief_update_level1 = InformationTheoryMetrics.update_belief(
-        prior_p_r, posterior_p_r_given_a_level1
+        prior_p_r_level1, posterior_p_r_given_a_level1
     )
 
+    prior_p_r_level2 = agents["seller_l2"].get_prior()
     _, posterior_p_r_given_a_level2 = agents["seller_l2"].p_r_given_a(
         a_1_buyer, vector_d
     )
     belief_update_level2 = InformationTheoryMetrics.update_belief(
-        prior_p_r, posterior_p_r_given_a_level2
+        prior_p_r_level2, posterior_p_r_given_a_level2
     )
 
     # Calculate policy mismatches
@@ -497,7 +501,7 @@ def run_systematic_analysis(
     logger.info("Aggregating results...")
 
     # Aggregate results by distance
-    for dist_idx, d_apple in tqdm(
+    for _, d_apple in tqdm(
         enumerate(candidate_vector_d),
         desc="Aggregating by distance",
         total=len(candidate_vector_d),

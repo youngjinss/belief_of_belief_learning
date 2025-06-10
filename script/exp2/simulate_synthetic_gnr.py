@@ -33,53 +33,81 @@ if not os.path.exists(RESULT_DIR):
 
 
 class BuyerAgentProtocol(Protocol):
-    """Protocol for buyer agents based on notation"""
+    """
+    구매자 에이전트 프로토콜: 1단계에서 P^{b,t=1}_{k=l}(a_1 | **r**, **d**)를 구현
+    사용 용도: 판매자가 베이지안 추론 시 구매자 모델로 활용
+    결과물: 주어진 선호도와 거리에 대한 아이템 선택 확률 분포
+    """
 
     def get_P_t1(self, vector_d: np.ndarray, vector_r: np.ndarray) -> np.ndarray:
+        """선호도 **r**와 거리 **d**에 대한 1단계 정책 P^{b,t=1}(a_1|**r**,**d**) 반환"""
         ...
 
 
 class SellerAgentProtocol(Protocol):
-    """Protocol for seller agents based on notation"""
+    """
+    판매자 에이전트 프로토콜: 베이지안 추론과 가격 최적화를 구현
+    사용 용도: 구매자의 2단계 시뮬레이션에서 판매자 행동 예측
+    결과물: 구매자 행동 관측 후 추론된 선호도 분포와 최적 가격
+    """
 
     def p_r_given_a(
         self, observed_action_a1: int, vector_d: np.ndarray
     ) -> Tuple[np.ndarray, np.ndarray]:
+        """베이지안 추론: p^s(**r** | a_1) \propto P^b(a_1 | **r**, **d**) * p(**r**)"""
         ...
 
     def compute_m_star(
         self, preference_grid_r: np.ndarray, posterior_p_r_given_a: np.ndarray
     ) -> np.ndarray:
+        """최적 가격 **m***_{k=l} 계산: E[U^{t=3}_s(**m**)] 최대화"""
         ...
 
 
 class NotationUtils:
-    """Utility functions following mathematical notation"""
+    """
+    수학적 표기법을 따르는 유틸리티 함수들
+    사용 용도: 벡터 정규화, 격자 생성, 소프트맥스 정책 계산 등 공통 연산
+    결과물: 정규화된 벡터, 균등 분포, 소프트맥스 확률 분포
+    """
 
     @staticmethod
     def normalize_vector_to_sum(
         values: np.ndarray, target_sum: float = DEFAULT_MAX_VALUE
     ) -> np.ndarray:
-        """Normalize vector to sum to target value (constraint: r + d + m = 10)"""
+        """
+        제약 조건 적용: sum(**v**) = target_sum
+        목적: 선호도나 가격 벡터가 총합 제약을 만족하도록 정규화
+        """
         return values * target_sum / values.sum()
 
     @staticmethod
     def create_preference_grid_r(
         n_points: int = DEFAULT_N_PREFERENCE_POINTS,
     ) -> np.ndarray:
-        """Create preference grid for Bayesian inference over **r**"""
+        """
+        선호도 grid 생성: 베이지안 추론용 **r** 후보값들
+        계산: np.linspace(0, DEFAULT_MAX_VALUE, n_points)로 균등 분할
+        """
         return np.linspace(0, DEFAULT_MAX_VALUE, n_points)
 
     @staticmethod
     def create_uniform_prior_p_r(size: int) -> np.ndarray:
-        """Create uniform prior distribution p(**r**)"""
+        """
+        균등 사전 분포 p(**r**) 생성
+        계산: 1/size로 균등 확률 할당
+        """
         return np.ones(size) / size
 
     @staticmethod
     def compute_softmax_policy_P(
         q_values: np.ndarray, beta: float = DEFAULT_BETA
     ) -> np.ndarray:
-        """Compute softmax policy P^{agent,t} following notation"""
+        """
+        소프트맥스 정책 계산: P^{agent,t}(a | Q)
+        계산: sigma(beta * (Q(a_0) - Q(a_1))) for 2-item case
+        또는: softmax(beta * Q) for general case
+        """
         q_values = np.array(q_values)
         if len(q_values) == 2:
             diff = beta * (q_values[0] - q_values[1])
@@ -90,7 +118,11 @@ class NotationUtils:
 
 
 class BayesianIRLMixin:
-    """Mixin for Bayesian IRL functionality following p^s(**r** | a_1) notation"""
+    """
+    베이지안 역강화학습 기능: p^s(**r** | a_1) 구현
+    사용 용도: 판매자가 구매자의 1단계 행동을 보고 선호도 추론
+    결과물: 사후 확률 분포 p^s(**r** | a_1)
+    """
 
     def p_r_given_a_impl(
         self,
@@ -99,27 +131,33 @@ class BayesianIRLMixin:
         buyer_model: BuyerAgentProtocol,
         n_preference_points: int = DEFAULT_N_PREFERENCE_POINTS,
     ) -> Tuple[np.ndarray, np.ndarray]:
-        """Bayesian IRL: p^s(**r** | a_1) ∝ P^b(a_1 | **r**, **d**) * p(**r**)"""
-        preference_grid_r = NotationUtils.create_preference_grid_r(n_preference_points)
-        posterior_p_r_given_a = np.zeros_like(preference_grid_r)
-        prior_p_r = NotationUtils.create_uniform_prior_p_r(len(preference_grid_r))
+        """
+        베이지안 추론 구현: p^s(**r** | a_1) ∝ P^b(a_1 | **r**, **d**) * p(**r**)
+        """
+        preference_grid_r = NotationUtils.create_preference_grid_r(n_preference_points)  # 선호도 grid r_apple \in [0, 10] 생성
+        posterior_p_r_given_a = np.zeros_like(preference_grid_r)  # 사후 확률 분포 초기화
+        prior_p_r = NotationUtils.create_uniform_prior_p_r(len(preference_grid_r))  # 균등 사전 분포 생성
 
-        for i, r_apple in enumerate(preference_grid_r):
-            r_orange = DEFAULT_MAX_VALUE - r_apple
-            vector_r = np.array([r_apple, r_orange])
+        for i, r_apple in enumerate(preference_grid_r):  # 각 선호도 값에 대해
+            r_orange = DEFAULT_MAX_VALUE - r_apple  # 상대 아이템의 선호도 계산 (r_orange = 10 - r_apple로 설정)
+            vector_r = np.array([r_apple, r_orange])  # 선호도 벡터 생성
 
-            # Get P^b(a_1 | **r**, **d**) from buyer model
+            # 구매자 모델에서 P^b(a_1 | **r**, **d**) 계산
             P_b_t1 = buyer_model.get_P_t1(vector_d, vector_r)
             likelihood_P_b_a1 = P_b_t1[observed_action_a1]
-            posterior_p_r_given_a[i] = likelihood_P_b_a1 * prior_p_r[i]
+            posterior_p_r_given_a[i] = likelihood_P_b_a1 * prior_p_r[i]  # 우도 × 사전분포로 비정규화 사후분포 계산
 
-        # Normalize posterior
+        # 정규화하여 p^s(**r** | a_1) 반환
         posterior_p_r_given_a = posterior_p_r_given_a / np.sum(posterior_p_r_given_a)
         return preference_grid_r, posterior_p_r_given_a
 
 
 class PriceOptimizationMixin:
-    """Mixin for price optimization: **m***_{k} following notation"""
+    """
+    가격 최적화 기능: **m***_{k=l} 계산
+    사용 용도: 판매자가 추론된 선호도 분포를 바탕으로 수익 최대화 가격 설정
+    결과물: 최적 가격 벡터 **m***
+    """
 
     def optimize_vector_m_star(
         self,
@@ -128,19 +166,22 @@ class PriceOptimizationMixin:
         beta: float = DEFAULT_BETA,
         n_price_points: int = DEFAULT_N_PRICE_POINTS,
     ) -> np.ndarray:
-        """Optimize **m***_{k} with constraint that prices sum to max value"""
-        best_vector_m = np.array([DEFAULT_MAX_VALUE / 2, DEFAULT_MAX_VALUE / 2])
-        best_expected_U_s = 0
+        """
+        최적 가격 **m*** 계산: E[U^{t=3}_s(**m**)] 최대화
+        제약조건: sum(**m**) = DEFAULT_MAX_VALUE
+        """
+        best_vector_m = np.array([DEFAULT_MAX_VALUE / 2, DEFAULT_MAX_VALUE / 2])  # 초기 가격 설정 (m_apple = m_orange = 5)
+        best_expected_U_s = 0  # 최대 기대 수익 초기화
 
         for m_apple in np.linspace(0, DEFAULT_MAX_VALUE, n_price_points):
-            m_orange = DEFAULT_MAX_VALUE - m_apple
+            m_orange = DEFAULT_MAX_VALUE - m_apple  # m_orange = 10 - m_apple
             test_vector_m = np.array([m_apple, m_orange])
 
-            expected_U_s = self._calculate_E_U_s_t3(
+            expected_U_s = self._calculate_E_U_s_t3(  # 각 가격에 대해 기대 수익 E[U^{t=3}_s] 계산
                 preference_grid_r, posterior_p_r_given_a, test_vector_m, beta
             )
 
-            if expected_U_s > best_expected_U_s:
+            if expected_U_s > best_expected_U_s:  # 최대 기대 수익을 갖는 가격 선택
                 best_expected_U_s = expected_U_s
                 best_vector_m = test_vector_m
 
@@ -153,25 +194,33 @@ class PriceOptimizationMixin:
         vector_m: np.ndarray,
         beta: float,
     ) -> float:
-        """Calculate E[U^{t=3}_s(**m**)] for given prices"""
+        """
+        기대 판매자 수익 계산: E[U^{t=3}_s(**m**)]
+        """
         expected_U_s = 0
         for i, r_apple in enumerate(preference_grid_r):
             r_orange = DEFAULT_MAX_VALUE - r_apple
             vector_r = np.array([r_apple, r_orange])
 
-            # Q^{b,t=3} = **r** - **m**
+            # Q^{b,t=3}(i) = r(i) - m(i)
             q_values_b_t3 = vector_r - vector_m
+            
+            # P^b(a_3=i | **m**, **r**) = sigma(beta * (Q^{b,t=3}(i) - Q^{b,t=3}(j)))
             P_b_t3 = NotationUtils.compute_softmax_policy_P(q_values_b_t3, beta)
 
-            # U^{t=3}_s = **m** · P^b(a_3 | **m**)
-            U_s_t3 = np.sum(P_b_t3 * vector_m)
-            expected_U_s += posterior_p_r_given_a[i] * U_s_t3
+            # E[U^{t=3}_s]
+            U_s_t3 = np.sum(P_b_t3 * vector_m)  # \sum_i P^b(a_3=i | **m**, **r**) * m(i)
+            expected_U_s += posterior_p_r_given_a[i] * U_s_t3  # \sum_r p^s(r|a_1) * \sum_i P^b(a_3=i | **m**, **r**) * m(i)
 
         return expected_U_s
 
 
 class StrategicPlanningMixin:
-    """Mixin for strategic planning: Q^{b,t=1}_{k=l} following notation"""
+    """
+    전략적 계획 기능: Q^{b,t=1}_{k=l} 계산
+    사용 용도: level-l 구매자가 판매자의 반응을 예측하여 1단계 행동 최적화
+    결과물: 전략적 Q값 (즉석 보상 + 미래 기대 보상)
+    """
 
     def compute_Q_b_t1_kl(
         self,
@@ -180,25 +229,29 @@ class StrategicPlanningMixin:
         seller_model: SellerAgentProtocol,
         beta: float = DEFAULT_BETA,
     ) -> np.ndarray:
-        """Compute Q^{b,t=1}_{k=l} considering seller's response **m***_{k=(l-1)}"""
+        """
+        level-l 구매자의 전략적 Q값 계산
+        
+        공식: Q^{b,t=1}_{k=l}(i_1) = U^{t=1}_b(i_1) + E[U^{t=3}_b(**m***_{k=(l-1)})]
+        """
         q_values_Q_b_t1 = np.zeros(DEFAULT_N_ITEMS)
 
-        for action_a1 in range(DEFAULT_N_ITEMS):
-            # U^{t=1}_b = **r** - **d**
+        for action_a1 in range(DEFAULT_N_ITEMS):  # 각 1단계 행동 a_1에 대해:
+            # 현재 보상 U^{t=1}_b = r(a_1) - d(a_1)
             immediate_U_b_t1 = vector_r[action_a1] - vector_d[action_a1]
 
-            # Simulate seller's response: p^s(**r** | a_1) and **m***_{k=(l-1)}
+            # 판매자 시뮬레이션
             preference_grid_r, posterior_p_r_given_a = seller_model.p_r_given_a(
                 action_a1, vector_d
-            )
+            )  # p^s(**r** | a_1)
             vector_m_star = seller_model.compute_m_star(
                 preference_grid_r, posterior_p_r_given_a
-            )
+            )  # **m***
 
-            # E[U^{t=3}_b(**m***)]
-            q_values_stage3 = vector_r - vector_m_star
-            P_b_t3 = NotationUtils.compute_softmax_policy_P(q_values_stage3, beta)
-            expected_U_b_t3 = np.sum(P_b_t3 * q_values_stage3)
+            # 미래 기대 보상: E[U^{t=3}_b] = \sum_i  * ()
+            q_values_stage3 = vector_r - vector_m_star  # r(i) - m***(i)
+            P_b_t3 = NotationUtils.compute_softmax_policy_P(q_values_stage3, beta)  # P^b(a_3=i | **m***)
+            expected_U_b_t3 = np.sum(P_b_t3 * q_values_stage3)  # E[U^{t=3}_b] = \sum_i P^b(a_3=i | **m***) * (r(i) - m***(i))
 
             # Q^{b,t=1}_{k=l} = U^{t=1}_b + E[U^{t=3}_b]
             q_values_Q_b_t1[action_a1] = immediate_U_b_t1 + expected_U_b_t3
@@ -207,23 +260,31 @@ class StrategicPlanningMixin:
 
 
 class BaseAgent:
-    """Base agent class with common functionality"""
+    """
+    기본 에이전트 클래스: 공통 기능 제공
+    사용 용도: 소프트맥스 정책 계산 및 행동 선택
+    결과물: 확률적 행동 선택
+    """
 
     def __init__(self, beta: float = DEFAULT_BETA):
         self.beta = beta
 
     def compute_softmax_policy_P(self, q_values: np.ndarray) -> np.ndarray:
-        """Convert Q-values to P^{agent,t} using softmax"""
+        """Q값을 소프트맥스 정책 P^{agent,t}로 변환"""
         return NotationUtils.compute_softmax_policy_P(q_values, self.beta)
 
     def select_action_a(self, q_values: np.ndarray) -> int:
-        """Select action a based on softmax policy P^{agent,t}"""
+        """소프트맥스 정책에 따른 확률적 행동 선택"""
         policy_probs = self.compute_softmax_policy_P(q_values)
         return np.random.choice(len(q_values), p=policy_probs)
 
 
 class BuyerSellerEnvironment:
-    """3-stage buyer-seller interaction environment following notation"""
+    """
+    3단계 구매자-판매자 상호작용 환경
+    사용 용도: 게임 시뮬레이션 및 상태 관리
+    결과물: 각 단계별 상태 전이 및 최종 보상 계산
+    """
 
     def __init__(
         self,
@@ -237,7 +298,10 @@ class BuyerSellerEnvironment:
         self.items = ["apple", "orange"]
 
     def reset(self, vector_r: np.ndarray, vector_d: np.ndarray):
-        """Reset environment with buyer preferences **r** and distances **d**"""
+        """
+        환경 초기화: 구매자 선호도 **r**와 거리 **d** 설정
+        제약조건 적용: sum(**r**) = sum(**d**) = DEFAULT_MAX_VALUE
+        """
         assert len(vector_r) == self.n_items
         assert len(vector_d) == self.n_items
 
@@ -251,7 +315,7 @@ class BuyerSellerEnvironment:
         return self.get_state()
 
     def get_state(self):
-        """Get current environment state"""
+        """현재 환경 상태 반환"""
         return {
             "stage_t": self.stage_t,
             "vector_d": self.vector_d,
@@ -261,16 +325,18 @@ class BuyerSellerEnvironment:
         }
 
     def step(self, action: Dict):
-        """Execute action and move to next stage"""
-        if self.stage_t == 1:
+        """
+        행동 실행 및 다음 단계로 전이
+        """
+        if self.stage_t == 1:  # t=1: 구매자의 아이템 선택 저장
             self.buyer_choice_a1 = action["buyer_choice_a1"]
             self.stage_t = 2
 
-        elif self.stage_t == 2:
+        elif self.stage_t == 2:  # t=2: 판매자의 가격 설정
             self.vector_m = action["vector_m"]
             self.stage_t = 3
 
-        elif self.stage_t == 3:
+        elif self.stage_t == 3:  # t=3: 최종 구매 및 보상 계산
             buyer_choice_a3 = action["buyer_choice_a3"]
 
             # Calculate U^{total}_b and U^{total}_s
@@ -297,7 +363,11 @@ class BuyerSellerEnvironment:
 
 
 class LevelLBuyer(BaseAgent, StrategicPlanningMixin):
-    """Level-l buyer: Q^{b,t}_{k=l} - generalized for any level l"""
+    """
+    Level-l 구매자: Q^{b,t}_{k=l} 기반 행동 선택
+    사용 용도: 다양한 수준의 전략적 사고를 가진 구매자 모델링
+    결과물: 레벨별로 다른 1단계 정책, 동일한 3단계 정책
+    """
 
     def __init__(
         self,
@@ -307,29 +377,36 @@ class LevelLBuyer(BaseAgent, StrategicPlanningMixin):
     ):
         super().__init__(beta)
         self.level_l = level_l
-        self.seller_model = seller_model  # Level-(l-1) seller model
+        self.seller_model = seller_model  # Level-(l-1) seller model -> optimal deterministic 가정
 
     def act_t1(self, state: Dict) -> int:
-        """Choose item in t=1 based on Q^{b,t=1}_{k=l}"""
+        """
+        1단계 행동 선택: level에 따라 다른 Q값 계산
+        """
         if self.level_l == 0:
-            # Base case: Q^{b,t=1}_{k=0} = U^{t=1}_b
+            # Level-0: Q^{b,t=1}_{k=0} = **r** - **d** (근시안적)
             q_values_Q_b_t1_k0 = state["vector_r"] - state["vector_d"]
             return self.select_action_a(q_values_Q_b_t1_k0)
         else:
-            # Recursive case: Q^{b,t=1}_{k=l} using Level-(l-1) seller
+            # Level-l: Q^{b,t=1}_{k=l} = Q^{b,t=1}_{k=0} + E[U^{t=3}_b] (전략적)
             q_values_Q_b_t1_kl = self.compute_Q_b_t1_kl(
                 state["vector_d"], state["vector_r"], self.seller_model, self.beta
             )
             return self.select_action_a(q_values_Q_b_t1_kl)
 
     def act_t3(self, state: Dict) -> int:
-        """Choose item in t=3 based on Q^{b,t=3}_{k=l} = Q^{b,t=3}_{k=0}"""
-        # All levels use same t=3 strategy: Q^{b,t=3} = **r** - **m**
+        """
+        3단계 행동 선택: 모든 레벨이 동일
+        """
+        # Q^{b,t=3} = **r** - **m** (가격이 이미 정해진 상태)
         q_values_Q_b_t3 = state["vector_r"] - state["vector_m"]
         return self.select_action_a(q_values_Q_b_t3)
 
     def get_P_t1(self, vector_d: np.ndarray, vector_r: np.ndarray) -> np.ndarray:
-        """Get P^{b,t=1}_{k=l}(a_1 | **r**, **d**)"""
+        """
+        1단계 정책 확률 반환: P^{b,t=1}_{k=l}(a_1 | **r**, **d**)
+        판매자의 베이지안 추론에서 우도 함수로 사용
+        """
         if self.level_l == 0:
             # Base case: P^{b,t=1}_{k=0}
             q_values_Q_b_t1_k0 = vector_r - vector_d
@@ -343,7 +420,11 @@ class LevelLBuyer(BaseAgent, StrategicPlanningMixin):
 
 
 class LevelLSeller(BaseAgent, BayesianIRLMixin, PriceOptimizationMixin):
-    """Level-l seller: p^s(**r** | a_1) and **m***_{k=l} - generalized for any level l"""
+    """
+    Level-l 판매자: p^s(**r** | a_1) 추론 및 **m***_{k=l} 최적화
+    사용 용도: 다양한 수준의 구매자 모델링을 통한 전략적 가격 설정
+    결과물: 관측된 행동 기반 선호도 추론과 수익 최대화 가격
+    """
 
     def __init__(
         self,
@@ -355,16 +436,19 @@ class LevelLSeller(BaseAgent, BayesianIRLMixin, PriceOptimizationMixin):
     ):
         super().__init__(beta)
         self.level_l = level_l
-        self.buyer_model = buyer_model  # Level-(l-1) buyer model
+        self.buyer_model = buyer_model  # Level-(l-1) buyer model -> optimal deterministic 가정
         self.n_preference_points = n_preference_points
         self.defensive = defensive
 
     def p_r_given_a(
         self, observed_action_a1: int, vector_d: np.ndarray
     ) -> Tuple[np.ndarray, np.ndarray]:
-        """Perform p^s(**r** | a_1) ∝ P^b_{k=(l-1)}(a_1 | **r**, **d**) * p(**r**)"""
+        """
+        베이지안 선호도 추론: p^s(**r** | a_1)
+        a_1: 구매자가 stage 1에서 선택한 아이템
+        """
         if self.level_l == 0:
-            # Base case: random/uniform pricing (ignore buyer behavior)
+            # Level-0: 균등 분포 (구매자 행동 무시)
             preference_grid_r = NotationUtils.create_preference_grid_r(
                 self.n_preference_points
             )
@@ -373,7 +457,7 @@ class LevelLSeller(BaseAgent, BayesianIRLMixin, PriceOptimizationMixin):
             )
             return preference_grid_r, uniform_posterior
         else:
-            # Recursive case: use Level-(l-1) buyer model for Bayesian IRL
+            # Level-l: P^b_{k=(l-1)}(a_1 | **r**, **d**)를 우도로 사용한 베이지안 업데이트
             return self.p_r_given_a_impl(
                 observed_action_a1, vector_d, self.buyer_model, self.n_preference_points
             )
@@ -381,17 +465,19 @@ class LevelLSeller(BaseAgent, BayesianIRLMixin, PriceOptimizationMixin):
     def compute_m_star(
         self, preference_grid_r: np.ndarray, posterior_p_r_given_a: np.ndarray
     ) -> np.ndarray:
-        """Compute **m***_{k=l} based on posterior beliefs"""
+        """
+        최적 가격 계산: **m***_{k=l}
+        """
         if self.level_l == 0:
-            # Base case: random/uniform pricing
+            # Level-0: 균등 가격 (5, 5)
             return np.array([DEFAULT_MAX_VALUE / 2, DEFAULT_MAX_VALUE / 2])
         elif self.defensive:
-            # Defensive pricing against strategic buyer
+            # Defensive: 전략적 구매자에 대한 방어적 가격
             return self._compute_defensive_pricing(
                 preference_grid_r, posterior_p_r_given_a
             )
         else:
-            # Standard pricing optimization
+            # Standard: 표준 수익 최대화 가격
             return self.optimize_vector_m_star(
                 preference_grid_r, posterior_p_r_given_a, self.beta
             )
@@ -399,52 +485,67 @@ class LevelLSeller(BaseAgent, BayesianIRLMixin, PriceOptimizationMixin):
     def _compute_defensive_pricing(
         self, preference_grid_r: np.ndarray, posterior_p_r_given_a: np.ndarray
     ) -> np.ndarray:
-        """Compute defensive **m***_{k=l} against strategic buyer"""
+        """
+        방어적 가격 계산: 전략적 구매자의 블러핑에 방지 -> 왜 방어적인지?
+        """
         vector_m = np.zeros(DEFAULT_N_ITEMS)
         n_price_points = DEFAULT_N_PRICE_POINTS
 
-        for item in range(DEFAULT_N_ITEMS):
+        for item in range(DEFAULT_N_ITEMS):  # 각 아이템별로 독립적인 가격 최적화
             best_price = 0
             best_expected_U_s = 0
 
-            for price in np.linspace(0, DEFAULT_MAX_VALUE, n_price_points):
+            for price in np.linspace(0, DEFAULT_MAX_VALUE, n_price_points):  # 각 아이템의 가격별로
                 expected_U_s = 0
 
-                for i, r_apple in enumerate(preference_grid_r):
+                for i, r_apple in enumerate(preference_grid_r):  # 각 선호도 포인트별로
                     r_orange = DEFAULT_MAX_VALUE - r_apple
                     vector_r = np.array([r_apple, r_orange])
 
-                    # Test price vector **m**
+                    # 현재 아이템의 가격 벡터
                     test_vector_m = (
                         np.array([price, DEFAULT_MAX_VALUE - price])
                         if item == 0
                         else np.array([DEFAULT_MAX_VALUE - price, price])
                     )
 
-                    # Q^{b,t=3} = **r** - **m**
+                    # Q^{b,t=3} = sigma(beta * (**r** - **m**))
                     q_values_Q_b_t3 = vector_r - test_vector_m
                     P_b_t3 = NotationUtils.compute_softmax_policy_P(
                         q_values_Q_b_t3, self.beta
                     )
 
+                    # 현재 아이템의 가격 벡터에 대한 기대 판매자 수익 E[U^{t=3}_s]
                     expected_U_s += posterior_p_r_given_a[i] * P_b_t3[item] * price
 
-                if expected_U_s > best_expected_U_s:
+                if expected_U_s > best_expected_U_s:  # 가장 높은 기대 수익을 가지는 가격 선택
                     best_expected_U_s = expected_U_s
                     best_price = price
 
             vector_m[item] = best_price
 
-        # Ensure constraint: sum(**m**) = max_value
+        # 아이템별 최적가격 조합 후 제약조건 적용
         return NotationUtils.normalize_vector_to_sum(vector_m)
 
 
 class InformationTheoryMetrics:
-    """Calculate information-theoretic metrics I(**r**, a_1) and D_KL following notation"""
+    """
+    정보 이론 지표 계산: I(**r**, a_1) 및 D_KL
+    사용 용도: 선호도-행동 간 상호정보량, 믿음 업데이트 측정
+    결과물: 결과물에 사용되는 정보 이론적 지표들
+    """
 
     @staticmethod
     def compute_I_r_a1(preference_values: np.ndarray, policies: np.ndarray) -> float:
-        """Calculate I(**r**, a_1) between preferences and actions"""
+        """
+        상호정보량 계산: I(**r**, a_1)
+        
+        공식: I(r,a) = \sum_r \sum_a p(r,a) \log(p(r,a)/(p(r)p(a)))
+        
+        해석: 선호도와 행동 간의 의존성 측정
+        - 높은 값: 행동이 선호도를 잘 반영
+        - 낮은 값: 행동이 선호도와 무관 (기만 성공)
+        """
         n_prefs, n_actions = policies.shape
 
         # Marginal distribution over actions
@@ -465,7 +566,13 @@ class InformationTheoryMetrics:
 
     @staticmethod
     def D_KL(p: np.ndarray, q: np.ndarray) -> float:
-        """Calculate D_KL(p || q)"""
+        """
+        KL 발산 계산: D_KL(p || q)
+        
+        공식: \sum_i p(i) \log(p(i)/q(i))
+        
+        해석: 분포 p와 q 간의 차이 측정
+        """
         # Avoid log(0) by adding small epsilon
         p = p + EPSILON
         q = q + EPSILON
@@ -477,17 +584,37 @@ class InformationTheoryMetrics:
     def update_belief(
         prior_p_r: np.ndarray, posterior_p_r_given_a: np.ndarray
     ) -> float:
-        """Measure D_KL(p(**r** | a_1) || p(**r**))"""
+        """
+        믿음 업데이트 측정: D_KL(p(**r** | a_1) || p(**r**))
+        
+        용도: 판매자의 회의론(skepticism) 정도를 측정
+        해석: 구매자 행동으로 인한 판매자의 믿음 변화량으로 해석 가능
+        """
         return InformationTheoryMetrics.D_KL(posterior_p_r_given_a, prior_p_r)
 
     @staticmethod
     def policy_mismatch(assumed_policy: np.ndarray, actual_policy: np.ndarray) -> float:
-        """Measure D_KL(actual_policy || assumed_policy) - for Figure 3H"""
+        """
+        정책 불일치 측정: D_KL(actual_policy || assumed_policy)
+        
+        용도: 판매자의 구매자 모델 오류 측정
+        해석: 판매자가 가정한 구매자 행동과 실제 행동 간의 차이 (출력 값 차이)
+        """
         return InformationTheoryMetrics.D_KL(actual_policy, assumed_policy)
 
 
 def create_agent_hierarchy(max_level: int, beta: float = DEFAULT_BETA) -> Dict:
-    """Create agent hierarchy up to max_level recursively"""
+    """
+    에이전트 계층 구조 생성: Level-0부터 Level-max_level까지
+    사용 용도: 재귀적 에이전트 정의를 통한 다양한 수준의 전략적 사고 모델링
+    결과물: 각 레벨별 구매자/판매자 에이전트 딕셔너리
+    
+    구조:
+    - Level-0 구매자 → Level-1 판매자 → Level-1 구매자 → ... → Level-max_level
+    - 각 Level-l 에이전트는 Level-(l-1) 상대방 모델을 사용
+    - defensive seller: 전략적 구매자의 블러핑에 방지
+    - advanced buyer: 전략적 구매자 (간간히 블러핑 시도)
+    """
     agents = {}
 
     # Base case: Level-0 buyer
@@ -522,7 +649,16 @@ def create_agent_hierarchy(max_level: int, beta: float = DEFAULT_BETA) -> Dict:
 
 
 def compute_single_combination(args):
-    """각 (r_apple, d_apple) 조합에 대한 계산을 수행하는 worker 함수"""
+    """
+    단일 (r_apple, d_apple) 조합에 대한 지표 계산
+    사용 용도: 병렬 처리를 위한 워커 함수
+    결과물: 해당 조합에서의 정책, 믿음 업데이트, 정책 불일치 지표들
+    
+    과정:
+    1. 
+    2. 베이지안 추론을 통한 믿음 업데이트 계산
+    3. 정책 불일치 (판매자 오류) 계산
+    """
     r_apple, d_apple, beta, max_level = args
 
     # Create generalized agent hierarchy for this worker
@@ -537,39 +673,39 @@ def compute_single_combination(args):
     P_level1_advanced_current = agents["buyer_l1_advanced"].get_P_t1(vector_d, vector_r)
     P_level2_advanced_current = agents["buyer_l2_advanced"].get_P_t1(vector_d, vector_r)
 
-    # Determine which item is closer (for Figure 3G)
-    closer_item = 0 if d_apple < (DEFAULT_MAX_VALUE - d_apple) else 1
+    # Determine which item is closer for the seller (closer item is notation "a_1")
+    a_1_buyer = 0 if d_apple < (DEFAULT_MAX_VALUE - d_apple) else 1
 
     # Calculate belief updates D_KL only for the closer item selection
-    # Level1 seller belief update when closer item is chosen
+    # Level1 "standard" seller belief update when closer item is chosen
     _, posterior_p_r_given_a_level1 = agents["seller_l1"].p_r_given_a(
-        closer_item, vector_d
+        a_1_buyer, vector_d
     )
     prior_p_r = NotationUtils.create_uniform_prior_p_r(
         len(posterior_p_r_given_a_level1)
     )
     belief_update_level1 = InformationTheoryMetrics.update_belief(
         prior_p_r, posterior_p_r_given_a_level1
-    )
+    )  # level-1 판매자의 믿음 업데이트 정도: 판매자가 가정한 구매자 행동(posterior)과 실제 행동(prior_p_r) 간의 차이
 
-    # Level1 defensive seller belief update when closer item is chosen
+    # Level1 "defensive" seller belief update when closer item is chosen
     _, posterior_p_r_given_a_defensive = agents["seller_l1_defensive"].p_r_given_a(
-        closer_item, vector_d
+        a_1_buyer, vector_d
     )
     belief_update_level1_def = InformationTheoryMetrics.update_belief(
         prior_p_r, posterior_p_r_given_a_defensive
     )
 
-    # Level2 defensive seller belief update when closer item is chosen
+    # Level2 "defensive" seller belief update when closer item is chosen
     _, posterior_p_r_given_a_level2_def = agents["seller_l2_defensive"].p_r_given_a(
-        closer_item, vector_d
+        a_1_buyer, vector_d
     )
     belief_update_level2_def = InformationTheoryMetrics.update_belief(
         prior_p_r, posterior_p_r_given_a_level2_def
     )
 
-    # Calculate policy mismatch (for Figure 3H)
-    # What Lv1 seller assumes vs actual Lv1 buyer
+    # Calculate policy mismatch 
+    # What Lv1 seller assumes vs actual Lv1 buyer --> 왜 P_lvel0가 Lv1 seller assumption인지?
     policy_mismatch_l0_vs_l1 = InformationTheoryMetrics.policy_mismatch(
         P_level0_current, P_level1_current
     )
@@ -603,7 +739,7 @@ def compute_single_combination(args):
             "l0_vs_l1_adv": policy_mismatch_l0_vs_l1_adv,
             "l1_adv_vs_l2_adv": policy_mismatch_l1_adv_vs_l2_adv,
         },
-        "closer_item": closer_item,
+        "closer_item": a_1_buyer,
     }
 
 
@@ -613,7 +749,16 @@ def run_systematic_analysis(
     max_level: int = 2,
     n_processes: int = None,
 ):
-    """Run systematic analysis with generalized level-l agents using parallel processing"""
+    """
+    체계적 분석 실행: 다양한 선호도/거리 조합에서 정보 이론 지표 계산
+    사용 용도: Figure 3F,G,H 데이터 생성을 위한 대규모 시뮬레이션
+    결과물: 거리별 집계된 상호정보량, 믿음 업데이트, 정책 오류 지표
+    
+    분석 방법:
+    1. 병렬 처리로 모든 (선호도, 거리) 조합 계산
+    2. 거리별로 결과 집계 (선호도에 대한 평균/분포)
+    3. 각 에이전트 조합별 정보 이론 지표 계산
+    """
 
     if n_processes is None:
         n_processes = mp.cpu_count() - 1

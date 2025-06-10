@@ -1,3 +1,5 @@
+# pkill -f simulate_synthetic_gnr.py
+
 import os
 import json
 from datetime import datetime
@@ -479,6 +481,18 @@ def run_systematic_analysis(
             "policies_P": [],
             "seller_error": [],
         },
+        "L2B_vs_L1S": {
+            "mutual_info_I_r_a1": [],
+            "belief_updates_D_KL": [],
+            "policies_P": [],
+            "seller_error": [],
+        },
+        "L2B_vs_L2S": {
+            "mutual_info_I_r_a1": [],
+            "belief_updates_D_KL": [],
+            "policies_P": [],
+            "seller_error": [],
+        },
     }
 
     logger.info(f"Starting parallel computation with {n_processes} processes")
@@ -549,7 +563,7 @@ def run_systematic_analysis(
         policy_mismatch_l1_vs_l2 = np.mean(
             [r["policy_mismatches"]["l1_vs_l2"] for r in current_d_results]
         )
-
+        
         # Store results
         results["L0B_vs_L1S"]["mutual_info_I_r_a1"].append(mi_I_r_a1_level0)
         results["L0B_vs_L1S"]["belief_updates_D_KL"].append(belief_updates_level1)
@@ -561,10 +575,20 @@ def run_systematic_analysis(
         results["L1B_vs_L1S"]["policies_P"].append(P_level1_all_prefs.mean(axis=0))
         results["L1B_vs_L1S"]["seller_error"].append(policy_mismatch_l0_vs_l1)
 
-        results["L1B_vs_L2S"]["mutual_info_I_r_a1"].append(mi_I_r_a1_level2)
+        results["L1B_vs_L2S"]["mutual_info_I_r_a1"].append(mi_I_r_a1_level1)
         results["L1B_vs_L2S"]["belief_updates_D_KL"].append(belief_updates_level2)
         results["L1B_vs_L2S"]["policies_P"].append(P_level2_all_prefs.mean(axis=0))
         results["L1B_vs_L2S"]["seller_error"].append(policy_mismatch_l1_vs_l2)
+
+        results["L2B_vs_L1S"]["mutual_info_I_r_a1"].append(mi_I_r_a1_level2)
+        results["L2B_vs_L1S"]["belief_updates_D_KL"].append(belief_updates_level1)
+        results["L2B_vs_L1S"]["policies_P"].append(P_level2_all_prefs.mean(axis=0))
+        results["L2B_vs_L1S"]["seller_error"].append(policy_mismatch_l1_vs_l2)
+
+        results["L2B_vs_L2S"]["mutual_info_I_r_a1"].append(mi_I_r_a1_level2)
+        results["L2B_vs_L2S"]["belief_updates_D_KL"].append(belief_updates_level2)
+        results["L2B_vs_L2S"]["policies_P"].append(P_level2_all_prefs.mean(axis=0))
+        results["L2B_vs_L2S"]["seller_error"].append(policy_mismatch_l1_vs_l2)
 
     # Save results
     results_serializable = {}
@@ -592,14 +616,14 @@ def plot_results(results: Dict, candidate_vector_d: np.ndarray):
     ax.plot(
         candidate_vector_d,
         results["L0B_vs_L1S"]["mutual_info_I_r_a1"],
-        label="Lv0 buyer",
+        label="Lv0 buyer (vs Lv1 seller)",
         linewidth=2,
         color="darkgreen",
     )
     ax.plot(
         candidate_vector_d,
         results["L1B_vs_L1S"]["mutual_info_I_r_a1"],
-        label="Lv1 buyer",
+        label="Lv1 buyer (vs Lv1 seller)",
         linewidth=2,
         color="orange",
     )
@@ -610,9 +634,24 @@ def plot_results(results: Dict, candidate_vector_d: np.ndarray):
         linewidth=2,
         color="lightgreen",
     )
+    ax.plot(
+        candidate_vector_d,
+        results["L2B_vs_L1S"]["mutual_info_I_r_a1"],
+        label="Lv2 buyer (vs Lv1 seller)",
+        linewidth=2,
+        color="lightblue",
+    )
+    ax.plot(
+        candidate_vector_d,
+        results["L2B_vs_L2S"]["mutual_info_I_r_a1"],
+        label="Lv2 buyer (vs Lv2 seller)",
+        linewidth=2,
+        alpha=0.8,
+        color="red",
+    )
     ax.set_xlabel("Distance to Apple")
     ax.set_ylabel("Mutual Information I(r, a₁)")
-    ax.set_title("Figure 3F: Preference-Policy MI")
+    ax.set_title("Preference-Policy MI")
     ax.legend()
     ax.grid(True, alpha=0.3)
 
@@ -621,20 +660,27 @@ def plot_results(results: Dict, candidate_vector_d: np.ndarray):
     ax.plot(
         candidate_vector_d,
         results["L0B_vs_L1S"]["belief_updates_D_KL"],
-        label="Lv1 seller",
+        label="Lv0 seller (vs Lv0 buyer)",
         linewidth=2,
         color="darkblue",
     )
     ax.plot(
         candidate_vector_d,
-        results["L1B_vs_L2S"]["belief_updates_D_KL"],
-        label="Lv2 seller",
+        results["L1B_vs_L1S"]["belief_updates_D_KL"],
+        label="Lv1 seller (vs Lv1 buyer)",
         linewidth=2,
-        color="lightblue",
+        color="orange",
+    )
+    ax.plot(
+        candidate_vector_d,
+        results["L2B_vs_L2S"]["belief_updates_D_KL"],
+        label="Lv2 seller (vs Lv2 buyer)",
+        linewidth=2,
+        color="lightgreen",
     )
     ax.set_xlabel("Distance to Apple")
     ax.set_ylabel("KL Divergence")
-    ax.set_title("Figure 3G: Seller Skepticism")
+    ax.set_title("Seller Skepticism")
     ax.legend()
     ax.grid(True, alpha=0.3)
 
@@ -643,20 +689,28 @@ def plot_results(results: Dict, candidate_vector_d: np.ndarray):
     ax.plot(
         candidate_vector_d,
         results["L1B_vs_L1S"]["seller_error"],
-        label="Lv1 seller error",
+        label="Lv1 seller error (vs Lv1 buyer)",
         linewidth=2,
         color="darkgreen",
     )
     ax.plot(
         candidate_vector_d,
         results["L1B_vs_L2S"]["seller_error"],
-        label="Lv2 seller error",
+        label="Lv2 seller error (vs Lv1 buyer)",
         linewidth=2,
         color="lightgreen",
     )
+    ax.plot(
+        candidate_vector_d,
+        results["L2B_vs_L2S"]["seller_error"],
+        label="Lv2 seller error (vs Lv2 buyer)",
+        linewidth=2,
+        alpha=0.8,
+        color="red",
+    )
     ax.set_xlabel("Distance to Apple")
     ax.set_ylabel("KL Divergence")
-    ax.set_title("Figure 3H: Seller Error")
+    ax.set_title("Seller Error")
     ax.legend()
     ax.grid(True, alpha=0.3)
 

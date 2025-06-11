@@ -1,0 +1,1 @@
+nohup python "./script/exp2/simulate_synthetic_online.py" > "./log/exp2/simulate_synthetic.log" 2>&1 &

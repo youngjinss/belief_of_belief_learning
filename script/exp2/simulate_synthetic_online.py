@@ -309,7 +309,7 @@ class LevelLBuyer(BaseAgent):
             except (AttributeError, RecursionError):
                 # Fallback: 순환참조나 오류 시 간단한 근사
                 logger.warning("순환참조 감지, fallback pricing 사용")
-                vector_m_star = np.array([DEFAULT_MAX_VALUE/2, DEFAULT_MAX_VALUE/2])
+                vector_m_star = np.array([DEFAULT_MAX_VALUE / 2, DEFAULT_MAX_VALUE / 2])
 
             # Future expected utility
             q_values_stage3 = vector_r - vector_m_star
@@ -678,7 +678,7 @@ class OnlineLearningEnvironment:
 
         # Seller의 buyer model을 실제 level로 설정 (순환참조 해결 버전)
         if self.seller_level > 0:
-            target_level = max(0, self.buyer_level - 1)
+            target_level = max(0, self.seller_level - 1)  # seller의 level을 기준으로 변경
             
             if target_level == 0:
                 # Level 0은 seller_model이 불필요

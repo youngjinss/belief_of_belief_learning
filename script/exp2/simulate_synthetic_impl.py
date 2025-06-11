@@ -563,7 +563,7 @@ def run_systematic_analysis(
         policy_mismatch_l1_vs_l2 = np.mean(
             [r["policy_mismatches"]["l1_vs_l2"] for r in current_d_results]
         )
-        
+
         # Store results
         results["L0B_vs_L1S"]["mutual_info_I_r_a1"].append(mi_I_r_a1_level0)
         results["L0B_vs_L1S"]["belief_updates_D_KL"].append(belief_updates_level1)

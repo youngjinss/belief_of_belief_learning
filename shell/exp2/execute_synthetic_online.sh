@@ -7,6 +7,12 @@ RESULT_DIR="./results/exp2/${TIMESTAMP}"
 LOG_DIR="${RESULT_DIR}/logs"
 SCRIPT_PATH="./script/exp2/simulate_synthetic_online.py"
 
+# 실험 파라미터
+EXPLORATION_NOISE_STD=0.1  # 탐험 노이즈 표준편차
+MAX_ITERATIONS=1000        # 최대 반복 횟수
+WINDOW_SIZE=50            # 슬라이딩 윈도우 크기
+CONVERGENCE_THRESHOLD=0.01 # 수렴 임계값
+
 # 레벨 조합 정의 (buyer_level,seller_level)
 LEVEL_COMBINATIONS=(
     "0,1"
@@ -47,6 +53,10 @@ for combo in "${LEVEL_COMBINATIONS[@]}"; do
         --level_combinations "${combo}" \
         --experiment_time "${TIMESTAMP}" \
         --result_dir "${RESULT_DIR}/" \
+        --exploration_noise_std "${EXPLORATION_NOISE_STD}" \
+        --max_iterations "${MAX_ITERATIONS}" \
+        --window_size "${WINDOW_SIZE}" \
+        --convergence_threshold "${CONVERGENCE_THRESHOLD}" \
         > "${log_file}" 2>&1 &
     
     # PID 저장
@@ -70,6 +80,12 @@ cat > "${EXPERIMENT_INFO_FILE}" << EOF
 결과 디렉토리: ${RESULT_DIR}
 로그 디렉토리: ${LOG_DIR}
 스크립트 경로: ${SCRIPT_PATH}
+
+실험 파라미터:
+  탐험 노이즈 표준편차: ${EXPLORATION_NOISE_STD}
+  최대 반복 횟수: ${MAX_ITERATIONS}
+  윈도우 크기: ${WINDOW_SIZE}
+  수렴 임계값: ${CONVERGENCE_THRESHOLD}
 
 레벨 조합:
 EOF

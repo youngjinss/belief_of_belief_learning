@@ -226,19 +226,23 @@ class BaseAgent:
         """Convert Q-values to softmax policy"""
         return NotationUtils.compute_softmax_policy_P(q_values, self.beta)
 
-    def add_exploration_noise(self, q_values: np.ndarray, noise_std: float = EXPLORATION_NOISE_STD) -> np.ndarray:
+    def add_exploration_noise(
+        self, q_values: np.ndarray, noise_std: float = EXPLORATION_NOISE_STD
+    ) -> np.ndarray:
         """Add Gaussian noise to Q-values for exploration"""
         noise = np.random.normal(0, noise_std, size=q_values.shape)
         return q_values + noise
 
-    def select_action_a(self, q_values: np.ndarray, use_exploration: bool = True) -> int:
+    def select_action_a(
+        self, q_values: np.ndarray, use_exploration: bool = True
+    ) -> int:
         """Select action with optional exploration noise"""
         if use_exploration:
             noisy_q_values = self.add_exploration_noise(q_values)
             policy_probs = self.compute_softmax_policy_P(noisy_q_values)
         else:
             policy_probs = self.compute_softmax_policy_P(q_values)
-        
+
         return np.random.choice(len(q_values), p=policy_probs)
 
 
@@ -585,20 +589,24 @@ class ConvergenceTracker:
 
 class ProxySeller:
     """순환의존성 방지를 위한 간단한 Seller 근사 모델 - Distance 기반"""
-    
+
     def __init__(self, beta: float = DEFAULT_BETA):
         self.beta = beta
-    
-    def p_r_given_a(self, observed_action_a1: int, vector_d: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+
+    def p_r_given_a(
+        self, observed_action_a1: int, vector_d: np.ndarray
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """Distance 기반 올바른 preference 추정"""
-        preference_grid_r = NotationUtils.create_preference_grid_r(DEFAULT_N_PREFERENCE_POINTS)
-        
+        preference_grid_r = NotationUtils.create_preference_grid_r(
+            DEFAULT_N_PREFERENCE_POINTS
+        )
+
         # 올바른 Distance 기반 추론:
         # buyer가 더 멀리 있는 것을 선택했다면, 그만큼 선호도가 높아야 한다
         # 예: apple 선택 & d(apple)=8, d(orange)=2 → r(apple) - r(orange) > 6
-        
+
         distance_diff = vector_d[0] - vector_d[1]  # d(apple) - d(orange)
-        
+
         if observed_action_a1 == 0:
             # Apple을 선택했다면
             if distance_diff > 0:
@@ -631,21 +639,20 @@ class ProxySeller:
                 low_apple_indices = preference_grid_r < DEFAULT_MAX_VALUE / 2
                 posterior = np.ones_like(preference_grid_r)
                 posterior[low_apple_indices] *= 1.5  # 약간의 가중치
-        
+
         # Normalize
         posterior = posterior / np.sum(posterior)
         return preference_grid_r, posterior
-    
-    def compute_m_star(self, preference_grid_r: np.ndarray, posterior_p_r_given_a: np.ndarray) -> np.ndarray:
+
+    def compute_m_star(
+        self, preference_grid_r: np.ndarray, posterior_p_r_given_a: np.ndarray
+    ) -> np.ndarray:
         """Distance와 추정된 preference 기반 간단한 pricing"""
         # 추정된 평균 선호도 계산
         expected_r_apple = np.sum(preference_grid_r * posterior_p_r_given_a)
         expected_r_orange = DEFAULT_MAX_VALUE - expected_r_apple
-        
-        return np.array([
-            expected_r_apple, 
-            expected_r_orange
-        ])
+
+        return np.array([expected_r_apple, expected_r_orange])
 
 
 class OnlineLearningEnvironment:
@@ -683,7 +690,7 @@ class OnlineLearningEnvironment:
             # Level-l buyer는 Level-(l-1) seller를 모델링
             seller_model = self._create_seller_recursively(level - 1)
             return LevelLBuyer(level_l=level, seller_model=seller_model, beta=self.beta)
-    
+
     def _create_seller_recursively(self, level: int) -> LevelLSeller:
         """재귀적으로 seller agent 생성"""
         if level == 0:
@@ -698,16 +705,16 @@ class OnlineLearningEnvironment:
     def _initialize_agents(self):
         """Agent들을 초기화 (재귀적 level-k reasoning)"""
         logger.info("재귀적 Agent 초기화 시작...")
-        
+
         # 재귀적으로 buyer와 seller 생성
         self.buyer = self._create_buyer_recursively(self.buyer_level)
-        
+
         # Seller는 bayesian_updater를 사용하므로 별도 처리
         if self.seller_level == 0:
             buyer_model = LevelLBuyer(level_l=0, seller_model=None, beta=self.beta)
         else:
             buyer_model = self._create_buyer_recursively(self.seller_level - 1)
-        
+
         self.seller = LevelLSeller(
             level_l=self.seller_level,
             buyer_model=buyer_model,
@@ -716,37 +723,48 @@ class OnlineLearningEnvironment:
         )
 
         logger.info("재귀적 Agent 초기화 완료:")
-        logger.info(f"  - Buyer L{self.buyer_level} (재귀적으로 L{max(0, self.buyer_level-1)} seller까지 생성)")
-        logger.info(f"  - Seller L{self.seller_level} (재귀적으로 L{max(0, self.seller_level-1)} buyer까지 생성)")
-        
+        logger.info(
+            f"  - Buyer L{self.buyer_level} (재귀적으로 L{max(0, self.buyer_level-1)} seller까지 생성)"
+        )
+        logger.info(
+            f"  - Seller L{self.seller_level} (재귀적으로 L{max(0, self.seller_level-1)} buyer까지 생성)"
+        )
+
         # 재귀 구조 출력
         self._print_recursive_structure()
 
     def _print_recursive_structure(self):
         """재귀적 구조를 출력하여 확인"""
         logger.info("\n=== 재귀적 Agent 구조 ===")
-        
+
         # Buyer 구조 출력
         logger.info(f"Buyer L{self.buyer_level} 구조:")
         self._print_buyer_structure(self.buyer, depth=0)
-        
-        # Seller 구조 출력  
+
+        # Seller 구조 출력
         logger.info(f"\nSeller L{self.seller_level} 구조:")
         self._print_seller_structure(self.seller, depth=0)
-        
+
         logger.info("========================\n")
 
     def _print_buyer_structure(self, buyer: LevelLBuyer, depth: int):
         """Buyer의 재귀적 구조 출력"""
         indent = "  " * depth
         logger.info(f"{indent}├─ Buyer L{buyer.level_l}")
-        
+
         if buyer.seller_model is not None:
-            if hasattr(buyer.seller_model, 'level_l'):
+            if hasattr(buyer.seller_model, "level_l"):
                 # LevelLSeller인 경우
-                logger.info(f"{indent}│  └─ models Seller L{buyer.seller_model.level_l}")
-                if hasattr(buyer.seller_model, 'buyer_model') and buyer.seller_model.buyer_model is not None:
-                    self._print_buyer_structure(buyer.seller_model.buyer_model, depth + 2)
+                logger.info(
+                    f"{indent}│  └─ models Seller L{buyer.seller_model.level_l}"
+                )
+                if (
+                    hasattr(buyer.seller_model, "buyer_model")
+                    and buyer.seller_model.buyer_model is not None
+                ):
+                    self._print_buyer_structure(
+                        buyer.seller_model.buyer_model, depth + 2
+                    )
             else:
                 # ProxySeller인 경우
                 logger.info(f"{indent}│  └─ models ProxySeller")
@@ -757,13 +775,15 @@ class OnlineLearningEnvironment:
         """Seller의 재귀적 구조 출력"""
         indent = "  " * depth
         logger.info(f"{indent}├─ Seller L{seller.level_l}")
-        
+
         if seller.buyer_model is not None:
             logger.info(f"{indent}│  └─ models Buyer L{seller.buyer_model.level_l}")
             if seller.buyer_model.seller_model is not None:
-                if hasattr(seller.buyer_model.seller_model, 'level_l'):
+                if hasattr(seller.buyer_model.seller_model, "level_l"):
                     # LevelLSeller인 경우
-                    self._print_seller_structure(seller.buyer_model.seller_model, depth + 2)
+                    self._print_seller_structure(
+                        seller.buyer_model.seller_model, depth + 2
+                    )
                 else:
                     # ProxySeller인 경우
                     logger.info(f"{indent}    └─ models ProxySeller")

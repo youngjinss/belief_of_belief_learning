@@ -100,6 +100,12 @@ def parse_args():
         default=50,
         help="Window size for sliding window memory (default: 50)",
     )
+    parser.add_argument(
+        "--exploration_noise_std",
+        type=float,
+        default=0.1,
+        help="Standard deviation for exploration noise (default: 0.1)",
+    )
 
     args = parser.parse_args()
 
@@ -135,6 +141,7 @@ DEFAULT_MAX_VALUE = args.default_max_value
 DEFAULT_N_PREFERENCE_POINTS = args.default_n_preference_points
 DEFAULT_N_PRICE_POINTS = args.default_n_price_points
 WINDOW_SIZE = args.window_size
+EXPLORATION_NOISE_STD = args.exploration_noise_std
 EPSILON = args.epsilon
 EXPERIMENT_TIME = args.experiment_time
 RESULT_DIR = args.result_dir
@@ -219,9 +226,19 @@ class BaseAgent:
         """Convert Q-values to softmax policy"""
         return NotationUtils.compute_softmax_policy_P(q_values, self.beta)
 
-    def select_action_a(self, q_values: np.ndarray) -> int:
-        """Select action according to softmax policy"""
-        policy_probs = self.compute_softmax_policy_P(q_values)
+    def add_exploration_noise(self, q_values: np.ndarray, noise_std: float = EXPLORATION_NOISE_STD) -> np.ndarray:
+        """Add Gaussian noise to Q-values for exploration"""
+        noise = np.random.normal(0, noise_std, size=q_values.shape)
+        return q_values + noise
+
+    def select_action_a(self, q_values: np.ndarray, use_exploration: bool = True) -> int:
+        """Select action with optional exploration noise"""
+        if use_exploration:
+            noisy_q_values = self.add_exploration_noise(q_values)
+            policy_probs = self.compute_softmax_policy_P(noisy_q_values)
+        else:
+            policy_probs = self.compute_softmax_policy_P(q_values)
+        
         return np.random.choice(len(q_values), p=policy_probs)
 
 
@@ -281,13 +298,18 @@ class LevelLBuyer(BaseAgent):
             # Immediate utility
             immediate_U_b_t1 = vector_r[action_a1] - vector_d[action_a1]
 
-            # Simulate seller's response
-            preference_grid_r, posterior_p_r_given_a = seller_model.p_r_given_a(
-                action_a1, vector_d
-            )
-            vector_m_star = seller_model.compute_m_star(
-                preference_grid_r, posterior_p_r_given_a
-            )
+            # Simulate seller's response with fallback for circular dependency
+            try:
+                preference_grid_r, posterior_p_r_given_a = seller_model.p_r_given_a(
+                    action_a1, vector_d
+                )
+                vector_m_star = seller_model.compute_m_star(
+                    preference_grid_r, posterior_p_r_given_a
+                )
+            except (AttributeError, RecursionError):
+                # Fallback: 순환참조나 오류 시 간단한 근사
+                logger.warning("순환참조 감지, fallback pricing 사용")
+                vector_m_star = np.array([DEFAULT_MAX_VALUE/2, DEFAULT_MAX_VALUE/2])
 
             # Future expected utility
             q_values_stage3 = vector_r - vector_m_star
@@ -561,6 +583,43 @@ class ConvergenceTracker:
         }
 
 
+class ProxySeller:
+    """순환의존성 방지를 위한 간단한 Seller 근사 모델"""
+    
+    def __init__(self, beta: float = DEFAULT_BETA):
+        self.beta = beta
+    
+    def p_r_given_a(self, observed_action_a1: int, vector_d: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        """간단한 베이지안 추론 근사"""
+        preference_grid_r = NotationUtils.create_preference_grid_r(DEFAULT_N_PREFERENCE_POINTS)
+        # 단순화된 베이지안 업데이트: 관찰된 action에 따라 약간의 편향
+        posterior = NotationUtils.create_uniform_prior_p_r(len(preference_grid_r))
+        
+        # 관찰된 action이 apple(0)이면 apple 선호도가 높을 것으로 추정
+        if observed_action_a1 == 0:
+            # Apple 선호도가 높은 구간에 더 높은 확률 부여
+            high_apple_indices = preference_grid_r > DEFAULT_MAX_VALUE / 2
+            posterior[high_apple_indices] *= 2.0
+        else:
+            # Orange 선호도가 높은 구간에 더 높은 확률 부여
+            low_apple_indices = preference_grid_r < DEFAULT_MAX_VALUE / 2
+            posterior[low_apple_indices] *= 2.0
+        
+        # Normalize
+        posterior = posterior / np.sum(posterior)
+        return preference_grid_r, posterior
+    
+    def compute_m_star(self, preference_grid_r: np.ndarray, posterior_p_r_given_a: np.ndarray) -> np.ndarray:
+        """간단한 price setting 전략"""
+        # 평균 선호도 계산
+        expected_r_apple = np.sum(preference_grid_r * posterior_p_r_given_a)
+        expected_r_orange = DEFAULT_MAX_VALUE - expected_r_apple
+        
+        # 간단한 pricing rule: 약간 할인된 가격
+        discount_factor = 0.8
+        return np.array([expected_r_apple * discount_factor, expected_r_orange * discount_factor])
+
+
 class OnlineLearningEnvironment:
     """온라인 학습 환경"""
 
@@ -589,15 +648,17 @@ class OnlineLearningEnvironment:
         self._initialize_agents()
 
     def _initialize_agents(self):
-        """Agent들을 초기화 (circular dependency 해결)"""
-        # 먼저 Level-0 buyer 생성 (seller model 불필요)
+        """Agent들을 초기화 (순환 dependency 해결)"""
+        # 먼저 Level-0 buyer 생성
         level0_buyer = LevelLBuyer(level_l=0, seller_model=None, beta=self.beta)
+        
+        # Proxy seller 생성 (순환참조 방지용)
+        proxy_seller = ProxySeller(beta=self.beta)
 
-        # Seller 생성 (buyer model과 bayesian updater 사용)
+        # Seller 생성
         if self.seller_level == 0:
             buyer_model = level0_buyer
         else:
-            # Higher level sellers need appropriate buyer models
             buyer_model = level0_buyer  # 우선 level-0으로 시작
 
         self.seller = LevelLSeller(
@@ -615,21 +676,28 @@ class OnlineLearningEnvironment:
                 level_l=self.buyer_level, seller_model=self.seller, beta=self.beta
             )
 
-        # Seller의 buyer model을 실제 buyer로 업데이트 (더 정확한 모델링을 위해)
+        # Seller의 buyer model을 실제 level로 설정 (순환참조 해결 버전)
         if self.seller_level > 0:
-            # Create appropriate level buyer model for seller
-            if self.buyer_level > 0:
+            target_level = max(0, self.buyer_level - 1)
+            
+            if target_level == 0:
+                # Level 0은 seller_model이 불필요
                 seller_buyer_model = LevelLBuyer(
-                    level_l=max(
-                        0, self.buyer_level - 1
-                    ),  # Seller assumes buyer is one level lower
-                    seller_model=None,  # 순환 참조 방지
+                    level_l=0,
+                    seller_model=None,
                     beta=self.beta,
                 )
             else:
-                seller_buyer_model = level0_buyer
+                # Level 1+는 proxy_seller 사용하여 순환참조 방지
+                seller_buyer_model = LevelLBuyer(
+                    level_l=target_level,
+                    seller_model=proxy_seller,  # 실제 seller 대신 proxy 사용
+                    beta=self.beta,
+                )
 
             self.seller.buyer_model = seller_buyer_model
+            
+            logger.info(f"Seller L{self.seller_level}의 buyer model을 L{target_level}로 설정 (proxy seller 사용: {target_level > 0})")
 
     def play_single_game(self) -> Dict:
         """단일 게임 실행"""

@@ -1,6 +1,7 @@
 import os
 import json
 import argparse
+import time
 from datetime import datetime
 from typing import Dict, Tuple, Protocol, Optional
 import logging
@@ -266,18 +267,24 @@ class LevelLBuyer(BaseAgent):
         if self.level_l == 0:
             # Level-0: myopic
             q_values_Q_b_t1_k0 = state["vector_r"] - state["vector_d"]
-            return self.select_action_a(q_values_Q_b_t1_k0, use_exploration=self.is_final_buyer)
+            return self.select_action_a(
+                q_values_Q_b_t1_k0, use_exploration=self.is_final_buyer
+            )
         else:
             # Level-l: strategic
             q_values_Q_b_t1_kl = self.compute_Q_b_t1_kl(
                 state["vector_d"], state["vector_r"], self.seller_model, self.beta
             )
-            return self.select_action_a(q_values_Q_b_t1_kl, use_exploration=self.is_final_buyer)
+            return self.select_action_a(
+                q_values_Q_b_t1_kl, use_exploration=self.is_final_buyer
+            )
 
     def act_t3(self, state: Dict) -> int:
         """Stage 3 action selection"""
         q_values_Q_b_t3 = state["vector_r"] - state["vector_m"]
-        return self.select_action_a(q_values_Q_b_t3, use_exploration=self.is_final_buyer)
+        return self.select_action_a(
+            q_values_Q_b_t3, use_exploration=self.is_final_buyer
+        )
 
     def get_P_t1(self, vector_d: np.ndarray, vector_r: np.ndarray) -> np.ndarray:
         """Get stage 1 policy P^{b,t=1}_{k=l}(a_1 | r, d)"""
@@ -684,20 +691,31 @@ class OnlineLearningEnvironment:
         # Agent 초기화 (circular dependency 해결)
         self._initialize_agents()
 
-    def _create_buyer_recursively(self, level: int, is_final: bool = False) -> LevelLBuyer:
+    def _create_buyer_recursively(
+        self, level: int, is_final: bool = False
+    ) -> LevelLBuyer:
         """재귀적으로 buyer agent 생성"""
         if level == 0:
-            return LevelLBuyer(level_l=0, seller_model=None, beta=self.beta, is_final_buyer=is_final)
+            return LevelLBuyer(
+                level_l=0, seller_model=None, beta=self.beta, is_final_buyer=is_final
+            )
         else:
             # Level-l buyer는 Level-(l-1) seller를 모델링
             seller_model = self._create_seller_recursively(level - 1)
-            return LevelLBuyer(level_l=level, seller_model=seller_model, beta=self.beta, is_final_buyer=is_final)
+            return LevelLBuyer(
+                level_l=level,
+                seller_model=seller_model,
+                beta=self.beta,
+                is_final_buyer=is_final,
+            )
 
     def _create_seller_recursively(self, level: int) -> LevelLSeller:
         """재귀적으로 seller agent 생성"""
         if level == 0:
             # Level-0 seller는 Level-0 buyer를 모델링
-            buyer_model = LevelLBuyer(level_l=0, seller_model=None, beta=self.beta, is_final_buyer=False)
+            buyer_model = LevelLBuyer(
+                level_l=0, seller_model=None, beta=self.beta, is_final_buyer=False
+            )
             return LevelLSeller(level_l=0, buyer_model=buyer_model, beta=self.beta)
         else:
             # Level-l seller는 Level-(l-1) buyer를 모델링 (모델링 목적이므로 exploration 사용 안함)
@@ -714,10 +732,14 @@ class OnlineLearningEnvironment:
 
         # Seller는 bayesian_updater를 사용하므로 별도 처리
         if self.seller_level == 0:
-            buyer_model = LevelLBuyer(level_l=0, seller_model=None, beta=self.beta, is_final_buyer=False)
+            buyer_model = LevelLBuyer(
+                level_l=0, seller_model=None, beta=self.beta, is_final_buyer=False
+            )
         else:
             # Seller가 모델링하는 buyer는 exploration 사용 안함
-            buyer_model = self._create_buyer_recursively(self.seller_level - 1, is_final=False)
+            buyer_model = self._create_buyer_recursively(
+                self.seller_level - 1, is_final=False
+            )
 
         self.seller = LevelLSeller(
             level_l=self.seller_level,
@@ -727,9 +749,7 @@ class OnlineLearningEnvironment:
         )
 
         logger.info("재귀적 Agent 초기화 완료:")
-        logger.info(
-            f"  - Buyer L{self.buyer_level} (최종 buyer, exploration 사용)"
-        )
+        logger.info(f"  - Buyer L{self.buyer_level} (최종 buyer, exploration 사용)")
         logger.info(
             f"  - Seller L{self.seller_level} (내부 buyer 모델들은 exploration 사용 안함)"
         )
@@ -754,7 +774,9 @@ class OnlineLearningEnvironment:
     def _print_buyer_structure(self, buyer: LevelLBuyer, depth: int):
         """Buyer의 재귀적 구조 출력"""
         indent = "  " * depth
-        exploration_info = " [exploration ON]" if buyer.is_final_buyer else " [exploration OFF]"
+        exploration_info = (
+            " [exploration ON]" if buyer.is_final_buyer else " [exploration OFF]"
+        )
         logger.info(f"{indent}├─ Buyer L{buyer.level_l}{exploration_info}")
 
         if buyer.seller_model is not None:
@@ -959,6 +981,9 @@ if __name__ == "__main__":
     for buyer_level, seller_level in level_combinations:
         logger.info(f"실험 실행: 구매자 L{buyer_level} vs 판매자 L{seller_level}")
 
+        # 실행 시간 측정 시작
+        start_time = time.time()
+
         results = run_online_learning_experiment(
             buyer_level=buyer_level,
             seller_level=seller_level,
@@ -967,6 +992,17 @@ if __name__ == "__main__":
             window_size=WINDOW_SIZE,
             convergence_threshold=CONVERGENCE_THRESHOLD,
         )
+
+        # 실행 시간 측정 종료
+        end_time = time.time()
+        execution_time_seconds = end_time - start_time
+
+        # 실행 시간 정보를 결과에 추가
+        results["execution_time_seconds"] = execution_time_seconds
+        results["start_time"] = start_time
+        results["end_time"] = end_time
+
+        logger.info(f"실험 완료: {execution_time_seconds:.2f}초 소요")
 
         # 결과 저장
         result_file = f"{RESULT_DIR}/L{buyer_level}B_vs_L{seller_level}S_learning.json"

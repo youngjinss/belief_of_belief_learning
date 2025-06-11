@@ -8,10 +8,10 @@ LOG_DIR="${RESULT_DIR}/logs"
 SCRIPT_PATH="./script/exp2/simulate_synthetic_online.py"
 
 # 실험 파라미터
-EXPLORATION_NOISE_STD=0.1  # 탐험 노이즈 표준편차
+EXPLORATION_NOISE_STD=1  # 탐험 노이즈 표준편차
 MAX_ITERATIONS=1000        # 최대 반복 횟수
 WINDOW_SIZE=50            # 슬라이딩 윈도우 크기
-CONVERGENCE_THRESHOLD=0.01 # 수렴 임계값
+CONVERGENCE_THRESHOLD=0.001 # 수렴 임계값
 
 # 레벨 조합 정의 (buyer_level,seller_level)
 LEVEL_COMBINATIONS=(

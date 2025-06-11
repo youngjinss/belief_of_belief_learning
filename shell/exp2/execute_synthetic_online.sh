@@ -161,3 +161,58 @@ echo "  watch -n 10 'echo \"=== \$(date) ===\"; cat ${PID_FILE} | xargs -I {} sh
 echo ""
 echo "모든 실험 완료까지 대기하려면 다음 명령어를 실행하세요:"
 echo "  wait ${PIDS[*]} && echo \"모든 실험 완료!\" || echo \"일부 실험 실패\""
+
+# EXPERIMENT_INFO_FILE에 모니터링 및 중단 명령어 추가
+cat >> "${EXPERIMENT_INFO_FILE}" << EOF
+
+=== 실험 진행 상황 모니터링 ===
+로그 파일들:
+EOF
+
+for combo in "${LEVEL_COMBINATIONS[@]}"; do
+    buyer_level=$(echo $combo | cut -d',' -f1)
+    seller_level=$(echo $combo | cut -d',' -f2)
+    echo "  ${LOG_DIR}/L${buyer_level}B_vs_L${seller_level}S.log" >> "${EXPERIMENT_INFO_FILE}"
+done
+
+buyer_level=$(echo ${LEVEL_COMBINATIONS[0]} | cut -d',' -f1)
+seller_level=$(echo ${LEVEL_COMBINATIONS[0]} | cut -d',' -f2)
+
+cat >> "${EXPERIMENT_INFO_FILE}" << EOF
+
+실시간 로그 확인 명령어 예시:
+  tail -f ${LOG_DIR}/L${buyer_level}B_vs_L${seller_level}S.log
+
+모든 로그 동시 확인:
+  tail -f ${LOG_DIR}/*.log
+
+=== 실험 중단 명령어 ===
+1. 개별 프로세스 종료:
+EOF
+
+for i in "${!LEVEL_COMBINATIONS[@]}"; do
+    combo="${LEVEL_COMBINATIONS[$i]}"
+    pid="${PIDS[$i]}"
+    buyer_level=$(echo $combo | cut -d',' -f1)
+    seller_level=$(echo $combo | cut -d',' -f2)
+    echo "   kill ${pid}  # ${buyer_level},${seller_level}" >> "${EXPERIMENT_INFO_FILE}"
+done
+
+cat >> "${EXPERIMENT_INFO_FILE}" << EOF
+
+2. 모든 실험 프로세스 한번에 종료:
+   kill ${PIDS[*]}
+
+3. 저장된 PID 파일로 종료:
+   cat ${PID_FILE} | xargs kill
+
+4. 강제 종료 (필요시):
+   kill -9 ${PIDS[*]}
+
+모니터링 명령어:
+10초마다 완료 상태를 확인하려면 다음 명령어를 실행하세요:
+  watch -n 10 'echo "=== \$(date) ==="; cat ${PID_FILE} | xargs -I {} sh -c "kill -0 {} 2>/dev/null && echo PID {} 실행중 || echo PID {} 완료"'
+
+모든 실험 완료까지 대기하려면 다음 명령어를 실행하세요:
+  wait ${PIDS[*]} && echo "모든 실험 완료!" || echo "일부 실험 실패"
+EOF

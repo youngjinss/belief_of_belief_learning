@@ -230,9 +230,14 @@ class BaseAgent:
     def add_exploration_noise(
         self, q_values: np.ndarray, noise_std: float = EXPLORATION_NOISE_STD
     ) -> np.ndarray:
-        """Add Gaussian noise to Q-values for exploration"""
+        """Add Gaussian noise to Q-values for exploration with range correction"""
         noise = np.random.normal(0, noise_std, size=q_values.shape)
-        return q_values + noise
+        noisy_q_values = q_values + noise
+        
+        # Apply soft clipping to preserve gradient information
+        noisy_q_values = np.clip(noisy_q_values, DEFAULT_MAX_VALUE, -DEFAULT_MAX_VALUE)
+        
+        return noisy_q_values
 
     def select_action_a(
         self, q_values: np.ndarray, use_exploration: bool = True

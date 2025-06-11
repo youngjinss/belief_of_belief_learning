@@ -1,9 +1,8 @@
-# pkill -f simulate_synthetic_gnr.py
-
 import os
 import json
+import argparse
 from datetime import datetime
-from typing import Dict, Tuple, Protocol, Optional, List
+from typing import Dict, Tuple, Protocol, Optional
 import logging
 
 import numpy as np
@@ -13,15 +12,132 @@ from scipy.special import softmax
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Constants
-DEFAULT_BETA = 2.0
-DEFAULT_N_ITEMS = 2
-DEFAULT_MAX_VALUE = 10.0
-DEFAULT_N_PREFERENCE_POINTS = 101
-DEFAULT_N_PRICE_POINTS = 81
-EPSILON = 1e-10
-EXPERIMENT_TIME = datetime.now().strftime("%Y%m%d_%H%M")
-RESULT_DIR = f"./results/exp2/{EXPERIMENT_TIME}/"
+
+def parse_args():
+    """Parse command line arguments"""
+    parser = argparse.ArgumentParser(
+        description="Simulate synthetic online learning experiment"
+    )
+
+    # Default values from original constants
+    parser.add_argument(
+        "--true_preference",
+        nargs=2,
+        type=float,
+        default=[7.0, 3.0],
+        help="True preference vector [apple, orange] (default: [7.0, 3.0])",
+    )
+    parser.add_argument(
+        "--level_combinations",
+        nargs="*",
+        type=str,
+        default=["0,1"],
+        help="Level combinations as 'buyer,seller' pairs (default: ['0,1'])",
+    )
+    parser.add_argument(
+        "--max_iterations",
+        type=int,
+        default=1000,
+        help="Maximum number of iterations (default: 1000)",
+    )
+    parser.add_argument(
+        "--convergence_threshold",
+        type=float,
+        default=0.01,
+        help="Convergence threshold (default: 0.01)",
+    )
+    parser.add_argument(
+        "--default_beta",
+        type=float,
+        default=2.0,
+        help="Default beta parameter for softmax (default: 2.0)",
+    )
+    parser.add_argument(
+        "--default_n_items",
+        type=int,
+        default=2,
+        help="Default number of items (default: 2)",
+    )
+    parser.add_argument(
+        "--default_max_value",
+        type=float,
+        default=10.0,
+        help="Default maximum value (default: 10.0)",
+    )
+    parser.add_argument(
+        "--default_n_preference_points",
+        type=int,
+        default=101,
+        help="Default number of preference points (default: 101)",
+    )
+    parser.add_argument(
+        "--default_n_price_points",
+        type=int,
+        default=81,
+        help="Default number of price points (default: 81)",
+    )
+    parser.add_argument(
+        "--epsilon",
+        type=float,
+        default=1e-10,
+        help="Small epsilon value (default: 1e-10)",
+    )
+    parser.add_argument(
+        "--experiment_time",
+        type=str,
+        default=None,
+        help="Experiment timestamp (default: current time)",
+    )
+    parser.add_argument(
+        "--result_dir",
+        type=str,
+        default=None,
+        help="Result directory (default: ./results/exp2/{timestamp}/)",
+    )
+    parser.add_argument(
+        "--window_size",
+        type=int,
+        default=50,
+        help="Window size for sliding window memory (default: 50)",
+    )
+
+    args = parser.parse_args()
+
+    # Process level combinations
+    level_combinations = []
+    for combo in args.level_combinations:
+        buyer_level, seller_level = map(int, combo.split(","))
+        level_combinations.append((buyer_level, seller_level))
+    args.level_combinations = level_combinations
+
+    # Set experiment time if not provided
+    if args.experiment_time is None:
+        args.experiment_time = datetime.now().strftime("%Y%m%d_%H%M")
+
+    # Set result directory if not provided
+    if args.result_dir is None:
+        args.result_dir = f"./results/exp2/{args.experiment_time}/"
+
+    return args
+
+
+# Parse arguments at module level
+args = parse_args()
+
+# Constants from parsed arguments
+TRUE_PREFERENCE = np.array(args.true_preference)
+LEVEL_COMBINATIONS = args.level_combinations
+MAX_ITERATIONS = args.max_iterations
+CONVERGENCE_THRESHOLD = args.convergence_threshold
+DEFAULT_BETA = args.default_beta
+DEFAULT_N_ITEMS = args.default_n_items
+DEFAULT_MAX_VALUE = args.default_max_value
+DEFAULT_N_PREFERENCE_POINTS = args.default_n_preference_points
+DEFAULT_N_PRICE_POINTS = args.default_n_price_points
+WINDOW_SIZE = args.window_size
+EPSILON = args.epsilon
+EXPERIMENT_TIME = args.experiment_time
+RESULT_DIR = args.result_dir
 
 if not os.path.exists(RESULT_DIR):
     os.makedirs(RESULT_DIR)
@@ -419,7 +535,9 @@ class ConvergenceTracker:
     def _convert_preference_to_distribution(self, preference: np.ndarray) -> np.ndarray:
         """True preference를 grid 상의 분포로 변환"""
         # Grid에서 가장 가까운 점 찾기
-        grid_points = NotationUtils.create_preference_grid_r(DEFAULT_N_PREFERENCE_POINTS)
+        grid_points = NotationUtils.create_preference_grid_r(
+            DEFAULT_N_PREFERENCE_POINTS
+        )
 
         # Apple preference에 해당하는 grid point 찾기
         apple_pref = preference[0]
@@ -453,6 +571,7 @@ class OnlineLearningEnvironment:
         true_preference: np.ndarray,
         beta: float = 2.0,
         window_size: int = 50,
+        convergence_threshold: float = 0.01,
     ):
         self.buyer_level = buyer_level
         self.seller_level = seller_level
@@ -462,7 +581,9 @@ class OnlineLearningEnvironment:
         # 컴포넌트들 초기화
         self.memory = SlidingWindowMemory(window_size)
         self.bayesian_updater = IncrementalBayesianUpdater()
-        self.convergence_tracker = ConvergenceTracker(true_preference)
+        self.convergence_tracker = ConvergenceTracker(
+            true_preference, convergence_threshold
+        )
 
         # Agent 초기화 (circular dependency 해결)
         self._initialize_agents()
@@ -607,9 +728,7 @@ class OnlineLearningEnvironment:
 
             # 조기 수렴 체크
             if converged:
-                logger.info(
-                    f"반복 {iteration}에서 수렴됨, 손실 {current_loss:.6f}"
-                )
+                logger.info(f"반복 {iteration}에서 수렴됨, 손실 {current_loss:.6f}")
                 break
 
         # 수렴 정보 추가
@@ -645,6 +764,7 @@ def run_online_learning_experiment(
     seller_level: int,
     true_preference: np.ndarray,
     max_iterations: int = 1000,
+    window_size: int = 50,
     convergence_threshold: float = 0.01,
 ) -> Dict:
     """온라인 학습 실험 실행"""
@@ -654,7 +774,8 @@ def run_online_learning_experiment(
         buyer_level=buyer_level,
         seller_level=seller_level,
         true_preference=true_preference,
-        window_size=50,
+        window_size=window_size,
+        convergence_threshold=convergence_threshold,
     )
 
     # 학습 실행
@@ -665,22 +786,22 @@ def run_online_learning_experiment(
 
 if __name__ == "__main__":
     # 실험 설정
-    true_preference = np.array([7.0, 3.0])  # 고정된 true preference
+    true_preference = TRUE_PREFERENCE  # 고정된 true preference
     logger.info(f"실험 설정: 참조 선호도 = {true_preference}")
 
     # 다양한 level 조합 실험
-    level_combinations = [(0, 1)]
+    level_combinations = LEVEL_COMBINATIONS
 
     for buyer_level, seller_level in level_combinations:
-        logger.info(
-            f"실험 실행: 구매자 L{buyer_level} vs 판매자 L{seller_level}"
-        )
+        logger.info(f"실험 실행: 구매자 L{buyer_level} vs 판매자 L{seller_level}")
 
         results = run_online_learning_experiment(
             buyer_level=buyer_level,
             seller_level=seller_level,
             true_preference=true_preference,
-            max_iterations=1000,
+            max_iterations=MAX_ITERATIONS,
+            window_size=WINDOW_SIZE,
+            convergence_threshold=CONVERGENCE_THRESHOLD,
         )
 
         # 결과 저장

@@ -69,16 +69,16 @@ def parse_args():
         "--default_max_value",
         type=float,
         default=10.0,
-        help="Default maximum value (default: 10.0)",
+        help="Default maximum value (default: 11.0)",
     )
     parser.add_argument(
-        "--default_n_preference_points",
+        "--n_preference_points",
         type=int,
         default=101,
         help="Default number of preference points (default: 101)",
     )
     parser.add_argument(
-        "--default_n_price_points",
+        "--n_price_points",
         type=int,
         default=81,
         help="Default number of price points (default: 81)",
@@ -140,8 +140,8 @@ DEFAULT_BETA = args.default_beta
 EXPLORATION_BETA = args.exploration_beta
 DEFAULT_N_ITEMS = args.default_n_items
 DEFAULT_MAX_VALUE = args.default_max_value
-DEFAULT_N_PREFERENCE_POINTS = args.default_n_preference_points
-DEFAULT_N_PRICE_POINTS = args.default_n_price_points
+DEFAULT_N_PREFERENCE_POINTS = args.n_preference_points
+DEFAULT_N_PRICE_POINTS = args.n_price_points
 WINDOW_SIZE = args.window_size
 EPSILON = args.epsilon
 EXPERIMENT_TIME = args.experiment_time
@@ -815,10 +815,8 @@ class OnlineLearningEnvironment:
 
     def play_single_game(self) -> Dict:
         """단일 게임 실행"""
-        # 랜덤한 distance 생성
-        total_distance = np.random.uniform(2, 8)  # 적당한 범위
-        d_apple = np.random.uniform(0.5, total_distance - 0.5)
-        d_orange = total_distance - d_apple
+        d_apple = np.random.uniform(0, DEFAULT_MAX_VALUE + 1)
+        d_orange = DEFAULT_MAX_VALUE - d_apple
         vector_d = np.array([d_apple, d_orange])
 
         # Stage 1: Buyer action

@@ -10,6 +10,8 @@ SCRIPT_PATH="./script/exp2/simulate_synthetic_online.py"
 # 실험 파라미터
 EXPLORATION_BETA=1.1      # 탐험 노이즈 표준편차
 DEFAULT_BETA=1.0          # 원래 노이즈 표준편차
+N_PREFERENCE_POINTS=51    # 선호도 포인트 수
+N_PRICE_POINTS=31         # 가격 포인트 수
 MAX_ITERATIONS=1000       # 최대 반복 횟수
 WINDOW_SIZE=100            # 슬라이딩 윈도우 크기
 CONVERGENCE_THRESHOLD=0.05 # 수렴 임계값
@@ -18,11 +20,13 @@ CONVERGENCE_THRESHOLD=0.05 # 수렴 임계값
 LEVEL_COMBINATIONS=(
     "0,1"
     "1,1" 
+    "1,2"
     "2,2"
     "2,3"
     "2,4"
     "3,3"
     "3,4"
+    "3,5"
 )
 
 # 디렉토리 생성
@@ -56,6 +60,8 @@ for combo in "${LEVEL_COMBINATIONS[@]}"; do
         --result_dir "${RESULT_DIR}/" \
         --exploration_beta "${EXPLORATION_BETA}" \
         --default_beta "${DEFAULT_BETA}" \
+        --n_preference_points "${N_PREFERENCE_POINTS}" \
+        --n_price_points "${N_PRICE_POINTS}" \
         --max_iterations "${MAX_ITERATIONS}" \
         --window_size "${WINDOW_SIZE}" \
         --convergence_threshold "${CONVERGENCE_THRESHOLD}" \

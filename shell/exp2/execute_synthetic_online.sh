@@ -14,7 +14,7 @@ MAX_ITERATIONS=1000       # 최대 반복 횟수
 WINDOW_SIZE=100            # 슬라이딩 윈도우 크기
 CONVERGENCE_THRESHOLD=0.05 # 수렴 임계값
 
-레벨 조합 정의 (buyer_level,seller_level)
+# 레벨 조합 정의 (buyer_level,seller_level)
 LEVEL_COMBINATIONS=(
     "0,1"
     "1,1" 

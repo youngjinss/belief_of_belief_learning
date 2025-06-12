@@ -1016,7 +1016,7 @@ if __name__ == "__main__":
         logger.info(f"실험 완료: {execution_time_seconds:.2f}초 소요")
 
         # 결과 저장
-        result_file = f"{RESULT_DIR}/L{buyer_level}B_vs_L{seller_level}S_learning.json"
+        result_file = f"{RESULT_DIR}/beta{EXPLORATION_BETA}_L{buyer_level}B_vs_L{seller_level}S_learning.json"
         serializable_results = convert_arrays_to_lists(results)
 
         with open(result_file, "w") as f:

@@ -10,7 +10,7 @@ LOG_DIR="${RESULT_DIR}/logs"
 SCRIPT_PATH="./script/exp2/simulate_synthetic_online.py"
 
 # 실험 파라미터
-EXPLORATION_BETAS=(1.5 2.0 3.0)  # 여러 탐험 노이즈 표준편차 값
+EXPLORATION_BETAS=(0.5 1.5 3.0)  # 여러 탐험 노이즈 표준편차 값
 DEFAULT_BETA=1.0          # 원래 노이즈 표준편차
 N_PREFERENCE_POINTS=51    # 선호도 포인트 수
 N_PRICE_POINTS=31         # 가격 포인트 수
@@ -160,8 +160,8 @@ echo "모든 로그 동시 확인:"
 echo "  tail -f ${LOG_DIR}/*.log"
 
 echo ""
-echo "특정 탐험 베타의 모든 로그 확인 (예: beta${first_beta}):"
-echo "  tail -f ${LOG_DIR}/beta${first_beta}_*.log"
+echo "특정 탐험 베타의 모든 로그 확인 (예: beta):"
+echo "  tail -f ${LOG_DIR}/beta*.log"
 
 # 종료 명령어 안내
 echo ""

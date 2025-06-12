@@ -1,6 +1,15 @@
 ## exp2 버전 기록
 [v0] synthetic data 연구
 
+### exp2 results
+[20250610_2056] Alon, Nitay, et al (2023) 논문 실험 재현 (fix)
+[20250612_1803] Exploration Beta 1.1 (fix)
+[20250612_1947] Exploration Beta 1.5 (fix)
+[20250612_2121] multi Beta 1.5 ~ 3
+
+
+/divider
+
 ## exp1 버전 기록 (archive) 
 [v0] 시뮬레이션 기반 추론 연구
 [v1] 데이터 기반 예측 연구

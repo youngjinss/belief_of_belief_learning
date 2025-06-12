@@ -50,8 +50,14 @@ def parse_args():
     parser.add_argument(
         "--default_beta",
         type=float,
-        default=2.0,
-        help="Default beta parameter for softmax (default: 2.0)",
+        default=1.0,
+        help="Default beta parameter for softmax (default: 1.0)",
+    )
+    parser.add_argument(
+        "--exploration_beta",
+        type=float,
+        default=1.0,
+        help="Beta parameter for exploration in final buyer (default: 1.0)",
     )
     parser.add_argument(
         "--default_n_items",
@@ -101,12 +107,6 @@ def parse_args():
         default=50,
         help="Window size for sliding window memory (default: 50)",
     )
-    parser.add_argument(
-        "--exploration_noise_std",
-        type=float,
-        default=0.1,
-        help="Standard deviation for exploration noise (default: 0.1)",
-    )
 
     args = parser.parse_args()
 
@@ -137,12 +137,12 @@ LEVEL_COMBINATIONS = args.level_combinations
 MAX_ITERATIONS = args.max_iterations
 CONVERGENCE_THRESHOLD = args.convergence_threshold
 DEFAULT_BETA = args.default_beta
+EXPLORATION_BETA = args.exploration_beta
 DEFAULT_N_ITEMS = args.default_n_items
 DEFAULT_MAX_VALUE = args.default_max_value
 DEFAULT_N_PREFERENCE_POINTS = args.default_n_preference_points
 DEFAULT_N_PRICE_POINTS = args.default_n_price_points
 WINDOW_SIZE = args.window_size
-EXPLORATION_NOISE_STD = args.exploration_noise_std
 EPSILON = args.epsilon
 EXPERIMENT_TIME = args.experiment_time
 RESULT_DIR = args.result_dir
@@ -223,32 +223,16 @@ class BaseAgent:
     def __init__(self, beta: float = DEFAULT_BETA):
         self.beta = beta
 
-    def compute_softmax_policy_P(self, q_values: np.ndarray) -> np.ndarray:
-        """Convert Q-values to softmax policy"""
-        return NotationUtils.compute_softmax_policy_P(q_values, self.beta)
-
-    def add_exploration_noise(
-        self, q_values: np.ndarray, noise_std: float = EXPLORATION_NOISE_STD
+    def compute_softmax_policy_P(
+        self, q_values: np.ndarray, beta: float = None
     ) -> np.ndarray:
-        """Add Gaussian noise to Q-values for exploration with range correction"""
-        noise = np.random.normal(0, noise_std, size=q_values.shape)
-        noisy_q_values = q_values + noise
-        
-        # Apply soft clipping to preserve gradient information
-        noisy_q_values = np.clip(noisy_q_values, DEFAULT_MAX_VALUE, -DEFAULT_MAX_VALUE)
-        
-        return noisy_q_values
+        """Convert Q-values to softmax policy with optional beta override"""
+        use_beta = beta if beta is not None else self.beta
+        return NotationUtils.compute_softmax_policy_P(q_values, use_beta)
 
-    def select_action_a(
-        self, q_values: np.ndarray, use_exploration: bool = True
-    ) -> int:
-        """Select action with optional exploration noise"""
-        if use_exploration:
-            noisy_q_values = self.add_exploration_noise(q_values)
-            policy_probs = self.compute_softmax_policy_P(noisy_q_values)
-        else:
-            policy_probs = self.compute_softmax_policy_P(q_values)
-
+    def select_action_a(self, q_values: np.ndarray, beta: float = None) -> int:
+        """Select action using softmax policy with optional beta override"""
+        policy_probs = self.compute_softmax_policy_P(q_values, beta)
         return np.random.choice(len(q_values), p=policy_probs)
 
 
@@ -260,47 +244,41 @@ class LevelLBuyer(BaseAgent):
         level_l: int,
         seller_model: Optional[SellerAgentProtocol] = None,
         beta: float = DEFAULT_BETA,
-        is_final_buyer: bool = False,  # 최종 buyer인지 여부
+        exploration_beta: float = None,  # 최종 buyer의 exploration용 beta
     ):
         super().__init__(beta)
         self.level_l = level_l
         self.seller_model = seller_model
-        self.is_final_buyer = is_final_buyer  # 최종 buyer만 exploration 사용
+        self.exploration_beta = exploration_beta  # None이면 일반 beta 사용
 
     def act_t1(self, state: Dict) -> int:
         """Stage 1 action selection"""
         if self.level_l == 0:
             # Level-0: myopic
             q_values_Q_b_t1_k0 = state["vector_r"] - state["vector_d"]
-            return self.select_action_a(
-                q_values_Q_b_t1_k0, use_exploration=self.is_final_buyer
-            )
+            return self.select_action_a(q_values_Q_b_t1_k0, self.exploration_beta)
         else:
             # Level-l: strategic
             q_values_Q_b_t1_kl = self.compute_Q_b_t1_kl(
                 state["vector_d"], state["vector_r"], self.seller_model, self.beta
             )
-            return self.select_action_a(
-                q_values_Q_b_t1_kl, use_exploration=self.is_final_buyer
-            )
+            return self.select_action_a(q_values_Q_b_t1_kl, self.exploration_beta)
 
     def act_t3(self, state: Dict) -> int:
         """Stage 3 action selection"""
         q_values_Q_b_t3 = state["vector_r"] - state["vector_m"]
-        return self.select_action_a(
-            q_values_Q_b_t3, use_exploration=self.is_final_buyer
-        )
+        return self.select_action_a(q_values_Q_b_t3, self.exploration_beta)
 
     def get_P_t1(self, vector_d: np.ndarray, vector_r: np.ndarray) -> np.ndarray:
-        """Get stage 1 policy P^{b,t=1}_{k=l}(a_1 | r, d)"""
+        """Get stage 1 policy P^{b,t=1}_{k=l}(a_1 | r, d) - 모델링용이므로 exploration 사용 안함"""
         if self.level_l == 0:
             q_values_Q_b_t1_k0 = vector_r - vector_d
-            return self.compute_softmax_policy_P(q_values_Q_b_t1_k0)
+            return self.compute_softmax_policy_P(q_values_Q_b_t1_k0)  # 일반 beta 사용
         else:
             q_values_Q_b_t1_kl = self.compute_Q_b_t1_kl(
                 vector_d, vector_r, self.seller_model, self.beta
             )
-            return self.compute_softmax_policy_P(q_values_Q_b_t1_kl)
+            return self.compute_softmax_policy_P(q_values_Q_b_t1_kl)  # 일반 beta 사용
 
     def compute_Q_b_t1_kl(
         self,
@@ -677,18 +655,24 @@ class OnlineLearningEnvironment:
         buyer_level: int,
         seller_level: int,
         true_preference: np.ndarray,
-        beta: float = 2.0,
+        beta: float = DEFAULT_BETA,
+        exploration_beta: float = EXPLORATION_BETA,
         window_size: int = 50,
         convergence_threshold: float = 0.01,
+        n_preference_points: int = DEFAULT_N_PREFERENCE_POINTS,
+        max_value: float = DEFAULT_MAX_VALUE,
     ):
         self.buyer_level = buyer_level
         self.seller_level = seller_level
         self.true_preference = true_preference
         self.beta = beta
+        self.exploration_beta = exploration_beta
+        self.n_preference_points = n_preference_points
+        self.max_value = max_value
 
         # 컴포넌트들 초기화
         self.memory = SlidingWindowMemory(window_size)
-        self.bayesian_updater = IncrementalBayesianUpdater()
+        self.bayesian_updater = IncrementalBayesianUpdater(n_preference_points)
         self.convergence_tracker = ConvergenceTracker(
             true_preference, convergence_threshold
         )
@@ -702,7 +686,10 @@ class OnlineLearningEnvironment:
         """재귀적으로 buyer agent 생성"""
         if level == 0:
             return LevelLBuyer(
-                level_l=0, seller_model=None, beta=self.beta, is_final_buyer=is_final
+                level_l=0,
+                seller_model=None,
+                beta=self.beta,
+                exploration_beta=self.exploration_beta if is_final else None,
             )
         else:
             # Level-l buyer는 Level-(l-1) seller를 모델링
@@ -711,7 +698,7 @@ class OnlineLearningEnvironment:
                 level_l=level,
                 seller_model=seller_model,
                 beta=self.beta,
-                is_final_buyer=is_final,
+                exploration_beta=self.exploration_beta if is_final else None,
             )
 
     def _create_seller_recursively(self, level: int) -> LevelLSeller:
@@ -719,7 +706,7 @@ class OnlineLearningEnvironment:
         if level == 0:
             # Level-0 seller는 Level-0 buyer를 모델링
             buyer_model = LevelLBuyer(
-                level_l=0, seller_model=None, beta=self.beta, is_final_buyer=False
+                level_l=0, seller_model=None, beta=self.beta, exploration_beta=None
             )
             return LevelLSeller(level_l=0, buyer_model=buyer_model, beta=self.beta)
         else:
@@ -732,13 +719,13 @@ class OnlineLearningEnvironment:
         logger.info("재귀적 Agent 초기화 시작...")
 
         # 재귀적으로 buyer와 seller 생성
-        # 최종 buyer만 exploration 사용
+        # 최종 buyer만 exploration_beta 사용
         self.buyer = self._create_buyer_recursively(self.buyer_level, is_final=True)
 
         # Seller는 bayesian_updater를 사용하므로 별도 처리
         if self.seller_level == 0:
             buyer_model = LevelLBuyer(
-                level_l=0, seller_model=None, beta=self.beta, is_final_buyer=False
+                level_l=0, seller_model=None, beta=self.beta, exploration_beta=None
             )
         else:
             # Seller가 모델링하는 buyer는 exploration 사용 안함
@@ -754,9 +741,11 @@ class OnlineLearningEnvironment:
         )
 
         logger.info("재귀적 Agent 초기화 완료:")
-        logger.info(f"  - Buyer L{self.buyer_level} (최종 buyer, exploration 사용)")
         logger.info(
-            f"  - Seller L{self.seller_level} (내부 buyer 모델들은 exploration 사용 안함)"
+            f"  - Buyer L{self.buyer_level} (최종 buyer, exploration_beta={self.exploration_beta})"
+        )
+        logger.info(
+            f"  - Seller L{self.seller_level} (내부 buyer 모델들은 기본 beta={self.beta} 사용)"
         )
 
         # 재귀 구조 출력
@@ -780,7 +769,9 @@ class OnlineLearningEnvironment:
         """Buyer의 재귀적 구조 출력"""
         indent = "  " * depth
         exploration_info = (
-            " [exploration ON]" if buyer.is_final_buyer else " [exploration OFF]"
+            f" [exploration_beta={buyer.exploration_beta}]"
+            if buyer.exploration_beta is not None
+            else f" [beta={buyer.beta}]"
         )
         logger.info(f"{indent}├─ Buyer L{buyer.level_l}{exploration_info}")
 
@@ -873,6 +864,8 @@ class OnlineLearningEnvironment:
             "buyer_level": self.buyer_level,
             "seller_level": self.seller_level,
             "true_preference": self.true_preference.tolist(),
+            "n_preference_points": self.n_preference_points,
+            "max_value": self.max_value,
             "games": [],
             "convergence_info": {},
         }
@@ -957,6 +950,10 @@ def run_online_learning_experiment(
     max_iterations: int = 1000,
     window_size: int = 50,
     convergence_threshold: float = 0.01,
+    beta: float = DEFAULT_BETA,
+    exploration_beta: float = EXPLORATION_BETA,
+    n_preference_points: int = DEFAULT_N_PREFERENCE_POINTS,
+    max_value: float = DEFAULT_MAX_VALUE,
 ) -> Dict:
     """온라인 학습 실험 실행"""
 
@@ -965,8 +962,12 @@ def run_online_learning_experiment(
         buyer_level=buyer_level,
         seller_level=seller_level,
         true_preference=true_preference,
+        beta=beta,
+        exploration_beta=exploration_beta,
         window_size=window_size,
         convergence_threshold=convergence_threshold,
+        n_preference_points=n_preference_points,
+        max_value=max_value,
     )
 
     # 학습 실행
@@ -996,6 +997,10 @@ if __name__ == "__main__":
             max_iterations=MAX_ITERATIONS,
             window_size=WINDOW_SIZE,
             convergence_threshold=CONVERGENCE_THRESHOLD,
+            beta=DEFAULT_BETA,
+            exploration_beta=EXPLORATION_BETA,
+            n_preference_points=DEFAULT_N_PREFERENCE_POINTS,
+            max_value=DEFAULT_MAX_VALUE,
         )
 
         # 실행 시간 측정 종료

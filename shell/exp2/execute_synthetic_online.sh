@@ -8,12 +8,13 @@ LOG_DIR="${RESULT_DIR}/logs"
 SCRIPT_PATH="./script/exp2/simulate_synthetic_online.py"
 
 # 실험 파라미터
-EXPLORATION_NOISE_STD=1  # 탐험 노이즈 표준편차
-MAX_ITERATIONS=1000        # 최대 반복 횟수
-WINDOW_SIZE=50            # 슬라이딩 윈도우 크기
-CONVERGENCE_THRESHOLD=0.001 # 수렴 임계값
+EXPLORATION_BETA=1.1      # 탐험 노이즈 표준편차
+DEFAULT_BETA=1.0          # 원래 노이즈 표준편차
+MAX_ITERATIONS=1000       # 최대 반복 횟수
+WINDOW_SIZE=100            # 슬라이딩 윈도우 크기
+CONVERGENCE_THRESHOLD=0.05 # 수렴 임계값
 
-# 레벨 조합 정의 (buyer_level,seller_level)
+레벨 조합 정의 (buyer_level,seller_level)
 LEVEL_COMBINATIONS=(
     "0,1"
     "1,1" 
@@ -22,8 +23,6 @@ LEVEL_COMBINATIONS=(
     "2,4"
     "3,3"
     "3,4"
-    "4,4"
-    "4,5"
 )
 
 # 디렉토리 생성
@@ -55,7 +54,8 @@ for combo in "${LEVEL_COMBINATIONS[@]}"; do
         --level_combinations "${combo}" \
         --experiment_time "${TIMESTAMP}" \
         --result_dir "${RESULT_DIR}/" \
-        --exploration_noise_std "${EXPLORATION_NOISE_STD}" \
+        --exploration_beta "${EXPLORATION_BETA}" \
+        --default_beta "${DEFAULT_BETA}" \
         --max_iterations "${MAX_ITERATIONS}" \
         --window_size "${WINDOW_SIZE}" \
         --convergence_threshold "${CONVERGENCE_THRESHOLD}" \

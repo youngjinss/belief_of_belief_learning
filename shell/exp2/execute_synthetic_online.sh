@@ -10,7 +10,7 @@ LOG_DIR="${RESULT_DIR}/logs"
 SCRIPT_PATH="./script/exp2/simulate_synthetic_online.py"
 
 # 실험 파라미터
-EXPLORATION_BETA=1.1      # 탐험 노이즈 표준편차
+EXPLORATION_BETA=1.5      # 탐험 노이즈 표준편차
 DEFAULT_BETA=1.0          # 원래 노이즈 표준편차
 N_PREFERENCE_POINTS=51    # 선호도 포인트 수
 N_PRICE_POINTS=31         # 가격 포인트 수
@@ -19,18 +19,18 @@ WINDOW_SIZE=100           # 슬라이딩 윈도우 크기
 CONVERGENCE_THRESHOLD=0.05 # 수렴 임계값
 
 # 레벨 조합 정의 (buyer_level,seller_level)
-# LEVEL_COMBINATIONS=(
-#     "0,1"
-#     "1,1" 
-#     "1,2"
-#     "2,2"
-#     "2,3"
-#     "2,4"
-#     "3,3"
-#     "3,4"
-#     "3,5"
-# )
-LEVEL_COMBINATIONS=("0,1")
+LEVEL_COMBINATIONS=(
+    "0,1"
+    "1,1" 
+    "1,2"
+    "2,2"
+    "2,3"
+    "2,4"
+    "3,3"
+    "3,4"
+    "3,5"
+)
+# LEVEL_COMBINATIONS=("0,1")  # fixme: for debug
 
 # 실제 선호도 설정 (2개의 값이 필요함)
 TRUE_PREFERENCE_1=7.0

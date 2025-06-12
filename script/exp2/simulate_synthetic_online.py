@@ -919,6 +919,9 @@ class OnlineLearningEnvironment:
         )
 
         logger.info(f"실험 완료. 최종 손실: {current_loss:.6f}")
+        
+        # 추후 평균 시간으로 계산
+        experiment_results['execution_time_seconds'] = iteration
 
         return experiment_results
 
@@ -1006,7 +1009,7 @@ if __name__ == "__main__":
         execution_time_seconds = end_time - start_time
 
         # 실행 시간 정보를 결과에 추가
-        results["execution_time_seconds"] = execution_time_seconds
+        results["execution_time_seconds"] = execution_time_seconds / results["execution_time_seconds"]
         results["start_time"] = start_time
         results["end_time"] = end_time
 

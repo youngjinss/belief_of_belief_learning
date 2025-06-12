@@ -29,6 +29,9 @@ LEVEL_COMBINATIONS=(
     "3,5"
 )
 
+# 실제 선호도 설정
+TRUE_PREFERENCE="7.0,3.0"
+
 # 디렉토리 생성
 mkdir -p "${LOG_DIR}"
 
@@ -55,6 +58,7 @@ for combo in "${LEVEL_COMBINATIONS[@]}"; do
     
     # 백그라운드에서 실험 실행
     nohup python "${SCRIPT_PATH}" \
+        --true_preference "${TRUE_PREFERENCE}" \
         --level_combinations "${combo}" \
         --experiment_time "${TIMESTAMP}" \
         --result_dir "${RESULT_DIR}/" \

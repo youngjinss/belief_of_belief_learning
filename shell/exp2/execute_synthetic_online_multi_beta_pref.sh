@@ -32,7 +32,7 @@ LEVEL_COMBINATIONS=(
 # 실제 선호도 설정들 (preference_1,preference_2 쌍들)
 TRUE_PREFERENCE_PAIRS=(
     "7,3"
-    "4,7"
+    "4,6"
     "2,8"
 )
 

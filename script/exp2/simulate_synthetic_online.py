@@ -919,9 +919,9 @@ class OnlineLearningEnvironment:
         )
 
         logger.info(f"실험 완료. 최종 손실: {current_loss:.6f}")
-        
+
         # 추후 평균 시간으로 계산
-        experiment_results['execution_time_seconds'] = iteration
+        experiment_results["execution_time_seconds"] = iteration
 
         return experiment_results
 
@@ -1009,14 +1009,21 @@ if __name__ == "__main__":
         execution_time_seconds = end_time - start_time
 
         # 실행 시간 정보를 결과에 추가
-        results["execution_time_seconds"] = execution_time_seconds / results["execution_time_seconds"]
+        results["execution_time_seconds"] = (
+            execution_time_seconds / results["execution_time_seconds"]
+        )
         results["start_time"] = start_time
         results["end_time"] = end_time
 
         logger.info(f"실험 완료: {execution_time_seconds:.2f}초 소요")
 
         # 결과 저장
-        result_file = f"{RESULT_DIR}/beta{EXPLORATION_BETA}_L{buyer_level}B_vs_L{seller_level}S_learning.json"
+        # 파일명용 선호도 문자열 생성 (소수점 제거)
+        pref_str = f"{int(true_preference[0])}{int(true_preference[1])}"
+        result_file = (
+            f"{RESULT_DIR}/beta{EXPLORATION_BETA}_pref{pref_str}"
+            f"_L{buyer_level}B_vs_L{seller_level}S_learning.json"
+        )
         serializable_results = convert_arrays_to_lists(results)
 
         with open(result_file, "w") as f:

@@ -1,5 +1,7 @@
-# chmod +x shell/exp2/monitor_synthetic_online.sh
-# ./shell/exp2/monitor_synthetic_online.sh
+'''
+chmod +x shell/exp2/monitor_synthetic_online.sh
+./shell/exp2/monitor_synthetic_online.sh
+'''
 
 # 가장 최근 실험 디렉토리 찾기
 LATEST_DIR=$(find ./results/exp2/ -maxdepth 1 -type d -name "20*" | sort | tail -1)

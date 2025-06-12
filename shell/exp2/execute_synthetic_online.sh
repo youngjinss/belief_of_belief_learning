@@ -1,5 +1,7 @@
-# chmod +x shell/exp2/execute_synthetic_online.sh
-# ./shell/exp2/execute_synthetic_online.sh
+'''
+chmod +x shell/exp2/execute_synthetic_online.sh
+./shell/exp2/execute_synthetic_online.sh
+'''
 
 # 실험 설정
 TIMESTAMP=$(date +"%Y%m%d_%H%M")
@@ -13,24 +15,26 @@ DEFAULT_BETA=1.0          # 원래 노이즈 표준편차
 N_PREFERENCE_POINTS=51    # 선호도 포인트 수
 N_PRICE_POINTS=31         # 가격 포인트 수
 MAX_ITERATIONS=1000       # 최대 반복 횟수
-WINDOW_SIZE=100            # 슬라이딩 윈도우 크기
+WINDOW_SIZE=100           # 슬라이딩 윈도우 크기
 CONVERGENCE_THRESHOLD=0.05 # 수렴 임계값
 
 # 레벨 조합 정의 (buyer_level,seller_level)
-LEVEL_COMBINATIONS=(
-    "0,1"
-    "1,1" 
-    "1,2"
-    "2,2"
-    "2,3"
-    "2,4"
-    "3,3"
-    "3,4"
-    "3,5"
-)
+# LEVEL_COMBINATIONS=(
+#     "0,1"
+#     "1,1" 
+#     "1,2"
+#     "2,2"
+#     "2,3"
+#     "2,4"
+#     "3,3"
+#     "3,4"
+#     "3,5"
+# )
+LEVEL_COMBINATIONS=("0,1")
 
-# 실제 선호도 설정
-TRUE_PREFERENCE="7.0,3.0"
+# 실제 선호도 설정 (2개의 값이 필요함)
+TRUE_PREFERENCE_1=7.0
+TRUE_PREFERENCE_2=3.0
 
 # 디렉토리 생성
 mkdir -p "${LOG_DIR}"
@@ -58,7 +62,7 @@ for combo in "${LEVEL_COMBINATIONS[@]}"; do
     
     # 백그라운드에서 실험 실행
     nohup python "${SCRIPT_PATH}" \
-        --true_preference "${TRUE_PREFERENCE}" \
+        --true_preference "${TRUE_PREFERENCE_1}" "${TRUE_PREFERENCE_2}" \
         --level_combinations "${combo}" \
         --experiment_time "${TIMESTAMP}" \
         --result_dir "${RESULT_DIR}/" \
@@ -94,10 +98,12 @@ cat > "${EXPERIMENT_INFO_FILE}" << EOF
 스크립트 경로: ${SCRIPT_PATH}
 
 실험 파라미터:
-  탐험 노이즈 표준편차: ${EXPLORATION_NOISE_STD}
+  탐험 노이즈 표준편차: ${EXPLORATION_BETA}
+  기본 노이즈 표준편차: ${DEFAULT_BETA}
   최대 반복 횟수: ${MAX_ITERATIONS}
   윈도우 크기: ${WINDOW_SIZE}
   수렴 임계값: ${CONVERGENCE_THRESHOLD}
+  실제 선호도: ${TRUE_PREFERENCE_1}, ${TRUE_PREFERENCE_2}
 
 레벨 조합:
 EOF

@@ -343,7 +343,7 @@ batch = {
 python train.py --experiment both --n_agents 100 --n_epochs 100
 
 # Evaluate models
-python evaluation.py --experiment figure3 --model_path models/figure3_best.pth --data_path data/figure3_data.pkl
+python evaluate.py --experiment figure3 --model_path models/figure3_best.pth --data_path data/figure3_data.pkl
 
 # Run visualization notebooks
 jupyter notebook visualize_figure3.ipynb

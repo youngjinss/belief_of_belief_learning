@@ -14,7 +14,7 @@ import glob
 
 from tomnet import ToMnet, create_tomnet
 from data_generation import DataGenerator, ToMnetDataset, collate_fn
-from evaluation import evaluate_model, compute_kl_divergence
+from lib.benchmark.ToMnet_impl.evaluate import evaluate_model, compute_kl_divergence
 from typing import Dict, List, Optional, Union
 
 

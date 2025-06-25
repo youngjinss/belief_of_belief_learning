@@ -1,18 +1,26 @@
 .vscode
 
 # lib 폴더 내 폴더 무시
-lib/abides-jpmc-public/
 lib/build/
-lib/multi-agent-framework/
-lib/RepBelief/
 lib/UNKNOWN.egg-info/
-lib/AmortizedNestedReasoning/
 log/*
-lib/maxe/
-lib/pymarketsim/
 lib/utils/telegrambot.py
-lib/lb-foraging/
-lib/pogema/
+
+# lib 폴더 내 benchmark 무시
+lib/benchmark/pogema/
+lib/benchmark/Machine_ToM/
+lib/benchmark/pymarketsim/
+lib/benchmark/multi-agent-framework/
+lib/benchmark/RepBelief/
+lib/benchmark/AmortizedNestedReasoning/
+lib/benchmark/Tomnet_impl/.claude/
+
+# lib 폴더 내 (구현된) env 무시
+lib/env/lb-foraging/
+lib/env/abides-jpmc-public/
+lib/env/maxe/
+
+# claude 무시
 CLAUDE.md
 
 # 데이터 폴더 무시

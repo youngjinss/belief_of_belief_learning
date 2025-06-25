@@ -1,4 +1,5 @@
 #!/bin/bash
+# nohup bash shell/run_experiment.sh > experiment.log 2>&1 &
 # Main launcher script for ToMnet experiments
 # 
 # This script provides a convenient way to run the complete ToMnet workflow

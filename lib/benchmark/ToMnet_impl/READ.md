@@ -10,8 +10,8 @@ The ToMnet implementation for Figure 3 uses a simplified architecture focused on
 
 1. **Character Net (f_θ)**: 
    - Processes past episode trajectories {τ_ij} into character embeddings
-   - Function: `e_char,ij = f_θ(τ_ij^(obs))`
-   - Aggregation: `e_char,i = Σ_j e_char,ij`
+   - Function: e_char,ij = f_θ(τ_ij^(obs))
+   - Aggregation: e_char,i = Σ_j e_char,ij
    - Implementation: 3-layer MLP with ReLU activations
    - Output: 2D embeddings for visualization
 
@@ -56,13 +56,17 @@ L_action = -log π̂(a_t^(obs)|x_t^(obs), e_char)
 ### Experimental Conditions
 1. **Near-deterministic agents**: α = 0.01 (concentrated policies)
 2. **Stochastic agents**: α = 3.0 (uniform-like policies) 
-3. **Mixed species training**: Agents from both α values in same dataset
+3. **Mixed species training**: Agents from both α values in same dataset (e.g., α=0.01, 3.0)
+4. **Full alpha range**: α ∈ {0.01, 0.03, 0.1, 0.3, 1.0, 3.0} for comprehensive evaluation
 
 ### ToMnet Implementation (tomnet.py)
 **CharacterNet Class**:
 - **Input Processing**: Handles variable-length past trajectories
 - **Architecture**: 3-layer MLP (state_dim+action_dim → 128 → 128 → embedding_dim)
-- **Trajectory Aggregation**: Averages embeddings across time steps, then across past episodes
+- **Trajectory Aggregation**: 
+1) Step 1: Average embeddings across time steps for each trajectory
+2) Step 2: Sum averaged embeddings across past episodes  
+3) Step 3: Apply L2 normalization if needed
 - **Output**: 2D character embeddings for Figure 3 visualization
 
 **PredictionNet Class**:
@@ -77,7 +81,7 @@ L_action = -log π̂(a_t^(obs)|x_t^(obs), e_char)
 
 ### Training Process (train.py)
 **Data Generation**:
-- Creates agents with specified α values (0.01, 0.1, 0.5, 1.0, 3.0)
+- Creates agents with specified α values (0.01, 0.03, 0.1, 0.3, 1.0, 3.0)
 - Generates N_past past episodes per agent (N_past ~ Uniform{0, 10})
 - Samples single (state, action) pair from each past episode
 - Creates query episode for action prediction task
@@ -85,6 +89,8 @@ L_action = -log π̂(a_t^(obs)|x_t^(obs), e_char)
 **Training Loop**:
 - Batch size: 32-64 samples
 - Optimizer: Adam with learning rate 1e-3 to 1e-4
+- Training episodes: 50,000-100,000 per species
+- Validation: 80/20 split, early stopping on validation accuracy
 - Metrics: Action prediction accuracy, KL divergence vs true policy
 - Model saving: Best model based on validation accuracy
 
@@ -99,11 +105,27 @@ L_action = -log π̂(a_t^(obs)|x_t^(obs), e_char)
 - Colors embeddings by dominant action for Figure 3b
 - Compares embedding clusters between different α species
 
+### Evaluation Metrics
+1. Action Likelihood: L_action = π̂(a_t^(obs)|x_t^(obs), e_char)
+2. KL Divergence: D_KL(π||π̂) = Σ_a π(a) log(π(a)/π̂(a))
+   - where π is the true policy and π̂ is the predicted policy.
+
 ### Target Outputs
-1. **Figure 3a**: Action likelihood vs number of past observations (1-10)
+1. **Figure 3a**: Action likelihood vs number of past observations
+   - X-axis: Number of past observations (N_past = 0 to 10)
+   - Y-axis: Action prediction likelihood
+   - 3 lines showing results for N_past = 0, 1, 5
+   - Comparison with Bayes-optimal baseline
 2. **Figure 3b**: 2D character embedding scatter plot colored by dominant action  
-3. **Figure 3c**: KL divergence heatmap showing cross-species generalization
-4. **Figure 3d**: Mixed species training performance comparison
+3. **Figure 3c**: Cross-species generalization heatmap
+   - Rows: Training species (α ∈ {0.01, 0.03, 0.1, 0.3, 1.0, 3.0})
+   - Columns: Test species (α ∈ {0.01, 0.03, 0.1, 0.3, 1.0, 3.0})
+   - 6 lines showing KL divergence for each trained α value
+   - Shows generalization capabilities across species
+4. **Figure 3d**: Mixed species training performance
+   - X-axis: Test α values {0.01, 0.03, 0.1, 0.3, 1.0, 3.0}
+   - Y-axis: KL divergence between predicted and true policies
+   - 3 lines: trained on α=0.01, α=3.0, and mixed (α=0.01 & 3.0)
 
 ## Data Flow and File Structure
 
@@ -247,8 +269,5 @@ ToMnet_impl/
 ```
 
 This implementation provides a complete reproduction of the ToMnet Figure 3 experiments, demonstrating the network's ability to learn character embeddings that capture agent behavioral patterns and enable cross-species generalization in theory of mind tasks.
-
-
-
 
 

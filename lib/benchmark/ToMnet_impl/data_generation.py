@@ -4,6 +4,8 @@ from typing import List, Dict, Tuple, Optional, Union
 import pickle
 import os
 from tqdm import tqdm
+from multiprocessing import Pool, cpu_count
+from functools import partial
 
 from environment import GridWorld
 from agents import RandomAgent, GoalDirectedAgent, create_random_agents, create_goal_directed_agents
@@ -32,6 +34,51 @@ class TrajectoryData:
         }
 
 
+def generate_agent_episodes(args):
+    """Helper function to generate episodes for a single agent (for parallel processing)"""
+    agent_id, agent, n_episodes_per_agent, grid_size, max_walls, max_steps, experiment_type = args
+    
+    agent_trajectories = []
+    
+    for episode_id in range(n_episodes_per_agent):
+        env = GridWorld(grid_size, max_walls, max_steps)
+        state = env.reset()
+        
+        if experiment_type == 'goal_directed':
+            agent.plan(env)
+        
+        trajectory = TrajectoryData()
+        trajectory.agent_id = agent_id
+        trajectory.episode_id = episode_id
+        
+        if experiment_type == 'goal_directed':
+            trajectory.env_state = {
+                'walls': env.walls.copy(),
+                'objects': env.objects.copy(),
+                'initial_agent_pos': env.agent_pos
+            }
+        
+        # Run episode
+        step_count = 0
+        while not env.done and step_count < max_steps:
+            if experiment_type == 'goal_directed':
+                action = agent.act(state, env)
+            else:
+                action = agent.act(state)
+            next_state, reward, done, info = env.step(action)
+            
+            trajectory.add_step(state.flatten(), action, reward)
+            state = next_state
+            step_count += 1
+            
+            if experiment_type == 'goal_directed' and done:
+                break
+        
+        agent_trajectories.append(trajectory)
+    
+    return agent_id, agent_trajectories
+
+
 class DataGenerator:
     """Generate training and evaluation data for ToMnet experiments"""
     
@@ -43,7 +90,7 @@ class DataGenerator:
     
     def generate_random_agent_data(self, n_agents: int, n_episodes_per_agent: int,
                                    alpha: float, min_past: int = 0, max_past: int = 10,
-                                   save_path: Optional[str] = None) -> Dict:
+                                   save_path: Optional[str] = None, n_workers: Optional[int] = None) -> Dict:
         """
         Generate data for Figure 3 experiments with random agents
         
@@ -53,35 +100,43 @@ class DataGenerator:
             alpha: Dirichlet concentration parameter
             min_past/max_past: Range for number of past episodes
             save_path: Optional path to save data
+            n_workers: Number of parallel workers (default: CPU count)
         """
         print(f"Generating random agent data: {n_agents} agents, alpha={alpha}")
         
         # Create agents
         agents = create_random_agents(n_agents, alpha)
         
+        # Determine number of workers
+        if n_workers is None:
+            n_workers = min(cpu_count(), n_agents)
+        print(f"Using {n_workers} parallel workers")
+        
+        # Prepare arguments for parallel processing
+        agent_args = [
+            (agent_id, agent, n_episodes_per_agent, self.grid_size, self.max_walls, 
+             self.max_steps, 'random')
+            for agent_id, agent in enumerate(agents)
+        ]
+        
+        # Generate episodes in parallel
+        all_agent_trajectories = {}
+        with Pool(n_workers) as pool:
+            results = list(tqdm(
+                pool.imap(generate_agent_episodes, agent_args),
+                total=n_agents,
+                desc="Generating agent data (parallel)"
+            ))
+            
+            for agent_id, trajectories in results:
+                all_agent_trajectories[agent_id] = trajectories
+        
+        # Create training samples
         all_data = []
         
-        for agent_id, agent in enumerate(tqdm(agents, desc="Generating agent data")):
-            agent_trajectories = []
-            
-            # Generate episodes for this agent
-            for episode_id in range(n_episodes_per_agent):
-                env = GridWorld(self.grid_size, self.max_walls, self.max_steps)
-                state = env.reset()
-                
-                trajectory = TrajectoryData()
-                trajectory.agent_id = agent_id
-                trajectory.episode_id = episode_id
-                
-                # Run episode
-                while not env.done:
-                    action = agent.act(state)
-                    next_state, reward, done, info = env.step(action)
-                    
-                    trajectory.add_step(state.flatten(), action, reward)
-                    state = next_state
-                
-                agent_trajectories.append(trajectory)
+        for agent_id in range(n_agents):
+            agent = agents[agent_id]
+            agent_trajectories = all_agent_trajectories[agent_id]
             
             # Create training samples with variable past episodes
             for query_episode_id in range(n_episodes_per_agent):
@@ -132,50 +187,54 @@ class DataGenerator:
     def generate_goal_directed_agent_data(self, n_agents: int, n_episodes_per_agent: int,
                                          alpha_reward: float = 0.01, high_cost_ratio: float = 0.2,
                                          min_past: int = 0, max_past: int = 10,
-                                         save_path: Optional[str] = None) -> Dict:
+                                         save_path: Optional[str] = None, n_workers: Optional[int] = None) -> Dict:
         """
         Generate data for Figure 5 experiments with goal-directed agents
+        
+        Args:
+            n_agents: Number of agents to create
+            n_episodes_per_agent: Episodes per agent
+            alpha_reward: Dirichlet concentration parameter for rewards
+            high_cost_ratio: Ratio of high-cost agents
+            min_past/max_past: Range for number of past episodes
+            save_path: Optional path to save data
+            n_workers: Number of parallel workers (default: CPU count)
         """
         print(f"Generating goal-directed agent data: {n_agents} agents")
         
         # Create agents
         agents = create_goal_directed_agents(n_agents, alpha_reward, high_cost_ratio)
         
+        # Determine number of workers
+        if n_workers is None:
+            n_workers = min(cpu_count(), n_agents)
+        print(f"Using {n_workers} parallel workers")
+        
+        # Prepare arguments for parallel processing
+        agent_args = [
+            (agent_id, agent, n_episodes_per_agent, self.grid_size, self.max_walls, 
+             self.max_steps, 'goal_directed')
+            for agent_id, agent in enumerate(agents)
+        ]
+        
+        # Generate episodes in parallel
+        all_agent_trajectories = {}
+        with Pool(n_workers) as pool:
+            results = list(tqdm(
+                pool.imap(generate_agent_episodes, agent_args),
+                total=n_agents,
+                desc="Generating agent data (parallel)"
+            ))
+            
+            for agent_id, trajectories in results:
+                all_agent_trajectories[agent_id] = trajectories
+        
+        # Create training samples
         all_data = []
         
-        for agent_id, agent in enumerate(tqdm(agents, desc="Generating agent data")):
-            agent_trajectories = []
-            
-            # Generate episodes for this agent
-            for episode_id in range(n_episodes_per_agent):
-                env = GridWorld(self.grid_size, self.max_walls, self.max_steps)
-                state = env.reset()
-                
-                # Plan for this environment
-                agent.plan(env)
-                
-                trajectory = TrajectoryData()
-                trajectory.agent_id = agent_id
-                trajectory.episode_id = episode_id
-                
-                # Store environment info for SR computation
-                trajectory.env_state = {
-                    'walls': env.walls.copy(),
-                    'objects': env.objects.copy(),
-                    'initial_agent_pos': env.agent_pos
-                }
-                
-                # Run episode
-                step_count = 0
-                while not env.done and step_count < self.max_steps:
-                    action = agent.act(state, env)
-                    next_state, reward, done, info = env.step(action)
-                    
-                    trajectory.add_step(state.flatten(), action, reward)
-                    state = next_state
-                    step_count += 1
-                
-                agent_trajectories.append(trajectory)
+        for agent_id in range(n_agents):
+            agent = agents[agent_id]
+            agent_trajectories = all_agent_trajectories[agent_id]
             
             # Create training samples
             for query_episode_id in range(n_episodes_per_agent):

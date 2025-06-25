@@ -9,6 +9,8 @@ import json
 from tqdm import tqdm
 import wandb
 from typing import Dict, Optional
+import platform
+import glob
 
 from tomnet import ToMnet, create_tomnet
 from data_generation import DataGenerator, ToMnetDataset, collate_fn
@@ -192,6 +194,68 @@ def create_model(experiment_type: str, state_dim: int, config: ExperimentConfig)
 
 def generate_data(experiment_type: str, config: ExperimentConfig, args) -> Union[Dict, Dict[str, Dict]]:
     """Generate training data based on experiment type"""
+    # Check if data files already exist
+    data_files = glob.glob("data/figure*.pkl")
+    if data_files:
+        print(f"Found existing data files: {data_files}")
+        print("Skipping data generation...")
+        
+        # Load existing data files
+        if experiment_type == 'figure3':
+            datasets = {}
+            alpha_values = getattr(args, 'alpha_values', config.alpha_values)
+            
+            for alpha in alpha_values:
+                file_path = f"data/figure3_alpha_{alpha}.pkl"
+                if os.path.exists(file_path):
+                    print(f"Loading existing data for alpha={alpha}")
+                    import pickle
+                    with open(file_path, 'rb') as f:
+                        datasets[alpha] = pickle.load(f)
+                else:
+                    print(f"Warning: Expected file {file_path} not found, generating new data")
+                    # Generate missing data
+                    data_generator = DataGenerator()
+                    dataset = data_generator.generate_random_agent_data(
+                        n_agents=args.n_agents or config.n_agents,
+                        n_episodes_per_agent=args.n_episodes_per_agent,
+                        alpha=alpha,
+                        save_path=file_path,
+                        n_workers=args.n_workers
+                    )
+                    datasets[alpha] = dataset
+            
+            # Create mixed dataset if requested
+            if getattr(args, 'mixed_training', False):
+                print("Creating mixed dataset")
+                mixed_data = []
+                for alpha, dataset in datasets.items():
+                    mixed_data.extend(dataset['data'])
+                
+                mixed_dataset = {
+                    'data': mixed_data,
+                    'meta': {
+                        'mixed': True,
+                        'alpha_values': list(datasets.keys()),
+                        'state_dim': datasets[list(datasets.keys())[0]]['meta']['state_dim']
+                    }
+                }
+                datasets['mixed'] = mixed_dataset
+            
+            return datasets
+            
+        elif experiment_type == 'figure5':
+            file_path = "data/figure5_data.pkl"
+            if os.path.exists(file_path):
+                print("Loading existing figure5 data")
+                import pickle
+                with open(file_path, 'rb') as f:
+                    return pickle.load(f)
+            else:
+                print("Figure5 data file not found, generating new data")
+                # Fall through to generate new data
+    
+    # Generate new data if not found
     data_generator = DataGenerator()
     
     if experiment_type == 'figure3':
@@ -205,7 +269,8 @@ def generate_data(experiment_type: str, config: ExperimentConfig, args) -> Union
                 n_agents=args.n_agents or config.n_agents,
                 n_episodes_per_agent=args.n_episodes_per_agent,
                 alpha=alpha,
-                save_path=f"data/figure3_alpha_{alpha}.pkl"
+                save_path=f"data/figure3_alpha_{alpha}.pkl",
+                n_workers=args.n_workers
             )
             datasets[alpha] = dataset
         
@@ -235,7 +300,8 @@ def generate_data(experiment_type: str, config: ExperimentConfig, args) -> Union
             n_episodes_per_agent=args.n_episodes_per_agent,
             alpha_reward=config.alpha_reward,
             high_cost_ratio=config.high_cost_ratio,
-            save_path="data/figure5_data.pkl"
+            save_path="data/figure5_data.pkl",
+            n_workers=args.n_workers
         )
         return dataset
     
@@ -374,12 +440,19 @@ def main():
     parser = argparse.ArgumentParser(description='Train ToMnet')
     parser.add_argument('--experiment', choices=['figure3', 'figure5', 'both'], 
                        default='both', help='Which experiment to run')
-    parser.add_argument('--device', default='cuda', help='Device to use')
+    # Detect device based on platform
+    if platform.system() == "Darwin":  # macOS
+        default_device = 'mps' if torch.backends.mps.is_available() else 'cpu'
+    else:
+        default_device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    
+    parser.add_argument('--device', default=default_device, help='Device to use')
     parser.add_argument('--batch_size', type=int, default=32, help='Batch size')
     parser.add_argument('--learning_rate', type=float, default=1e-3, help='Learning rate')
     parser.add_argument('--n_epochs', type=int, default=100, help='Number of epochs')
     parser.add_argument('--n_agents', type=int, default=100, help='Number of agents')
     parser.add_argument('--n_episodes_per_agent', type=int, default=100, help='Episodes per agent')
+    parser.add_argument('--n_workers', type=int, default=None, help='Number of parallel workers for data generation')
     
     # Figure 3 specific
     parser.add_argument('--alpha_values', nargs='+', type=float, default=[0.01, 3.0],

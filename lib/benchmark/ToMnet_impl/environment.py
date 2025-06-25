@@ -59,8 +59,10 @@ class GridWorld:
         empty_positions = []
         for i in range(self.size):
             for j in range(self.size):
-                if not self.walls[i, j] and self.objects[i, j] == 0 and (i, j) != self.agent_pos:
-                    empty_positions.append((i, j))
+                if not self.walls[i, j] and self.objects[i, j] == 0:
+                    # Only check agent position if it exists
+                    if not hasattr(self, 'agent_pos') or (i, j) != self.agent_pos:
+                        empty_positions.append((i, j))
         
         if empty_positions:
             return random.choice(empty_positions)

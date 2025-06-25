@@ -19,15 +19,22 @@ WINDOW_SIZE=100           # 슬라이딩 윈도우 크기
 CONVERGENCE_THRESHOLD=0.05 # 수렴 임계값
 
 # 레벨 조합 정의 (buyer_level,seller_level)
+# LEVEL_COMBINATIONS=(
+#     "0,1"
+#     "1,1" 
+#     "1,2"
+#     "2,3"
+#     "3,3"
+#     "3,4""
+# )
 LEVEL_COMBINATIONS=(
-    "0,1"
-    "1,1" 
-    "1,2"
-    "2,3"
-    "3,3"
-    "3,4"
-)
-# LEVEL_COMBINATIONS=("0,1")  # fixme: for debug
+    "1,0"
+    "2,0"
+    "2,1"
+    "3,1"
+    "3,2"
+    "4,2"
+)  # fixme: for debug
 
 # 실제 선호도 설정들 (preference_1,preference_2 쌍들)
 TRUE_PREFERENCE_PAIRS=(

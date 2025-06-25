@@ -3,14 +3,13 @@
 # lib 폴더 내 폴더 무시
 lib/build/
 lib/UNKNOWN.egg-info/
-log/*
 lib/utils/telegrambot.py
+lib/backup/
+log/*
 
 # lib 폴더 내 benchmark 무시
 lib/benchmark/pogema/
 lib/benchmark/Machine_ToM/
-lib/benchmark/pymarketsim/
-lib/benchmark/multi-agent-framework/
 lib/benchmark/RepBelief/
 lib/benchmark/AmortizedNestedReasoning/
 
@@ -21,7 +20,9 @@ lib/benchmark/Tomnet_impl/.claude/
 
 # lib 폴더 내 (구현된) env 무시
 lib/env/lb-foraging/
+lib/env/multi-agent-framework/
 lib/env/abides-jpmc-public/
+lib/env/pymarketsim/
 lib/env/maxe/
 
 # claude 무시

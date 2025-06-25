@@ -1,12 +1,26 @@
 #!/bin/bash
 # Script to display the ToMnet project structure
 
+# Create log directory with timestamp
+LOG_DIR="log/show_structure/$(date +%Y%m%d_%H%M%S)"
+mkdir -p "$LOG_DIR"
+
 echo "========================================================================"
 echo "                    ToMnet Project Structure"
 echo "========================================================================"
 echo ""
 
-tree -I '__pycache__|*.pyc|.git' -a || find . -type f -name "*.py" -o -name "*.sh" -o -name "*.ipynb" -o -name "*.md" | head -20
+# Execute tree command in background with logging
+echo "Starting structure display at $(date)" > "$LOG_DIR/execution.log"
+{
+    tree -I '__pycache__|*.pyc|.git' -a || find . -type f -name "*.py" -o -name "*.sh" -o -name "*.ipynb" -o -name "*.md" | head -20
+} >> "$LOG_DIR/execution.log" 2>&1 &
+STRUCT_PID=$!
+echo $STRUCT_PID > "$LOG_DIR/process.pid"
+
+# Wait for command to complete and display output
+wait $STRUCT_PID
+cat "$LOG_DIR/execution.log" | tail -n +2  # Skip the timestamp line
 
 echo ""
 echo "========================================================================"

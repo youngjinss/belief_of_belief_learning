@@ -180,12 +180,25 @@ print_info "Device: $DEVICE"
 print_info "Running visualization command..."
 echo ""
 
-# Run the Python visualization script
-print_info "Executing: $PYTHON_CMD"
-eval $PYTHON_CMD
+# Create log directory with timestamp
+LOG_DIR="log/visualize_figure3/$(date +%Y%m%d_%H%M%S)"
+mkdir -p "$LOG_DIR"
+print_info "Created log directory: $LOG_DIR"
 
-# Check if the command was successful
-if [ $? -eq 0 ]; then
+# Run the Python visualization script in background with logging
+print_info "Executing: $PYTHON_CMD"
+echo "Starting visualization at $(date)" > "$LOG_DIR/execution.log"
+eval "$PYTHON_CMD" >> "$LOG_DIR/execution.log" 2>&1 &
+PROCESS_PID=$!
+echo $PROCESS_PID > "$LOG_DIR/process.pid"
+print_info "Process started in background with PID: $PROCESS_PID"
+print_info "Logs will be written to: $LOG_DIR/execution.log"
+
+# Wait for process to complete and check if successful
+wait $PROCESS_PID
+EXIT_CODE=$?
+
+if [ $EXIT_CODE -eq 0 ]; then
     echo ""
     print_success "Visualization completed successfully!"
     
@@ -203,7 +216,8 @@ if [ $? -eq 0 ]; then
         echo "  - figure3d_mixed_species.png: Mixed species training performance"
     fi
 else
-    print_error "Visualization failed with exit code $?"
+    print_error "Visualization failed with exit code $EXIT_CODE"
+    print_error "Check log file for details: $LOG_DIR/execution.log"
     exit 1
 fi
 

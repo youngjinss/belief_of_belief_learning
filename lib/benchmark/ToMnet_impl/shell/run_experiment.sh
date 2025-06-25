@@ -85,16 +85,56 @@ EOF
 # Function to run training
 run_training() {
     print_info "Starting ToMnet training..."
-    python scripts/train.py --experiment figure3 "$@"
-    print_success "Training completed!"
+    
+    # Create log directory with timestamp
+    LOG_DIR="log/training/$(date +%Y%m%d_%H%M%S)"
+    mkdir -p "$LOG_DIR"
+    print_info "Created log directory: $LOG_DIR"
+    
+    # Run training in background with logging
+    echo "Starting training at $(date)" > "$LOG_DIR/execution.log"
+    python scripts/train.py --experiment figure3 "$@" >> "$LOG_DIR/execution.log" 2>&1 &
+    TRAIN_PID=$!
+    echo $TRAIN_PID > "$LOG_DIR/process.pid"
+    print_info "Training started in background with PID: $TRAIN_PID"
+    print_info "Logs will be written to: $LOG_DIR/execution.log"
+    
+    # Wait for training to complete
+    wait $TRAIN_PID
+    if [ $? -eq 0 ]; then
+        print_success "Training completed!"
+    else
+        print_error "Training failed! Check log: $LOG_DIR/execution.log"
+        exit 1
+    fi
 }
 
 # Function to run evaluation
 run_evaluation() {
     print_info "Starting cross-species evaluation..."
+    
     if [ -f "result/figure3/run_cross_species_evaluation.sh" ]; then
-        bash result/figure3/run_cross_species_evaluation.sh
-        print_success "Evaluation completed!"
+        # Create log directory with timestamp
+        LOG_DIR="log/evaluation/$(date +%Y%m%d_%H%M%S)"
+        mkdir -p "$LOG_DIR"
+        print_info "Created log directory: $LOG_DIR"
+        
+        # Run evaluation in background with logging
+        echo "Starting evaluation at $(date)" > "$LOG_DIR/execution.log"
+        bash result/figure3/run_cross_species_evaluation.sh >> "$LOG_DIR/execution.log" 2>&1 &
+        EVAL_PID=$!
+        echo $EVAL_PID > "$LOG_DIR/process.pid"
+        print_info "Evaluation started in background with PID: $EVAL_PID"
+        print_info "Logs will be written to: $LOG_DIR/execution.log"
+        
+        # Wait for evaluation to complete
+        wait $EVAL_PID
+        if [ $? -eq 0 ]; then
+            print_success "Evaluation completed!"
+        else
+            print_error "Evaluation failed! Check log: $LOG_DIR/execution.log"
+            exit 1
+        fi
     else
         print_error "Evaluation script not found. Run training first."
         exit 1
@@ -104,8 +144,28 @@ run_evaluation() {
 # Function to run visualization
 run_visualization() {
     print_info "Starting Figure 3 visualization..."
-    bash shell/visualize_figure3.sh "$@"
-    print_success "Visualization completed!"
+    
+    # Create log directory with timestamp
+    LOG_DIR="log/visualization/$(date +%Y%m%d_%H%M%S)"
+    mkdir -p "$LOG_DIR"
+    print_info "Created log directory: $LOG_DIR"
+    
+    # Run visualization in background with logging
+    echo "Starting visualization at $(date)" > "$LOG_DIR/execution.log"
+    bash shell/visualize_figure3.sh "$@" >> "$LOG_DIR/execution.log" 2>&1 &
+    VIS_PID=$!
+    echo $VIS_PID > "$LOG_DIR/process.pid"
+    print_info "Visualization started in background with PID: $VIS_PID"
+    print_info "Logs will be written to: $LOG_DIR/execution.log"
+    
+    # Wait for visualization to complete
+    wait $VIS_PID
+    if [ $? -eq 0 ]; then
+        print_success "Visualization completed!"
+    else
+        print_error "Visualization failed! Check log: $LOG_DIR/execution.log"
+        exit 1
+    fi
 }
 
 # Function to clean up generated files

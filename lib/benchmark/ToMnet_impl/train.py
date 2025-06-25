@@ -348,7 +348,7 @@ def generate_cross_species_evaluation_files(results, datasets, experiment_type):
     print("\n=== Generating Cross-Species Evaluation Files ===")
 
     # Create evaluation directory
-    eval_dir = "evaluation_configs"
+    eval_dir = f"/result/{experiment_type}"
     os.makedirs(eval_dir, exist_ok=True)
 
     # Generate model_paths.json
@@ -405,11 +405,11 @@ python evaluate.py \\
     --experiment figure3 \\
     --model_paths_json {model_paths_file} \\
     --data_paths_json {data_paths_file} \\
-    --output_path result/figure3_cross_species_results.pkl \\
+    --output_path {eval_dir}/figure3_cross_species_results.pkl \\
     --device cuda
 
 echo "Evaluation completed!"
-echo "Results saved to: result/figure3_cross_species_results.pkl"
+echo "Results saved to: {eval_dir}/figure3_cross_species_results.pkl"
 echo ""
 echo "To visualize results, run:"
 echo "jupyter notebook visualize_figure3.ipynb"
@@ -583,8 +583,8 @@ def main():
     parser = argparse.ArgumentParser(description="Train ToMnet")
     parser.add_argument(
         "--experiment",
-        choices=["figure3", "figure5", "both"],
-        default="both",
+        choices=["figure3", "figure5"],
+        default="figure3",
         help="Which experiment to run",
     )
     # Detect device based on platform
@@ -630,31 +630,31 @@ def main():
 
     results = {}
 
-    if args.experiment in ["figure3", "both"]:
+    if args.experiment in ["figure3"]:
         results["figure3"] = train_unified_model("figure3", args)
 
-    if args.experiment in ["figure5", "both"]:
+    if args.experiment in ["figure5"]:
         results["figure5"] = train_unified_model("figure5", args)
 
     # Save results
-    with open("training_results.json", "w") as f:
+    with open(f"result/{args.experiment}/training_results.json", "w") as f:
         json.dump(results, f, indent=2)
 
     print("Training completed!")
     print(f"Results saved to training_results.json")
 
     # Print next steps for Figure 3
-    if args.experiment in ["figure3", "both"]:
+    if args.experiment in ["figure3"]:
         print("\n=== Figure 3 Cross-Species Evaluation Ready ===")
-        if os.path.exists("evaluation_configs/evaluation_summary.json"):
-            with open("evaluation_configs/evaluation_summary.json", "r") as f:
+        if os.path.exists("result/figure3/evaluation_summary.json"):
+            with open("result/figure3/evaluation_summary.json", "r") as f:
                 summary = json.load(f)
 
             print("✓ Cross-species evaluation files generated:")
             print(f"  - Models trained: {summary['models_trained']}")
             print(f"  - Test datasets: {summary['test_datasets']}")
             print("\nTo run cross-species evaluation:")
-            print("  bash evaluation_configs/run_cross_species_evaluation.sh")
+            print("  bash result/figure3/run_cross_species_evaluation.sh")
             print("\nTo visualize results:")
             print("  jupyter notebook visualize_figure3.ipynb")
         else:

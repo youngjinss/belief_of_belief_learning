@@ -18,6 +18,7 @@ lib/benchmark/Tomnet_impl/data/
 lib/benchmark/ToMnet_impl/models/
 lib/benchmark/Tomnet_impl/.claude/
 lib/benchmark/ToMnet_impl/result/
+lib/benchmark/ToMnet_impl/results/
 
 # lib 폴더 내 (구현된) env 무시
 lib/env/lb-foraging/

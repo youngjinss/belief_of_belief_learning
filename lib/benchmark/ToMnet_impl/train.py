@@ -471,7 +471,7 @@ def main():
     if platform.system() == "Darwin":  # macOS
         default_device = "mps" if torch.backends.mps.is_available() else "cpu"
     else:
-        default_device = "cuda" if torch.cuda.is_available() else "cpu"
+        default_device = "cuda:3" if torch.cuda.is_available() else "cpu"
 
     parser.add_argument("--device", default=default_device, help="Device to use")
     parser.add_argument("--batch_size", type=int, default=32, help="Batch size")

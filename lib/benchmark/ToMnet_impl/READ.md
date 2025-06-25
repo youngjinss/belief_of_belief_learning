@@ -60,13 +60,31 @@ L_action = -log π̂(a_t^(obs)|x_t^(obs), e_char)
 4. **Full alpha range**: α ∈ {0.01, 0.03, 0.1, 0.3, 1.0, 3.0} for comprehensive evaluation
 
 ### ToMnet Implementation (tomnet.py)
+### ToMnet Implementation (tomnet.py)
 **CharacterNet Class**:
 - **Input Processing**: Handles variable-length past trajectories
 - **Architecture**: 3-layer MLP (state_dim+action_dim → 128 → 128 → embedding_dim)
 - **Trajectory Aggregation**: 
-1) Step 1: Average embeddings across time steps for each trajectory
-2) Step 2: Sum averaged embeddings across past episodes  
-3) Step 3: Apply L2 normalization if needed
+  ```python
+  def aggregate_character_embeddings(self, past_trajectories):
+      # Process each trajectory through MLP
+      trajectory_embeddings = []
+      for trajectory in past_trajectories:
+          # trajectory shape: (seq_len, state_dim + action_dim)
+          embedding = self.character_mlp(trajectory)
+          # Average across time dimension first
+          time_averaged = embedding.mean(dim=0)
+          trajectory_embeddings.append(time_averaged)
+      
+      # Sum across past episodes
+      if len(trajectory_embeddings) > 0:
+          e_char = torch.stack(trajectory_embeddings).sum(dim=0)
+          # Optional: L2 normalization
+          e_char = F.normalize(e_char, p=2, dim=-1)
+      else:
+          e_char = torch.zeros(self.embedding_dim)
+      
+      return e_char
 - **Output**: 2D character embeddings for Figure 3 visualization
 
 **PredictionNet Class**:
@@ -86,13 +104,16 @@ L_action = -log π̂(a_t^(obs)|x_t^(obs), e_char)
 - Samples single (state, action) pair from each past episode
 - Creates query episode for action prediction task
 
-**Training Loop**:
-- Batch size: 32-64 samples
-- Optimizer: Adam with learning rate 1e-3 to 1e-4
-- Training episodes: 50,000-100,000 per species
-- Validation: 80/20 split, early stopping on validation accuracy
-- Metrics: Action prediction accuracy, KL divergence vs true policy
-- Model saving: Best model based on validation accuracy
+**Training Configuration**:
+- **Batch size**: 32-64 samples
+- **Optimizer**: Adam with learning rate 1e-3 to 1e-4
+- **Training episodes**: 50,000-100,000 per species
+- **Dataset size**: 1000 agents × 100 episodes × variable N_past
+- **Batch processing**: Dynamic batching with padding for variable-length sequences
+- **Validation**: 80/20 split, early stopping on validation accuracy
+- **Metrics**: Action prediction accuracy, KL divergence vs true policy
+- **Model saving**: Best model based on validation accuracy
+- **Reproducibility**: Fixed random seeds for consistent results across runs
 
 ### Evaluation Process (evaluate.py)
 **Cross-Species Testing**:
@@ -144,6 +165,7 @@ batch = {
     'current_state': torch.Tensor,      # (batch_size, state_dim)
     'true_actions': torch.Tensor,       # (batch_size,) target actions
     'agent_ids': List[int],             # For tracking agent species
+    'true_policies': torch.Tensor,      # (batch_size, action_dim) for KL computation
 }
 ```
 
@@ -151,10 +173,23 @@ batch = {
 
 ### Bayes-Optimal Baseline
 The implementation includes a Bayes-optimal baseline that:
-- Maintains Dirichlet posterior over action probabilities
-- Updates posterior with observed actions: α_posterior[a] += 1 for each observed action a
-- Computes expected policy from posterior parameters
-- Provides theoretical upper bound for Figure 3 comparisons
+```python
+class BayesOptimalBaseline:
+    def __init__(self, alpha):
+        # Prior: Dirichlet(α, α, α, α, α)
+        self.prior = np.array([alpha] * 5)
+        
+    def update(self, observed_actions):
+        # Posterior update
+        posterior = self.prior.copy()
+        for action in observed_actions:
+            posterior[action] += 1
+        return posterior
+    
+    def predict(self, posterior):
+        # Expected policy from posterior
+        return posterior / posterior.sum()
+```
 
 ### Model Configuration
 For Figure 3 reproduction:
@@ -199,7 +234,8 @@ bash shell/run_experiment.sh all
 # 1. Train models for different alpha values
 python scripts/train.py --experiment figure3 --n_agents 1000 --n_epochs 100
 
-# 2. Evaluate cross-species performance (auto-generated script)
+# 2. Evaluate cross-species performance
+python scripts/generate_cross_species_evaluation.py
 bash result/figure3/run_cross_species_evaluation.sh
 
 # 3. Generate Figure 3 visualizations
@@ -207,6 +243,17 @@ bash shell/visualize_figure3.sh --save --output_dir plots
 
 # 4. View detailed analysis in Jupyter
 jupyter notebook notebook/visualize_figure3.ipynb
+```
+
+### Cross-Species Evaluation Script Generation
+```python
+# scripts/generate_cross_species_evaluation.py
+alpha_values = [0.01, 0.03, 0.1, 0.3, 1.0, 3.0]
+with open('result/figure3/run_cross_species_evaluation.sh', 'w') as f:
+    for train_alpha in alpha_values:
+        for test_alpha in alpha_values:
+            cmd = f"python scripts/evaluate.py --train_alpha {train_alpha} --test_alpha {test_alpha} --n_past 1\n"
+            f.write(cmd)
 ```
 
 ### Generated Files
@@ -239,12 +286,6 @@ The implementation should reproduce these key findings from the original paper:
 - **Prediction Net**: 728 (state + char_embedding) → 128 → 128 → 5 (with softmax)
 - **Parameters**: ~200K total parameters for Figure 3 configuration
 
-### Training Configuration
-- **Dataset Size**: 1000 agents × 100 episodes × variable N_past
-- **Batch Processing**: Dynamic batching with padding for variable-length sequences
-- **Validation**: 80/20 split, early stopping on validation accuracy
-- **Reproducibility**: Fixed random seeds for consistent results across runs
-
 
 ## Repository Structure
 ```
@@ -256,7 +297,8 @@ ToMnet_impl/
 │   ├── data_generation.py     # Trajectory collection and batch formation
 │   ├── train.py               # Training loop with multi-species support
 │   ├── evaluate.py            # Cross-species evaluation and metrics
-│   └── visualize_figure3.py   # Figure generation and analysis
+│   ├── visualize_figure3.py   # Figure generation and analysis
+│   └── generate_cross_species_evaluation.py  # Script generation for evaluation
 ├── shell/                     # Automation scripts
 │   ├── run_experiment.sh      # Complete workflow automation
 │   └── visualize_figure3.sh   # Visualization pipeline

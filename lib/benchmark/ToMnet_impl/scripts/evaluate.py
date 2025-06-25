@@ -615,9 +615,15 @@ def main():
 
     # Create result directory if it doesn't exist
     import os
-
+    import platform
     os.makedirs(os.path.dirname(args.output_path), exist_ok=True)
 
+    # Detect device based on platform
+    if platform.system() == "Darwin":  # macOS
+        args.device = "mps" if torch.backends.mps.is_available() else "cpu"
+    else:
+        args.device = "cuda:3" if torch.cuda.is_available() else "cpu"
+        
     # Handle different input formats
     if args.model_paths_json and args.data_paths_json:
         # Cross-species evaluation with multiple models and datasets

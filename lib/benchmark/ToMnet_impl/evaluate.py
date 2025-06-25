@@ -267,6 +267,188 @@ def load_model_from_checkpoint(
     return model
 
 
+def evaluate_figure3_cross_species(
+    model_paths: Dict[
+        str, str
+    ],  # {alpha: model_path} - models trained on different alphas
+    test_dataset_paths: Dict[
+        str, str
+    ],  # {alpha: dataset_path} - test datasets with different alphas
+    device: str = "cuda",
+    n_past_fixed: int = 1,  # Fixed N_past for Figure 3a and 3c
+    n_past_mixed: int = 5,  # N_past for Figure 3d mixed species
+) -> Dict:
+    """
+    Evaluate Figure 3 experiments with proper cross-species analysis
+
+    Returns data structure for:
+    - Figure 3a: trained_alpha vs action_likelihood (N_past=1)
+    - Figure 3c: test_alpha vs KL_divergence for each trained model
+    - Figure 3d: mixed species performance (N_past=5)
+    """
+    results = {
+        "figure3a": {
+            "trained_alphas": [],
+            "action_likelihoods": [],
+            "bayes_optimal": [],
+        },
+        "figure3c": {
+            "train_alphas": [],
+            "test_alphas": [],
+            "kl_matrix": [],
+            "bayes_kl_matrix": [],
+        },
+        "figure3d": {"mixed_species": {}, "single_species": {}},
+        "character_embeddings": {},
+    }
+
+    state_dim = 11 * 11 * 6
+
+    # Load all test datasets
+    test_datasets = {}
+    test_alphas = []
+    for alpha_name, dataset_path in test_dataset_paths.items():
+        with open(dataset_path, "rb") as f:
+            test_datasets[alpha_name] = pickle.load(f)
+        # Extract alpha value from name (e.g., "alpha_0.01" -> 0.01)
+        if "alpha_" in alpha_name:
+            alpha_val = float(alpha_name.split("alpha_")[1])
+            test_alphas.append(alpha_val)
+
+    train_alphas = []
+    kl_matrix = []
+    bayes_kl_matrix = []
+
+    # Evaluate each trained model
+    for model_alpha_name, model_path in model_paths.items():
+        print(f"Evaluating model trained on {model_alpha_name}")
+
+        # Extract train alpha value
+        if "alpha_" in model_alpha_name:
+            train_alpha = float(model_alpha_name.split("alpha_")[1])
+        else:
+            train_alpha = 0.01  # default
+        train_alphas.append(train_alpha)
+
+        # Load model
+        model = load_model_from_checkpoint(model_path, "figure3", state_dim, device)
+        evaluator = ToMnetEvaluator(model, device)
+
+        model_kl_row = []
+        bayes_kl_row = []
+
+        # Test on all test datasets (cross-species evaluation)
+        for test_alpha_name, test_dataset_raw in test_datasets.items():
+            test_alpha = (
+                float(test_alpha_name.split("alpha_")[1])
+                if "alpha_" in test_alpha_name
+                else 0.01
+            )
+
+            # Create dataset with fixed N_past for Figure 3a/3c
+            test_dataset = ToMnetDataset(test_dataset_raw, experiment_type="figure3")
+
+            # Filter samples with specific N_past
+            filtered_data = [
+                sample
+                for sample in test_dataset.data
+                if sample["n_past"] == n_past_fixed
+            ]
+            if not filtered_data:
+                print(
+                    f"No samples with N_past={n_past_fixed} found in {test_alpha_name}"
+                )
+                continue
+
+            filtered_dataset = ToMnetDataset(
+                {"data": filtered_data, "meta": test_dataset_raw.get("meta", {})},
+                experiment_type="figure3",
+            )
+
+            # Evaluate action prediction
+            action_results = evaluator.evaluate_action_prediction(filtered_dataset)
+
+            # Evaluate policy prediction for KL divergence
+            policy_results = evaluator.evaluate_policy_prediction(filtered_dataset)
+            mean_kl = np.mean(policy_results["kl_divergences"])
+
+            model_kl_row.append(mean_kl)
+
+            # Calculate Bayes-optimal KL divergence
+            baseline = BayesOptimalBaseline()
+            bayes_results = baseline.evaluate_on_data(test_dataset_raw, train_alpha)
+            bayes_kl = np.mean(bayes_results["kl_divergences"])
+            bayes_kl_row.append(bayes_kl)
+
+            # For Figure 3a: collect action likelihood vs trained alpha
+            action_likelihood = action_results[
+                "accuracy"
+            ]  # Use accuracy as proxy for likelihood
+            results["figure3a"]["trained_alphas"].append(train_alpha)
+            results["figure3a"]["action_likelihoods"].append(action_likelihood)
+
+            # Calculate theoretical Bayes-optimal action likelihood
+            bayes_likelihood = np.mean(bayes_results["action_accuracies"])
+            results["figure3a"]["bayes_optimal"].append(bayes_likelihood)
+
+        kl_matrix.append(model_kl_row)
+        bayes_kl_matrix.append(bayes_kl_row)
+
+        # Extract character embeddings for visualization
+        if test_datasets:
+            first_dataset = list(test_datasets.values())[0]
+            test_dataset = ToMnetDataset(first_dataset, experiment_type="figure3")
+            embeddings, agent_ids = evaluator.extract_character_embeddings(test_dataset)
+            results["character_embeddings"][model_alpha_name] = {
+                "embeddings": embeddings,
+                "agent_ids": agent_ids,
+            }
+
+    # Store matrix results for Figure 3c
+    results["figure3c"]["train_alphas"] = train_alphas
+    results["figure3c"]["test_alphas"] = sorted(list(set(test_alphas)))
+    results["figure3c"]["kl_matrix"] = np.array(kl_matrix)
+    results["figure3c"]["bayes_kl_matrix"] = np.array(bayes_kl_matrix)
+
+    # Figure 3d: Mixed species evaluation (N_past=5)
+    if "mixed" in model_paths:
+        print("Evaluating mixed species model")
+        mixed_model = load_model_from_checkpoint(
+            model_paths["mixed"], "figure3", state_dim, device
+        )
+        mixed_evaluator = ToMnetEvaluator(mixed_model, device)
+
+        # Evaluate on mixed test data with N_past=5
+        for test_alpha_name, test_dataset_raw in test_datasets.items():
+            test_dataset = ToMnetDataset(test_dataset_raw, experiment_type="figure3")
+
+            # Filter samples with N_past=5
+            filtered_data = [
+                sample
+                for sample in test_dataset.data
+                if sample["n_past"] == n_past_mixed
+            ]
+            if filtered_data:
+                filtered_dataset = ToMnetDataset(
+                    {"data": filtered_data, "meta": test_dataset_raw.get("meta", {})},
+                    experiment_type="figure3",
+                )
+
+                action_results = mixed_evaluator.evaluate_action_prediction(
+                    filtered_dataset
+                )
+                policy_results = mixed_evaluator.evaluate_policy_prediction(
+                    filtered_dataset
+                )
+
+                results["figure3d"]["mixed_species"][test_alpha_name] = {
+                    "action_accuracy": action_results["accuracy"],
+                    "mean_kl_divergence": np.mean(policy_results["kl_divergences"]),
+                }
+
+    return results
+
+
 def evaluate_unified_results(
     experiment_type: str,
     model_paths: Union[str, Dict[str, str]],
@@ -274,6 +456,16 @@ def evaluate_unified_results(
     device: str = "cuda",
 ) -> Dict:
     """Unified evaluation function for both Figure 3 and Figure 5 experiments"""
+
+    # For Figure 3, use the new cross-species evaluation
+    if (
+        experiment_type == "figure3"
+        and isinstance(model_paths, dict)
+        and isinstance(dataset_paths, dict)
+    ):
+        return evaluate_figure3_cross_species(model_paths, dataset_paths, device)
+
+    # Original implementation for other cases
     results = {}
     state_dim = 11 * 11 * 6  # 11x11 grid with 6 channels
 
@@ -397,25 +589,61 @@ def evaluate_model(
 def main():
     """Example evaluation script"""
     import argparse
+    import json
 
     parser = argparse.ArgumentParser(description="Evaluate ToMnet")
     parser.add_argument("--experiment", choices=["figure3", "figure5"], required=True)
-    parser.add_argument("--model_path", required=True, help="Path to trained model")
-    parser.add_argument("--data_path", required=True, help="Path to test dataset")
+    parser.add_argument("--model_path", help="Path to trained model (single model)")
+    parser.add_argument(
+        "--model_paths_json",
+        help="JSON file with model paths for cross-species evaluation",
+    )
+    parser.add_argument("--data_path", help="Path to test dataset (single dataset)")
+    parser.add_argument(
+        "--data_paths_json",
+        help="JSON file with dataset paths for cross-species evaluation",
+    )
     parser.add_argument("--device", default="cuda", help="Device to use")
     parser.add_argument(
-        "--output_path", default="result/evaluation_results.pkl", help="Path to save results"
+        "--output_path",
+        default="result/evaluation_results.pkl",
+        help="Path to save results",
     )
 
     args = parser.parse_args()
 
     # Create result directory if it doesn't exist
     import os
+
     os.makedirs(os.path.dirname(args.output_path), exist_ok=True)
+
+    # Handle different input formats
+    if args.model_paths_json and args.data_paths_json:
+        # Cross-species evaluation with multiple models and datasets
+        with open(args.model_paths_json, "r") as f:
+            model_paths = json.load(f)
+        with open(args.data_paths_json, "r") as f:
+            dataset_paths = json.load(f)
+
+        print("Running cross-species evaluation...")
+        print(f"Models: {list(model_paths.keys())}")
+        print(f"Datasets: {list(dataset_paths.keys())}")
+
+    elif args.model_path and args.data_path:
+        # Single model evaluation
+        model_paths = args.model_path
+        dataset_paths = args.data_path
+
+        print("Running single model evaluation...")
+
+    else:
+        parser.error(
+            "Either provide --model_path and --data_path, or --model_paths_json and --data_paths_json"
+        )
 
     # Evaluate using unified function
     results = evaluate_unified_results(
-        args.experiment, args.model_path, args.data_path, args.device
+        args.experiment, model_paths, dataset_paths, args.device
     )
 
     # Save results
@@ -423,6 +651,29 @@ def main():
         pickle.dump(results, f)
 
     print(f"Evaluation results saved to {args.output_path}")
+
+    # Print summary
+    if (
+        args.experiment == "figure3"
+        and isinstance(results, dict)
+        and "figure3a" in results
+    ):
+        print("\n=== Figure 3 Cross-Species Evaluation Summary ===")
+        if "figure3a" in results:
+            print(
+                f"Figure 3a: {len(results['figure3a']['trained_alphas'])} trained alpha values"
+            )
+        if "figure3c" in results:
+            kl_matrix = results["figure3c"]["kl_matrix"]
+            print(f"Figure 3c: {kl_matrix.shape} KL divergence matrix")
+        if "character_embeddings" in results:
+            print(
+                f"Character embeddings: {len(results['character_embeddings'])} models"
+            )
+    else:
+        print(f"\n=== Standard Evaluation Summary ===")
+        for model_name, model_results in results.items():
+            print(f"Model {model_name}: {len(model_results)} test datasets")
 
 
 if __name__ == "__main__":

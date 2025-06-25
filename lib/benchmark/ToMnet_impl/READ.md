@@ -276,22 +276,199 @@ def plot_consumption_probs(grid, probs):
 
 ## Experiment Reproduction Steps
 
-### Figure 3 Reproduction
-1. **Generate Random Agents**
-   - Create 1000 agents with α=0.01 (deterministic)
-   - Create 1000 agents with α=3 (stochastic)
-   - Create mixed dataset with both types
+# Cross-Species Evaluation for Figure 3
+## 개요
 
-2. **Training Process**
-   - For each agent, generate trajectories on random grids
-   - Train separate ToMnets for each α value
-   - Train one ToMnet on mixed data
+논문의 Figure 3는 다음과 같은 실험을 포함합니다:
+- **Figure 3a**: 훈련된 alpha 값 vs action likelihood (N_past=1)
+- **Figure 3b**: 2D character embeddings
+- **Figure 3c**: 테스트 alpha 값 vs KL divergence (교차 종 일반화)
+- **Figure 3d**: 혼합 종 훈련 성능 (N_past=5)
 
-3. **Expected Results**
-   - Panel (a): Action likelihood should increase with N_past
-   - Panel (b): 2D embeddings should cluster by action preference
-   - Panel (c): Lower KL when test α matches train α
-   - Panel (d): Mixed training should handle both species
+## 자동화된 워크플로우
+
+### 1. 모델 훈련
+
+여러 alpha 값으로 모델을 훈련하고 교차 종 평가 파일을 자동 생성합니다:
+
+```bash
+# 기본 alpha 값들로 훈련 (0.01, 0.1, 0.5, 1.0, 3.0)
+python train.py --experiment figure3
+
+# 사용자 정의 alpha 값들로 훈련
+python train.py --experiment figure3 --alpha_values 0.01 0.1 1.0 3.0
+
+# 혼합 종 모델도 함께 훈련
+python train.py --experiment figure3 --mixed_training
+
+# 더 많은 에이전트와 에피소드로 훈련
+python train.py --experiment figure3 --n_agents 1000 --n_episodes_per_agent 100 --n_epochs 50
+```
+
+### 2. 자동 생성된 파일들
+
+훈련 완료 후 `evaluation_configs/` 디렉토리에 다음 파일들이 자동 생성됩니다:
+
+```
+evaluation_configs/
+├── model_paths.json                 # 훈련된 모델 경로들
+├── data_paths.json                  # 테스트 데이터 경로들
+├── run_cross_species_evaluation.sh  # 실행 스크립트
+└── evaluation_summary.json          # 요약 정보
+```
+
+**model_paths.json 예시:**
+```json
+{
+  "alpha_0.01": "/absolute/path/to/models/figure3_0.01_best.pth",
+  "alpha_0.1": "/absolute/path/to/models/figure3_0.1_best.pth",
+  "alpha_3.0": "/absolute/path/to/models/figure3_3.0_best.pth",
+  "mixed": "/absolute/path/to/models/figure3_mixed_best.pth"
+}
+```
+
+**data_paths.json 예시:**
+```json
+{
+  "alpha_0.01": "/absolute/path/to/data/figure3_alpha_0.01.pkl",
+  "alpha_0.1": "/absolute/path/to/data/figure3_alpha_0.1.pkl", 
+  "alpha_3.0": "/absolute/path/to/data/figure3_alpha_3.0.pkl"
+}
+```
+
+### 3. 교차 종 평가 실행
+
+자동 생성된 스크립트로 평가를 실행합니다:
+
+```bash
+# 자동 생성된 스크립트 사용 (권장)
+bash evaluation_configs/run_cross_species_evaluation.sh
+
+# 또는 직접 실행
+python evaluate.py \
+    --experiment figure3 \
+    --model_paths_json evaluation_configs/model_paths.json \
+    --data_paths_json evaluation_configs/data_paths.json \
+    --output_path result/figure3_cross_species_results.pkl \
+    --device cuda
+```
+
+### 4. 결과 시각화
+
+Jupyter notebook으로 결과를 시각화합니다:
+
+```bash
+jupyter notebook visualize_figure3.ipynb
+```
+
+## 생성되는 평가 데이터
+
+교차 종 평가는 다음 구조의 데이터를 생성합니다:
+
+```python
+{
+    "figure3a": {
+        "trained_alphas": [0.01, 0.1, 0.5, 1.0, 3.0, ...],
+        "action_likelihoods": [0.85, 0.82, 0.78, ...],
+        "bayes_optimal": [0.90, 0.85, 0.80, ...]
+    },
+    "figure3c": {
+        "train_alphas": [0.01, 0.1, 3.0],
+        "test_alphas": [0.01, 0.1, 0.5, 1.0, 3.0],
+        "kl_matrix": [[0.2, 1.5, 2.8], [1.2, 0.3, 2.1], ...],
+        "bayes_kl_matrix": [[0.1, 1.3, 2.5], ...]
+    },
+    "figure3d": {
+        "mixed_species": {
+            "alpha_0.01": {"action_accuracy": 0.75, "mean_kl_divergence": 1.2},
+            "alpha_3.0": {"action_accuracy": 0.73, "mean_kl_divergence": 1.4}
+        }
+    },
+    "character_embeddings": {
+        "alpha_0.01": {"embeddings": [...], "agent_ids": [...]}
+    }
+}
+```
+
+## 고급 사용법
+
+### 커스텀 평가 설정
+
+```bash
+# 특정 모델과 데이터로만 평가
+python evaluate.py \
+    --experiment figure3 \
+    --model_paths_json my_custom_models.json \
+    --data_paths_json my_custom_data.json \
+    --output_path my_results.pkl
+```
+
+### 개별 모델 평가
+
+```bash
+# 단일 모델 평가 (레거시 방식)
+python evaluate.py \
+    --experiment figure3 \
+    --model_path models/figure3_0.01_best.pth \
+    --data_path data/figure3_alpha_0.01.pkl \
+    --output_path single_model_results.pkl
+```
+
+## 문제 해결
+
+### 1. 모듈 import 오류
+```bash
+# 올바른 디렉토리에서 실행 확인
+cd /path/to/ToMnet_impl/
+python train.py --experiment figure3
+```
+
+### 2. 메모리 부족
+```bash
+# 배치 크기 줄이기
+python train.py --experiment figure3 --batch_size 16 --n_agents 500
+```
+
+### 3. GPU 오류
+```bash
+# CPU 사용하기
+python train.py --experiment figure3 --device cpu
+```
+
+### 4. 평가 파일 없음
+훈련이 완료되었는지 확인하고 `evaluation_configs/` 디렉토리가 존재하는지 확인하세요.
+
+## 파일 구조
+
+```
+ToMnet_impl/
+├── train.py                         # 훈련 스크립트 (JSON 파일 자동 생성)
+├── evaluate.py                      # 평가 스크립트 (교차 종 평가 지원)
+├── visualize_figure3.ipynb          # 시각화 노트북 (수정된 Figure 3)
+├── data/                            # 생성된 데이터
+│   ├── figure3_alpha_0.01.pkl
+│   ├── figure3_alpha_0.1.pkl
+│   └── ...
+├── models/                          # 훈련된 모델
+│   ├── figure3_0.01_best.pth
+│   ├── figure3_0.1_best.pth
+│   └── ...
+├── evaluation_configs/              # 자동 생성된 평가 설정
+│   ├── model_paths.json
+│   ├── data_paths.json
+│   ├── run_cross_species_evaluation.sh
+│   └── evaluation_summary.json
+└── result/                          # 평가 결과
+    └── figure3_cross_species_results.pkl
+```
+
+## 다음 단계
+
+1. 모델 훈련: `python train.py --experiment figure3`
+2. 평가 실행: `bash evaluation_configs/run_cross_species_evaluation.sh`  
+3. 결과 확인: `jupyter notebook visualize_figure3.ipynb`
+
+이 워크플로우를 통해 논문의 Figure 3를 정확하게 재현할 수 있습니다.
 
 ### Figure 5 Reproduction
 1. **Generate Goal-Directed Agents**

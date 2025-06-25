@@ -14,7 +14,7 @@ import glob
 
 from tomnet import ToMnet, create_tomnet
 from data_generation import DataGenerator, ToMnetDataset, collate_fn
-from lib.benchmark.ToMnet_impl.evaluate import evaluate_model, compute_kl_divergence
+from evaluate import evaluate_model, compute_kl_divergence
 from typing import Dict, List, Optional, Union
 
 
@@ -28,7 +28,13 @@ class ExperimentConfig:
             self.char_embedding_dim = 2
             self.use_mental_state_net = False
             self.agent_type = "random"
-            self.alpha_values = [0.01, 3.0]
+            self.alpha_values = [
+                0.01,
+                0.1,
+                0.5,
+                1.0,
+                3.0,
+            ]  # More alpha values for better cross-species analysis
             self.n_agents = 1000
             self.loss_weights = {"action_loss": 1.0}
             self.predictions = ["action"]
@@ -333,6 +339,117 @@ def generate_data(
         raise ValueError(f"Unknown experiment type: {experiment_type}")
 
 
+def generate_cross_species_evaluation_files(results, datasets, experiment_type):
+    """Generate JSON files for cross-species evaluation"""
+    if experiment_type != "figure3":
+        print(f"Cross-species evaluation files not applicable for {experiment_type}")
+        return
+
+    print("\n=== Generating Cross-Species Evaluation Files ===")
+
+    # Create evaluation directory
+    eval_dir = "evaluation_configs"
+    os.makedirs(eval_dir, exist_ok=True)
+
+    # Generate model_paths.json
+    model_paths = {}
+    data_paths = {}
+
+    for dataset_name, result in results.items():
+        if dataset_name == "mixed":
+            model_paths["mixed"] = os.path.abspath(result["model_path"])
+        else:
+            # Convert dataset name to alpha format
+            if isinstance(dataset_name, (int, float)):
+                alpha_key = f"alpha_{dataset_name}"
+                model_paths[alpha_key] = os.path.abspath(result["model_path"])
+            else:
+                model_paths[dataset_name] = os.path.abspath(result["model_path"])
+
+    # Generate data_paths.json from datasets
+    for dataset_name, dataset in datasets.items():
+        if dataset_name == "mixed":
+            continue  # Skip mixed dataset for testing
+
+        if isinstance(dataset_name, (int, float)):
+            alpha_key = f"alpha_{dataset_name}"
+            # Use the original data file path
+            data_file_path = f"data/figure3_alpha_{dataset_name}.pkl"
+            data_paths[alpha_key] = os.path.abspath(data_file_path)
+        else:
+            data_file_path = f"data/figure3_{dataset_name}.pkl"
+            data_paths[dataset_name] = os.path.abspath(data_file_path)
+
+    # Save model_paths.json
+    model_paths_file = os.path.join(eval_dir, "model_paths.json")
+    with open(model_paths_file, "w") as f:
+        json.dump(model_paths, f, indent=2)
+    print(f"✓ Saved model paths to: {model_paths_file}")
+    print(f"  Models: {list(model_paths.keys())}")
+
+    # Save data_paths.json
+    data_paths_file = os.path.join(eval_dir, "data_paths.json")
+    with open(data_paths_file, "w") as f:
+        json.dump(data_paths, f, indent=2)
+    print(f"✓ Saved data paths to: {data_paths_file}")
+    print(f"  Datasets: {list(data_paths.keys())}")
+
+    # Generate evaluation script
+    eval_script_content = f"""#!/bin/bash
+# Auto-generated cross-species evaluation script
+
+echo "Running Figure 3 Cross-Species Evaluation..."
+
+# Run cross-species evaluation
+python evaluate.py \\
+    --experiment figure3 \\
+    --model_paths_json {model_paths_file} \\
+    --data_paths_json {data_paths_file} \\
+    --output_path result/figure3_cross_species_results.pkl \\
+    --device cuda
+
+echo "Evaluation completed!"
+echo "Results saved to: result/figure3_cross_species_results.pkl"
+echo ""
+echo "To visualize results, run:"
+echo "jupyter notebook visualize_figure3.ipynb"
+"""
+
+    eval_script_file = os.path.join(eval_dir, "run_cross_species_evaluation.sh")
+    with open(eval_script_file, "w") as f:
+        f.write(eval_script_content)
+
+    # Make script executable
+    os.chmod(eval_script_file, 0o755)
+    print(f"✓ Saved evaluation script to: {eval_script_file}")
+
+    # Generate summary info
+    summary = {
+        "experiment_type": experiment_type,
+        "models_trained": list(model_paths.keys()),
+        "test_datasets": list(data_paths.keys()),
+        "model_paths_file": model_paths_file,
+        "data_paths_file": data_paths_file,
+        "evaluation_script": eval_script_file,
+        "next_steps": [
+            f"Run evaluation: bash {eval_script_file}",
+            "View results: jupyter notebook visualize_figure3.ipynb",
+            "Results will be saved to: result/figure3_cross_species_results.pkl",
+        ],
+    }
+
+    summary_file = os.path.join(eval_dir, "evaluation_summary.json")
+    with open(summary_file, "w") as f:
+        json.dump(summary, f, indent=2)
+    print(f"✓ Saved evaluation summary to: {summary_file}")
+
+    print(f"\n=== Cross-Species Evaluation Setup Complete ===")
+    print(f"Next steps:")
+    print(f"1. Run evaluation: bash {eval_script_file}")
+    print(f"2. View results: jupyter notebook visualize_figure3.ipynb")
+    print("")
+
+
 def train_unified_model(experiment_type: str, args):
     """Unified training function for both Figure 3 and Figure 5 experiments"""
     print(f"Training ToMnet for {experiment_type.title()} Experiment")
@@ -389,6 +506,9 @@ def train_unified_model(experiment_type: str, args):
                 "best_val_loss": best_val_loss,
                 "model_path": save_path,
             }
+
+        # Generate cross-species evaluation JSON files
+        generate_cross_species_evaluation_files(results, datasets, experiment_type)
 
         return results
 
@@ -495,8 +615,8 @@ def main():
         "--alpha_values",
         nargs="+",
         type=float,
-        default=[0.01, 3.0],
-        help="Alpha values for Figure 3",
+        default=[0.01, 0.1, 0.5, 1.0, 3.0],
+        help="Alpha values for Figure 3 cross-species evaluation",
     )
     parser.add_argument(
         "--mixed_training", action="store_true", help="Train on mixed alpha dataset"
@@ -522,6 +642,24 @@ def main():
 
     print("Training completed!")
     print(f"Results saved to training_results.json")
+
+    # Print next steps for Figure 3
+    if args.experiment in ["figure3", "both"]:
+        print("\n=== Figure 3 Cross-Species Evaluation Ready ===")
+        if os.path.exists("evaluation_configs/evaluation_summary.json"):
+            with open("evaluation_configs/evaluation_summary.json", "r") as f:
+                summary = json.load(f)
+
+            print("✓ Cross-species evaluation files generated:")
+            print(f"  - Models trained: {summary['models_trained']}")
+            print(f"  - Test datasets: {summary['test_datasets']}")
+            print("\nTo run cross-species evaluation:")
+            print("  bash evaluation_configs/run_cross_species_evaluation.sh")
+            print("\nTo visualize results:")
+            print("  jupyter notebook visualize_figure3.ipynb")
+        else:
+            print("⚠ Cross-species evaluation files not found")
+            print("Make sure Figure 3 training completed successfully")
 
 
 if __name__ == "__main__":

@@ -344,7 +344,7 @@ python train.py --experiment both --n_agents 100 --n_epochs 100
 
 # Evaluate models
 python evaluate.py --experiment figure3 --model_path models/figure3_best.pth --data_path data/figure3_data.pkl
-python evaluation.py --experiment figure3 --model_path models/figure3_0.01_best.pth --data_path data/figure3_alpha_0.01.pkl
+python evaluate.py --experiment figure3 --model_path models/figure3_0.01_best.pth --data_path data/figure3_alpha_0.01.pkl
 
 # Run visualization notebooks
 jupyter notebook visualize_figure3.ipynb

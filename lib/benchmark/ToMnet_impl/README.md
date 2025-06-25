@@ -8,9 +8,9 @@ This implementation reproduces the qualitative results from Figure 3 of the "Mac
 ### Core Mathematical Framework
 The ToMnet implementation for Figure 3 uses a simplified architecture focused on character inference:
 
-1. **Character Net (f_θ)**: 
-   - Processes past episode trajectories {τ_ij} into character embeddings
-   - Function: e_char,ij = f_θ(τ_ij^(obs))
+1. **Character Net ($f_\theta$)**: 
+   - Processes past episode trajectories {$\tau_{ij}$} into character embeddings
+   - Function: e_char,ij = f_\theta(\tau_ij^(obs))
    - Aggregation: e_char,i = Σ_j e_char,ij
    - Implementation: 3-layer MLP with ReLU activations
    - Output: 2D embeddings for visualization
@@ -20,13 +20,13 @@ The ToMnet implementation for Figure 3 uses a simplified architecture focused on
    - This simplification focuses on character-level inference only
 
 3. **Prediction Net**:
-   - Outputs action probabilities: π̂(a_t|x_t^(obs), e_char)
+   - Outputs action probabilities: $\hat{$\pi}(a_t|x_t^(obs), e_char)$
    - Function: concatenates current state with character embedding
    - Implementation: 2-layer MLP with softmax output for 5 actions
 
 ### Loss Function
 ```
-L_action = -log π̂(a_t^(obs)|x_t^(obs), e_char)
+L_action = -\log $\hat{$\pi}(a_t^(obs)|x_t^(obs), e_char)
 ```
 
 ## Current Implementation Details
@@ -41,10 +41,10 @@ L_action = -log π̂(a_t^(obs)|x_t^(obs), e_char)
 
 ### Agents (agents.py)
 **RandomAgent Class**:
-- **Policy Generation**: Samples fixed policy π_i ~ Dirichlet(α, α, α, α, α) at initialization
+- **Policy Generation**: Samples fixed policy $\pi_i ~ Dirichlet(\alpha, \alpha, \alpha, \alpha, \alpha)$ at initialization
 - **Behavior**: Uses fixed policy throughout all episodes (no learning)
-- **Species Parameter**: α controls stochasticity (α=0.01: near-deterministic, α=3.0: highly stochastic)
-- **Dominant Action**: Tracks argmax(π_i) for embedding visualization coloring
+- **Species Parameter**: $\alpha$ controls stochasticity ($\alpha=0.01$: near-deterministic, $\alpha=3.0$: highly stochastic)
+- **Dominant Action**: Tracks $\argmax(\pi_i)$ for embedding visualization coloring
 
 **GoalDirectedAgent Class** (for completeness, not used in Figure 3):
 - **Planning**: Uses value iteration to compute optimal policy for each environment
@@ -54,12 +54,11 @@ L_action = -log π̂(a_t^(obs)|x_t^(obs), e_char)
 ## Figure 3 Target Results
 
 ### Experimental Conditions
-1. **Near-deterministic agents**: α = 0.01 (concentrated policies)
-2. **Stochastic agents**: α = 3.0 (uniform-like policies) 
-3. **Mixed species training**: Agents from both α values in same dataset (e.g., α=0.01, 3.0)
-4. **Full alpha range**: α ∈ {0.01, 0.03, 0.1, 0.3, 1.0, 3.0} for comprehensive evaluation
+1. **Near-deterministic agents**: $\alpha = 0.01$ (concentrated policies)
+2. **Stochastic agents**: $\alpha = 3.0$ (uniform-like policies) 
+3. **Mixed species training**: Agents from both $\alpha$ values in same dataset (e.g., $\alpha=0.01, 3.0$)
+4. **Full alpha range**: $\alpha \in {0.01, 0.03, 0.1, 0.3, 1.0, 3.0}$ for comprehensive evaluation
 
-### ToMnet Implementation (tomnet.py)
 ### ToMnet Implementation (tomnet.py)
 **CharacterNet Class**:
 - **Input Processing**: Handles variable-length past trajectories
@@ -99,7 +98,7 @@ L_action = -log π̂(a_t^(obs)|x_t^(obs), e_char)
 
 ### Training Process (train.py)
 **Data Generation**:
-- Creates agents with specified α values (0.01, 0.03, 0.1, 0.3, 1.0, 3.0)
+- Creates agents with specified $\alpha$ values (0.01, 0.03, 0.1, 0.3, 1.0, 3.0)
 - Generates N_past past episodes per agent (N_past ~ Uniform{0, 10})
 - Samples single (state, action) pair from each past episode
 - Creates query episode for action prediction task
@@ -117,42 +116,25 @@ L_action = -log π̂(a_t^(obs)|x_t^(obs), e_char)
 
 ### Evaluation Process (evaluate.py)
 **Cross-Species Testing**:
-- Tests models trained on one α value against agents from different α values
+- Tests models trained on one $\alpha$ value against agents from different $\alpha values
 - Computes action prediction likelihood and KL divergence matrices
 - Generates data for Figure 3a (likelihood vs N_past) and 3c (cross-species generalization)
 
 **Character Embedding Analysis**:
 - Extracts 2D character embeddings for visualization
 - Colors embeddings by dominant action for Figure 3b
-- Compares embedding clusters between different α species
+- Compares embedding clusters between different $\alpha species
 
 ### Evaluation Metrics
-1. Action Likelihood: L_action = π̂(a_t^(obs)|x_t^(obs), e_char)
-2. KL Divergence: D_KL(π||π̂) = Σ_a π(a) log(π(a)/π̂(a))
-   - where π is the true policy and π̂ is the predicted policy.
-
-### Target Outputs
-1. **Figure 3a**: Action likelihood vs number of past observations
-   - X-axis: Number of past observations (N_past = 0 to 10)
-   - Y-axis: Action prediction likelihood
-   - 3 lines showing results for N_past = 0, 1, 5
-   - Comparison with Bayes-optimal baseline
-2. **Figure 3b**: 2D character embedding scatter plot colored by dominant action  
-3. **Figure 3c**: Cross-species generalization heatmap
-   - Rows: Training species (α ∈ {0.01, 0.03, 0.1, 0.3, 1.0, 3.0})
-   - Columns: Test species (α ∈ {0.01, 0.03, 0.1, 0.3, 1.0, 3.0})
-   - 6 lines showing KL divergence for each trained α value
-   - Shows generalization capabilities across species
-4. **Figure 3d**: Mixed species training performance
-   - X-axis: Test α values {0.01, 0.03, 0.1, 0.3, 1.0, 3.0}
-   - Y-axis: KL divergence between predicted and true policies
-   - 3 lines: trained on α=0.01, α=3.0, and mixed (α=0.01 & 3.0)
+1. Action Likelihood: L_action = $\hat{\pi}(a_t^(obs)|x_t^(obs), e_char)$
+2. KL Divergence: $D_KL(\pi||\hat{\pi}) = Σ_a \pi(a) log(\pi(a)/\hat{\pi}(a))$
+   - where $\pi$ is the true policy and $\hat{\pi}$ is the predicted policy.
 
 ## Data Flow and File Structure
 
 ### Data Generation Pipeline (data_generation.py)
 **Trajectory Collection**:
-1. **Agent Sampling**: Creates agents with specified α parameters
+1. **Agent Sampling**: Creates agents with specified $\alpha parameters
 2. **Environment Sampling**: Generates random 11×11 gridworlds for each episode
 3. **Trajectory Recording**: Records (state, action, reward) tuples until episode termination
 4. **Data Splitting**: Separates past episodes (for character inference) from query episodes (for prediction)
@@ -176,7 +158,7 @@ The implementation includes a Bayes-optimal baseline that:
 ```python
 class BayesOptimalBaseline:
     def __init__(self, alpha):
-        # Prior: Dirichlet(α, α, α, α, α)
+        # Prior: Dirichlet($\alpha, $\alpha, $\alpha, $\alpha, $\alpha)
         self.prior = np.array([alpha] * 5)
         
     def update(self, observed_actions):
@@ -200,28 +182,26 @@ For Figure 3 reproduction:
 
 
 ## Visualization and Results (visualize_figure3.py)
-
-### Generated Plots
-**Figure 3a**: Action Likelihood vs Past Observations
-- X-axis: Number of past observations (0-10)
-- Y-axis: Action prediction likelihood
-- Compares ToMnet vs Bayes-optimal baseline
-- Shows improvement with more observations
-
-**Figure 3b**: Character Embeddings  
-- 2D scatter plot of character embeddings
-- Points colored by dominant action (argmax of agent's policy)
-- Demonstrates clustering by behavioral similarity
-
-**Figure 3c**: Cross-Species Generalization
-- Heatmap of KL divergence between predicted and true policies
-- Rows: Training species (α values)
-- Columns: Test species (α values) 
-- Shows generalization capabilities across species
-
-**Figure 3d**: Mixed Species Training
-- Performance comparison for models trained on mixed vs single species
-- Demonstrates hierarchical inference capabilities
+1. **Figure 3a**: Trained $\alpha$ vs Action likelihood
+   - X-axis: Trained $\alpha$ with ($\alpha $\in $\{0.01, 0.03, 0.1, 0.3, 1.0, 3.0 $\}$)
+   - Y-axis: Action prediction likelihood
+   - 3 lines showing results for N_past = 0, 1, 5
+   - Comparison with Bayes-optimal baseline
+2. **Figure 3b**: 2D character embedding scatter plot colored by dominant action  
+   - X-axis: Normalized $e_1$
+   - Y-axis: Normalized $e_2$
+   - Scatters are $N_{past} = 10$ past episodes
+   - Darker the higher that count
+3. **Figure 3c**: Test $\alpha$ vs Average KL-divergence between agents’ true and predicted policies
+   - Rows: Training species ($\alpha \in {0.01, 0.03, 0.1, 0.3, 1.0, 3.0}$)
+   - Columns: D_KL(\pi||$\hat{$\pi})
+   - 6 lines showing KL divergence for each trained $\alpha$ value {0.01, 0.03, 0.1, 0.3, 1.0, 3.0}
+   - Shows generalization capabilities across species
+   - Constraint with N_past = 1
+4. **Figure 3d**: Figure 3c + Mixed species training performance
+   - X-axis: Test $\alpha$ values {0.01, 0.03, 0.1, 0.3, 1.0, 3.0}
+   - Y-axis: D_KL(\pi||$\hat{$\pi})
+   - 3 lines: trained on $\alpha=0.01$, $\alpha=3.0$, and mixed ($\alpha=0.01 & 3.0$)
 
 ## Usage Instructions
 
@@ -252,7 +232,7 @@ alpha_values = [0.01, 0.03, 0.1, 0.3, 1.0, 3.0]
 with open('result/figure3/run_cross_species_evaluation.sh', 'w') as f:
     for train_alpha in alpha_values:
         for test_alpha in alpha_values:
-            cmd = f"python scripts/evaluate.py --train_alpha {train_alpha} --test_alpha {test_alpha} --n_past 1\n"
+            cmd = f"python scripts/evaluate.py --train_alpha {train_alpha} --test_alpha {test_alpha} --n_past 1$\n"
             f.write(cmd)
 ```
 

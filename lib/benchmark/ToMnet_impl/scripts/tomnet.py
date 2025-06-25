@@ -406,14 +406,3 @@ def create_tomnet(
         hidden_dim=hidden_dim,
         use_mental_state=use_mental_state,
     )
-
-
-# Backward compatibility functions
-def create_tomnet_for_figure3(state_dim: int, char_embedding_dim: int = 2) -> ToMnet:
-    """Create ToMnet configuration for Figure 3 experiments (backward compatibility)"""
-    return create_tomnet("figure3", state_dim, char_embedding_dim)
-
-
-def create_tomnet_for_figure5(state_dim: int, char_embedding_dim: int = 8) -> ToMnet:
-    """Create ToMnet configuration for Figure 5 experiments (backward compatibility)"""
-    return create_tomnet("figure5", state_dim, char_embedding_dim)

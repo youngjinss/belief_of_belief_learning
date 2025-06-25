@@ -1,442 +1,254 @@
-# ToMnet Implementation Guide
+# ToMnet Implementation for Figure 3 Reproduction
 
 ## Overview
-This document provides the essential information to implement the Theory of Mind Network (ToMnet) and reproduce experiments from Figure 3 of the "Machine Theory of Mind" paper.
+This implementation reproduces the qualitative results from Figure 3 of the "Machine Theory of Mind" paper (Rabinowitz et al., 2018). The focus is on demonstrating ToMnet's ability to infer character traits of random agents through observation of their behavioral trajectories.
 
-## ToMnet Architecture
+## ToMnet Architecture for Figure 3
 
-### Core Components
-The ToMnet consists of three main modules:
+### Core Mathematical Framework
+The ToMnet implementation for Figure 3 uses a simplified architecture focused on character inference:
 
-1. **Character Net**: 
-   - Parses past episode trajectories {τ_ij} into character embeddings
+1. **Character Net (f_θ)**: 
+   - Processes past episode trajectories {τ_ij} into character embeddings
    - Function: `e_char,ij = f_θ(τ_ij^(obs))`
    - Aggregation: `e_char,i = Σ_j e_char,ij`
+   - Implementation: 3-layer MLP with ReLU activations
+   - Output: 2D embeddings for visualization
 
 2. **Mental State Net**:
-   - Processes current episode trajectory up to time t-1
-   - Function: `e_mental,i = g_φ([τ_ij^(obs)]_0:t-1, e_char,i)`
-   - Note: Not used in Figure 3 experiments
+   - **Omitted in Figure 3 experiments** as specified in the paper
+   - This simplification focuses on character-level inference only
 
 3. **Prediction Net**:
-   - Outputs behavioral predictions using character and mental embeddings
-   - Predictions include:
-     - Next-step action probabilities: π̂(·|x_t^(obs), e_char, e_mental)
+   - Outputs action probabilities: π̂(a_t|x_t^(obs), e_char)
+   - Function: concatenates current state with character embedding
+   - Implementation: 2-layer MLP with softmax output for 5 actions
 
-### Training
-- End-to-end training with multiple loss components
-- Character embedding dimensionality: 2D for Figure 3
+### Loss Function
+```
+L_action = -log π̂(a_t^(obs)|x_t^(obs), e_char)
+```
 
-## Environment Setup
+## Current Implementation Details
 
-### Gridworld Specifications
-- Size: 11×11
-- Walls: 0-4 random walls (Sections 3.1-3.2)
-- Objects: 4 consumable terminal objects (colored squares)
-- Episode length: Max 31 steps for random/algorithmic agents
+### Environment (environment.py)
+**GridWorld Class**:
+- **State Representation**: 11×11×6 tensor with channels for walls, 4 object types, and agent position
+- **Random Generation**: Each episode generates 0-4 random walls and places 4 consumable objects
+- **Action Space**: {up, down, left, right, stay} = {0, 1, 2, 3, 4}
+- **Episode Termination**: Ends when agent consumes an object or reaches 31 steps
+- **State Flattening**: Converts 3D state to 726-dimensional vector for neural network input
 
-## Figure 3: Random Agents
+### Agents (agents.py)
+**RandomAgent Class**:
+- **Policy Generation**: Samples fixed policy π_i ~ Dirichlet(α, α, α, α, α) at initialization
+- **Behavior**: Uses fixed policy throughout all episodes (no learning)
+- **Species Parameter**: α controls stochasticity (α=0.01: near-deterministic, α=3.0: highly stochastic)
+- **Dominant Action**: Tracks argmax(π_i) for embedding visualization coloring
 
-### Agent Design
-- **Species**: S(α) where α is Dirichlet concentration parameter
-- **Policy**: Stochastic with fixed action probabilities π_i(·) = π_i ~ Dir(α)
-- **Action space**: up/down/left/right/stay
+**GoalDirectedAgent Class** (for completeness, not used in Figure 3):
+- **Planning**: Uses value iteration to compute optimal policy for each environment
+- **Rewards**: Sampled from Dirichlet distribution over 4 object types
+- **Policy**: Softmax over Q-values with temperature parameter
+
+## Figure 3 Target Results
 
 ### Experimental Conditions
-1. **Near-deterministic agents**: α = 0.01
-2. **Stochastic agents**: α = 3
-3. **Mixed species**: Train on both α = 0.01 and α = 3
-
-### Training Setup
-- 1000 agents per species
-- Variable past episodes: N_past ~ U{0, 10}
-- Single observation/action pair per past trajectory
-- Task: Predict initial action in new POMDP
-
-### Key Results to Reproduce
-1. Action likelihood vs number of past observations
-2. 2D character embeddings colored by most frequent action
-3. KL-divergence between true and predicted policies
-4. Hierarchical inference on mixed species
-
-## Implementation Notes
-
-### Loss Functions
-```
-L_action = -log π̂(a_t^(obs)|x_t^(obs), e_char, e_mental)
-```
-
-### Evaluation Metrics
-- Action prediction accuracy
-- KL divergence: D_KL(π||π̂)
-- Jensen-Shannon divergence for policy comparisons
-
-### Data Generation
-1. Sample agents from species distribution
-2. Generate behavioral traces on random gridworlds
-3. Split into training (past) and query (current) episodes
-4. Ensure variety in N_past for meta-learning
-
-## Critical Implementation Details
-
-### For Figure 3
-- Omit mental state net
-- Use 2D character embeddings for visualization
-- Compare with Bayes-optimal inference baseline
-
-
-## Detailed Neural Network Specifications
-
-### Character Net (f_θ)
-- Input: Flattened trajectory (state, action) pairs
-- Architecture: 2-3 layer MLP
-- Hidden units: 64-128
-- Activation: ReLU
-- Output dimension: 2 (Figure 3)
-
-### Prediction Net
-- Input: Concatenated embeddings + current state
-- Architecture: 2-3 layer MLP with separate heads
-- Action head: Softmax over 5 actions
-
-## Code Structure Recommendation
-
-```python
-# 1. Environment Module
-class GridWorld:
-    def __init__(self, size=11):
-        # Initialize grid, walls, objects
-    def reset(self):
-        # Generate new random layout
-    def step(self, action):
-        # Execute action, return new state
-
-# 2. Agent Module  
-class RandomAgent:
-    def __init__(self, alpha):
-        # Sample policy from Dirichlet(alpha)
-    def act(self, state):
-        # Return action based on fixed policy
-
-# 3. ToMnet Module
-class CharacterNet(nn.Module):
-    # Process past trajectories
-class MentalStateNet(nn.Module):
-    # Process current trajectory  
-class PredictionNet(nn.Module):
-    # Output predictions
-
-# 4. Training Loop
-def train_tomnet(agents, episodes):
-    # Sample agent and trajectories
-    # Forward pass through ToMnet
-    # Compute losses and backprop
-```
-
-## Data Format Specifications
-
-### State Representation
-- 11×11 binary arrays for: walls, objects (4 channels), agent position
-- Flattened to 1D vector for neural network input
-
-### Trajectory Format
-```python
-trajectory = {
-    'states': np.array(...),    # Shape: (T, 11, 11, 6)
-    'actions': np.array(...),    # Shape: (T,) with values 0-4
-    'rewards': np.array(...),    # Shape: (T,)
-}
-```
-
-## Training Hyperparameters
-
-### General Settings
-- Batch size: 32-64
-- Learning rate: 1e-3 to 1e-4
-- Optimizer: Adam
-- Training episodes: 50,000-100,000
-- Validation split: 80/20
-
-### Figure 3 Specific
-- Training agents: 1000 per species
-- Episodes per agent: 100
-- Embedding regularization: None
-
-
-## Baseline Implementation
-
-### Bayes-Optimal Inference (Figure 3)
-```python
-def bayes_optimal_update(prior_alpha, observed_actions):
-    # Update Dirichlet posterior
-    posterior_alpha = prior_alpha.copy()
-    for action in observed_actions:
-        posterior_alpha[action] += 1
-    # Compute expected policy
-    return posterior_alpha / posterior_alpha.sum()
-```
-
-## Visualization Code Examples
-
-### Figure 3 Plots
-```python
-# 1. Action likelihood plot
-def plot_action_likelihood(n_past, likelihoods):
-    # Compare ToMnet vs Bayes-optimal
-
-# 2. 2D embedding visualization  
-def plot_character_embeddings(embeddings, action_labels):
-    # Scatter plot colored by dominant action
-
-# 3. KL divergence heatmap
-def plot_kl_matrix(train_alphas, test_alphas, kl_values):
-    # Heatmap of cross-species generalization
-```
-
-
-## Implementation Checklist
-
-1. [ ] Implement GridWorld environment with random generation
-2. [ ] Create RandomAgent class with Dirichlet policies
-3. [ ] Build ToMnet architecture (3 modules)
-5. [ ] Implement data generation pipeline
-6. [ ] Set up training loop with proper batching
-7. [ ] Add evaluation metrics (accuracy, KL divergence)
-8. [ ] Create visualization functions
-9. [ ] Implement Bayes-optimal baseline
-10. [ ] Reproduce experiments and compare results
-
-## Experiment Reproduction Steps
-
-# Cross-Species Evaluation for Figure 3
-## 개요
-
-논문의 Figure 3는 다음과 같은 실험을 포함합니다:
-- **Figure 3a**: 훈련된 alpha 값 vs action likelihood (N_past=1)
-- **Figure 3b**: 2D character embeddings
-- **Figure 3c**: 테스트 alpha 값 vs KL divergence (교차 종 일반화)
-- **Figure 3d**: 혼합 종 훈련 성능 (N_past=5)
-
-## 자동화된 워크플로우
-
-### 1. 모델 훈련
-
-여러 alpha 값으로 모델을 훈련하고 교차 종 평가 파일을 자동 생성합니다:
-
-```bash
-# 기본 alpha 값들로 훈련 (0.01, 0.1, 0.5, 1.0, 3.0)
-python train.py --experiment figure3
-
-# 사용자 정의 alpha 값들로 훈련
-python train.py --experiment figure3 --alpha_values 0.01 0.1 1.0 3.0
-
-# 혼합 종 모델도 함께 훈련
-python train.py --experiment figure3 --mixed_training
-
-# 더 많은 에이전트와 에피소드로 훈련
-python train.py --experiment figure3 --n_agents 1000 --n_episodes_per_agent 100 --n_epochs 50
-```
-
-### 2. 자동 생성된 파일들
-
-훈련 완료 후 `evaluation_configs/` 디렉토리에 다음 파일들이 자동 생성됩니다:
-
-```
-evaluation_configs/
-├── model_paths.json                 # 훈련된 모델 경로들
-├── data_paths.json                  # 테스트 데이터 경로들
-├── run_cross_species_evaluation.sh  # 실행 스크립트
-└── evaluation_summary.json          # 요약 정보
-```
-
-**model_paths.json 예시:**
-```json
-{
-  "alpha_0.01": "/absolute/path/to/models/figure3_0.01_best.pth",
-  "alpha_0.1": "/absolute/path/to/models/figure3_0.1_best.pth",
-  "alpha_3.0": "/absolute/path/to/models/figure3_3.0_best.pth",
-  "mixed": "/absolute/path/to/models/figure3_mixed_best.pth"
-}
-```
-
-**data_paths.json 예시:**
-```json
-{
-  "alpha_0.01": "/absolute/path/to/data/figure3_alpha_0.01.pkl",
-  "alpha_0.1": "/absolute/path/to/data/figure3_alpha_0.1.pkl", 
-  "alpha_3.0": "/absolute/path/to/data/figure3_alpha_3.0.pkl"
-}
-```
-
-### 3. 교차 종 평가 실행
-
-자동 생성된 스크립트로 평가를 실행합니다:
-
-```bash
-# 자동 생성된 스크립트 사용 (권장)
-bash evaluation_configs/run_cross_species_evaluation.sh
-
-# 또는 직접 실행
-python evaluate.py \
-    --experiment figure3 \
-    --model_paths_json evaluation_configs/model_paths.json \
-    --data_paths_json evaluation_configs/data_paths.json \
-    --output_path result/figure3_cross_species_results.pkl \
-    --device cuda
-```
-
-### 4. 결과 시각화
-
-Jupyter notebook으로 결과를 시각화합니다:
-
-```bash
-jupyter notebook visualize_figure3.ipynb
-```
-
-## 생성되는 평가 데이터
-
-교차 종 평가는 다음 구조의 데이터를 생성합니다:
-
-```python
-{
-    "figure3a": {
-        "trained_alphas": [0.01, 0.1, 0.5, 1.0, 3.0, ...],
-        "action_likelihoods": [0.85, 0.82, 0.78, ...],
-        "bayes_optimal": [0.90, 0.85, 0.80, ...]
-    },
-    "figure3c": {
-        "train_alphas": [0.01, 0.1, 3.0],
-        "test_alphas": [0.01, 0.1, 0.5, 1.0, 3.0],
-        "kl_matrix": [[0.2, 1.5, 2.8], [1.2, 0.3, 2.1], ...],
-        "bayes_kl_matrix": [[0.1, 1.3, 2.5], ...]
-    },
-    "figure3d": {
-        "mixed_species": {
-            "alpha_0.01": {"action_accuracy": 0.75, "mean_kl_divergence": 1.2},
-            "alpha_3.0": {"action_accuracy": 0.73, "mean_kl_divergence": 1.4}
-        }
-    },
-    "character_embeddings": {
-        "alpha_0.01": {"embeddings": [...], "agent_ids": [...]}
-    }
-}
-```
-
-## 고급 사용법
-
-### 커스텀 평가 설정
-
-```bash
-# 특정 모델과 데이터로만 평가
-python evaluate.py \
-    --experiment figure3 \
-    --model_paths_json my_custom_models.json \
-    --data_paths_json my_custom_data.json \
-    --output_path my_results.pkl
-```
-
-### 개별 모델 평가
-
-```bash
-# 단일 모델 평가 (레거시 방식)
-python evaluate.py \
-    --experiment figure3 \
-    --model_path models/figure3_0.01_best.pth \
-    --data_path data/figure3_alpha_0.01.pkl \
-    --output_path single_model_results.pkl
-```
-
-## 문제 해결
-
-### 1. 모듈 import 오류
-```bash
-# 올바른 디렉토리에서 실행 확인
-cd /path/to/ToMnet_impl/
-python train.py --experiment figure3
-```
-
-### 2. 메모리 부족
-```bash
-# 배치 크기 줄이기
-python train.py --experiment figure3 --batch_size 16 --n_agents 500
-```
-
-### 3. GPU 오류
-```bash
-# CPU 사용하기
-python train.py --experiment figure3 --device cpu
-```
-
-### 4. 평가 파일 없음
-훈련이 완료되었는지 확인하고 `evaluation_configs/` 디렉토리가 존재하는지 확인하세요.
-
-## 파일 구조
-
-```
-ToMnet_impl/
-├── train.py                         # 훈련 스크립트 (JSON 파일 자동 생성)
-├── evaluate.py                      # 평가 스크립트 (교차 종 평가 지원)
-├── visualize_figure3.ipynb          # 시각화 노트북 (수정된 Figure 3)
-├── data/                            # 생성된 데이터
-│   ├── figure3_alpha_0.01.pkl
-│   ├── figure3_alpha_0.1.pkl
-│   └── ...
-├── models/                          # 훈련된 모델
-│   ├── figure3_0.01_best.pth
-│   ├── figure3_0.1_best.pth
-│   └── ...
-├── evaluation_configs/              # 자동 생성된 평가 설정
-│   ├── model_paths.json
-│   ├── data_paths.json
-│   ├── run_cross_species_evaluation.sh
-│   └── evaluation_summary.json
-└── result/                          # 평가 결과
-    └── figure3_cross_species_results.pkl
-```
-
-## 다음 단계
-
-1. 모델 훈련: `python train.py --experiment figure3`
-2. 평가 실행: `bash evaluation_configs/run_cross_species_evaluation.sh`  
-3. 결과 확인: `jupyter notebook visualize_figure3.ipynb`
-
-이 워크플로우를 통해 논문의 Figure 3를 정확하게 재현할 수 있습니다.
-
-
-## Debugging Tips
-
-1. **Convergence Issues**
-   - Start with smaller grid (5×5) for faster debugging
-   - Ensure value iteration converges before using agents
-   - Check that loss decreases steadily
-
-2. **Embedding Quality**
-   - Use PCA to verify embedding structure
-   - Check that similar agents have similar embeddings
-   - Ensure regularization isn't too strong
-
-3. **Prediction Accuracy**
-   - Verify baseline (random) performance first
-   - Check that more observations improve predictions
-   - Ensure proper masking for variable-length sequences
-
-### Training Batch Format
+1. **Near-deterministic agents**: α = 0.01 (concentrated policies)
+2. **Stochastic agents**: α = 3.0 (uniform-like policies) 
+3. **Mixed species training**: Agents from both α values in same dataset
+
+### ToMnet Implementation (tomnet.py)
+**CharacterNet Class**:
+- **Input Processing**: Handles variable-length past trajectories
+- **Architecture**: 3-layer MLP (state_dim+action_dim → 128 → 128 → embedding_dim)
+- **Trajectory Aggregation**: Averages embeddings across time steps, then across past episodes
+- **Output**: 2D character embeddings for Figure 3 visualization
+
+**PredictionNet Class**:
+- **Input**: Concatenation of current state + character embedding (+ mental embedding if used)
+- **Multi-head Architecture**: Separate heads for actions, object consumption, and successor representation
+- **Action Head**: Linear layers with softmax output for 5-action distribution
+
+**ToMnet Class**:
+- **Configuration**: `use_mental_state=False` for Figure 3 experiments
+- **Forward Pass**: past_trajectories → CharacterNet → (+ current_state) → PredictionNet → action_probs
+- **Loss Computation**: Cross-entropy loss on action predictions
+
+### Training Process (train.py)
+**Data Generation**:
+- Creates agents with specified α values (0.01, 0.1, 0.5, 1.0, 3.0)
+- Generates N_past past episodes per agent (N_past ~ Uniform{0, 10})
+- Samples single (state, action) pair from each past episode
+- Creates query episode for action prediction task
+
+**Training Loop**:
+- Batch size: 32-64 samples
+- Optimizer: Adam with learning rate 1e-3 to 1e-4
+- Metrics: Action prediction accuracy, KL divergence vs true policy
+- Model saving: Best model based on validation accuracy
+
+### Evaluation Process (evaluate.py)
+**Cross-Species Testing**:
+- Tests models trained on one α value against agents from different α values
+- Computes action prediction likelihood and KL divergence matrices
+- Generates data for Figure 3a (likelihood vs N_past) and 3c (cross-species generalization)
+
+**Character Embedding Analysis**:
+- Extracts 2D character embeddings for visualization
+- Colors embeddings by dominant action for Figure 3b
+- Compares embedding clusters between different α species
+
+### Target Outputs
+1. **Figure 3a**: Action likelihood vs number of past observations (1-10)
+2. **Figure 3b**: 2D character embedding scatter plot colored by dominant action  
+3. **Figure 3c**: KL divergence heatmap showing cross-species generalization
+4. **Figure 3d**: Mixed species training performance comparison
+
+## Data Flow and File Structure
+
+### Data Generation Pipeline (data_generation.py)
+**Trajectory Collection**:
+1. **Agent Sampling**: Creates agents with specified α parameters
+2. **Environment Sampling**: Generates random 11×11 gridworlds for each episode
+3. **Trajectory Recording**: Records (state, action, reward) tuples until episode termination
+4. **Data Splitting**: Separates past episodes (for character inference) from query episodes (for prediction)
+5. **Batch Formation**: Creates batches with variable N_past for meta-learning
+
+**Data Format**:
 ```python
 batch = {
-    'past_trajectories': [...],   # List of N_past trajectories
-    'current_state': np.array(...),
-    'true_action': int,
+    'past_trajectories': torch.Tensor,  # (batch_size, n_past, seq_len, state_dim + action_dim)
+    'current_state': torch.Tensor,      # (batch_size, state_dim)
+    'true_actions': torch.Tensor,       # (batch_size,) target actions
+    'agent_ids': List[int],             # For tracking agent species
 }
 ```
 
-### Usage:
+## Key Implementation Features
 
-# Train models
-python train.py --experiment figure3 --n_agents 100 --n_epochs 100
+### Bayes-Optimal Baseline
+The implementation includes a Bayes-optimal baseline that:
+- Maintains Dirichlet posterior over action probabilities
+- Updates posterior with observed actions: α_posterior[a] += 1 for each observed action a
+- Computes expected policy from posterior parameters
+- Provides theoretical upper bound for Figure 3 comparisons
 
-# Evaluate models
-python evaluate.py --experiment figure3 --model_path models/figure3_best.pth --data_path data/figure3_data.pkl
-python evaluate.py --experiment figure3 --model_path models/figure3_0.01_best.pth --data_path data/figure3_alpha_0.01.pkl
+### Model Configuration
+For Figure 3 reproduction:
+- Character embedding dimension: 2 (for visualization)
+- Mental state net: Disabled (`use_mental_state=False`)
+- Hidden dimensions: 128 across all MLPs
+- Training episodes: 50,000-100,000 per species
 
-# Run visualization notebook
-jupyter notebook visualize_figure3.ipynb
+
+## Visualization and Results (visualize_figure3.py)
+
+### Generated Plots
+**Figure 3a**: Action Likelihood vs Past Observations
+- X-axis: Number of past observations (0-10)
+- Y-axis: Action prediction likelihood
+- Compares ToMnet vs Bayes-optimal baseline
+- Shows improvement with more observations
+
+**Figure 3b**: Character Embeddings  
+- 2D scatter plot of character embeddings
+- Points colored by dominant action (argmax of agent's policy)
+- Demonstrates clustering by behavioral similarity
+
+**Figure 3c**: Cross-Species Generalization
+- Heatmap of KL divergence between predicted and true policies
+- Rows: Training species (α values)
+- Columns: Test species (α values) 
+- Shows generalization capabilities across species
+
+**Figure 3d**: Mixed Species Training
+- Performance comparison for models trained on mixed vs single species
+- Demonstrates hierarchical inference capabilities
+
+## Usage Instructions
+
+### Quick Start
+```bash
+# Complete Figure 3 reproduction workflow
+bash shell/run_experiment.sh all
+
+# Or run individual steps:
+# 1. Train models for different alpha values
+python scripts/train.py --experiment figure3 --n_agents 1000 --n_epochs 100
+
+# 2. Evaluate cross-species performance (auto-generated script)
+bash result/figure3/run_cross_species_evaluation.sh
+
+# 3. Generate Figure 3 visualizations
+bash shell/visualize_figure3.sh --save --output_dir plots
+
+# 4. View detailed analysis in Jupyter
+jupyter notebook notebook/visualize_figure3.ipynb
+```
+
+### Generated Files
+- **Models**: `models/figure3_{alpha}_best.pth` - Trained ToMnet models
+- **Data**: `data/figure3_alpha_{alpha}.pkl` - Agent trajectory datasets  
+- **Results**: `result/figure3/figure3_cross_species_results.pkl` - Evaluation metrics
+- **Plots**: `plots/figure3{a,b,c,d}_{description}.png` - Reproduction figures
+
+## Implementation Validation
+
+### Expected Results
+The implementation should reproduce these key findings from the original paper:
+
+1. **Learning Curve**: Action likelihood increases with more past observations (Figure 3a)
+2. **Character Clustering**: 2D embeddings show clear clusters by dominant action (Figure 3b)  
+3. **Cross-Species Transfer**: Lower KL divergence for within-species vs between-species prediction (Figure 3c)
+4. **Mixed Training Benefit**: Models trained on mixed species generalize better than single-species models (Figure 3d)
+
+### Troubleshooting
+- **Memory Issues**: Reduce batch size or number of agents
+- **Convergence Problems**: Check learning rate, ensure proper data preprocessing
+- **Visualization Errors**: Verify embedding dimensions and agent labeling
+- **Cross-species Evaluation**: Ensure model and data paths are correctly generated
+
+## Technical Specifications
+
+### Model Architecture Details
+- **Input Dimension**: 726 (11×11×6 flattened state) + 5 (one-hot action)
+- **Character Net**: 731 → 128 → 128 → 2 (with ReLU activations)
+- **Prediction Net**: 728 (state + char_embedding) → 128 → 128 → 5 (with softmax)
+- **Parameters**: ~200K total parameters for Figure 3 configuration
+
+### Training Configuration
+- **Dataset Size**: 1000 agents × 100 episodes × variable N_past
+- **Batch Processing**: Dynamic batching with padding for variable-length sequences
+- **Validation**: 80/20 split, early stopping on validation accuracy
+- **Reproducibility**: Fixed random seeds for consistent results across runs
+
+
+## Repository Structure
+```
+ToMnet_impl/
+├── scripts/                    # Core implementation
+│   ├── tomnet.py              # ToMnet architecture (CharacterNet, PredictionNet, ToMnet)
+│   ├── environment.py         # GridWorld environment with random generation
+│   ├── agents.py              # RandomAgent and GoalDirectedAgent classes
+│   ├── data_generation.py     # Trajectory collection and batch formation
+│   ├── train.py               # Training loop with multi-species support
+│   ├── evaluate.py            # Cross-species evaluation and metrics
+│   └── visualize_figure3.py   # Figure generation and analysis
+├── shell/                     # Automation scripts
+│   ├── run_experiment.sh      # Complete workflow automation
+│   └── visualize_figure3.sh   # Visualization pipeline
+├── notebook/                  # Interactive analysis
+│   └── visualize_figure3.ipynb # Detailed figure reproduction
+├── data/                      # Generated datasets
+├── models/                    # Trained model checkpoints
+├── result/                    # Evaluation results and configs
+└── plots/                     # Generated Figure 3 reproductions
+```
+
+This implementation provides a complete reproduction of the ToMnet Figure 3 experiments, demonstrating the network's ability to learn character embeddings that capture agent behavioral patterns and enable cross-species generalization in theory of mind tasks.
+
+
+
+
+

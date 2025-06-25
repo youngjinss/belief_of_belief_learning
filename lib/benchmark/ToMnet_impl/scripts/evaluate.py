@@ -1,7 +1,7 @@
 import torch
 import torch.nn.functional as F
 import numpy as np
-from typing import Dict, Tuple, Optional, Union
+from typing import Dict, Tuple, Optional, Union, List
 from scipy.spatial.distance import jensenshannon
 from scipy.stats import entropy
 import pickle
@@ -526,7 +526,6 @@ def evaluate_unified_results(
                         "kl_by_n_past": kl_by_n_past,
                     }
                 )
-
 
             model_results[dataset_name] = dataset_results
 

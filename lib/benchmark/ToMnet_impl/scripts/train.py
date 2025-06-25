@@ -243,7 +243,6 @@ def generate_data(
 
             return datasets
 
-
     # Generate new data if not found
     data_generator = DataGenerator()
 
@@ -284,12 +283,13 @@ def generate_data(
 
         return datasets
 
-
     else:
         raise ValueError(f"Unknown experiment type: {experiment_type}")
 
 
-def generate_cross_species_evaluation_files(results, datasets, experiment_type):
+def generate_cross_species_evaluation_files(
+    results, datasets, experiment_type, device="cpu"
+):
     """Generate JSON files for cross-species evaluation"""
     if experiment_type != "figure3":
         print(f"Cross-species evaluation files not applicable for {experiment_type}")
@@ -298,7 +298,7 @@ def generate_cross_species_evaluation_files(results, datasets, experiment_type):
     print("\n=== Generating Cross-Species Evaluation Files ===")
 
     # Create evaluation directory
-    eval_dir = f"/result/{experiment_type}"
+    eval_dir = f"result/{experiment_type}"
     os.makedirs(eval_dir, exist_ok=True)
 
     # Generate model_paths.json
@@ -351,18 +351,18 @@ def generate_cross_species_evaluation_files(results, datasets, experiment_type):
 echo "Running Figure 3 Cross-Species Evaluation..."
 
 # Run cross-species evaluation
-python evaluate.py \\
+python scripts/evaluate.py \\
     --experiment figure3 \\
     --model_paths_json {model_paths_file} \\
     --data_paths_json {data_paths_file} \\
     --output_path {eval_dir}/figure3_cross_species_results.pkl \\
-    --device cuda
+    --device {device}
 
 echo "Evaluation completed!"
 echo "Results saved to: {eval_dir}/figure3_cross_species_results.pkl"
 echo ""
 echo "To visualize results, run:"
-echo "jupyter notebook visualize_figure3.ipynb"
+echo "python scripts/visualize_figure3.py --results_path {eval_dir}/figure3_cross_species_results.pkl --save_plots"
 """
 
     eval_script_file = os.path.join(eval_dir, "run_cross_species_evaluation.sh")
@@ -396,7 +396,9 @@ echo "jupyter notebook visualize_figure3.ipynb"
     print(f"\n=== Cross-Species Evaluation Setup Complete ===")
     print(f"Next steps:")
     print(f"1. Run evaluation: bash {eval_script_file}")
-    print(f"2. View results: jupyter notebook visualize_figure3.ipynb")
+    print(
+        f"2. View results: python scripts/visualize_figure3.py --results_path {eval_dir}/figure3_cross_species_results.pkl --save_plots"
+    )
     print("")
 
 
@@ -458,10 +460,11 @@ def train_unified_model(experiment_type: str, args):
             }
 
         # Generate cross-species evaluation JSON files
-        generate_cross_species_evaluation_files(results, datasets, experiment_type)
+        generate_cross_species_evaluation_files(
+            results, datasets, experiment_type, args.device
+        )
 
         return results
-
 
 
 def main():
@@ -538,7 +541,9 @@ def main():
             print("\nTo run cross-species evaluation:")
             print("  bash result/figure3/run_cross_species_evaluation.sh")
             print("\nTo visualize results:")
-            print("  jupyter notebook visualize_figure3.ipynb")
+            print(
+                "  python scripts/visualize_figure3.py --results_path result/figure3/figure3_cross_species_results.pkl --save_plots"
+            )
         else:
             print("⚠ Cross-species evaluation files not found")
             print("Make sure Figure 3 training completed successfully")

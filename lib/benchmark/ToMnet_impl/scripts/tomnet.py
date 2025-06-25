@@ -62,7 +62,7 @@ class CharacterNet(nn.Module):
         trajectory_embeddings = trajectory_embeddings.view(
             batch_size, n_past, self.embedding_dim
         )
-        character_embeddings = trajectory_embeddings.mean(
+        character_embeddings = trajectory_embeddings.sum(
             dim=1
         )  # Sum over past episodes
 

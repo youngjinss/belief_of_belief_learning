@@ -118,7 +118,7 @@ def plot_figure3a_trained_alpha_vs_likelihood(results):
     else:
         # Legacy data format - simulate based on single model result
         print("Warning: Using simulated data for Figure 3a")
-        alphas = [0.01, 0.1, 0.5, 1.0, 3.0]
+        alphas = [0.01, 0.03, 0.1, 0.3, 1.0, 3.0]
 
         # Extract some accuracy data if available
         if isinstance(results, dict) and "model" in results:
@@ -335,7 +335,7 @@ def plot_figure3c_test_alpha_vs_kl(results):
     else:
         # Legacy data format - simulate based on theoretical expectations
         print("Warning: Using simulated data for Figure 3c")
-        test_alphas = [0.01, 0.1, 0.5, 1.0, 3.0]
+        test_alphas = [0.01, 0.03, 0.1, 0.3, 1.0, 3.0]
         train_alphas = [0.01, 3.0]  # Two example training conditions
 
         for ax, title in [

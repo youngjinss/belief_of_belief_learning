@@ -29,11 +29,12 @@ class ExperimentConfig:
             self.agent_type = "random"
             self.alpha_values = [
                 0.01,
+                0.03,
                 0.1,
-                0.5,
+                0.3,
                 1.0,
                 3.0,
-            ]  # More alpha values for better cross-species analysis
+            ]  # Alpha values for Figure 3 cross-species analysis
             self.n_agents = 1000
             self.loss_weights = {"action_loss": 1.0}
             self.predictions = ["action"]
@@ -503,7 +504,7 @@ def main():
         "--alpha_values",
         nargs="+",
         type=float,
-        default=[0.01, 0.1, 0.5, 1.0, 3.0],
+        default=[0.01, 0.03, 0.1, 0.3, 1.0, 3.0],
         help="Alpha values for Figure 3 cross-species evaluation",
     )
     parser.add_argument(

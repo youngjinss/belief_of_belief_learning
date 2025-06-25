@@ -404,10 +404,14 @@ def main():
     parser.add_argument("--data_path", required=True, help="Path to test dataset")
     parser.add_argument("--device", default="cuda", help="Device to use")
     parser.add_argument(
-        "--output_path", default="evaluation_results.pkl", help="Path to save results"
+        "--output_path", default="result/evaluation_results.pkl", help="Path to save results"
     )
 
     args = parser.parse_args()
+
+    # Create result directory if it doesn't exist
+    import os
+    os.makedirs(os.path.dirname(args.output_path), exist_ok=True)
 
     # Evaluate using unified function
     results = evaluate_unified_results(

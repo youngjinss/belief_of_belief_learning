@@ -72,48 +72,70 @@ def load_evaluation_results(results_path="result/figure3_cross_species_results.p
 
 
 def plot_figure3a_trained_alpha_vs_likelihood(results):
-    """Plot trained alpha vs action likelihood (Figure 3a)"""
+    """Plot trained alpha vs action likelihood (Figure 3a) - 3 lines for N_past = 0, 1, 5"""
     fig, ax = plt.subplots(1, 1, figsize=(10, 6))
 
-    if "figure3a" in results:
-        # New cross-species evaluation data
+    if "figure3a" in results and "action_likelihoods_by_n_past" in results["figure3a"]:
+        # New data structure with N_past variations
+        n_past_values = results["figure3a"]["n_past_values"]
         trained_alphas = np.array(results["figure3a"]["trained_alphas"])
-        action_likelihoods = np.array(results["figure3a"]["action_likelihoods"])
-        bayes_optimal = np.array(results["figure3a"]["bayes_optimal"])
-
-        # Group by alpha values to get means
+        
+        # Get unique alpha values
         unique_alphas = sorted(list(set(trained_alphas)))
-        tomnet_means = []
-        bayes_means = []
-
-        for alpha in unique_alphas:
-            alpha_mask = trained_alphas == alpha
-            tomnet_mean = np.mean(action_likelihoods[alpha_mask])
-            bayes_mean = np.mean(bayes_optimal[alpha_mask])
-            tomnet_means.append(tomnet_mean)
-            bayes_means.append(bayes_mean)
-
-        # Plot ToMnet dots
-        ax.semilogx(
-            unique_alphas,
-            tomnet_means,
-            "o",
-            markersize=10,
-            label="ToMnet",
-            color="darkblue",
-            alpha=0.8,
-        )
-
-        # Plot Bayes-optimal line
-        ax.semilogx(
-            unique_alphas,
-            bayes_means,
-            "-",
-            linewidth=3,
-            label="Bayes-optimal",
-            color="lightblue",
-            alpha=0.8,
-        )
+        
+        # Colors for different N_past values
+        colors = ["red", "blue", "green"]
+        markers = ["o", "s", "^"]
+        
+        # Plot ToMnet results for each N_past
+        for i, n_past in enumerate(n_past_values):
+            action_likelihoods = np.array(results["figure3a"]["action_likelihoods_by_n_past"][n_past])
+            bayes_optimal = np.array(results["figure3a"]["bayes_optimal_by_n_past"][n_past])
+            
+            # Group by alpha values to get means
+            tomnet_means = []
+            bayes_means = []
+            
+            for alpha in unique_alphas:
+                alpha_mask = trained_alphas == alpha
+                if np.any(alpha_mask) and len(action_likelihoods) > 0:
+                    # Get indices for this alpha, but ensure they're within bounds
+                    alpha_indices = np.where(alpha_mask)[0]
+                    valid_indices = [idx for idx in alpha_indices if idx < len(action_likelihoods)]
+                    
+                    if len(valid_indices) > 0:
+                        tomnet_mean = np.mean([action_likelihoods[idx] for idx in valid_indices])
+                        bayes_mean = np.mean([bayes_optimal[idx] for idx in valid_indices])
+                        tomnet_means.append(tomnet_mean)
+                        bayes_means.append(bayes_mean)
+                    else:
+                        tomnet_means.append(0.5)  # Default value
+                        bayes_means.append(0.5)
+                else:
+                    tomnet_means.append(0.5)  # Default value 
+                    bayes_means.append(0.5)
+            
+            # Plot ToMnet
+            ax.semilogx(
+                unique_alphas,
+                tomnet_means,
+                markers[i],
+                markersize=8,
+                label=f"ToMnet (N_past={n_past})",
+                color=colors[i],
+                alpha=0.8,
+            )
+            
+            # Plot Bayes-optimal with dashed line
+            ax.semilogx(
+                unique_alphas,
+                bayes_means,
+                "--",
+                linewidth=2,
+                label=f"Bayes-optimal (N_past={n_past})",
+                color=colors[i],
+                alpha=0.6,
+            )
 
     else:
         # Legacy data format - simulate based on single model result
@@ -168,7 +190,7 @@ def plot_figure3a_trained_alpha_vs_likelihood(results):
     ax.set_xlabel("Training Species α (concentration parameter)", fontsize=12)
     ax.set_ylabel("Action Prediction Likelihood", fontsize=12)
     ax.set_title(
-        "Figure 3a: Action Likelihood vs Trained Alpha\n(N_past = 1)",
+        "Figure 3a: Action Likelihood vs Trained Alpha\n(3 lines for N_past = 0, 1, 5)",
         fontsize=14,
         fontweight="bold",
     )
@@ -194,9 +216,30 @@ def plot_figure3b_character_embeddings(results):
     """Plot 2D character embeddings colored by most frequent action (Figure 3b)"""
     fig, ax = plt.subplots(1, 1, figsize=(8, 8))
 
-    if "character_embeddings" in results:
-        # New cross-species evaluation data
-        print("Using character embeddings from cross-species evaluation")
+    if "figure3b" in results and "character_embeddings" in results["figure3b"] and len(results["figure3b"]["character_embeddings"]) > 0:
+        # New data structure with N_past = 10 embeddings
+        print(f"Using character embeddings from Figure 3b data (N_past = {results['figure3b']['n_past_embeddings']})")
+
+        # Use embeddings from first available model
+        model_name = list(results["figure3b"]["character_embeddings"].keys())[0]
+        embeddings = results["figure3b"]["character_embeddings"][model_name]["embeddings"]
+        agent_ids = results["figure3b"]["character_embeddings"][model_name]["agent_ids"]
+
+        # Ensure we have 2D embeddings
+        if embeddings.shape[1] > 2:
+            # Use PCA to reduce to 2D
+            pca = PCA(n_components=2)
+            embeddings_2d = pca.fit_transform(embeddings)
+            print(f"Reduced embeddings from {embeddings.shape[1]}D to 2D using PCA")
+        else:
+            embeddings_2d = embeddings
+            
+        # Normalize embeddings as specified in README (Normalized e_1, e_2)
+        embeddings_2d = (embeddings_2d - embeddings_2d.mean(axis=0)) / embeddings_2d.std(axis=0)
+    
+    elif "character_embeddings" in results:
+        # Fallback to old data structure
+        print("Using character embeddings from legacy cross-species evaluation")
 
         # Use embeddings from first available model
         model_name = list(results["character_embeddings"].keys())[0]
@@ -211,10 +254,13 @@ def plot_figure3b_character_embeddings(results):
             print(f"Reduced embeddings from {embeddings.shape[1]}D to 2D using PCA")
         else:
             embeddings_2d = embeddings
+            
+        # Normalize embeddings
+        embeddings_2d = (embeddings_2d - embeddings_2d.mean(axis=0)) / embeddings_2d.std(axis=0)
 
     else:
-        # Legacy data format
-        print("Using legacy data format for character embeddings")
+        # Legacy data format or fallback
+        print("No Figure 3b character embeddings found (need N_past=10 data)")
         if (
             isinstance(results, dict)
             and "model" in results
@@ -224,11 +270,15 @@ def plot_figure3b_character_embeddings(results):
             agent_ids = results["model"]["data"]["agent_ids"]
         else:
             print(
-                "No embedding data found, generating random embeddings for visualization"
+                "Generating simulated embeddings for demonstration (need more training data for real embeddings)"
             )
-            n_agents = 100
-            embeddings_2d = np.random.randn(n_agents * 10, 2) * 3
-            agent_ids = np.repeat(np.arange(n_agents), 10)
+            n_agents = 50
+            embeddings_2d = np.random.randn(n_agents, 2) * 2
+            agent_ids = np.arange(n_agents)
+            
+        # Normalize simulated embeddings
+        if len(embeddings_2d) > 0:
+            embeddings_2d = (embeddings_2d - embeddings_2d.mean(axis=0)) / embeddings_2d.std(axis=0)
 
     # Color by embedding position to show clustering
     # Use first embedding dimension to determine "dominant action"
@@ -258,10 +308,10 @@ def plot_figure3b_character_embeddings(results):
                 linewidth=0.5,
             )
 
-    ax.set_xlabel("Character Embedding Dimension 1", fontsize=12)
-    ax.set_ylabel("Character Embedding Dimension 2", fontsize=12)
+    ax.set_xlabel("Normalized e_1", fontsize=12)
+    ax.set_ylabel("Normalized e_2", fontsize=12)
     ax.set_title(
-        "Figure 3b: 2D Character Embeddings e_char\n(Colored by Inferred Action Preference)",
+        "Figure 3b: 2D Character Embeddings e_char\n(N_past = 10, Colored by Dominant Action)",
         fontsize=14,
         fontweight="bold",
     )

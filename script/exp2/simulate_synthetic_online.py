@@ -25,14 +25,14 @@ def parse_args():
         "--true_preference",
         nargs=2,
         type=float,
-        default=[7.0, 3.0],
+        default=[2.0, 8.0],
         help="True preference vector [apple, orange] (default: [7.0, 3.0])",
     )
     parser.add_argument(
         "--level_combinations",
         nargs="*",
         type=str,
-        default=["0,1"],
+        default=["3,1"],
         help="Level combinations as 'buyer,seller' pairs (default: ['0,1'])",
     )
     parser.add_argument(
@@ -56,7 +56,7 @@ def parse_args():
     parser.add_argument(
         "--exploration_beta",
         type=float,
-        default=1.0,
+        default=0.5,
         help="Beta parameter for exploration in final buyer (default: 1.0)",
     )
     parser.add_argument(
@@ -823,20 +823,26 @@ class OnlineLearningEnvironment:
         state_t1 = {"vector_r": self.true_preference, "vector_d": vector_d}
 
         action_a1 = self.buyer.act_t1(state_t1)
+        print(f"buyer's state_t1: {state_t1}")
+        print(f"buyer's action: {action_a1}")
 
         # Seller observes and updates belief
         preference_grid_r, posterior_belief = self.seller.p_r_given_a(
             action_a1, vector_d
         )
-
+        print(f"seller's posterior_belief: {posterior_belief}")
+        
         # Stage 2: Seller sets prices
         optimal_prices = self.seller.compute_m_star(preference_grid_r, posterior_belief)
+        print(f"seller's optimal_prices: {optimal_prices}")
 
         # Stage 3: Buyer's final action
         state_t3 = {"vector_r": self.true_preference, "vector_m": optimal_prices}
-
+        print(f"buyer's state_t3: {state_t3}")
+        
         action_a3 = self.buyer.act_t3(state_t3)
-
+        print(f"buyer's action_a3: {action_a3}")
+        
         # Memory에 관찰 저장
         self.memory.add_observation(action_a1, vector_d)
 
@@ -995,7 +1001,7 @@ if __name__ == "__main__":
             buyer_level=buyer_level,
             seller_level=seller_level,
             true_preference=true_preference,
-            max_iterations=MAX_ITERATIONS,
+            max_iterations=1000,
             window_size=WINDOW_SIZE,
             convergence_threshold=CONVERGENCE_THRESHOLD,
             beta=DEFAULT_BETA,

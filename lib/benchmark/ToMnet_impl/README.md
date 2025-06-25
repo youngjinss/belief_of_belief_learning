@@ -235,7 +235,7 @@ bash shell/run_experiment.sh all
 python scripts/train.py --experiment figure3 --n_agents 1000 --n_epochs 100
 
 # 2. Evaluate cross-species performance
-python scripts/generate_cross_species_evaluation.py
+python scripts/evaluate.py
 bash result/figure3/run_cross_species_evaluation.sh
 
 # 3. Generate Figure 3 visualizations
@@ -247,7 +247,7 @@ jupyter notebook notebook/visualize_figure3.ipynb
 
 ### Cross-Species Evaluation Script Generation
 ```python
-# scripts/generate_cross_species_evaluation.py
+# scripts/evaluate.py
 alpha_values = [0.01, 0.03, 0.1, 0.3, 1.0, 3.0]
 with open('result/figure3/run_cross_species_evaluation.sh', 'w') as f:
     for train_alpha in alpha_values:

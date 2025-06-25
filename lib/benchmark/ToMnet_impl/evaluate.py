@@ -1,7 +1,7 @@
 import torch
 import torch.nn.functional as F
 import numpy as np
-from typing import Dict, List, Tuple, Optional, Union
+from typing import Dict, Tuple, Optional, Union
 from scipy.spatial.distance import jensenshannon
 from scipy.stats import entropy
 import pickle
@@ -455,7 +455,7 @@ def evaluate_unified_results(
     dataset_paths: Union[str, Dict[str, str]],
     device: str = "cuda",
 ) -> Dict:
-    """Unified evaluation function for both Figure 3 and Figure 5 experiments"""
+    """Unified evaluation function for Figure 3 experiments"""
 
     # For Figure 3, use the new cross-species evaluation
     if (
@@ -527,31 +527,8 @@ def evaluate_unified_results(
                     }
                 )
 
-            elif experiment_type == "figure5":
-                # Extract agent rewards for embedding analysis
-                agent_rewards = {}
-                for sample in dataset["data"]:
-                    agent_id = sample["agent_id"]
-                    if agent_id not in agent_rewards:
-                        agent_rewards[agent_id] = sample["rewards"]
-
-                dataset_results["agent_rewards"] = agent_rewards
 
             model_results[dataset_name] = dataset_results
-
-        # Add baseline comparison for figure3
-        if experiment_type == "figure3":
-            # Try to find alpha datasets for baseline comparison
-            alpha_dataset = None
-            for dataset_name in datasets.keys():
-                if "alpha_0.01" in dataset_name or "alpha" in dataset_name:
-                    alpha_dataset = datasets[dataset_name]
-                    break
-
-            if alpha_dataset is not None:
-                baseline = BayesOptimalBaseline()
-                baseline_results = baseline.evaluate_on_data(alpha_dataset, 0.01)
-                model_results["bayes_optimal_baseline"] = baseline_results
 
         results[model_name] = model_results
 
@@ -570,20 +547,14 @@ def evaluate_model(
     # Basic action prediction evaluation
     action_results = evaluator.evaluate_action_prediction(dataset)
 
-    # If it's a figure3 experiment, also evaluate policy prediction
-    if dataset.experiment_type == "figure3":
-        policy_results = evaluator.evaluate_policy_prediction(dataset)
-        return {
-            "action_accuracy": action_results["accuracy"],
-            "action_loss": action_results["average_loss"],
-            "mean_kl_divergence": np.mean(policy_results["kl_divergences"]),
-            "mean_js_divergence": np.mean(policy_results["js_divergences"]),
-        }
-    else:
-        return {
-            "action_accuracy": action_results["accuracy"],
-            "action_loss": action_results["average_loss"],
-        }
+    # For figure3 experiment, also evaluate policy prediction
+    policy_results = evaluator.evaluate_policy_prediction(dataset)
+    return {
+        "action_accuracy": action_results["accuracy"],
+        "action_loss": action_results["average_loss"],
+        "mean_kl_divergence": np.mean(policy_results["kl_divergences"]),
+        "mean_js_divergence": np.mean(policy_results["js_divergences"]),
+    }
 
 
 def main():
@@ -592,7 +563,7 @@ def main():
     import json
 
     parser = argparse.ArgumentParser(description="Evaluate ToMnet")
-    parser.add_argument("--experiment", choices=["figure3", "figure5"], required=True)
+    parser.add_argument("--experiment", choices=["figure3"], required=True)
     parser.add_argument("--model_path", help="Path to trained model (single model)")
     parser.add_argument(
         "--model_paths_json",

@@ -7,7 +7,6 @@ import argparse
 import os
 import json
 from tqdm import tqdm
-import wandb
 from typing import Dict, Optional
 import platform
 import glob
@@ -15,7 +14,7 @@ import glob
 from tomnet import ToMnet, create_tomnet
 from data_generation import DataGenerator, ToMnetDataset, collate_fn
 from evaluate import evaluate_model, compute_kl_divergence
-from typing import Dict, List, Optional, Union
+from typing import Dict, Optional, Union
 
 
 class ExperimentConfig:
@@ -38,19 +37,6 @@ class ExperimentConfig:
             self.n_agents = 1000
             self.loss_weights = {"action_loss": 1.0}
             self.predictions = ["action"]
-        elif experiment_type == "figure5":
-            self.char_embedding_dim = 8
-            self.use_mental_state_net = True
-            self.agent_type = "goal_directed"
-            self.alpha_reward = 0.01
-            self.high_cost_ratio = 0.2
-            self.n_agents = 40
-            self.loss_weights = {
-                "action_loss": 1.0,
-                "consumption_loss": 0.5,
-                "sr_loss": 0.3,
-            }
-            self.predictions = ["action", "consumption", "sr"]
         else:
             raise ValueError(f"Unknown experiment type: {experiment_type}")
 
@@ -97,14 +83,7 @@ class ToMnetTrainer:
             )
 
             # Compute losses
-            targets = {}
-            if "true_actions" in batch:
-                targets["true_actions"] = batch["true_actions"]
-            if "true_consumption" in batch:
-                targets["true_consumption"] = batch["true_consumption"]
-            if "true_sr" in batch:
-                targets["true_sr"] = batch["true_sr"]
-
+            targets = {"true_actions": batch["true_actions"]}
             losses = self.model.compute_loss(predictions, targets)
 
             # Weighted total loss
@@ -157,14 +136,7 @@ class ToMnetTrainer:
                 )
 
                 # Compute losses
-                targets = {}
-                if "true_actions" in batch:
-                    targets["true_actions"] = batch["true_actions"]
-                if "true_consumption" in batch:
-                    targets["true_consumption"] = batch["true_consumption"]
-                if "true_sr" in batch:
-                    targets["true_sr"] = batch["true_sr"]
-
+                targets = {"true_actions": batch["true_actions"]}
                 losses = self.model.compute_loss(predictions, targets)
 
                 # Accumulate losses
@@ -271,17 +243,6 @@ def generate_data(
 
             return datasets
 
-        elif experiment_type == "figure5":
-            file_path = "data/figure5_data.pkl"
-            if os.path.exists(file_path):
-                print("Loading existing figure5 data")
-                import pickle
-
-                with open(file_path, "rb") as f:
-                    return pickle.load(f)
-            else:
-                print("Figure5 data file not found, generating new data")
-                # Fall through to generate new data
 
     # Generate new data if not found
     data_generator = DataGenerator()
@@ -323,17 +284,6 @@ def generate_data(
 
         return datasets
 
-    elif experiment_type == "figure5":
-        # Generate goal-directed agent data
-        dataset = data_generator.generate_goal_directed_agent_data(
-            n_agents=args.n_agents or config.n_agents,
-            n_episodes_per_agent=args.n_episodes_per_agent,
-            alpha_reward=config.alpha_reward,
-            high_cost_ratio=config.high_cost_ratio,
-            save_path="data/figure5_data.pkl",
-            n_workers=args.n_workers,
-        )
-        return dataset
 
     else:
         raise ValueError(f"Unknown experiment type: {experiment_type}")
@@ -451,7 +401,7 @@ echo "jupyter notebook visualize_figure3.ipynb"
 
 
 def train_unified_model(experiment_type: str, args):
-    """Unified training function for both Figure 3 and Figure 5 experiments"""
+    """Unified training function for Figure 3 experiments"""
     print(f"Training ToMnet for {experiment_type.title()} Experiment")
 
     # Create experiment configuration
@@ -512,78 +462,13 @@ def train_unified_model(experiment_type: str, args):
 
         return results
 
-    elif experiment_type == "figure5":
-        # Single model training with train/val split
-        dataset = data  # data is a single dataset for figure5
-
-        # Split into train/val
-        data_list = dataset["data"]
-        split_idx = int(0.8 * len(data_list))
-        train_data = data_list[:split_idx]
-        val_data = data_list[split_idx:]
-
-        train_dataset_dict = {"data": train_data, "meta": dataset["meta"]}
-        val_dataset_dict = {"data": val_data, "meta": dataset["meta"]}
-
-        # Create model
-        state_dim = dataset["meta"]["state_dim"]
-        model = create_model(experiment_type, state_dim, config)
-
-        # Create datasets and dataloaders
-        train_dataset = ToMnetDataset(
-            train_dataset_dict, experiment_type=experiment_type
-        )
-        val_dataset = ToMnetDataset(val_dataset_dict, experiment_type=experiment_type)
-
-        train_loader = DataLoader(
-            train_dataset,
-            batch_size=args.batch_size,
-            shuffle=True,
-            collate_fn=collate_fn,
-        )
-        val_loader = DataLoader(
-            val_dataset,
-            batch_size=args.batch_size,
-            shuffle=False,
-            collate_fn=collate_fn,
-        )
-
-        # Create trainer
-        trainer = ToMnetTrainer(model, config, args.device, args.learning_rate)
-
-        # Training loop
-        best_val_loss = float("inf")
-
-        for epoch in range(args.n_epochs):
-            # Train
-            train_losses = trainer.train_epoch(train_loader)
-
-            # Validate
-            val_losses = trainer.validate(val_loader)
-
-            # Scheduler step
-            trainer.scheduler.step(val_losses["total_loss"])
-
-            # Log progress
-            print(f"Epoch {epoch+1}/{args.n_epochs}")
-            print(f"Train Loss: {train_losses['total_loss']:.4f}")
-            print(f"Val Loss: {val_losses['total_loss']:.4f}")
-
-            # Save best model
-            if val_losses["total_loss"] < best_val_loss:
-                best_val_loss = val_losses["total_loss"]
-                save_path = f"models/{experiment_type}_best.pth"
-                os.makedirs(os.path.dirname(save_path), exist_ok=True)
-                trainer.save_checkpoint(epoch, best_val_loss, save_path)
-
-        return {"best_val_loss": best_val_loss, "model_path": save_path}
 
 
 def main():
     parser = argparse.ArgumentParser(description="Train ToMnet")
     parser.add_argument(
         "--experiment",
-        choices=["figure3", "figure5"],
+        choices=["figure3"],
         default="figure3",
         help="Which experiment to run",
     )
@@ -632,9 +517,6 @@ def main():
 
     if args.experiment in ["figure3"]:
         results["figure3"] = train_unified_model("figure3", args)
-
-    if args.experiment in ["figure5"]:
-        results["figure5"] = train_unified_model("figure5", args)
 
     # Save results
     with open(f"result/{args.experiment}/training_results.json", "w") as f:

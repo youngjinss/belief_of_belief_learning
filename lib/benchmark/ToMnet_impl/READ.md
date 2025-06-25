@@ -1,7 +1,7 @@
 # ToMnet Implementation Guide
 
 ## Overview
-This document provides the essential information to implement the Theory of Mind Network (ToMnet) and reproduce experiments from Figures 3 and 5 of the "Machine Theory of Mind" paper.
+This document provides the essential information to implement the Theory of Mind Network (ToMnet) and reproduce experiments from Figure 3 of the "Machine Theory of Mind" paper.
 
 ## ToMnet Architecture
 
@@ -22,12 +22,10 @@ The ToMnet consists of three main modules:
    - Outputs behavioral predictions using character and mental embeddings
    - Predictions include:
      - Next-step action probabilities: π̂(·|x_t^(obs), e_char, e_mental)
-     - Object consumption probabilities: ĉ
-     - Successor representations: SR
 
 ### Training
 - End-to-end training with multiple loss components
-- Character embedding dimensionality: 2D for Figure 3, 8D for Figure 5
+- Character embedding dimensionality: 2D for Figure 3
 
 ## Environment Setup
 
@@ -61,42 +59,11 @@ The ToMnet consists of three main modules:
 3. KL-divergence between true and predicted policies
 4. Hierarchical inference on mixed species
 
-## Figure 5: Goal-Directed Agents
-
-### Agent Design
-- **Reward function**: r_i,a ∈ (0,1) for consuming object a
-- **Reward distribution**: r_i ~ Dir(α = 0.01)
-- **Movement penalty**: -0.01 per step
-- **Wall penalty**: 0.05
-- **Planning**: Value iteration with optimal policy π*_i
-
-### Experimental Variations
-1. **Standard agents**: Low movement cost (0.01)
-2. **Greedy agents**: High movement cost (0.5) - seek closest object
-
-### Training Setup
-- Observe full trajectories in past MDPs
-- Variable past episodes: N_past ~ U{0, 10}
-- Task: Predict behavior in current MDP given partial trajectory
-
-### Predictions to Implement
-1. Next action given current state
-2. Which object will be consumed
-3. Successor representation (discounted state occupancy)
-
-### Key Results to Reproduce
-1. Policy predictions for different starting positions
-2. Effect of N_past on prediction accuracy
-3. 2D character embeddings showing reward preferences
-4. Inference of cost-reward balance from single trajectories
-
 ## Implementation Notes
 
 ### Loss Functions
 ```
 L_action = -log π̂(a_t^(obs)|x_t^(obs), e_char, e_mental)
-L_consumption = Σ_k -log p_ck(c_k|x_t^(obs), e_char, e_mental)
-L_SR = Σ_γ Σ_s -SR_γ(s) log ŜR_γ(s)
 ```
 
 ### Evaluation Metrics
@@ -117,10 +84,6 @@ L_SR = Σ_γ Σ_s -SR_γ(s) log ŜR_γ(s)
 - Use 2D character embeddings for visualization
 - Compare with Bayes-optimal inference baseline
 
-### For Figure 5
-- Include full past trajectories
-- Implement value iteration for ground truth agents
-- Visualize goal inference through policy heatmaps
 
 ## Detailed Neural Network Specifications
 
@@ -129,20 +92,12 @@ L_SR = Σ_γ Σ_s -SR_γ(s) log ŜR_γ(s)
 - Architecture: 2-3 layer MLP
 - Hidden units: 64-128
 - Activation: ReLU
-- Output dimension: 2 (Figure 3), 8 (Figure 5)
-
-### Mental State Net (g_φ) - Figure 5 only
-- Input: Current trajectory + character embedding
-- Architecture: LSTM or GRU
-- Hidden units: 64-128
-- Output dimension: 64
+- Output dimension: 2 (Figure 3)
 
 ### Prediction Net
 - Input: Concatenated embeddings + current state
 - Architecture: 2-3 layer MLP with separate heads
 - Action head: Softmax over 5 actions
-- Consumption head: Sigmoid for each object
-- SR head: Linear output for state occupancy
 
 ## Code Structure Recommendation
 
@@ -162,14 +117,6 @@ class RandomAgent:
         # Sample policy from Dirichlet(alpha)
     def act(self, state):
         # Return action based on fixed policy
-
-class GoalDirectedAgent:
-    def __init__(self, rewards):
-        # Initialize with reward function
-    def plan(self, gridworld):
-        # Run value iteration
-    def act(self, state):
-        # Return optimal action
 
 # 3. ToMnet Module
 class CharacterNet(nn.Module):
@@ -215,10 +162,6 @@ trajectory = {
 - Episodes per agent: 100
 - Embedding regularization: None
 
-### Figure 5 Specific  
-- Training agents: 40
-- Episodes per agent: 1000
-- Value iteration: γ=0.99, convergence threshold=1e-6
 
 ## Baseline Implementation
 
@@ -250,23 +193,12 @@ def plot_kl_matrix(train_alphas, test_alphas, kl_values):
     # Heatmap of cross-species generalization
 ```
 
-### Figure 5 Plots
-```python
-# 1. Policy vector field
-def plot_policy_field(grid, policy):
-    # Arrow plot showing action probabilities
-
-# 2. Goal inference visualization
-def plot_consumption_probs(grid, probs):
-    # Heatmap of object consumption predictions
-```
 
 ## Implementation Checklist
 
 1. [ ] Implement GridWorld environment with random generation
 2. [ ] Create RandomAgent class with Dirichlet policies
-3. [ ] Create GoalDirectedAgent with value iteration
-4. [ ] Build ToMnet architecture (3 modules)
+3. [ ] Build ToMnet architecture (3 modules)
 5. [ ] Implement data generation pipeline
 6. [ ] Set up training loop with proper batching
 7. [ ] Add evaluation metrics (accuracy, KL divergence)
@@ -470,21 +402,6 @@ ToMnet_impl/
 
 이 워크플로우를 통해 논문의 Figure 3를 정확하게 재현할 수 있습니다.
 
-### Figure 5 Reproduction
-1. **Generate Goal-Directed Agents**
-   - Create agents with random reward vectors r_i ~ Dir(0.01)
-   - Run value iteration to get optimal policies
-   - Include 20% high-cost agents (movement cost 0.5)
-
-2. **Data Collection**
-   - Full trajectories showing goal-seeking behavior
-   - Partial observation-action pairs for N_past experiments
-
-3. **Expected Results**
-   - Panel (a): Prediction accuracy increases with N_past
-   - Panel (b): 2D embeddings cluster by preferred object color
-   - Panel (c): Policy predictions show goal-directed movement
-   - Panel (d): ToMnet infers cost-reward tradeoffs
 
 ## Debugging Tips
 
@@ -509,20 +426,17 @@ batch = {
     'past_trajectories': [...],   # List of N_past trajectories
     'current_state': np.array(...),
     'true_action': int,
-    'true_consumption': np.array(...),  # One-hot
-    'true_sr': np.array(...),
 }
 ```
 
 ### Usage:
 
 # Train models
-python train.py --experiment both --n_agents 100 --n_epochs 100
+python train.py --experiment figure3 --n_agents 100 --n_epochs 100
 
 # Evaluate models
 python evaluate.py --experiment figure3 --model_path models/figure3_best.pth --data_path data/figure3_data.pkl
 python evaluate.py --experiment figure3 --model_path models/figure3_0.01_best.pth --data_path data/figure3_alpha_0.01.pkl
 
-# Run visualization notebooks
+# Run visualization notebook
 jupyter notebook visualize_figure3.ipynb
-jupyter notebook visualize_figure5.ipynb

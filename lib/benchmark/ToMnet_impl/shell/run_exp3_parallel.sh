@@ -1,5 +1,6 @@
 #!/bin/bash
 # Parallel ToMnet experiment launcher
+# nohup bash shell/run_exp3_parallel.sh all > experiment.log 2>&1 &
 # This version trains multiple alpha values in parallel to reduce execution time
 
 set -e  # Exit on error

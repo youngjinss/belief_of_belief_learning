@@ -5,10 +5,10 @@ ToMnet Figure 3 Visualization
 This script reproduces the visualizations from Figure 3 of the "Machine Theory of Mind" paper.
 
 Figure 3 shows:
-- (a) Action likelihood vs number of past observations
+- (a) Trained alpha vs Action likelihood (different N_past values)
 - (b) 2D character embeddings colored by most frequent action
-- (c) KL-divergence matrix for cross-species generalization
-- (d) Hierarchical inference on mixed species
+- (c) Test alpha vs KL-divergence (different Trained alpha values)
+- (d) Test alpha vs KL-divergence (different Trained alpha values with mixed species)
 
 Usage:
     python visualize_figure3.py [--results_path RESULTS_PATH] [--save_plots] [--output_dir OUTPUT_DIR]
@@ -144,54 +144,7 @@ def plot_figure3a_trained_alpha_vs_likelihood(results):
             )
 
     else:
-        # Legacy data format - simulate based on single model result
-        print("Warning: Using simulated data for Figure 3a")
-        alphas = [0.01, 0.03, 0.1, 0.3, 1.0, 3.0]
-
-        # Extract some accuracy data if available
-        if isinstance(results, dict) and "model" in results:
-            base_accuracy = results["model"]["data"]["action_accuracy"]
-        else:
-            base_accuracy = 0.8
-
-        # Simulate alpha-dependent performance
-        tomnet_likelihoods = []
-        bayes_likelihoods = []
-
-        for alpha in alphas:
-            # ToMnet performance varies with alpha
-            if alpha < 0.1:  # Very deterministic
-                tomnet_likelihood = base_accuracy * 0.9
-                bayes_likelihood = 0.85
-            elif alpha > 2:  # Very stochastic
-                tomnet_likelihood = base_accuracy * 0.7
-                bayes_likelihood = 0.4
-            else:  # Intermediate
-                tomnet_likelihood = base_accuracy * 0.8
-                bayes_likelihood = 0.6
-
-            tomnet_likelihoods.append(tomnet_likelihood)
-            bayes_likelihoods.append(bayes_likelihood)
-
-        # Plot simulated data
-        ax.semilogx(
-            alphas,
-            tomnet_likelihoods,
-            "o",
-            markersize=10,
-            label="ToMnet (simulated)",
-            color="darkblue",
-            alpha=0.8,
-        )
-        ax.semilogx(
-            alphas,
-            bayes_likelihoods,
-            "-",
-            linewidth=3,
-            label="Bayes-optimal (simulated)",
-            color="lightblue",
-            alpha=0.8,
-        )
+        raise ValueError("No Figure 3a data found in results")
 
     ax.set_xlabel("Training Species α (concentration parameter)", fontsize=12)
     ax.set_ylabel("Action Prediction Likelihood", fontsize=12)
@@ -277,28 +230,7 @@ def plot_figure3b_character_embeddings(results):
         ) / embeddings_2d.std(axis=0)
 
     else:
-        # Legacy data format or fallback
-        print("No Figure 3b character embeddings found (need N_past=10 data)")
-        if (
-            isinstance(results, dict)
-            and "model" in results
-            and "data" in results["model"]
-        ):
-            embeddings_2d = results["model"]["data"]["character_embeddings"]
-            agent_ids = results["model"]["data"]["agent_ids"]
-        else:
-            print(
-                "Generating simulated embeddings for demonstration (need more training data for real embeddings)"
-            )
-            n_agents = 50
-            embeddings_2d = np.random.randn(n_agents, 2) * 2
-            agent_ids = np.arange(n_agents)
-
-        # Normalize simulated embeddings
-        if len(embeddings_2d) > 0:
-            embeddings_2d = (
-                embeddings_2d - embeddings_2d.mean(axis=0)
-            ) / embeddings_2d.std(axis=0)
+        raise ValueError("No Figure 3b data found in results")
 
     # Color by embedding position to show clustering
     # Use first embedding dimension to determine "dominant action"
@@ -403,42 +335,7 @@ def plot_figure3c_test_alpha_vs_kl(results):
         ax2.grid(True, alpha=0.3)
 
     else:
-        # Legacy data format - simulate based on theoretical expectations
-        print("Warning: Using simulated data for Figure 3c")
-        test_alphas = [0.01, 0.03, 0.1, 0.3, 1.0, 3.0]
-        train_alphas = [0.01, 3.0]  # Two example training conditions
-
-        for ax, title in [
-            (ax1, "ToMnet (simulated)"),
-            (ax2, "Bayes-optimal (simulated)"),
-        ]:
-            for train_alpha in train_alphas:
-                kl_values = []
-                for test_alpha in test_alphas:
-                    # KL should be lower when train and test alphas match
-                    if abs(np.log(train_alpha) - np.log(test_alpha)) < 1:
-                        base_kl = 0.5  # Low KL for similar alphas
-                    else:
-                        base_kl = 2.0  # High KL for different alphas
-
-                    # Add some noise
-                    kl = base_kl + 0.2 * np.random.random()
-                    kl_values.append(kl)
-
-                ax.semilogx(
-                    test_alphas,
-                    kl_values,
-                    "o-",
-                    label=f"Trained on α={train_alpha}",
-                    linewidth=2,
-                    markersize=6,
-                )
-
-            ax.set_xlabel("Test Species α", fontsize=12)
-            ax.set_ylabel("Average KL Divergence", fontsize=12)
-            ax.set_title(title, fontweight="bold")
-            ax.legend(fontsize=10)
-            ax.grid(True, alpha=0.3)
+        raise ValueError("No Figure 3c data found in results")
 
     fig.suptitle(
         "Figure 3c: Cross-Species Generalization (N_past = 1)\nLower KL = Better Predictions",
@@ -520,45 +417,7 @@ def plot_figure3d_mixed_species(results):
                 fontsize=14,
             )
     else:
-        # Simulate mixed species results
-        print("Warning: Using simulated data for Figure 3d")
-        alpha_values = [0.01, 0.1, 0.5, 1.0, 3.0]
-
-        # Simulate that mixed training helps with generalization
-        action_accuracies = [0.75, 0.78, 0.82, 0.79, 0.76]  # Better in middle range
-        kl_divergences = [1.2, 1.0, 0.8, 1.1, 1.3]  # Lower KL in middle range
-
-        # Create dual y-axis plot
-        ax2 = ax.twinx()
-
-        line1 = ax.semilogx(
-            alpha_values,
-            action_accuracies,
-            "o-",
-            color="blue",
-            linewidth=2,
-            markersize=8,
-            label="Action Accuracy",
-        )
-        ax.set_ylabel("Action Accuracy", color="blue", fontsize=12)
-        ax.tick_params(axis="y", labelcolor="blue")
-
-        line2 = ax2.semilogx(
-            alpha_values,
-            kl_divergences,
-            "s-",
-            color="red",
-            linewidth=2,
-            markersize=8,
-            label="KL Divergence",
-        )
-        ax2.set_ylabel("Mean KL Divergence", color="red", fontsize=12)
-        ax2.tick_params(axis="y", labelcolor="red")
-
-        # Combine legends
-        lines = line1 + line2
-        labels = [l.get_label() for l in lines]
-        ax.legend(lines, labels, loc="center right", fontsize=11)
+        raise ValueError("No Figure 3d data found in results")
 
     ax.set_xlabel("Test Species α", fontsize=12)
     ax.set_title(

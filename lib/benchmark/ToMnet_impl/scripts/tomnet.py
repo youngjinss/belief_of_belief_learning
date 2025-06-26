@@ -9,6 +9,8 @@ class CharacterNet(nn.Module):
     """
     Character Net: Processes past episode trajectories into character embeddings
     e_char,ij = f_θ(τ_ij^(obs))
+    
+    FIXED VERSION: Uses learnable embedding for N_past=0 instead of zeros
     """
 
     def __init__(
@@ -33,6 +35,13 @@ class CharacterNet(nn.Module):
             nn.ReLU(),
             nn.Linear(hidden_dim, embedding_dim),
         )
+        
+        # FIXED: Learnable embedding for "no past information" case
+        # This allows the model to learn what "no past information" means
+        # rather than always returning zeros
+        self.no_past_embedding = nn.Parameter(
+            torch.randn(embedding_dim) * 0.1
+        )
 
     def forward(self, trajectories: torch.Tensor) -> torch.Tensor:
         """
@@ -43,10 +52,11 @@ class CharacterNet(nn.Module):
         """
         batch_size, n_past, seq_len, input_dim = trajectories.shape
         
-        # Handle empty past trajectories (N_past=0)
+        # FIXED: Handle empty past trajectories (N_past=0) with learnable embedding
         if n_past == 0:
-            # Return zero embeddings for no past information
-            return torch.zeros(batch_size, self.embedding_dim, device=trajectories.device)
+            # Return learnable "no past information" embedding
+            # This allows the model to distinguish between "no past info" and "past info available"
+            return self.no_past_embedding.unsqueeze(0).expand(batch_size, -1)
 
         # Flatten trajectories for processing
         traj_flat = trajectories.view(batch_size * n_past, seq_len, input_dim)
@@ -67,9 +77,10 @@ class CharacterNet(nn.Module):
         trajectory_embeddings = trajectory_embeddings.view(
             batch_size, n_past, self.embedding_dim
         )
-        character_embeddings = trajectory_embeddings.sum(
-            dim=1
-        )  # Sum over past episodes
+        
+        # IMPROVED: Use mean instead of sum for better normalization
+        # This prevents embeddings from growing linearly with n_past
+        character_embeddings = trajectory_embeddings.mean(dim=1)
 
         return character_embeddings
 
@@ -197,7 +208,7 @@ class PredictionNet(nn.Module):
             character_embedding: (batch_size, char_embedding_dim)
             mental_embedding: (batch_size, mental_embedding_dim)
         Returns:
-            predictions: Dict with 'actions', 'consumption', 'successor_rep'
+            Dict containing action_logits, action_probs, consumption_probs, sr_logits
         """
         # Concatenate all inputs
         combined_input = torch.cat(
@@ -207,30 +218,29 @@ class PredictionNet(nn.Module):
         # Shared processing
         shared_features = self.shared(combined_input)
 
-        # Generate predictions
+        # Action predictions
         action_logits = self.action_head(shared_features)
-        action_probs = F.softmax(action_logits, dim=-1)
+        action_probs = F.softmax(action_logits, dim=1)
 
-        consumption_logits = self.consumption_head(shared_features)
-        consumption_probs = torch.sigmoid(consumption_logits)
+        # Object consumption predictions
+        consumption_probs = torch.sigmoid(self.consumption_head(shared_features))
 
+        # Successor representation predictions
         sr_logits = self.sr_head(shared_features)
-        sr_probs = F.softmax(sr_logits, dim=-1)
 
         return {
             "action_logits": action_logits,
             "action_probs": action_probs,
-            "consumption_logits": consumption_logits,
             "consumption_probs": consumption_probs,
             "sr_logits": sr_logits,
-            "sr_probs": sr_probs,
         }
 
 
 class ToMnet(nn.Module):
     """
-    Complete Theory of Mind Network
-    Combines CharacterNet, MentalStateNet, and PredictionNet
+    Theory of Mind Network (ToMnet)
+    
+    FIXED VERSION: Uses improved CharacterNet that properly handles N_past=0
     """
 
     def __init__(
@@ -293,7 +303,7 @@ class ToMnet(nn.Module):
         Returns:
             predictions: Dict with all prediction outputs
         """
-        # Generate character embedding
+        # Generate character embedding (FIXED: now properly handles N_past=0)
         character_embedding = self.character_net(past_trajectories)
 
         # Generate mental state embedding if used
@@ -368,38 +378,22 @@ def create_tomnet(
 ) -> ToMnet:
     """
     Create ToMnet configuration for different experiment types
-
-    Args:
-        experiment_type: Either 'figure3' or 'figure5'
-        state_dim: Dimension of state representation
-        char_embedding_dim: Character embedding dimension (defaults based on experiment)
-        action_dim: Number of possible actions (default: 5)
-        n_actions: Number of action classes (default: 5)
-        n_objects: Number of objects in environment (default: 4)
-        mental_embedding_dim: Mental state embedding dimension (default: 64)
-        hidden_dim: Hidden layer dimension (default: 128)
-
-    Returns:
-        ToMnet model configured for the specified experiment
+    
+    FIXED VERSION: Uses improved CharacterNet
     """
     # Set experiment-specific defaults
     if experiment_type == "figure3":
         # Figure 3: Random agents with 2D character embeddings for visualization
         if char_embedding_dim is None:
             char_embedding_dim = 2
-        use_mental_state = False  # Omit mental state net as per READ.md
-
+        use_mental_state = False  # Figure 3 doesn't use mental state
     elif experiment_type == "figure5":
-        # Figure 5: Goal-directed agents with 8D character embeddings
+        # Figure 5: Goal-directed agents with higher-dimensional embeddings
         if char_embedding_dim is None:
             char_embedding_dim = 8
-        use_mental_state = True  # Use full architecture including mental state net
-
+        use_mental_state = True  # Figure 5 uses mental state
     else:
-        raise ValueError(
-            f"Unknown experiment type: {experiment_type}. "
-            f"Must be 'figure3' or 'figure5'"
-        )
+        raise ValueError(f"Unknown experiment_type: {experiment_type}")
 
     return ToMnet(
         state_dim=state_dim,

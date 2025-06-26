@@ -10,8 +10,8 @@ The ToMnet implementation for Figure 3 uses a simplified architecture focused on
 
 1. **Character Net ($f_\theta$)**: 
    - Processes past episode trajectories {$\tau_{ij}$} into character embeddings
-   - Function: e_char,ij = f_\theta(\tau_ij^(obs))
-   - Aggregation: e_char,i = Σ_j e_char,ij
+   - Function: e_{char},ij = f_\theta(\tau_ij^(obs))
+   - Aggregation: e_{char},i = Σ_j e_{char},ij
    - Implementation: 3-layer MLP with ReLU activations
    - Output: 2D embeddings for visualization
 
@@ -20,14 +20,12 @@ The ToMnet implementation for Figure 3 uses a simplified architecture focused on
    - This simplification focuses on character-level inference only
 
 3. **Prediction Net**:
-   - Outputs action probabilities: $\hat{$\pi}(a_t|x_t^(obs), e_char)$
+   - Outputs action probabilities: $\hat{\pi}(a_t|x_t^(obs), e_{char})$
    - Function: concatenates current state with character embedding
    - Implementation: 2-layer MLP with softmax output for 5 actions
 
 ### Loss Function
-```
-L_action = -\log $\hat{$\pi}(a_t^(obs)|x_t^(obs), e_char)
-```
+$\mathcal{L}_{action} = -\log $\hat{$\pi}(a_t^(obs)|x_t^(obs), e_{char})$
 
 ## Current Implementation Details
 
@@ -126,7 +124,7 @@ L_action = -\log $\hat{$\pi}(a_t^(obs)|x_t^(obs), e_char)
 - Compares embedding clusters between different $\alpha species
 
 ### Evaluation Metrics
-1. Action Likelihood: L_action = $\hat{\pi}(a_t^(obs)|x_t^(obs), e_char)$
+1. Action Likelihood: L_action = $\hat{\pi}(a_t^(obs)|x_t^(obs), e_{char})$
 2. KL Divergence: $D_KL(\pi||\hat{\pi}) = Σ_a \pi(a) log(\pi(a)/\hat{\pi}(a))$
    - where $\pi$ is the true policy and $\hat{\pi}$ is the predicted policy.
 

@@ -26,7 +26,7 @@ The ToMnet implementation for Figure 3 uses a simplified architecture focused on
 
 ### Loss Function
 
-$$ \mathcal{L}_{action} = -\log \hat{\pi}(a_t^{obs} \mid x_t^{obs}, e_{char}) $$
+$$ L_{action} = -\log \hat{\pi}(a_t^{obs} \mid x_t^{obs}, e_{char}) $$
 
 
 ## Current Implementation Details
@@ -99,7 +99,7 @@ $$ \mathcal{L}_{action} = -\log \hat{\pi}(a_t^{obs} \mid x_t^{obs}, e_{char}) $$
 ### Training Process (train.py)
 **Data Generation**:
 - Creates agents with specified $\alpha$ values (0.01, 0.03, 0.1, 0.3, 1.0, 3.0)
-- Generates N_past past episodes per agent (N_past ~ Uniform{0, 10})
+- Generates $N_{past}$ past episodes per agent ($N_{past} ~ Uniform(0, 10)$)
 - Samples single (state, action) pair from each past episode
 - Creates query episode for action prediction task
 
@@ -107,7 +107,7 @@ $$ \mathcal{L}_{action} = -\log \hat{\pi}(a_t^{obs} \mid x_t^{obs}, e_{char}) $$
 - **Batch size**: 32-64 samples
 - **Optimizer**: Adam with learning rate 1e-3 to 1e-4
 - **Training episodes**: 50,000-100,000 per species
-- **Dataset size**: 1000 agents × 100 episodes × variable N_past
+- **Dataset size**: 1000 agents × 100 episodes × variable $N_{past}$
 - **Batch processing**: Dynamic batching with padding for variable-length sequences
 - **Validation**: 80/20 split, early stopping on validation accuracy
 - **Metrics**: Action prediction accuracy, KL divergence vs true policy
@@ -118,7 +118,7 @@ $$ \mathcal{L}_{action} = -\log \hat{\pi}(a_t^{obs} \mid x_t^{obs}, e_{char}) $$
 **Cross-Species Testing**:
 - Tests models trained on one $\alpha$ value against agents from different $\alpha$ values
 - Computes action prediction likelihood and KL divergence matrices
-- Generates data for Figure 3a (likelihood vs N_past) and 3c (cross-species generalization)
+- Generates data for Figure 3a (likelihood vs $N_{past}$) and 3c (cross-species generalization)
 
 **Character Embedding Analysis**:
 - Extracts 2D character embeddings for visualization
@@ -126,19 +126,19 @@ $$ \mathcal{L}_{action} = -\log \hat{\pi}(a_t^{obs} \mid x_t^{obs}, e_{char}) $$
 - Compares embedding clusters between different $\alpha$ species
 
 ### Evaluation Metrics
-1. Action Likelihood: $\matchcal{L}_{action} = \hat{\pi}(a_t^{obs} \mid x_t^{obs}, e_{char})$
-2. KL Divergence: $D_KL(\pi || \hat{\pi}) = \sum_a \pi(a) log(\pi(a)/\hat{\pi}(a))$
+1. Action Likelihood: $ L_{action} = \hat{\pi}(a_t^{obs} \mid x_t^{obs}, e_{char})$
+2. KL Divergence: $D_{KL}(\pi || \hat{\pi}) = \sum_a \pi(a) log(\pi(a)/\hat{\pi}(a))$
    - where $\pi$ is the true policy and $\hat{\pi}$ is the predicted policy.
 
 ## Data Flow and File Structure
 
 ### Data Generation Pipeline (data_generation.py)
 **Trajectory Collection**:
-1. **Agent Sampling**: Creates agents with specified $\alpha parameters
+1. **Agent Sampling**: Creates agents with specified $\alpha$ parameters
 2. **Environment Sampling**: Generates random 11×11 gridworlds for each episode
 3. **Trajectory Recording**: Records (state, action, reward) tuples until episode termination
 4. **Data Splitting**: Separates past episodes (for character inference) from query episodes (for prediction)
-5. **Batch Formation**: Creates batches with variable N_past for meta-learning
+5. **Batch Formation**: Creates batches with variable $N_{past}$ for meta-learning
 
 **Data Format**:
 ```python
@@ -183,9 +183,9 @@ For Figure 3 reproduction:
 
 ## Visualization and Results (visualize_figure3.py)
 1. **Figure 3a**: Trained $\alpha$ vs Action likelihood
-   - X-axis: Trained $\alpha$ with ($\alpha $\in $\{0.01, 0.03, 0.1, 0.3, 1.0, 3.0 $\}$)
+   - X-axis: Trained $\alpha$ with ($\alpha \in \{0.01, 0.03, 0.1, 0.3, 1.0, 3.0 \}$)
    - Y-axis: Action prediction likelihood
-   - 3 lines showing results for N_past = 0, 1, 5
+   - 3 lines showing results for $N_{past} = 0, 1, 5$
    - Comparison with Bayes-optimal baseline
 2. **Figure 3b**: 2D character embedding scatter plot colored by dominant action  
    - X-axis: Normalized $e_1$
@@ -197,7 +197,7 @@ For Figure 3 reproduction:
    - Columns: $D_{KL}(\pi || \hat{\pi})$
    - 6 lines showing KL divergence for each trained $\alpha$ value {0.01, 0.03, 0.1, 0.3, 1.0, 3.0}
    - Shows generalization capabilities across species
-   - Constraint with N_past = 1
+   - Constraint with $N_{past} = 1$
 4. **Figure 3d**: Figure 3c + Mixed species training performance
    - X-axis: Test $\alpha$ values {0.01, 0.03, 0.1, 0.3, 1.0, 3.0}
    - Y-axis: $D_{KL}(\pi || \hat{\pi})$

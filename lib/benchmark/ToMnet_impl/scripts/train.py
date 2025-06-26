@@ -483,11 +483,11 @@ def main():
         default_device = "cuda:3" if torch.cuda.is_available() else "cpu"
 
     parser.add_argument("--device", default=default_device, help="Device to use")
-    parser.add_argument("--batch_size", type=int, default=32, help="Batch size")
+    parser.add_argument("--batch_size", type=int, default=64, help="Batch size")
     parser.add_argument(
         "--learning_rate", type=float, default=1e-3, help="Learning rate"
     )
-    parser.add_argument("--n_epochs", type=int, default=100, help="Number of epochs")
+    parser.add_argument("--n_epochs", type=int, default=50, help="Number of epochs")
     parser.add_argument("--n_agents", type=int, default=100, help="Number of agents")
     parser.add_argument(
         "--n_episodes_per_agent", type=int, default=100, help="Episodes per agent"

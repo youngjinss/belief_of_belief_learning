@@ -55,16 +55,16 @@ COMMANDS:
 
 EXAMPLES:
     # Complete workflow with default settings
-    bash run_experiment.sh all
+    bash run_experiment3.sh all
     
     # Train models only
-    bash run_experiment.sh train --n_agents 100 --n_epochs 50
+    bash run_experiment3.sh train --n_agents 100 --n_epochs 50
     
     # Generate visualizations with custom output
-    bash run_experiment.sh visualize --save --output_dir my_plots
+    bash run_experiment3.sh visualize --save --output_dir my_plots
     
     # Clean up all generated files
-    bash run_experiment.sh clean
+    bash run_experiment3.sh clean
 
 WORKFLOW:
     1. Training: Creates models for different alpha values

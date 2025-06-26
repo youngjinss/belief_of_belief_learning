@@ -427,8 +427,8 @@ class ToMnetDataset(torch.utils.data.Dataset):
     ) -> torch.Tensor:
         """Convert past trajectories to tensor format"""
         if not trajectories:
-            # Return dummy tensor if no past trajectories
-            return torch.zeros(1, 1, self.state_dim + 5)
+            # Return empty tensor if no past trajectories - shape (0, 1, features)
+            return torch.zeros(0, 1, self.state_dim + 5)
 
         # For simplicity, use first state-action pair from each trajectory
         processed = []
@@ -441,7 +441,8 @@ class ToMnetDataset(torch.utils.data.Dataset):
                 processed.append(combined)
 
         if not processed:
-            return torch.zeros(1, 1, self.state_dim + 5)
+            # Return empty tensor if no valid trajectories
+            return torch.zeros(0, 1, self.state_dim + 5)
 
         # Shape: (n_past, 1, state_dim + action_dim)
         tensor = torch.tensor(np.array(processed), dtype=torch.float32)
@@ -472,7 +473,17 @@ def collate_fn(batch):
 
     # Pad sequences
     batch_size = len(batch)
-    state_action_dim = batch[0]["past_trajectories"].size(-1)
+    
+    # Handle case where some items have empty past trajectories
+    state_action_dim = None
+    for item in batch:
+        if item["past_trajectories"].size(0) > 0:
+            state_action_dim = item["past_trajectories"].size(-1)
+            break
+    
+    # If all past trajectories are empty, use current state dimension
+    if state_action_dim is None:
+        state_action_dim = batch[0]["current_state"].size(0) + 5  # state + 5 actions
 
     # Initialize padded tensors
     past_traj_padded = torch.zeros(batch_size, max_n_past, 1, state_action_dim)
@@ -485,7 +496,8 @@ def collate_fn(batch):
         n_past = item["past_trajectories"].size(0)
         current_len = item["current_trajectory"].size(0)
 
-        past_traj_padded[i, :n_past] = item["past_trajectories"]
+        if n_past > 0:  # Only fill if there are past trajectories
+            past_traj_padded[i, :n_past] = item["past_trajectories"]
         current_traj_padded[i, :current_len] = item["current_trajectory"]
 
     result = {

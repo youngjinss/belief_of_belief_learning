@@ -26,7 +26,7 @@ The ToMnet implementation for Figure 3 uses a simplified architecture focused on
 
 ### Loss Function
 
-$$ L_{action} = -\log \hat{\pi}(a_t^{obs} \mid x_t^{obs}, e_{char}) $$
+$$ \mathcal{L}_{action} = -\log \hat{\pi}(a_t^{obs} \mid x_t^{obs}, e_{char}) $$
 
 
 ## Current Implementation Details

@@ -25,6 +25,7 @@ The ToMnet implementation for Figure 3 uses a simplified architecture focused on
    - Implementation: 2-layer MLP with softmax output for 5 actions
 
 ### Loss Function
+
 $$ \mathcal{L}_{action} = -\log \hat{\pi}(a_t^{obs} \mid x_t^{obs}, e_{char}) $$
 
 

@@ -402,7 +402,7 @@ def evaluate_figure3_cross_species(
                 baseline = BayesOptimalBaseline()
                 bayes_results = baseline.evaluate_on_data(
                     {"data": filtered_data, "meta": test_dataset_raw.get("meta", {})},
-                    train_alpha,
+                    test_alpha,  # Use test_alpha instead of train_alpha for proper Bayes-optimal calculation
                 )
                 bayes_likelihood = np.mean(bayes_results["action_likelihoods"])
                 results["figure3a"]["bayes_optimal_by_n_past"][n_past].append(
@@ -442,7 +442,7 @@ def evaluate_figure3_cross_species(
                         "data": filtered_data_cross,
                         "meta": test_dataset_raw.get("meta", {}),
                     },
-                    train_alpha,
+                    test_alpha,  # Use test_alpha instead of train_alpha for proper Bayes-optimal calculation
                 )
                 bayes_kl = np.mean(bayes_results["kl_divergences"])
                 bayes_kl_row.append(bayes_kl)

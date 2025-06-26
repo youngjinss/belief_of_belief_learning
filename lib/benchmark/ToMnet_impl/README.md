@@ -10,7 +10,7 @@ The ToMnet implementation for Figure 3 uses a simplified architecture focused on
 
 1. **Character Net ($f_\theta$)**: 
    - Processes past episode trajectories $\{\tau_{ij}\}$ into character embeddings
-   - Function: $e_{char,ij} = f_\theta(\tau_{ij}^(obs))$
+   - Function: $e_{char,ij} = f_\theta(\tau_{ij}^{obs})$
    - Aggregation: $e_{char,i} = \sum_j e_{char,ij}$
    - Implementation: 3-layer MLP with ReLU activations
    - Output: 2D embeddings for visualization
@@ -20,12 +20,12 @@ The ToMnet implementation for Figure 3 uses a simplified architecture focused on
    - This simplification focuses on character-level inference only
 
 3. **Prediction Net**:
-   - Outputs action probabilities: $\hat{\pi}(a_t|x_t^(obs), e_{char})$
+   - Outputs action probabilities: $\hat{\pi}(a_t|x_t^{obs}, e_{char})$
    - Function: concatenates current state with character embedding
    - Implementation: 2-layer MLP with softmax output for 5 actions
 
 ### Loss Function
-$\mathcal{L}_{action} = -\log $\hat{$\pi}(a_t^(obs)|x_t^(obs), e_{char})$
+$\mathcal{L}_{action} = -\log $\hat{$\pi}(a_t^{obs}|x_t^{obs}, e_{char})$
 
 ## Current Implementation Details
 
@@ -114,17 +114,17 @@ $\mathcal{L}_{action} = -\log $\hat{$\pi}(a_t^(obs)|x_t^(obs), e_{char})$
 
 ### Evaluation Process (evaluate.py)
 **Cross-Species Testing**:
-- Tests models trained on one $\alpha$ value against agents from different $\alpha values
+- Tests models trained on one $\alpha$ value against agents from different $\alpha$ values
 - Computes action prediction likelihood and KL divergence matrices
 - Generates data for Figure 3a (likelihood vs N_past) and 3c (cross-species generalization)
 
 **Character Embedding Analysis**:
 - Extracts 2D character embeddings for visualization
 - Colors embeddings by dominant action for Figure 3b
-- Compares embedding clusters between different $\alpha species
+- Compares embedding clusters between different $\alpha$ species
 
 ### Evaluation Metrics
-1. Action Likelihood: L_action = $\hat{\pi}(a_t^(obs)|x_t^(obs), e_{char})$
+1. Action Likelihood: $\matchcal{L}_{action} = \hat{\pi}(a_t^{obs}|x_t^{obs}, e_{char})$
 2. KL Divergence: $D_KL(\pi||\hat{\pi}) = Σ_a \pi(a) log(\pi(a)/\hat{\pi}(a))$
    - where $\pi$ is the true policy and $\hat{\pi}$ is the predicted policy.
 

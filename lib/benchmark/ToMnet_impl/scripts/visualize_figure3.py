@@ -280,8 +280,8 @@ def plot_figure3b_character_embeddings(results):
                       for i in range(5)]
     ax.legend(handles=legend_elements, fontsize=10, loc="best")
 
-    ax.set_xlabel("Normalized e_1", fontsize=12)
-    ax.set_ylabel("Normalized e_2", fontsize=12)
+    ax.set_xlabel("Normalized $e_1$", fontsize=12)
+    ax.set_ylabel("Normalized $e_2$", fontsize=12)
     ax.set_title(
         "Figure 3b: 2D Character Embeddings e_char\n(N_past = 10, Darker = Higher Action Count)",
         fontsize=14,

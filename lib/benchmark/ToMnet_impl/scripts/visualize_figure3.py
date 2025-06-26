@@ -504,95 +504,6 @@ def plot_figure3d_mixed_species(results):
     return fig
 
 
-def generate_mock_data():
-    """Generate mock data for testing visualization when real data is not available"""
-    print("Generating mock data for visualization testing...")
-    
-    # Alpha values used in experiments
-    alpha_values = [0.01, 0.03, 0.1, 0.3, 1.0, 3.0]
-    n_agents = 100
-    
-    # Figure 3a data
-    figure3a_data = {
-        "trained_alphas": alpha_values * 3,  # Repeat for multiple samples
-        "n_past_values": [0, 1, 5],
-        "action_likelihoods_by_n_past": {},
-        "bayes_optimal_by_n_past": {}
-    }
-    
-    for n_past in [0, 1, 5]:
-        # Generate mock likelihoods that increase with n_past
-        base_likelihood = 0.2 + 0.1 * n_past
-        figure3a_data["action_likelihoods_by_n_past"][n_past] = [
-            base_likelihood + 0.3 / (1 + alpha) + np.random.normal(0, 0.05)
-            for alpha in alpha_values * 3
-        ]
-        figure3a_data["bayes_optimal_by_n_past"][n_past] = [
-            base_likelihood + 0.4 / (1 + alpha) + np.random.normal(0, 0.03)
-            for alpha in alpha_values * 3
-        ]
-    
-    # Figure 3b data
-    np.random.seed(42)
-    embeddings = np.random.randn(n_agents, 2)
-    # Create clusters for different actions
-    for i in range(5):
-        cluster_start = i * n_agents // 5
-        cluster_end = (i + 1) * n_agents // 5
-        embeddings[cluster_start:cluster_end] += np.array([i - 2, (i - 2) ** 2])
-    
-    # Generate action counts (higher for dominant action)
-    action_counts = np.random.poisson(5, size=(n_agents, 5))
-    for i in range(n_agents):
-        dominant_action = i // (n_agents // 5)
-        if dominant_action < 5:
-            action_counts[i, dominant_action] += np.random.poisson(20)
-    
-    figure3b_data = {
-        "n_past_embeddings": 10,
-        "character_embeddings": {
-            "mock_model": {
-                "embeddings": embeddings,
-                "agent_ids": list(range(n_agents)),
-                "action_counts": action_counts
-            }
-        }
-    }
-    
-    # Figure 3c data
-    kl_matrix = np.zeros((len(alpha_values), len(alpha_values)))
-    bayes_kl_matrix = np.zeros((len(alpha_values), len(alpha_values)))
-    
-    for i, train_alpha in enumerate(alpha_values):
-        for j, test_alpha in enumerate(alpha_values):
-            # KL divergence is lower when train and test alphas are similar
-            kl_matrix[i, j] = 0.1 + 0.5 * abs(np.log(train_alpha) - np.log(test_alpha)) / 5
-            bayes_kl_matrix[i, j] = 0.05 + 0.3 * abs(np.log(train_alpha) - np.log(test_alpha)) / 5
-    
-    figure3c_data = {
-        "train_alphas": alpha_values,
-        "test_alphas": alpha_values,
-        "kl_matrix": kl_matrix,
-        "bayes_kl_matrix": bayes_kl_matrix
-    }
-    
-    # Figure 3d data
-    figure3d_data = {
-        "kl_divergences": {
-            "alpha_0.01": [0.8, 0.6, 0.4, 0.3, 0.4, 0.5],
-            "alpha_3.0": [0.5, 0.4, 0.3, 0.3, 0.4, 0.6],
-            "mixed": [0.4, 0.35, 0.25, 0.25, 0.3, 0.4]
-        }
-    }
-    
-    return {
-        "figure3a": figure3a_data,
-        "figure3b": figure3b_data,
-        "figure3c": figure3c_data,
-        "figure3d": figure3d_data
-    }
-
-
 def main():
     """Main function to generate all Figure 3 plots"""
     parser = argparse.ArgumentParser(description="Visualize ToMnet Figure 3 results")
@@ -611,29 +522,14 @@ def main():
         default="plots",
         help="Directory to save plots (if --save_plots is used)",
     )
-    parser.add_argument(
-        "--use_mock_data",
-        action="store_true",
-        help="Use mock data for testing visualization",
-    )
 
     args = parser.parse_args()
 
-    # Load results or generate mock data
-    if args.use_mock_data:
-        print("Using mock data for visualization testing...")
-        results = generate_mock_data()
-    else:
-        try:
-            results = load_evaluation_results(args.results_path)
-        except FileNotFoundError as e:
-            print(f"Error: {e}")
-            print("\nYou can either:")
-            print("1. Run the evaluation script first:")
-            print("   bash result/figure3/run_cross_species_evaluation.sh")
-            print("2. Use mock data for testing:")
-            print("   python visualize_figure3.py --use_mock_data")
-            return
+    # Load results
+    try:
+        results = load_evaluation_results(args.results_path)
+    except FileNotFoundError as e:
+        raise FileNotFoundError(f"Results file not found: {args.results_path}")
 
     print("\n=== Generating Figure 3 Visualizations ===")
 

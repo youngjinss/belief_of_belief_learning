@@ -163,7 +163,7 @@ fi
 print_success "Found results file: $RESULTS_PATH"
 
 # Prepare visualization command
-PYTHON_CMD="python scripts/visualize_figure3.py --results_path \"$RESULTS_PATH\""
+PYTHON_CMD="python scripts/visualize_figure3.py --save_plots --results_path \"$RESULTS_PATH\""
 
 if [ "$SAVE_PLOTS" = true ]; then
     PYTHON_CMD="$PYTHON_CMD --save_plots --output_dir \"$OUTPUT_DIR\""

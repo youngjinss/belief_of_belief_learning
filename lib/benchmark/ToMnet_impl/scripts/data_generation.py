@@ -1,16 +1,12 @@
 import numpy as np
 import torch
-from typing import List, Dict, Tuple, Optional, Union
+from typing import List, Dict, Optional
 import pickle
-import os
 from tqdm import tqdm
 from multiprocessing import Pool, cpu_count
-from functools import partial
 
 from environment import GridWorld
 from agents import (
-    RandomAgent,
-    GoalDirectedAgent,
     create_random_agents,
     create_goal_directed_agents,
 )
@@ -477,7 +473,6 @@ def collate_fn(batch):
     # Pad sequences
     batch_size = len(batch)
     state_action_dim = batch[0]["past_trajectories"].size(-1)
-    state_dim = batch[0]["current_state"].size(0)
 
     # Initialize padded tensors
     past_traj_padded = torch.zeros(batch_size, max_n_past, 1, state_action_dim)

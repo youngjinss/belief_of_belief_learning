@@ -1,14 +1,13 @@
 import torch
 import torch.nn.functional as F
 import numpy as np
-from typing import Dict, Tuple, Optional, Union, List
+from typing import Dict, Tuple, Union, List
 from scipy.spatial.distance import jensenshannon
 from scipy.stats import entropy
 import pickle
 
 from tomnet import ToMnet
 from data_generation import ToMnetDataset, collate_fn
-from agents import RandomAgent
 
 
 def compute_kl_divergence(
@@ -32,7 +31,7 @@ def compute_js_divergence(p: np.ndarray, q: np.ndarray) -> float:
 
 
 class BayesOptimalBaseline:
-    """Bayes-optimal inference baseline for Figure 3"""
+    """Bayes-optimal inference baseline"""
 
     def __init__(self, n_actions: int = 5):
         self.n_actions = n_actions
@@ -286,7 +285,7 @@ def evaluate_figure3_cross_species(
     - Figure 3a: trained_alpha vs action_likelihood for N_past = 0, 1, 5
     - Figure 3b: character embeddings with N_past = 10
     - Figure 3c: test_alpha vs KL_divergence for each trained model (N_past=1)
-    - Figure 3d: mixed species performance
+    - Figure 3d: mixed species performance (N_past=5)
     """
     results = {
         "figure3a": {
@@ -357,9 +356,7 @@ def evaluate_figure3_cross_species(
             # Figure 3a: Evaluate for multiple N_past values
             for n_past in n_past_values:
                 filtered_data = [
-                    sample
-                    for sample in test_dataset.data
-                    if sample["n_past"] == n_past
+                    sample for sample in test_dataset.data if sample["n_past"] == n_past
                 ]
                 if not filtered_data:
                     print(f"No samples with N_past={n_past} found in {test_alpha_name}")
@@ -371,16 +368,23 @@ def evaluate_figure3_cross_species(
                 )
 
                 action_results = evaluator.evaluate_action_prediction(filtered_dataset)
-                
+
                 # Store results for Figure 3a
                 results["figure3a"]["trained_alphas"].append(train_alpha)
-                results["figure3a"]["action_likelihoods_by_n_past"][n_past].append(action_results["accuracy"])
-                
+                results["figure3a"]["action_likelihoods_by_n_past"][n_past].append(
+                    action_results["accuracy"]
+                )
+
                 # Calculate Bayes-optimal baseline for this N_past
                 baseline = BayesOptimalBaseline()
-                bayes_results = baseline.evaluate_on_data({"data": filtered_data, "meta": test_dataset_raw.get("meta", {})}, train_alpha)
+                bayes_results = baseline.evaluate_on_data(
+                    {"data": filtered_data, "meta": test_dataset_raw.get("meta", {})},
+                    train_alpha,
+                )
                 bayes_likelihood = np.mean(bayes_results["action_accuracies"])
-                results["figure3a"]["bayes_optimal_by_n_past"][n_past].append(bayes_likelihood)
+                results["figure3a"]["bayes_optimal_by_n_past"][n_past].append(
+                    bayes_likelihood
+                )
 
             # Figure 3c: Cross-species evaluation with N_past = 1
             filtered_data_cross = [
@@ -390,18 +394,29 @@ def evaluate_figure3_cross_species(
             ]
             if filtered_data_cross:
                 filtered_dataset_cross = ToMnetDataset(
-                    {"data": filtered_data_cross, "meta": test_dataset_raw.get("meta", {})},
+                    {
+                        "data": filtered_data_cross,
+                        "meta": test_dataset_raw.get("meta", {}),
+                    },
                     experiment_type="figure3",
                 )
 
                 # Evaluate policy prediction for KL divergence
-                policy_results = evaluator.evaluate_policy_prediction(filtered_dataset_cross)
+                policy_results = evaluator.evaluate_policy_prediction(
+                    filtered_dataset_cross
+                )
                 mean_kl = np.mean(policy_results["kl_divergences"])
                 model_kl_row.append(mean_kl)
 
                 # Calculate Bayes-optimal KL divergence
                 baseline = BayesOptimalBaseline()
-                bayes_results = baseline.evaluate_on_data({"data": filtered_data_cross, "meta": test_dataset_raw.get("meta", {})}, train_alpha)
+                bayes_results = baseline.evaluate_on_data(
+                    {
+                        "data": filtered_data_cross,
+                        "meta": test_dataset_raw.get("meta", {}),
+                    },
+                    train_alpha,
+                )
                 bayes_kl = np.mean(bayes_results["kl_divergences"])
                 bayes_kl_row.append(bayes_kl)
 
@@ -412,20 +427,25 @@ def evaluate_figure3_cross_species(
         if test_datasets:
             first_dataset = list(test_datasets.values())[0]
             test_dataset = ToMnetDataset(first_dataset, experiment_type="figure3")
-            
+
             # Filter samples with N_past = 10 for Figure 3b
             filtered_data_embeddings = [
                 sample
                 for sample in test_dataset.data
                 if sample["n_past"] == n_past_embeddings
             ]
-            
+
             if filtered_data_embeddings:
                 filtered_dataset_embeddings = ToMnetDataset(
-                    {"data": filtered_data_embeddings, "meta": first_dataset.get("meta", {})},
+                    {
+                        "data": filtered_data_embeddings,
+                        "meta": first_dataset.get("meta", {}),
+                    },
                     experiment_type="figure3",
                 )
-                embeddings, agent_ids = evaluator.extract_character_embeddings(filtered_dataset_embeddings)
+                embeddings, agent_ids = evaluator.extract_character_embeddings(
+                    filtered_dataset_embeddings
+                )
                 results["figure3b"]["character_embeddings"][model_alpha_name] = {
                     "embeddings": embeddings,
                     "agent_ids": agent_ids,
@@ -452,7 +472,7 @@ def evaluate_figure3_cross_species(
                 if "alpha_" in test_alpha_name
                 else 0.01
             )
-            
+
             test_dataset = ToMnetDataset(test_dataset_raw, experiment_type="figure3")
 
             # Use N_past=1 for consistency with Figure 3c
@@ -467,11 +487,17 @@ def evaluate_figure3_cross_species(
                     experiment_type="figure3",
                 )
 
-                policy_results = mixed_evaluator.evaluate_policy_prediction(filtered_dataset)
-                results["figure3d"]["mixed_species"][test_alpha] = np.mean(policy_results["kl_divergences"])
-        
+                policy_results = mixed_evaluator.evaluate_policy_prediction(
+                    filtered_dataset
+                )
+                results["figure3d"]["mixed_species"][test_alpha] = np.mean(
+                    policy_results["kl_divergences"]
+                )
+
         # Also store single-species results for comparison
-        for i, train_alpha in enumerate(train_alphas[:2]):  # Just use first two alphas (0.01, 3.0)
+        for i, train_alpha in enumerate(
+            train_alphas[:2]
+        ):  # Just use first two alphas (0.01, 3.0)
             single_species_kl = []
             for j, test_alpha in enumerate(sorted(list(set(test_alphas)))):
                 single_species_kl.append(kl_matrix[i][j])
@@ -616,6 +642,7 @@ def main():
     # Create result directory if it doesn't exist
     import os
     import platform
+
     os.makedirs(os.path.dirname(args.output_path), exist_ok=True)
 
     # Detect device based on platform
@@ -623,7 +650,7 @@ def main():
         args.device = "mps" if torch.backends.mps.is_available() else "cpu"
     else:
         args.device = "cuda:3" if torch.cuda.is_available() else "cpu"
-        
+
     # Handle different input formats
     if args.model_paths_json and args.data_paths_json:
         # Cross-species evaluation with multiple models and datasets

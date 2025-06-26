@@ -116,7 +116,7 @@ $$ L_{action} = -\log \hat{\pi}(a_t^{obs} \mid x_t^{obs}, e_{char}) $$
 
 ### Evaluation Process (evaluate.py)
 **Cross-Species Testing**:
-- Tests models trained on one $\alpha$ value against agents from different $\alpha$ values
+- Tests models trained on one $\alpha$ value against agents from different $\alpha$ values (test)
 - Computes action prediction likelihood and KL divergence matrices
 - Generates data for Figure 3a (likelihood vs $N_{past}$) and 3c (cross-species generalization)
 
@@ -126,8 +126,8 @@ $$ L_{action} = -\log \hat{\pi}(a_t^{obs} \mid x_t^{obs}, e_{char}) $$
 - Compares embedding clusters between different $\alpha$ species
 
 ### Evaluation Metrics
-1. Action Likelihood: $ L_{action} = \hat{\pi}(a_t^{obs} \mid x_t^{obs}, e_{char})$
-2. KL Divergence: $D_{KL}(\pi || \hat{\pi}) = \sum_a \pi(a) log(\pi(a)/\hat{\pi}(a))$
+1. Likelihood: $ Likelihood = \hat{\pi}(a_t^{obs} \mid x_t^{obs}, e_{char}, e_{mental})$
+2. KL Divergence: $D_{KL}(\pi || \hat{\pi}) = \sum_a \pi(a) \log(\pi(a) / \hat{\pi}(a))$
    - where $\pi$ is the true policy and $\hat{\pi}$ is the predicted policy.
 
 ## Data Flow and File Structure
@@ -184,7 +184,7 @@ For Figure 3 reproduction:
 ## Visualization and Results (visualize_figure3.py)
 1. **Figure 3a**: Trained $\alpha$ vs Action likelihood
    - X-axis: Trained $\alpha$ with ($\alpha \in \{0.01, 0.03, 0.1, 0.3, 1.0, 3.0 \}$)
-   - Y-axis: Action prediction likelihood
+   - Y-axis: Likelihood
    - 3 lines showing results for $N_{past} = 0, 1, 5$
    - Comparison with Bayes-optimal baseline
 2. **Figure 3b**: 2D character embedding scatter plot colored by dominant action  
@@ -202,6 +202,7 @@ For Figure 3 reproduction:
    - X-axis: Test $\alpha$ values {0.01, 0.03, 0.1, 0.3, 1.0, 3.0}
    - Y-axis: $D_{KL}(\pi || \hat{\pi})$
    - 3 lines: trained on $\alpha=0.01$, $\alpha=3.0$, and mixed ($\alpha=0.01 & 3.0$)
+   - Constraint with $N_{past} = 5$
 
 ## Usage Instructions
 

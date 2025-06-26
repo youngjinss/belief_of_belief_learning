@@ -79,42 +79,52 @@ def plot_figure3a_trained_alpha_vs_likelihood(results):
         # New data structure with N_past variations
         n_past_values = results["figure3a"]["n_past_values"]
         trained_alphas = np.array(results["figure3a"]["trained_alphas"])
-        
+
         # Get unique alpha values
         unique_alphas = sorted(list(set(trained_alphas)))
-        
+
         # Colors for different N_past values
         colors = ["red", "blue", "green"]
         markers = ["o", "s", "^"]
-        
+
         # Plot ToMnet results for each N_past
         for i, n_past in enumerate(n_past_values):
-            action_likelihoods = np.array(results["figure3a"]["action_likelihoods_by_n_past"][n_past])
-            bayes_optimal = np.array(results["figure3a"]["bayes_optimal_by_n_past"][n_past])
-            
+            action_likelihoods = np.array(
+                results["figure3a"]["action_likelihoods_by_n_past"][n_past]
+            )
+            bayes_optimal = np.array(
+                results["figure3a"]["bayes_optimal_by_n_past"][n_past]
+            )
+
             # Group by alpha values to get means
             tomnet_means = []
             bayes_means = []
-            
+
             for alpha in unique_alphas:
                 alpha_mask = trained_alphas == alpha
                 if np.any(alpha_mask) and len(action_likelihoods) > 0:
                     # Get indices for this alpha, but ensure they're within bounds
                     alpha_indices = np.where(alpha_mask)[0]
-                    valid_indices = [idx for idx in alpha_indices if idx < len(action_likelihoods)]
-                    
+                    valid_indices = [
+                        idx for idx in alpha_indices if idx < len(action_likelihoods)
+                    ]
+
                     if len(valid_indices) > 0:
-                        tomnet_mean = np.mean([action_likelihoods[idx] for idx in valid_indices])
-                        bayes_mean = np.mean([bayes_optimal[idx] for idx in valid_indices])
+                        tomnet_mean = np.mean(
+                            [action_likelihoods[idx] for idx in valid_indices]
+                        )
+                        bayes_mean = np.mean(
+                            [bayes_optimal[idx] for idx in valid_indices]
+                        )
                         tomnet_means.append(tomnet_mean)
                         bayes_means.append(bayes_mean)
                     else:
                         tomnet_means.append(0.5)  # Default value
                         bayes_means.append(0.5)
                 else:
-                    tomnet_means.append(0.5)  # Default value 
+                    tomnet_means.append(0.5)  # Default value
                     bayes_means.append(0.5)
-            
+
             # Plot ToMnet
             ax.semilogx(
                 unique_alphas,
@@ -125,7 +135,7 @@ def plot_figure3a_trained_alpha_vs_likelihood(results):
                 color=colors[i],
                 alpha=0.8,
             )
-            
+
             # Plot Bayes-optimal with dashed line
             ax.semilogx(
                 unique_alphas,
@@ -216,13 +226,21 @@ def plot_figure3b_character_embeddings(results):
     """Plot 2D character embeddings colored by most frequent action (Figure 3b)"""
     fig, ax = plt.subplots(1, 1, figsize=(8, 8))
 
-    if "figure3b" in results and "character_embeddings" in results["figure3b"] and len(results["figure3b"]["character_embeddings"]) > 0:
+    if (
+        "figure3b" in results
+        and "character_embeddings" in results["figure3b"]
+        and len(results["figure3b"]["character_embeddings"]) > 0
+    ):
         # New data structure with N_past = 10 embeddings
-        print(f"Using character embeddings from Figure 3b data (N_past = {results['figure3b']['n_past_embeddings']})")
+        print(
+            f"Using character embeddings from Figure 3b data (N_past = {results['figure3b']['n_past_embeddings']})"
+        )
 
         # Use embeddings from first available model
         model_name = list(results["figure3b"]["character_embeddings"].keys())[0]
-        embeddings = results["figure3b"]["character_embeddings"][model_name]["embeddings"]
+        embeddings = results["figure3b"]["character_embeddings"][model_name][
+            "embeddings"
+        ]
         agent_ids = results["figure3b"]["character_embeddings"][model_name]["agent_ids"]
 
         # Ensure we have 2D embeddings
@@ -233,10 +251,12 @@ def plot_figure3b_character_embeddings(results):
             print(f"Reduced embeddings from {embeddings.shape[1]}D to 2D using PCA")
         else:
             embeddings_2d = embeddings
-            
+
         # Normalize embeddings as specified in README (Normalized e_1, e_2)
-        embeddings_2d = (embeddings_2d - embeddings_2d.mean(axis=0)) / embeddings_2d.std(axis=0)
-    
+        embeddings_2d = (
+            embeddings_2d - embeddings_2d.mean(axis=0)
+        ) / embeddings_2d.std(axis=0)
+
     elif "character_embeddings" in results:
         # Fallback to old data structure
         print("Using character embeddings from legacy cross-species evaluation")
@@ -254,9 +274,11 @@ def plot_figure3b_character_embeddings(results):
             print(f"Reduced embeddings from {embeddings.shape[1]}D to 2D using PCA")
         else:
             embeddings_2d = embeddings
-            
+
         # Normalize embeddings
-        embeddings_2d = (embeddings_2d - embeddings_2d.mean(axis=0)) / embeddings_2d.std(axis=0)
+        embeddings_2d = (
+            embeddings_2d - embeddings_2d.mean(axis=0)
+        ) / embeddings_2d.std(axis=0)
 
     else:
         # Legacy data format or fallback
@@ -275,10 +297,12 @@ def plot_figure3b_character_embeddings(results):
             n_agents = 50
             embeddings_2d = np.random.randn(n_agents, 2) * 2
             agent_ids = np.arange(n_agents)
-            
+
         # Normalize simulated embeddings
         if len(embeddings_2d) > 0:
-            embeddings_2d = (embeddings_2d - embeddings_2d.mean(axis=0)) / embeddings_2d.std(axis=0)
+            embeddings_2d = (
+                embeddings_2d - embeddings_2d.mean(axis=0)
+            ) / embeddings_2d.std(axis=0)
 
     # Color by embedding position to show clustering
     # Use first embedding dimension to determine "dominant action"

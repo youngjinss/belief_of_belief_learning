@@ -20,12 +20,12 @@ The ToMnet implementation for Figure 3 uses a simplified architecture focused on
    - This simplification focuses on character-level inference only
 
 3. **Prediction Net**:
-   - Outputs action probabilities: $\hat{\pi}(a_t|x_t^{obs}, e_{char})$
+   - Outputs action probabilities: $\hat{\pi}(a_t \mid x_t^{obs}, e_{char})$
    - Function: concatenates current state with character embedding
    - Implementation: 2-layer MLP with softmax output for 5 actions
 
 ### Loss Function
-$\mathcal{L}_{action} = -\log \hat{\pi}(a_t^{obs}|x_t^{obs}, e_{char})$
+$\mathcal{L}_{action} = -\log \hat{\pi}(a_t^{obs} \mid x_t^{obs}, e_{char})$
 
 ## Current Implementation Details
 
@@ -124,8 +124,8 @@ $\mathcal{L}_{action} = -\log \hat{\pi}(a_t^{obs}|x_t^{obs}, e_{char})$
 - Compares embedding clusters between different $\alpha$ species
 
 ### Evaluation Metrics
-1. Action Likelihood: $\matchcal{L}_{action} = \hat{\pi}(a_t^{obs}|x_t^{obs}, e_{char})$
-2. KL Divergence: $D_KL(\pi||\hat{\pi}) = Σ_a \pi(a) log(\pi(a)/\hat{\pi}(a))$
+1. Action Likelihood: $\matchcal{L}_{action} = \hat{\pi}(a_t^{obs} \mid x_t^{obs}, e_{char})$
+2. KL Divergence: $D_KL(\pi || \hat{\pi}) = \sum_a \pi(a) log(\pi(a)/\hat{\pi}(a))$
    - where $\pi$ is the true policy and $\hat{\pi}$ is the predicted policy.
 
 ## Data Flow and File Structure
@@ -192,13 +192,13 @@ For Figure 3 reproduction:
    - Darker the higher that count
 3. **Figure 3c**: Test $\alpha$ vs Average KL-divergence between agents’ true and predicted policies
    - Rows: Training species ($\alpha \in {0.01, 0.03, 0.1, 0.3, 1.0, 3.0}$)
-   - Columns: D_KL(\pi||$\hat{$\pi})
+   - Columns: $D_{KL}(\pi || \hat{\pi})$
    - 6 lines showing KL divergence for each trained $\alpha$ value {0.01, 0.03, 0.1, 0.3, 1.0, 3.0}
    - Shows generalization capabilities across species
    - Constraint with N_past = 1
 4. **Figure 3d**: Figure 3c + Mixed species training performance
    - X-axis: Test $\alpha$ values {0.01, 0.03, 0.1, 0.3, 1.0, 3.0}
-   - Y-axis: D_KL(\pi||$\hat{$\pi})
+   - Y-axis: $D_{KL}(\pi || \hat{\pi})$
    - 3 lines: trained on $\alpha=0.01$, $\alpha=3.0$, and mixed ($\alpha=0.01 & 3.0$)
 
 ## Usage Instructions

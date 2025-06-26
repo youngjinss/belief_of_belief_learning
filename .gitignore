@@ -12,6 +12,7 @@ lib/benchmark/pogema/
 lib/benchmark/Machine_ToM/
 lib/benchmark/RepBelief/
 lib/benchmark/AmortizedNestedReasoning/
+lib/benchmark/ToMnet-N/
 
 # lib 폴더 내 ToMnet 구현한 결과 데이터 무시
 lib/benchmark/Tomnet_impl/data/

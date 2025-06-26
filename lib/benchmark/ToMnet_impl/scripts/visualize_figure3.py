@@ -18,11 +18,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pickle
-import torch
-from collections import defaultdict
-import pandas as pd
 from sklearn.decomposition import PCA
-from scipy.special import gammaln, digamma
 import argparse
 import os
 

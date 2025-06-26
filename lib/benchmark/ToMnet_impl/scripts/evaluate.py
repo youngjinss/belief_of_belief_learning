@@ -55,7 +55,7 @@ class BayesOptimalBaseline:
         """Evaluate Bayes-optimal baseline on dataset"""
         prior_alpha = np.full(self.n_actions, true_alpha)
 
-        results = {"n_past_values": [], "kl_divergences": [], "action_accuracies": []}
+        results = {"n_past_values": [], "kl_divergences": [], "action_accuracies": [], "action_likelihoods": []}
 
         for sample in dataset["data"]:
             # Extract past actions
@@ -76,10 +76,14 @@ class BayesOptimalBaseline:
             predicted_action = np.argmax(predicted_policy)
             true_action = sample["query_action"]
             accuracy = 1.0 if predicted_action == true_action else 0.0
+            
+            # Action likelihood (probability of true action under predicted policy)
+            action_likelihood = predicted_policy[true_action]
 
             results["n_past_values"].append(sample["n_past"])
             results["kl_divergences"].append(kl_div)
             results["action_accuracies"].append(accuracy)
+            results["action_likelihoods"].append(action_likelihood)
 
         return results
 
@@ -125,7 +129,12 @@ class ToMnetEvaluator:
         return np.vstack(all_embeddings), np.array(all_agent_ids)
 
     def evaluate_action_prediction(self, dataset: ToMnetDataset) -> Dict[str, float]:
-        """Evaluate action prediction accuracy"""
+        """Evaluate action prediction accuracy
+        
+        Note: This function is NOT used for Figure 3 experiments.
+        Figure 3a shows action likelihood (probability), not accuracy.
+        Use evaluate_policy_prediction instead for Figure 3.
+        """
         dataloader = torch.utils.data.DataLoader(
             dataset, batch_size=32, shuffle=False, collate_fn=collate_fn
         )
@@ -367,12 +376,14 @@ def evaluate_figure3_cross_species(
                     experiment_type="figure3",
                 )
 
-                action_results = evaluator.evaluate_action_prediction(filtered_dataset)
+                # Use policy prediction to get action likelihoods
+                policy_results = evaluator.evaluate_policy_prediction(filtered_dataset)
+                mean_action_likelihood = np.mean(policy_results["action_likelihoods"])
 
                 # Store results for Figure 3a
                 results["figure3a"]["trained_alphas"].append(train_alpha)
                 results["figure3a"]["action_likelihoods_by_n_past"][n_past].append(
-                    action_results["accuracy"]
+                    mean_action_likelihood
                 )
 
                 # Calculate Bayes-optimal baseline for this N_past
@@ -381,7 +392,7 @@ def evaluate_figure3_cross_species(
                     {"data": filtered_data, "meta": test_dataset_raw.get("meta", {})},
                     train_alpha,
                 )
-                bayes_likelihood = np.mean(bayes_results["action_accuracies"])
+                bayes_likelihood = np.mean(bayes_results["action_likelihoods"])
                 results["figure3a"]["bayes_optimal_by_n_past"][n_past].append(
                     bayes_likelihood
                 )
@@ -512,15 +523,19 @@ def evaluate_unified_results(
     dataset_paths: Union[str, Dict[str, str]],
     device: str = "cuda",
 ) -> Dict:
-    """Unified evaluation function for Figure 3 experiments"""
+    """Unified evaluation function for general experiments
+    
+    Note: This function is NOT used for Figure 3 experiments.
+    Figure 3 uses evaluate_figure3_cross_species() directly for proper
+    cross-species evaluation with action likelihoods (not accuracies).
+    """
 
-    # For Figure 3, use the new cross-species evaluation
-    if (
-        experiment_type == "figure3"
-        and isinstance(model_paths, dict)
-        and isinstance(dataset_paths, dict)
-    ):
-        return evaluate_figure3_cross_species(model_paths, dataset_paths, device)
+    # This function handles general experiments, not Figure 3
+    if experiment_type == "figure3":
+        raise ValueError(
+            "For Figure 3 experiments, use evaluate_figure3_cross_species() directly. "
+            "This function is not designed for Figure 3's cross-species evaluation."
+        )
 
     # Original implementation for other cases
     results = {}
@@ -675,10 +690,23 @@ def main():
             "Either provide --model_path and --data_path, or --model_paths_json and --data_paths_json"
         )
 
-    # Evaluate using unified function
-    results = evaluate_unified_results(
-        args.experiment, model_paths, dataset_paths, args.device
-    )
+    # Evaluate based on experiment type
+    if args.experiment == "figure3":
+        # For Figure 3, we need multiple models and datasets for cross-species evaluation
+        if isinstance(model_paths, dict) and isinstance(dataset_paths, dict):
+            results = evaluate_figure3_cross_species(
+                model_paths, dataset_paths, args.device
+            )
+        else:
+            raise ValueError(
+                "Figure 3 experiments require multiple models and datasets. "
+                "Use --model_paths_json and --data_paths_json"
+            )
+    else:
+        # For other experiments (if any), use unified function
+        results = evaluate_unified_results(
+            args.experiment, model_paths, dataset_paths, args.device
+        )
 
     # Save results
     with open(args.output_path, "wb") as f:

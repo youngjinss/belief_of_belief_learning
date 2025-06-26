@@ -380,7 +380,6 @@ def evaluate_figure3_cross_species(
                 mean_action_likelihood = np.mean(policy_results["action_likelihoods"])
 
                 # Store results for Figure 3a
-                results["figure3a"]["trained_alphas"].append(train_alpha)
                 results["figure3a"]["action_likelihoods_by_n_past"][n_past].append(
                     mean_action_likelihood
                 )
@@ -395,6 +394,10 @@ def evaluate_figure3_cross_species(
                 results["figure3a"]["bayes_optimal_by_n_past"][n_past].append(
                     bayes_likelihood
                 )
+
+            # Store trained_alphas once per (model, test_dataset) combination
+            # This ensures trained_alphas length matches action_likelihoods_by_n_past lengths
+            results["figure3a"]["trained_alphas"].append(train_alpha)
 
             # Figure 3c: Cross-species evaluation with N_past = 1
             filtered_data_cross = [

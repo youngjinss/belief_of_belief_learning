@@ -195,7 +195,7 @@ class ToMnetEvaluator:
         }
 
         with torch.no_grad():
-            for batch in dataloader:
+            for batch_idx, batch in enumerate(dataloader):
                 # Move to device
                 batch = {
                     k: v.to(self.device) if isinstance(v, torch.Tensor) else v
@@ -212,9 +212,8 @@ class ToMnetEvaluator:
                 # Get predicted and true policies
                 predicted_policy = predictions["action_probs"][0].cpu().numpy()
 
-                # Get true policy from original dataset
-                sample_idx = 0  # Since batch_size=1
-                original_sample = dataset.data[sample_idx]
+                # Get true policy from original dataset - use correct batch index!
+                original_sample = dataset.data[batch_idx]
                 true_policy = original_sample["true_policy"]
 
                 # Compute metrics

@@ -10,8 +10,8 @@ The ToMnet implementation for Figure 3 uses a simplified architecture focused on
 
 1. **Character Net ($f_\theta$)**: 
    - Processes past episode trajectories {$\tau_{ij}$} into character embeddings
-   - Function: e_{char},ij = f_\theta(\tau_ij^(obs))
-   - Aggregation: e_{char},i = Σ_j e_{char},ij
+   - Function: $e_{char,ij} = f_\theta(\tau_{ij}^(obs))$
+   - Aggregation: $e_{char,i} = \sum_j e_{char,ij$
    - Implementation: 3-layer MLP with ReLU activations
    - Output: 2D embeddings for visualization
 

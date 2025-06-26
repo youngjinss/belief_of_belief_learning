@@ -99,7 +99,7 @@ $$ L_{action} = -\log \hat{\pi}(a_t^{obs} \mid x_t^{obs}, e_{char}) $$
 ### Training Process (train.py)
 **Data Generation**:
 - Creates agents with specified $\alpha$ values (0.01, 0.03, 0.1, 0.3, 1.0, 3.0)
-- Generates $N_{past}$ past episodes per agent ($N_{past} \sim Uniform \left( 0, 10 \right)$)
+- Generates $N_{past}$ past episodes per agent $ N_{past} \sim Uniform \left( 0, 10 \right) $
 - Samples single (state, action) pair from each past episode
 - Creates query episode for action prediction task
 

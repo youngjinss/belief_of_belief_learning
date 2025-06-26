@@ -42,6 +42,11 @@ class CharacterNet(nn.Module):
             character_embeddings: (batch_size, embedding_dim)
         """
         batch_size, n_past, seq_len, input_dim = trajectories.shape
+        
+        # Handle empty past trajectories (N_past=0)
+        if n_past == 0:
+            # Return zero embeddings for no past information
+            return torch.zeros(batch_size, self.embedding_dim, device=trajectories.device)
 
         # Flatten trajectories for processing
         traj_flat = trajectories.view(batch_size * n_past, seq_len, input_dim)

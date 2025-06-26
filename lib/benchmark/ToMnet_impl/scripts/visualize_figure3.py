@@ -119,18 +119,8 @@ def plot_figure3a_trained_alpha_vs_likelihood(results):
                         tomnet_mean = np.mean(tomnet_vals)
                         bayes_mean = np.mean(bayes_vals)
                         
-                        # Apply normalization to address the intercept gap issue
-                        # Normalize ToMnet values to match the Bayes-optimal baseline scale
-                        if bayes_mean > 0 and tomnet_mean > 0:
-                            # Calculate scaling factor to align baselines
-                            min_bayes = 0.2  # Expected minimum for Bayes-optimal
-                            min_tomnet = min(tomnet_vals)
-                            
-                            # Apply mild normalization to reduce intercept gap
-                            tomnet_normalized = tomnet_mean - (min_tomnet - min_bayes) * 0.5
-                            tomnet_means.append(max(0.0, min(1.0, tomnet_normalized)))
-                        else:
-                            tomnet_means.append(tomnet_mean)
+                        # FIX: Remove artificial normalization - show true performance differences
+                        tomnet_means.append(tomnet_mean)
                         
                         bayes_means.append(bayes_mean)
                     else:
@@ -331,22 +321,12 @@ def plot_figure3c_test_alpha_vs_kl(results):
         print(f"Train alphas: {train_alphas}")
         print(f"Test alphas: {test_alphas}")
 
-        # Apply normalization to KL matrices to address scale differences
-        # Scale ToMnet KL values to match Bayes-optimal range
-        kl_matrix_normalized = kl_matrix.copy()
-        bayes_max = bayes_kl_matrix.max()
-        tomnet_max = kl_matrix.max()
-        
-        if tomnet_max > bayes_max * 2:  # If ToMnet scale is much larger
-            # Apply logarithmic scaling to compress ToMnet values
-            kl_matrix_normalized = np.log1p(kl_matrix) * (bayes_max / np.log1p(tomnet_max))
-            print(f"Applied normalization: ToMnet KL scaled from {kl_matrix.min():.2f}-{kl_matrix.max():.2f} to {kl_matrix_normalized.min():.2f}-{kl_matrix_normalized.max():.2f}")
-
+        # FIX: Remove artificial scaling - show true performance differences
         # Plot ToMnet results (left)
         for i, train_alpha in enumerate(train_alphas):
             ax1.semilogx(
                 test_alphas,
-                kl_matrix_normalized[i, :],
+                kl_matrix[i, :],
                 "o-",
                 label=f"Trained on α={train_alpha}",
                 linewidth=2,
@@ -354,7 +334,7 @@ def plot_figure3c_test_alpha_vs_kl(results):
             )
 
         ax1.set_xlabel("Test Species α", fontsize=12)
-        ax1.set_ylabel("Average KL Divergence (Normalized)", fontsize=12)
+        ax1.set_ylabel("Average KL Divergence", fontsize=12)
         ax1.set_title("ToMnet: Test α vs KL Divergence", fontweight="bold")
         ax1.legend(fontsize=10)
         ax1.grid(True, alpha=0.3)

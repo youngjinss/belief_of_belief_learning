@@ -11,6 +11,7 @@ class CharacterNet(nn.Module):
     e_char,ij = f_θ(τ_ij^(obs))
     
     FIXED VERSION: Uses learnable embedding for N_past=0 instead of zeros
+    ENHANCED: Added dropout for regularization
     """
 
     def __init__(
@@ -19,6 +20,7 @@ class CharacterNet(nn.Module):
         action_dim: int,
         hidden_dim: int = 128,
         embedding_dim: int = 8,
+        dropout_rate: float = 0.0,
     ):
         super().__init__()
         self.state_dim = state_dim
@@ -31,8 +33,10 @@ class CharacterNet(nn.Module):
         self.mlp = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),
             nn.ReLU(),
+            nn.Dropout(dropout_rate),
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
+            nn.Dropout(dropout_rate),
             nn.Linear(hidden_dim, embedding_dim),
         )
         
@@ -89,6 +93,7 @@ class MentalStateNet(nn.Module):
     """
     Mental State Net: Processes current episode trajectory
     e_mental,i = g_φ([τ_ij^(obs)]_0:t-1, e_char,i)
+    ENHANCED: Added dropout for regularization
     """
 
     def __init__(
@@ -98,6 +103,7 @@ class MentalStateNet(nn.Module):
         char_embedding_dim: int,
         hidden_dim: int = 128,
         mental_embedding_dim: int = 64,
+        dropout_rate: float = 0.0,
     ):
         super().__init__()
         self.state_dim = state_dim
@@ -107,12 +113,13 @@ class MentalStateNet(nn.Module):
 
         # LSTM for processing current trajectory
         input_dim = state_dim + action_dim
-        self.lstm = nn.LSTM(input_dim, hidden_dim, batch_first=True)
+        self.lstm = nn.LSTM(input_dim, hidden_dim, batch_first=True, dropout=dropout_rate if dropout_rate > 0 else 0.0)
 
         # Combine LSTM output with character embedding
         self.fusion = nn.Sequential(
             nn.Linear(hidden_dim + char_embedding_dim, hidden_dim),
             nn.ReLU(),
+            nn.Dropout(dropout_rate),
             nn.Linear(hidden_dim, mental_embedding_dim),
         )
 
@@ -147,6 +154,7 @@ class PredictionNet(nn.Module):
     - Next-step action probabilities
     - Object consumption probabilities
     - Successor representations
+    ENHANCED: Added dropout for regularization
     """
 
     def __init__(
@@ -157,6 +165,7 @@ class PredictionNet(nn.Module):
         n_actions: int = 5,
         n_objects: int = 4,
         hidden_dim: int = 128,
+        dropout_rate: float = 0.0,
     ):
         super().__init__()
         self.state_dim = state_dim
@@ -170,14 +179,17 @@ class PredictionNet(nn.Module):
         self.shared = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),
             nn.ReLU(),
+            nn.Dropout(dropout_rate),
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
+            nn.Dropout(dropout_rate),
         )
 
         # Action prediction head
         self.action_head = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
+            nn.Dropout(dropout_rate),
             nn.Linear(hidden_dim, n_actions),
         )
 
@@ -185,6 +197,7 @@ class PredictionNet(nn.Module):
         self.consumption_head = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
+            nn.Dropout(dropout_rate),
             nn.Linear(hidden_dim, n_objects),
         )
 
@@ -193,6 +206,7 @@ class PredictionNet(nn.Module):
         self.sr_head = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
+            nn.Dropout(dropout_rate),
             nn.Linear(hidden_dim, grid_size * grid_size),
         )
 
@@ -221,12 +235,7 @@ class PredictionNet(nn.Module):
         # Action predictions
         action_logits = self.action_head(shared_features)
         
-        # Apply temperature scaling based on information availability
-        # If character embedding is mostly zeros (N_past=0), increase temperature for more uniform predictions
-        char_info_strength = torch.norm(character_embedding, dim=1, keepdim=True)
-        temperature = 1.0 + 2.0 * torch.exp(-char_info_strength)  # Higher temp when less info
-        
-        action_probs = F.softmax(action_logits / temperature, dim=1)
+        action_probs = F.softmax(action_logits, dim=1)
 
         # Object consumption predictions
         consumption_probs = torch.sigmoid(self.consumption_head(shared_features))
@@ -236,6 +245,7 @@ class PredictionNet(nn.Module):
 
         return {
             "action_logits": action_logits,
+            "action_pred": action_logits,  # For compatibility with enhanced trainer
             "action_probs": action_probs,
             "consumption_probs": consumption_probs,
             "sr_logits": sr_logits,
@@ -259,6 +269,7 @@ class ToMnet(nn.Module):
         mental_embedding_dim: int = 64,
         hidden_dim: int = 128,
         use_mental_state: bool = True,
+        dropout_rate: float = 0.0,
     ):
         super().__init__()
 
@@ -268,9 +279,9 @@ class ToMnet(nn.Module):
         self.mental_embedding_dim = mental_embedding_dim
         self.use_mental_state = use_mental_state
 
-        # Initialize networks
+        # Initialize networks with dropout
         self.character_net = CharacterNet(
-            state_dim, action_dim, hidden_dim, char_embedding_dim
+            state_dim, action_dim, hidden_dim, char_embedding_dim, dropout_rate
         )
 
         if use_mental_state:
@@ -280,6 +291,7 @@ class ToMnet(nn.Module):
                 char_embedding_dim,
                 hidden_dim,
                 mental_embedding_dim,
+                dropout_rate,
             )
         else:
             # For Figure 3 experiments, mental state is not used
@@ -293,6 +305,7 @@ class ToMnet(nn.Module):
             n_actions,
             n_objects,
             hidden_dim,
+            dropout_rate,
         )
 
     def forward(
@@ -381,11 +394,13 @@ def create_tomnet(
     n_objects: int = 4,
     mental_embedding_dim: int = 64,
     hidden_dim: int = 128,
+    dropout_rate: float = 0.0,
 ) -> ToMnet:
     """
     Create ToMnet configuration for different experiment types
     
     FIXED VERSION: Uses improved CharacterNet
+    ENHANCED: Added dropout support for regularization
     """
     # Set experiment-specific defaults
     if experiment_type == "figure3":
@@ -410,4 +425,5 @@ def create_tomnet(
         mental_embedding_dim=mental_embedding_dim,
         hidden_dim=hidden_dim,
         use_mental_state=use_mental_state,
+        dropout_rate=dropout_rate,
     )

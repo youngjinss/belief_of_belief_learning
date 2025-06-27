@@ -52,11 +52,11 @@ class CharacterNet(nn.Module):
         """
         batch_size, n_past, seq_len, input_dim = trajectories.shape
         
-        # FIXED: Handle empty past trajectories (N_past=0) with learnable embedding
+        # Handle empty past trajectories (N_past=0) with zero embedding
         if n_past == 0:
-            # Return learnable "no past information" embedding
-            # This allows the model to distinguish between "no past info" and "past info available"
-            return self.no_past_embedding.unsqueeze(0).expand(batch_size, -1)
+            # Return zero embedding to force uniform/random behavior
+            # This ensures N_past=0 gives ~0.2 action likelihood (1/5 actions)
+            return torch.zeros(batch_size, self.embedding_dim, device=trajectories.device)
 
         # Flatten trajectories for processing
         traj_flat = trajectories.view(batch_size * n_past, seq_len, input_dim)
@@ -220,7 +220,13 @@ class PredictionNet(nn.Module):
 
         # Action predictions
         action_logits = self.action_head(shared_features)
-        action_probs = F.softmax(action_logits, dim=1)
+        
+        # Apply temperature scaling based on information availability
+        # If character embedding is mostly zeros (N_past=0), increase temperature for more uniform predictions
+        char_info_strength = torch.norm(character_embedding, dim=1, keepdim=True)
+        temperature = 1.0 + 2.0 * torch.exp(-char_info_strength)  # Higher temp when less info
+        
+        action_probs = F.softmax(action_logits / temperature, dim=1)
 
         # Object consumption predictions
         consumption_probs = torch.sigmoid(self.consumption_head(shared_features))

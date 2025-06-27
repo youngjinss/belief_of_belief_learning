@@ -119,9 +119,8 @@ def plot_figure3a_trained_alpha_vs_likelihood(results):
                         tomnet_mean = np.mean(tomnet_vals)
                         bayes_mean = np.mean(bayes_vals)
                         
-                        # FIX: Remove artificial normalization - show true performance differences
+                        # Show true performance differences without normalization
                         tomnet_means.append(tomnet_mean)
-                        
                         bayes_means.append(bayes_mean)
                     else:
                         tomnet_means.append(0.2)  # Default value aligned with Bayes
@@ -321,8 +320,7 @@ def plot_figure3c_test_alpha_vs_kl(results):
         print(f"Train alphas: {train_alphas}")
         print(f"Test alphas: {test_alphas}")
 
-        # FIX: Remove artificial scaling - show true performance differences
-        # Plot ToMnet results (left)
+        # Plot ToMnet results (left) - show true performance differences
         for i, train_alpha in enumerate(train_alphas):
             ax1.semilogx(
                 test_alphas,

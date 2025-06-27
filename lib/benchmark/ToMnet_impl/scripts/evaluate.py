@@ -11,7 +11,7 @@ from data_generation import ToMnetDataset, collate_fn
 
 
 def compute_kl_divergence(
-    p: np.ndarray, q: np.ndarray, epsilon: float = 1e-10
+    p: np.ndarray, q: np.ndarray, epsilon: float = 1e-8
 ) -> float:
     """Compute KL divergence between two probability distributions"""
     # Add small epsilon to avoid log(0)
@@ -66,11 +66,9 @@ class BayesOptimalBaseline:
                 elif isinstance(traj, dict) and 'actions' in traj:
                     past_actions.extend(traj['actions'])
 
-            # Update posterior with proper prior based on sample's true alpha
-            # Use the actual alpha from the sample's generation, not training alpha
-            sample_alpha = sample.get('alpha', true_alpha)
-            sample_prior = np.full(self.n_actions, sample_alpha)
-            posterior_alpha = self.update_posterior(sample_prior, past_actions)
+            # Update posterior using the training alpha as prior
+            # This represents what a Bayes-optimal observer would do knowing the training distribution
+            posterior_alpha = self.update_posterior(prior_alpha, past_actions)
             predicted_policy = self.predict_policy(posterior_alpha)
 
             # Compare with true policy
@@ -376,43 +374,43 @@ def evaluate_figure3_cross_species(
             test_dataset = ToMnetDataset(test_dataset_raw, experiment_type="figure3")
 
             # Figure 3a: Evaluate for multiple N_past values
-            for n_past in n_past_values:
-                filtered_data = [
-                    sample for sample in test_dataset.data if sample["n_past"] == n_past
-                ]
-                if not filtered_data:
-                    print(f"No samples with N_past={n_past} found in {test_alpha_name}")
-                    continue
+            # Only include results where test_alpha == train_alpha (same-species evaluation)
+            if abs(test_alpha - train_alpha) < 1e-6:  # Use small epsilon for float comparison
+                for n_past in n_past_values:
+                    filtered_data = [
+                        sample for sample in test_dataset.data if sample["n_past"] == n_past
+                    ]
+                    if not filtered_data:
+                        print(f"No samples with N_past={n_past} found in {test_alpha_name}")
+                        continue
 
-                filtered_dataset = ToMnetDataset(
-                    {"data": filtered_data, "meta": test_dataset_raw.get("meta", {})},
-                    experiment_type="figure3",
-                )
+                    filtered_dataset = ToMnetDataset(
+                        {"data": filtered_data, "meta": test_dataset_raw.get("meta", {})},
+                        experiment_type="figure3",
+                    )
 
-                # Use policy prediction to get action likelihoods
-                policy_results = evaluator.evaluate_policy_prediction(filtered_dataset)
-                mean_action_likelihood = np.mean(policy_results["action_likelihoods"])
+                    # Use policy prediction to get action likelihoods
+                    policy_results = evaluator.evaluate_policy_prediction(filtered_dataset)
+                    mean_action_likelihood = np.mean(policy_results["action_likelihoods"])
 
-                # Store results for Figure 3a
-                results["figure3a"]["action_likelihoods_by_n_past"][n_past].append(
-                    mean_action_likelihood
-                )
+                    # Store results for Figure 3a
+                    results["figure3a"]["action_likelihoods_by_n_past"][n_past].append(
+                        mean_action_likelihood
+                    )
 
-                # Calculate Bayes-optimal baseline for this N_past
-                # FIX: Use train_alpha (agent's training alpha) as prior, not test_alpha
-                baseline = BayesOptimalBaseline()
-                bayes_results = baseline.evaluate_on_data(
-                    {"data": filtered_data, "meta": test_dataset_raw.get("meta", {})},
-                    train_alpha,  # Use train_alpha for proper Bayes-optimal calculation
-                )
-                bayes_likelihood = np.mean(bayes_results["action_likelihoods"])
-                results["figure3a"]["bayes_optimal_by_n_past"][n_past].append(
-                    bayes_likelihood
-                )
+                    # Calculate Bayes-optimal baseline for this N_past
+                    baseline = BayesOptimalBaseline()
+                    bayes_results = baseline.evaluate_on_data(
+                        {"data": filtered_data, "meta": test_dataset_raw.get("meta", {})},
+                        train_alpha,  # Use train_alpha for proper Bayes-optimal calculation
+                    )
+                    bayes_likelihood = np.mean(bayes_results["action_likelihoods"])
+                    results["figure3a"]["bayes_optimal_by_n_past"][n_past].append(
+                        bayes_likelihood
+                    )
 
-            # Store trained_alphas once per (model, test_dataset) combination
-            # This ensures trained_alphas length matches action_likelihoods_by_n_past lengths
-            results["figure3a"]["trained_alphas"].append(train_alpha)
+                # Store trained_alphas once per model when testing on same species
+                results["figure3a"]["trained_alphas"].append(train_alpha)
 
             # Figure 3c: Cross-species evaluation with N_past = 1
             filtered_data_cross = [
@@ -437,14 +435,14 @@ def evaluate_figure3_cross_species(
                 model_kl_row.append(mean_kl)
 
                 # Calculate Bayes-optimal KL divergence
-                # FIX: Use train_alpha (agent's training alpha) as prior, not test_alpha
+                # For Figure 3c: Use test_alpha (the true parameter of test data)
                 baseline = BayesOptimalBaseline()
                 bayes_results = baseline.evaluate_on_data(
                     {
                         "data": filtered_data_cross,
                         "meta": test_dataset_raw.get("meta", {}),
                     },
-                    train_alpha,  # Use train_alpha for proper Bayes-optimal calculation
+                    test_alpha,  # Use test_alpha for cross-species Bayes-optimal
                 )
                 bayes_kl = np.mean(bayes_results["kl_divergences"])
                 bayes_kl_row.append(bayes_kl)

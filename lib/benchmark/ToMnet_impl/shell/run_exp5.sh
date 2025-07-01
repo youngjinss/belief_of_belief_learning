@@ -1,5 +1,5 @@
 #!/bin/bash
-# nohup bash shell/run_exp5.sh all > figure5_experiment.log 2>&1 &
+# nohup bash shell/run_exp5.sh all > experiment.log 2>&1 &
 # Main launcher script for ToMnet Figure 5 experiments
 # 
 # This script provides a convenient way to run the complete Figure 5 workflow

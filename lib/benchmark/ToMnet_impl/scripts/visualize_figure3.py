@@ -529,7 +529,7 @@ def main():
 
     # Set default paths if not provided
     if args.results_path is None:
-        args.results_path = f"result/{args.experiment}/evaluation_results.pkl"
+        args.results_path = f"result/{args.experiment}/cross_species_results.pkl"
     if args.output_dir is None:
         args.output_dir = f"plots/{args.experiment}"
 

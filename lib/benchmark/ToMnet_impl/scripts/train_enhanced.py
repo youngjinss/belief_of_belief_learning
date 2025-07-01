@@ -555,6 +555,121 @@ def train_enhanced_model(experiment_type: str, args):
         return results
 
 
+def generate_cross_species_evaluation_files(
+    results, datasets, experiment_type, device="cpu"
+):
+    """Generate JSON files for cross-species evaluation"""
+    if experiment_type != "figure3":
+        print(f"Cross-species evaluation files not applicable for {experiment_type}")
+        return
+
+    print("\n=== Generating Cross-Species Evaluation Files ===")
+
+    # Create evaluation directory
+    eval_dir = f"result/{experiment_type}"
+    os.makedirs(eval_dir, exist_ok=True)
+
+    # Generate model_paths.json
+    model_paths = {}
+    data_paths = {}
+
+    for dataset_name, result in results.items():
+        if dataset_name == "mixed":
+            model_paths["mixed"] = os.path.abspath(result["model_path"])
+        else:
+            # Convert dataset name to alpha format
+            if isinstance(dataset_name, (int, float)):
+                alpha_key = f"alpha_{dataset_name}"
+                model_paths[alpha_key] = os.path.abspath(result["model_path"])
+            else:
+                model_paths[dataset_name] = os.path.abspath(result["model_path"])
+
+    # Generate data_paths.json from datasets
+    for dataset_name, dataset in datasets.items():
+        if dataset_name == "mixed":
+            continue  # Skip mixed dataset for testing
+
+        if isinstance(dataset_name, (int, float)):
+            alpha_key = f"alpha_{dataset_name}"
+            # Use the original data file path
+            data_file_path = f"data/figure3_alpha_{dataset_name}.pkl"
+            data_paths[alpha_key] = os.path.abspath(data_file_path)
+        else:
+            data_file_path = f"data/figure3_{dataset_name}.pkl"
+            data_paths[dataset_name] = os.path.abspath(data_file_path)
+
+    # Save model_paths.json
+    model_paths_file = os.path.join(eval_dir, "model_paths.json")
+    with open(model_paths_file, "w") as f:
+        json.dump(model_paths, f, indent=2)
+    print(f"✓ Saved model paths to: {model_paths_file}")
+    print(f"  Models: {list(model_paths.keys())}")
+
+    # Save data_paths.json
+    data_paths_file = os.path.join(eval_dir, "data_paths.json")
+    with open(data_paths_file, "w") as f:
+        json.dump(data_paths, f, indent=2)
+    print(f"✓ Saved data paths to: {data_paths_file}")
+    print(f"  Datasets: {list(data_paths.keys())}")
+
+    # Generate evaluation script
+    eval_script_content = f"""#!/bin/bash
+# Auto-generated cross-species evaluation script
+
+echo "Running Figure 3 Cross-Species Evaluation..."
+
+# Run cross-species evaluation
+python scripts/evaluate.py \\
+    --experiment figure3 \\
+    --model_paths_json {model_paths_file} \\
+    --data_paths_json {data_paths_file} \\
+    --output_path {eval_dir}/figure3_cross_species_results.pkl \\
+    --device {device}
+
+echo "Evaluation completed!"
+echo "Results saved to: {eval_dir}/figure3_cross_species_results.pkl"
+echo ""
+echo "To visualize results, run:"
+echo "python scripts/visualize_figure3.py --results_path {eval_dir}/figure3_cross_species_results.pkl --save_plots"
+"""
+
+    eval_script_file = os.path.join(eval_dir, "run_cross_species_evaluation.sh")
+    with open(eval_script_file, "w") as f:
+        f.write(eval_script_content)
+
+    # Make script executable
+    os.chmod(eval_script_file, 0o755)
+    print(f"✓ Saved evaluation script to: {eval_script_file}")
+
+    # Generate summary info
+    summary = {
+        "experiment_type": experiment_type,
+        "models_trained": list(model_paths.keys()),
+        "test_datasets": list(data_paths.keys()),
+        "model_paths_file": model_paths_file,
+        "data_paths_file": data_paths_file,
+        "evaluation_script": eval_script_file,
+        "next_steps": [
+            f"Run evaluation: bash {eval_script_file}",
+            "View results: jupyter notebook visualize_figure3.ipynb",
+            "Results will be saved to: result/figure3_cross_species_results.pkl",
+        ],
+    }
+
+    summary_file = os.path.join(eval_dir, "evaluation_summary.json")
+    with open(summary_file, "w") as f:
+        json.dump(summary, f, indent=2)
+    print(f"✓ Saved evaluation summary to: {summary_file}")
+
+    print(f"\n=== Cross-Species Evaluation Setup Complete ===")
+    print(f"Next steps:")
+    print(f"1. Run evaluation: bash {eval_script_file}")
+    print(
+        f"2. View results: python scripts/visualize_figure3.py --results_path {eval_dir}/figure3_cross_species_results.pkl --save_plots"
+    )
+    print("")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Enhanced ToMnet Training")
     parser.add_argument(
@@ -606,6 +721,13 @@ def main():
     results = {}
 
     if args.experiment == "figure3":
+        # Get datasets for evaluation file generation
+        config = EnhancedExperimentConfig("figure3")
+        generator = DataGenerator("figure3", n_workers=args.n_workers)
+        datasets = generator.load_or_generate_datasets(
+            regenerate=args.regenerate_data,
+            alpha_values=config.training_alphas,
+        )
         results["enhanced_figure3"] = train_enhanced_model("figure3", args)
 
     # Save results
@@ -614,6 +736,15 @@ def main():
     
     with open(f"{results_dir}/enhanced_training_results.json", "w") as f:
         json.dump(results, f, indent=2, default=str)
+    
+    # Generate cross-species evaluation files
+    if args.experiment == "figure3" and "enhanced_figure3" in results:
+        generate_cross_species_evaluation_files(
+            results["enhanced_figure3"], 
+            datasets, 
+            args.experiment, 
+            device=args.device
+        )
 
     print(f"\n{'='*60}")
     print("ENHANCED TRAINING COMPLETED!")

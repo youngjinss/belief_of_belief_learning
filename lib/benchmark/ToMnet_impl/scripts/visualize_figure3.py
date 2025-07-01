@@ -319,14 +319,14 @@ def plot_figure3b_character_embeddings(results):
 
 def plot_figure3c_test_alpha_vs_kl(results):
     """Plot test alpha vs average KL divergence (Figure 3c)"""
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+    fig, ax1 = plt.subplots(1, 1, figsize=(16, 6))
 
     if "figure3c" in results:
         # New cross-species evaluation data
         train_alphas = results["figure3c"]["train_alphas"]
         test_alphas = results["figure3c"]["test_alphas"]
         kl_matrix = results["figure3c"]["kl_matrix"]
-        bayes_kl_matrix = results["figure3c"]["bayes_kl_matrix"]
+        # bayes_kl_matrix = results["figure3c"]["bayes_kl_matrix"]
 
         print(f"KL matrix shape: {kl_matrix.shape}")
         print(f"Train alphas: {train_alphas}")
@@ -349,22 +349,22 @@ def plot_figure3c_test_alpha_vs_kl(results):
         ax1.legend(fontsize=10)
         ax1.grid(True, alpha=0.3)
 
-        # Plot Bayes-optimal results (right)
-        for i, train_alpha in enumerate(train_alphas):
-            ax2.semilogx(
-                test_alphas,
-                bayes_kl_matrix[i, :],
-                "o-",
-                label=f"Trained on α={train_alpha}",
-                linewidth=2,
-                markersize=6,
-            )
+        # # Plot Bayes-optimal results (right)
+        # for i, train_alpha in enumerate(train_alphas):
+        #     ax2.semilogx(
+        #         test_alphas,
+        #         bayes_kl_matrix[i, :],
+        #         "o-",
+        #         label=f"Trained on α={train_alpha}",
+        #         linewidth=2,
+        #         markersize=6,
+        #     )
 
-        ax2.set_xlabel("Test Species α", fontsize=12)
-        ax2.set_ylabel("Average KL Divergence", fontsize=12)
-        ax2.set_title("Bayes-optimal: Test α vs KL Divergence", fontweight="bold")
-        ax2.legend(fontsize=10)
-        ax2.grid(True, alpha=0.3)
+        # ax2.set_xlabel("Test Species α", fontsize=12)
+        # ax2.set_ylabel("Average KL Divergence", fontsize=12)
+        # ax2.set_title("Bayes-optimal: Test α vs KL Divergence", fontweight="bold")
+        # ax2.legend(fontsize=10)
+        # ax2.grid(True, alpha=0.3)
 
     else:
         raise ValueError("No Figure 3c data found in results")
@@ -377,128 +377,128 @@ def plot_figure3c_test_alpha_vs_kl(results):
     return fig
 
 
-def plot_figure3d_mixed_species(results):
-    """Plot hierarchical inference on mixed species (Figure 3d)"""
-    fig, ax = plt.subplots(1, 1, figsize=(10, 6))
+# def plot_figure3d_mixed_species(results):
+#     """Plot hierarchical inference on mixed species (Figure 3d)"""
+#     fig, ax = plt.subplots(1, 1, figsize=(10, 6))
 
-    if "figure3d" in results:
-        test_alphas = [0.01, 0.03, 0.1, 0.3, 1.0, 3.0]
+#     if "figure3d" in results:
+#         test_alphas = [0.01, 0.03, 0.1, 0.3, 1.0, 3.0]
 
-        # Initialize data storage for the three training conditions
-        kl_alpha_001 = None
-        kl_alpha_3 = None
-        kl_mixed = None
+#         # Initialize data storage for the three training conditions
+#         kl_alpha_001 = None
+#         kl_alpha_3 = None
+#         kl_mixed = None
 
-        # Check different possible data structures
-        if "kl_divergences" in results["figure3d"]:
-            # Expected structure: results["figure3d"]["kl_divergences"][training_condition]
-            kl_data = results["figure3d"]["kl_divergences"]
+#         # Check different possible data structures
+#         if "kl_divergences" in results["figure3d"]:
+#             # Expected structure: results["figure3d"]["kl_divergences"][training_condition]
+#             kl_data = results["figure3d"]["kl_divergences"]
 
-            if "alpha_0.01" in kl_data:
-                kl_alpha_001 = kl_data["alpha_0.01"]
-            if "alpha_3.0" in kl_data:
-                kl_alpha_3 = kl_data["alpha_3.0"]
-            if "mixed" in kl_data:
-                kl_mixed = kl_data["mixed"]
+#             if "alpha_0.01" in kl_data:
+#                 kl_alpha_001 = kl_data["alpha_0.01"]
+#             if "alpha_3.0" in kl_data:
+#                 kl_alpha_3 = kl_data["alpha_3.0"]
+#             if "mixed" in kl_data:
+#                 kl_mixed = kl_data["mixed"]
 
-        # Handle the new data structure from improved evaluation
-        single_species_data = results["figure3d"].get("single_species", {})
-        mixed_species_data = results["figure3d"].get("mixed_species", {})
+#         # Handle the new data structure from improved evaluation
+#         single_species_data = results["figure3d"].get("single_species", {})
+#         mixed_species_data = results["figure3d"].get("mixed_species", {})
 
-        # Extract single species results
-        if single_species_data:
-            available_alphas = sorted(single_species_data.keys())
+#         # Extract single species results
+#         if single_species_data:
+#             available_alphas = sorted(single_species_data.keys())
 
-            # Try to find alpha=0.01 and alpha=3.0 (or closest)
-            if 0.01 in available_alphas:
-                kl_alpha_001 = single_species_data[0.01]
-            elif available_alphas:
-                # Use the smallest alpha as proxy for 0.01
-                kl_alpha_001 = single_species_data[min(available_alphas)]
+#             # Try to find alpha=0.01 and alpha=3.0 (or closest)
+#             if 0.01 in available_alphas:
+#                 kl_alpha_001 = single_species_data[0.01]
+#             elif available_alphas:
+#                 # Use the smallest alpha as proxy for 0.01
+#                 kl_alpha_001 = single_species_data[min(available_alphas)]
 
-            if 3.0 in available_alphas:
-                kl_alpha_3 = single_species_data[3.0]
-            elif len(available_alphas) > 1:
-                # Use the largest alpha as proxy for 3.0
-                kl_alpha_3 = single_species_data[max(available_alphas)]
+#             if 3.0 in available_alphas:
+#                 kl_alpha_3 = single_species_data[3.0]
+#             elif len(available_alphas) > 1:
+#                 # Use the largest alpha as proxy for 3.0
+#                 kl_alpha_3 = single_species_data[max(available_alphas)]
 
-        # Extract mixed species results
-        if mixed_species_data and "kl_divergences" in mixed_species_data:
-            kl_mixed = mixed_species_data["kl_divergences"]
-            test_alphas = mixed_species_data.get("test_alphas", test_alphas)
+#         # Extract mixed species results
+#         if mixed_species_data and "kl_divergences" in mixed_species_data:
+#             kl_mixed = mixed_species_data["kl_divergences"]
+#             test_alphas = mixed_species_data.get("test_alphas", test_alphas)
 
-        # Plot the three lines as specified in README if we have the data
-        if kl_alpha_001 is not None:
-            ax.semilogx(
-                test_alphas[: len(kl_alpha_001)],
-                kl_alpha_001,
-                "o-",
-                linewidth=2,
-                markersize=8,
-                label="Trained on α=0.01",
-                color="blue",
-            )
+#         # Plot the three lines as specified in README if we have the data
+#         if kl_alpha_001 is not None:
+#             ax.semilogx(
+#                 test_alphas[: len(kl_alpha_001)],
+#                 kl_alpha_001,
+#                 "o-",
+#                 linewidth=2,
+#                 markersize=8,
+#                 label="Trained on α=0.01",
+#                 color="blue",
+#             )
 
-        if kl_alpha_3 is not None:
-            ax.semilogx(
-                test_alphas[: len(kl_alpha_3)],
-                kl_alpha_3,
-                "s-",
-                linewidth=2,
-                markersize=8,
-                label="Trained on α=3.0",
-                color="red",
-            )
+#         if kl_alpha_3 is not None:
+#             ax.semilogx(
+#                 test_alphas[: len(kl_alpha_3)],
+#                 kl_alpha_3,
+#                 "s-",
+#                 linewidth=2,
+#                 markersize=8,
+#                 label="Trained on α=3.0",
+#                 color="red",
+#             )
 
-        if kl_mixed is not None:
-            ax.semilogx(
-                test_alphas[: len(kl_mixed)],
-                kl_mixed,
-                "^-",
-                linewidth=2,
-                markersize=8,
-                label="Trained on mixed (α=0.01 & 3.0)",
-                color="green",
-            )
+#         if kl_mixed is not None:
+#             ax.semilogx(
+#                 test_alphas[: len(kl_mixed)],
+#                 kl_mixed,
+#                 "^-",
+#                 linewidth=2,
+#                 markersize=8,
+#                 label="Trained on mixed (α=0.01 & 3.0)",
+#                 color="green",
+#             )
 
-        # If no proper data found, create a warning message
-        if kl_alpha_001 is None and kl_alpha_3 is None and kl_mixed is None:
-            ax.text(
-                0.5,
-                0.5,
-                "Figure 3d data not available\nRun evaluation with mixed species models",
-                transform=ax.transAxes,
-                ha="center",
-                va="center",
-                fontsize=12,
-                bbox=dict(boxstyle="round", facecolor="lightcoral", alpha=0.8),
-            )
+#         # If no proper data found, create a warning message
+#         if kl_alpha_001 is None and kl_alpha_3 is None and kl_mixed is None:
+#             ax.text(
+#                 0.5,
+#                 0.5,
+#                 "Figure 3d data not available\nRun evaluation with mixed species models",
+#                 transform=ax.transAxes,
+#                 ha="center",
+#                 va="center",
+#                 fontsize=12,
+#                 bbox=dict(boxstyle="round", facecolor="lightcoral", alpha=0.8),
+#             )
 
-    else:
-        raise ValueError("No Figure 3d data found in results")
+#     else:
+#         raise ValueError("No Figure 3d data found in results")
 
-    ax.set_xlabel("Test Species α", fontsize=12)
-    ax.set_ylabel("$D_{KL}(\pi || \hat{\pi})$", fontsize=12)
-    ax.set_title(
-        "Figure 3d: Mixed Species Training Performance\n(N_past = 5)",
-        fontsize=14,
-        fontweight="bold",
-    )
-    ax.legend(fontsize=11, loc="best")
-    ax.grid(True, alpha=0.3)
+#     ax.set_xlabel("Test Species α", fontsize=12)
+#     ax.set_ylabel("$D_{KL}(\pi || \hat{\pi})$", fontsize=12)
+#     ax.set_title(
+#         "Figure 3d: Mixed Species Training Performance\n(N_past = 5)",
+#         fontsize=14,
+#         fontweight="bold",
+#     )
+#     ax.legend(fontsize=11, loc="best")
+#     ax.grid(True, alpha=0.3)
 
-    # Add annotation
-    ax.text(
-        0.02,
-        0.98,
-        "Mixed training enables better\ngeneralization across species",
-        transform=ax.transAxes,
-        fontsize=10,
-        verticalalignment="top",
-        bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.8),
-    )
+#     # Add annotation
+#     ax.text(
+#         0.02,
+#         0.98,
+#         "Mixed training enables better\ngeneralization across species",
+#         transform=ax.transAxes,
+#         fontsize=10,
+#         verticalalignment="top",
+#         bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.8),
+#     )
 
-    return fig
+#     return fig
 
 
 def main():
@@ -544,8 +544,8 @@ def main():
     print("Generating Figure 3c: Cross-Species Generalization")
     fig3c = plot_figure3c_test_alpha_vs_kl(results)
 
-    print("Generating Figure 3d: Mixed Species Training")
-    fig3d = plot_figure3d_mixed_species(results)
+    # print("Generating Figure 3d: Mixed Species Training")
+    # fig3d = plot_figure3d_mixed_species(results)
 
     # Save or display plots
     if args.save_plots:
@@ -565,11 +565,11 @@ def main():
             dpi=300,
             bbox_inches="tight",
         )
-        fig3d.savefig(
-            f"{args.output_dir}/figure3d_mixed_species.png",
-            dpi=300,
-            bbox_inches="tight",
-        )
+        # fig3d.savefig(
+        #     f"{args.output_dir}/figure3d_mixed_species.png",
+        #     dpi=300,
+        #     bbox_inches="tight",
+        # )
         print("Plots saved successfully!")
     else:
         print("\nDisplaying plots...")

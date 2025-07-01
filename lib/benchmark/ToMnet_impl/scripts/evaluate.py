@@ -8,6 +8,7 @@ import pickle
 
 from tomnet import ToMnet
 from data_generation import ToMnetDataset, collate_fn
+from environment import SIZE
 
 
 def compute_kl_divergence(p: np.ndarray, q: np.ndarray, epsilon: float = 1e-8) -> float:
@@ -283,7 +284,10 @@ def load_model_from_checkpoint(
     checkpoint = torch.load(model_path, map_location=device)
 
     # Create model using unified function
-    model = create_tomnet(experiment_type=experiment_type, state_dim=state_dim)
+    model = create_tomnet(experiment_type=experiment_type, 
+                          state_dim=state_dim,
+                          char_embedding_dim=10,
+                          dropout_rate=0.3)
 
     model.load_state_dict(checkpoint["model_state_dict"])
     return model
@@ -331,7 +335,7 @@ def evaluate_figure3_cross_species(
         "figure3d": {"mixed_species": {}, "single_species": {}},
     }
 
-    state_dim = 11 * 11 * 6
+    state_dim = SIZE * SIZE * 6
 
     # Load all test datasets
     test_datasets = {}
@@ -619,7 +623,7 @@ def evaluate_unified_results(
 
     # Original implementation for other cases
     results = {}
-    state_dim = 11 * 11 * 6  # 11x11 grid with 6 channels
+    state_dim = SIZE * SIZE * 6  # 11x11 grid with 6 channels
 
     # Normalize inputs to dictionaries
     if isinstance(model_paths, str):

@@ -403,10 +403,10 @@ def generate_cross_species_evaluation_files(
         if isinstance(dataset_name, (int, float)):
             alpha_key = f"alpha_{dataset_name}"
             # Use the original data file path
-            data_file_path = f"data/figure3_alpha_{dataset_name}.pkl"
+            data_file_path = f"data/{experiment_type}/alpha_{dataset_name}.pkl"
             data_paths[alpha_key] = os.path.abspath(data_file_path)
         else:
-            data_file_path = f"data/figure3_{dataset_name}.pkl"
+            data_file_path = f"data/{experiment_type}/{dataset_name}.pkl"
             data_paths[dataset_name] = os.path.abspath(data_file_path)
 
     # Save model_paths.json

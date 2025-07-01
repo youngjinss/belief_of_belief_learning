@@ -38,14 +38,18 @@ def load_model(model_path: str, device: str = "cuda") -> Tuple[ToMnet, Dict]:
         if hasattr(config, key):
             setattr(config, key, value)
 
-    # Assume standard dimensions for now (should be saved in checkpoint)
-    state_dim = MAX_STEPS * MAX_STEPS * 6  # 10x10 grid * 6 channels
+    # Get state_dim from checkpoint if available, otherwise use the saved value
+    if "state_dim" in checkpoint:
+        state_dim = checkpoint["state_dim"]
+    elif "config" in checkpoint and "state_dim" in checkpoint["config"]:
+        state_dim = checkpoint["config"]["state_dim"]
+    else:
+        state_dim = MAX_STEPS * MAX_STEPS * 6  # 10x10 grid * 6 channels (fallback)
 
     model = create_tomnet(
+        experiment_type="figure5",
         state_dim=state_dim,
         char_embedding_dim=config.char_embedding_dim,
-        use_mental_state_net=config.use_mental_state_net,
-        predictions=config.predictions,
         dropout_rate=config.dropout_rate,
     )
 
@@ -102,9 +106,10 @@ def evaluate_model_on_data(
                 results["character_embeddings"].extend(char_embeddings)
 
             # Action predictions
-            action_probs = F.softmax(predictions["action"], dim=-1)
+            action_key = "action_logits" if "action_logits" in predictions else "action_pred"
+            action_probs = F.softmax(predictions[action_key], dim=-1)
             predicted_actions = torch.argmax(action_probs, dim=-1)
-            true_actions = batch["true_action"]
+            true_actions = batch.get("true_actions", batch.get("true_action"))
 
             # Calculate accuracies
             batch_accuracies = (predicted_actions == true_actions).float().cpu().numpy()
@@ -121,9 +126,9 @@ def evaluate_model_on_data(
 
             # Store metadata
             results["n_past_values"].extend(batch["n_past"])
-            results["agent_ids"].extend(batch["agent_id"])
+            results["agent_ids"].extend(batch["agent_ids"])
             results["step_indices"].extend(
-                batch.get("step_idx", [0] * len(batch["agent_id"]))
+                batch.get("step_idx", [0] * len(batch["agent_ids"]))
             )
 
             # Extract preferred objects from agent rewards
@@ -131,6 +136,9 @@ def evaluate_model_on_data(
                 rewards = batch["rewards"].cpu().numpy()
                 preferred_objects = np.argmax(rewards, axis=1)
                 results["preferred_objects"].extend(preferred_objects)
+            else:
+                # If no rewards, use dummy values
+                results["preferred_objects"].extend([0] * len(batch["agent_ids"]))
 
     return results
 

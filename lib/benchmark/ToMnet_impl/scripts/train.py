@@ -10,6 +10,8 @@ from tqdm import tqdm
 from typing import Dict, Optional
 import platform
 import glob
+import random
+from sklearn.metrics import accuracy_score
 
 from tomnet import ToMnet, create_tomnet
 from data_generation import DataGenerator, ToMnetDataset, collate_fn
@@ -67,11 +69,21 @@ class ToMnetTrainer:
 
         # Loss weights from config
         self.loss_weights = config.loss_weights
+        
+        # Track metrics for early stopping
+        self.best_val_loss = float("inf")
+        self.patience_counter = 0
+        self.train_losses = []
+        self.val_losses = []
+        self.train_accuracies = []
+        self.val_accuracies = []
 
     def train_epoch(self, dataloader: DataLoader) -> Dict[str, float]:
         """Train for one epoch"""
         self.model.train()
         total_losses = {}
+        all_predictions = []
+        all_targets = []
         n_batches = 0
 
         for batch in tqdm(dataloader, desc="Training"):
@@ -114,16 +126,36 @@ class ToMnetTrainer:
             total_losses["weighted_loss"] = (
                 total_losses.get("weighted_loss", 0) + weighted_loss.item()
             )
+            
+            # Track accuracy
+            if "action_pred" in predictions:
+                pred_actions = torch.argmax(predictions["action_pred"], dim=1)
+                all_predictions.extend(pred_actions.cpu().numpy())
+                all_targets.extend(batch["true_actions"].cpu().numpy())
+            
             n_batches += 1
 
         # Average losses
         avg_losses = {k: v / n_batches for k, v in total_losses.items()}
+        
+        # Calculate accuracy
+        if all_predictions:
+            accuracy = accuracy_score(all_targets, all_predictions)
+            avg_losses["accuracy"] = accuracy
+            self.train_accuracies.append(accuracy)
+            
+        self.train_losses.append(
+            avg_losses.get("total_loss", avg_losses.get("weighted_loss", 0))
+        )
+        
         return avg_losses
 
     def validate(self, dataloader: DataLoader) -> Dict[str, float]:
         """Validate model"""
         self.model.eval()
         total_losses = {}
+        all_predictions = []
+        all_targets = []
         n_batches = 0
 
         with torch.no_grad():
@@ -150,13 +182,40 @@ class ToMnetTrainer:
                     if loss_name not in total_losses:
                         total_losses[loss_name] = 0
                     total_losses[loss_name] += loss_value.item()
+                    
+                # Track accuracy
+                if "action_pred" in predictions:
+                    pred_actions = torch.argmax(predictions["action_pred"], dim=1)
+                    all_predictions.extend(pred_actions.cpu().numpy())
+                    all_targets.extend(batch["true_actions"].cpu().numpy())
 
                 n_batches += 1
 
         # Average losses
         avg_losses = {k: v / n_batches for k, v in total_losses.items()}
+        
+        # Calculate accuracy
+        if all_predictions:
+            accuracy = accuracy_score(all_targets, all_predictions)
+            avg_losses["accuracy"] = accuracy
+            self.val_accuracies.append(accuracy)
+            
+        val_loss = avg_losses.get("total_loss", avg_losses.get("action_loss", 0))
+        self.val_losses.append(val_loss)
+        
+        # Early stopping logic
+        if val_loss < self.best_val_loss:
+            self.best_val_loss = val_loss
+            self.patience_counter = 0
+        else:
+            self.patience_counter += 1
+            
         return avg_losses
 
+    def should_stop_early(self) -> bool:
+        """Check if training should stop early"""
+        return self.patience_counter >= self.config.patience
+        
     def save_checkpoint(self, epoch: int, val_loss: float, save_path: str):
         """Save model checkpoint"""
         checkpoint = {
@@ -165,7 +224,12 @@ class ToMnetTrainer:
             "optimizer_state_dict": self.optimizer.state_dict(),
             "scheduler_state_dict": self.scheduler.state_dict(),
             "val_loss": val_loss,
+            "best_val_loss": self.best_val_loss,
             "loss_weights": self.loss_weights,
+            "train_losses": self.train_losses,
+            "val_losses": self.val_losses,
+            "train_accuracies": self.train_accuracies,
+            "val_accuracies": self.val_accuracies,
         }
         torch.save(checkpoint, save_path)
         print(f"Saved checkpoint to {save_path}")
@@ -176,6 +240,14 @@ class ToMnetTrainer:
         self.model.load_state_dict(checkpoint["model_state_dict"])
         self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         self.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+        
+        # Load training history
+        self.best_val_loss = checkpoint.get("best_val_loss", float("inf"))
+        self.train_losses = checkpoint.get("train_losses", [])
+        self.val_losses = checkpoint.get("val_losses", [])
+        self.train_accuracies = checkpoint.get("train_accuracies", [])
+        self.val_accuracies = checkpoint.get("val_accuracies", [])
+        
         return checkpoint["epoch"], checkpoint["val_loss"]
 
 
@@ -426,45 +498,99 @@ def train_unified_model(experiment_type: str, args):
 
         for dataset_name, dataset in datasets.items():
             print(f"\nTraining model for {dataset_name}")
+            print(f"Dataset size: {len(dataset['data'])} samples")
 
             # Create model
             state_dim = dataset["meta"]["state_dim"]
             model = create_model(experiment_type, state_dim, config)
+            
+            # Split data into train/validation
+            data_samples = dataset["data"]
+            n_samples = len(data_samples)
+            n_train = int(0.8 * n_samples)
+            
+            # Shuffle data
+            shuffled_indices = list(range(n_samples))
+            random.shuffle(shuffled_indices)
+            
+            train_data = [data_samples[i] for i in shuffled_indices[:n_train]]
+            val_data = [data_samples[i] for i in shuffled_indices[n_train:]]
+            
+            train_dataset_dict = {"data": train_data, "meta": dataset["meta"]}
+            val_dataset_dict = {"data": val_data, "meta": dataset["meta"]}
 
-            # Create dataset and dataloader
-            train_dataset = ToMnetDataset(dataset, experiment_type=experiment_type)
+            # Create datasets and dataloaders
+            train_dataset = ToMnetDataset(train_dataset_dict, experiment_type=experiment_type)
+            val_dataset = ToMnetDataset(val_dataset_dict, experiment_type=experiment_type)
+            
             train_loader = DataLoader(
                 train_dataset,
                 batch_size=args.batch_size,
                 shuffle=True,
                 collate_fn=collate_fn,
+                num_workers=min(4, os.cpu_count()),  # Parallel loading
+            )
+            
+            val_loader = DataLoader(
+                val_dataset,
+                batch_size=args.batch_size,
+                shuffle=False,
+                collate_fn=collate_fn,
+                num_workers=min(4, os.cpu_count()),
             )
 
             # Create trainer
             trainer = ToMnetTrainer(model, config, args.device, args.learning_rate)
 
             # Training loop
+            print(f"Training for up to {args.n_epochs} epochs with early stopping...")
             best_val_loss = float("inf")
 
             for epoch in range(args.n_epochs):
                 # Train
                 train_losses = trainer.train_epoch(train_loader)
+                
+                # Validate
+                val_losses = trainer.validate(val_loader)
+                
+                # Update scheduler
+                trainer.scheduler.step(val_losses.get("total_loss", val_losses.get("action_loss", 0)))
 
                 # Log progress
                 print(f"Epoch {epoch+1}/{args.n_epochs}")
-                print(f"Train Loss: {train_losses['total_loss']:.4f}")
+                print(f"  Train Loss: {train_losses.get('total_loss', train_losses.get('weighted_loss', 0)):.4f}")
+                print(f"  Val Loss: {val_losses.get('total_loss', val_losses.get('action_loss', 0)):.4f}")
+                if "accuracy" in train_losses:
+                    print(f"  Train Acc: {train_losses['accuracy']:.3f}")
+                if "accuracy" in val_losses:
+                    print(f"  Val Acc: {val_losses['accuracy']:.3f}")
+                print(f"  LR: {trainer.optimizer.param_groups[0]['lr']:.6f}")
 
                 # Save best model
-                if train_losses["total_loss"] < best_val_loss:
-                    best_val_loss = train_losses["total_loss"]
+                current_val_loss = val_losses.get("total_loss", val_losses.get("action_loss", 0))
+                if current_val_loss < best_val_loss:
+                    best_val_loss = current_val_loss
                     save_path = f"models/{experiment_type}_{dataset_name}_best.pth"
                     os.makedirs(os.path.dirname(save_path), exist_ok=True)
                     trainer.save_checkpoint(epoch, best_val_loss, save_path)
+                    print(f"  ✓ New best model saved!")
+                    
+                # Check early stopping
+                if trainer.should_stop_early():
+                    print(f"  Early stopping at epoch {epoch+1}")
+                    break
 
             results[dataset_name] = {
                 "best_val_loss": best_val_loss,
                 "model_path": save_path,
+                "final_train_acc": trainer.train_accuracies[-1] if trainer.train_accuracies else 0,
+                "final_val_acc": trainer.val_accuracies[-1] if trainer.val_accuracies else 0,
             }
+            
+            print(f"✓ Completed training for {dataset_name}")
+            print(f"  Best validation loss: {best_val_loss:.4f}")
+            if trainer.val_accuracies:
+                print(f"  Final validation accuracy: {trainer.val_accuracies[-1]:.3f}")
 
         # Generate cross-species evaluation JSON files
         generate_cross_species_evaluation_files(
@@ -532,8 +658,20 @@ def main():
     with open(f"result/{args.experiment}/training_results.json", "w") as f:
         json.dump(results, f, indent=2)
 
-    print("Training completed!")
-    print(f"Results saved to training_results.json")
+    print("\n" + "="*60)
+    print("TRAINING COMPLETED!")
+    print("="*60)
+    print(f"Results saved to result/{args.experiment}/training_results.json")
+    
+    # Print summary
+    if args.experiment == "figure3" and "figure3" in results:
+        print("\nTrained Models Summary:")
+        for model_name, result in results["figure3"].items():
+            print(f"  • {model_name}:")
+            print(f"    - Best val loss: {result['best_val_loss']:.4f}")
+            if "final_val_acc" in result:
+                print(f"    - Final val accuracy: {result['final_val_acc']:.3f}")
+            print(f"    - Model path: {result['model_path']}")
 
     # Print next steps for Figure 3
     if args.experiment in ["figure3"]:

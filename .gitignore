@@ -21,6 +21,7 @@ lib/benchmark/Tomnet_impl/.claude/
 lib/benchmark/ToMnet_impl/result/
 lib/benchmark/ToMnet_impl/plots/
 lib/benchmark/ToMnet_impl/experiment.log
+lib/benchmark/ToMnet_impl/figure5_experiment.log
 lib/benchmark/ToMnet_impl/test_results/
 lib/benchmark/ToMnet_impl/debug_results/
 lib/benchmark/ToMnet_impl/shell/debug/

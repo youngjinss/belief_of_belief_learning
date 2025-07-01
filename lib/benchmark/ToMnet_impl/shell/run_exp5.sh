@@ -1,12 +1,12 @@
 #!/bin/bash
-# nohup bash shell/run_figure5.sh all > figure5_experiment.log 2>&1 &
+# nohup bash shell/run_exp5.sh all > figure5_experiment.log 2>&1 &
 # Main launcher script for ToMnet Figure 5 experiments
 # 
 # This script provides a convenient way to run the complete Figure 5 workflow
 # from data generation to visualization with goal-directed agents.
 #
 # Usage:
-#   bash run_figure5.sh [COMMAND] [OPTIONS]
+#   bash run_exp5.sh [COMMAND] [OPTIONS]
 
 set -e  # Exit on error
 

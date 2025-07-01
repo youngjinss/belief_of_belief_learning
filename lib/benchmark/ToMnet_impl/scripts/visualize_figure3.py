@@ -115,10 +115,10 @@ def plot_figure3a_trained_alpha_vs_likelihood(results):
                     if len(valid_indices) > 0:
                         tomnet_vals = [action_likelihoods[idx] for idx in valid_indices]
                         bayes_vals = [bayes_optimal[idx] for idx in valid_indices]
-                        
+
                         tomnet_mean = np.mean(tomnet_vals)
                         bayes_mean = np.mean(bayes_vals)
-                        
+
                         # Show true performance differences without normalization
                         tomnet_means.append(tomnet_mean)
                         bayes_means.append(bayes_mean)
@@ -126,7 +126,7 @@ def plot_figure3a_trained_alpha_vs_likelihood(results):
                         tomnet_means.append(0.2)  # Default value aligned with Bayes
                         bayes_means.append(0.2)
                 else:
-                    tomnet_means.append(0.2)  # Default value aligned with Bayes  
+                    tomnet_means.append(0.2)  # Default value aligned with Bayes
                     bayes_means.append(0.2)
 
             # Plot ToMnet
@@ -186,7 +186,7 @@ def plot_figure3b_character_embeddings(results):
     embeddings = None
     agent_ids = None
     action_counts = None
-    
+
     if (
         "figure3b" in results
         and "character_embeddings" in results["figure3b"]
@@ -203,10 +203,12 @@ def plot_figure3b_character_embeddings(results):
             "embeddings"
         ]
         agent_ids = results["figure3b"]["character_embeddings"][model_name]["agent_ids"]
-        
+
         # Get action counts if available
         if "action_counts" in results["figure3b"]["character_embeddings"][model_name]:
-            action_counts = results["figure3b"]["character_embeddings"][model_name]["action_counts"]
+            action_counts = results["figure3b"]["character_embeddings"][model_name][
+                "action_counts"
+            ]
 
     elif "character_embeddings" in results:
         # Fallback to old data structure
@@ -216,7 +218,7 @@ def plot_figure3b_character_embeddings(results):
         model_name = list(results["character_embeddings"].keys())[0]
         embeddings = results["character_embeddings"][model_name]["embeddings"]
         agent_ids = results["character_embeddings"][model_name]["agent_ids"]
-        
+
         # Get action counts if available
         if "action_counts" in results["character_embeddings"][model_name]:
             action_counts = results["character_embeddings"][model_name]["action_counts"]
@@ -234,9 +236,9 @@ def plot_figure3b_character_embeddings(results):
         embeddings_2d = embeddings
 
     # Normalize embeddings as specified in README (Normalized e_1, e_2)
-    embeddings_2d = (
-        embeddings_2d - embeddings_2d.mean(axis=0)
-    ) / embeddings_2d.std(axis=0)
+    embeddings_2d = (embeddings_2d - embeddings_2d.mean(axis=0)) / embeddings_2d.std(
+        axis=0
+    )
 
     # Determine dominant actions and counts
     if action_counts is not None and len(action_counts) > 0:
@@ -244,13 +246,17 @@ def plot_figure3b_character_embeddings(results):
         dominant_actions = np.argmax(action_counts, axis=1)
         max_counts = np.max(action_counts, axis=1)
         # Normalize counts for alpha values (darker = higher count)
-        alphas = 0.3 + 0.7 * (max_counts - max_counts.min()) / (max_counts.max() - max_counts.min() + 1e-8)
+        alphas = 0.3 + 0.7 * (max_counts - max_counts.min()) / (
+            max_counts.max() - max_counts.min() + 1e-8
+        )
     else:
         # Fallback: Use embedding position to estimate dominant action
         dominant_actions = (
             np.digitize(
                 embeddings_2d[:, 0],
-                bins=np.linspace(embeddings_2d[:, 0].min(), embeddings_2d[:, 0].max(), 6),
+                bins=np.linspace(
+                    embeddings_2d[:, 0].min(), embeddings_2d[:, 0].max(), 6
+                ),
             )
             - 1
         )
@@ -274,11 +280,13 @@ def plot_figure3b_character_embeddings(results):
                     edgecolors="black",
                     linewidth=0.5,
                 )
-    
+
     # Add legend manually since we plotted points individually
     from matplotlib.patches import Patch
-    legend_elements = [Patch(facecolor=ACTION_COLORS[i], label=ACTION_NAMES[i]) 
-                      for i in range(5)]
+
+    legend_elements = [
+        Patch(facecolor=ACTION_COLORS[i], label=ACTION_NAMES[i]) for i in range(5)
+    ]
     ax.legend(handles=legend_elements, fontsize=10, loc="best")
 
     ax.set_xlabel("Normalized $e_1$", fontsize=12)
@@ -291,7 +299,11 @@ def plot_figure3b_character_embeddings(results):
     ax.grid(True, alpha=0.3)
 
     # Add annotation about the clustering
-    unique_agents = len(np.unique(agent_ids)) if agent_ids is not None and len(agent_ids) > 0 else "Unknown"
+    unique_agents = (
+        len(np.unique(agent_ids))
+        if agent_ids is not None and len(agent_ids) > 0
+        else "Unknown"
+    )
     ax.text(
         0.02,
         0.98,
@@ -371,90 +383,97 @@ def plot_figure3d_mixed_species(results):
 
     if "figure3d" in results:
         test_alphas = [0.01, 0.03, 0.1, 0.3, 1.0, 3.0]
-        
+
         # Initialize data storage for the three training conditions
         kl_alpha_001 = None
         kl_alpha_3 = None
         kl_mixed = None
-        
+
         # Check different possible data structures
         if "kl_divergences" in results["figure3d"]:
             # Expected structure: results["figure3d"]["kl_divergences"][training_condition]
             kl_data = results["figure3d"]["kl_divergences"]
-            
+
             if "alpha_0.01" in kl_data:
                 kl_alpha_001 = kl_data["alpha_0.01"]
             if "alpha_3.0" in kl_data:
                 kl_alpha_3 = kl_data["alpha_3.0"]
             if "mixed" in kl_data:
                 kl_mixed = kl_data["mixed"]
-        
+
         # Handle the new data structure from improved evaluation
         single_species_data = results["figure3d"].get("single_species", {})
         mixed_species_data = results["figure3d"].get("mixed_species", {})
-        
+
         # Extract single species results
         if single_species_data:
             available_alphas = sorted(single_species_data.keys())
-            
+
             # Try to find alpha=0.01 and alpha=3.0 (or closest)
             if 0.01 in available_alphas:
                 kl_alpha_001 = single_species_data[0.01]
             elif available_alphas:
                 # Use the smallest alpha as proxy for 0.01
                 kl_alpha_001 = single_species_data[min(available_alphas)]
-            
+
             if 3.0 in available_alphas:
                 kl_alpha_3 = single_species_data[3.0]
             elif len(available_alphas) > 1:
                 # Use the largest alpha as proxy for 3.0
                 kl_alpha_3 = single_species_data[max(available_alphas)]
-        
+
         # Extract mixed species results
         if mixed_species_data and "kl_divergences" in mixed_species_data:
             kl_mixed = mixed_species_data["kl_divergences"]
             test_alphas = mixed_species_data.get("test_alphas", test_alphas)
-        
+
         # Plot the three lines as specified in README if we have the data
         if kl_alpha_001 is not None:
             ax.semilogx(
-                test_alphas[:len(kl_alpha_001)],
+                test_alphas[: len(kl_alpha_001)],
                 kl_alpha_001,
                 "o-",
                 linewidth=2,
                 markersize=8,
                 label="Trained on α=0.01",
-                color="blue"
+                color="blue",
             )
-        
+
         if kl_alpha_3 is not None:
             ax.semilogx(
-                test_alphas[:len(kl_alpha_3)],
+                test_alphas[: len(kl_alpha_3)],
                 kl_alpha_3,
                 "s-",
                 linewidth=2,
                 markersize=8,
                 label="Trained on α=3.0",
-                color="red"
+                color="red",
             )
-        
+
         if kl_mixed is not None:
             ax.semilogx(
-                test_alphas[:len(kl_mixed)],
+                test_alphas[: len(kl_mixed)],
                 kl_mixed,
                 "^-",
                 linewidth=2,
                 markersize=8,
                 label="Trained on mixed (α=0.01 & 3.0)",
-                color="green"
+                color="green",
             )
-        
+
         # If no proper data found, create a warning message
         if kl_alpha_001 is None and kl_alpha_3 is None and kl_mixed is None:
-            ax.text(0.5, 0.5, "Figure 3d data not available\nRun evaluation with mixed species models", 
-                   transform=ax.transAxes, ha='center', va='center', fontsize=12,
-                   bbox=dict(boxstyle="round", facecolor="lightcoral", alpha=0.8))
-        
+            ax.text(
+                0.5,
+                0.5,
+                "Figure 3d data not available\nRun evaluation with mixed species models",
+                transform=ax.transAxes,
+                ha="center",
+                va="center",
+                fontsize=12,
+                bbox=dict(boxstyle="round", facecolor="lightcoral", alpha=0.8),
+            )
+
     else:
         raise ValueError("No Figure 3d data found in results")
 

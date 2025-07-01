@@ -198,7 +198,7 @@ def generate_data(
         # Load existing data files
         if experiment_type == "figure3":
             datasets = {}
-            alpha_values = getattr(args, "alpha_values", config.alpha_values)
+            alpha_values = getattr(args.n_agents, "alpha_values", config.alpha_values)
 
             for alpha in alpha_values:
                 file_path = f"data/figure3_alpha_{alpha}.pkl"

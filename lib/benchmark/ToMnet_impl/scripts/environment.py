@@ -10,13 +10,16 @@ SIZE = 7
 MAX_WALLS = 4
 MAX_STEPS = 51
 
+
 class GridWorld:
     """
     11x11 GridWorld environment for ToMnet experiments
     Features: random walls (0-4), 4 consumable objects, agent position
     """
 
-    def __init__(self, size: int = SIZE, max_walls: int = MAX_WALLS, max_steps: int = MAX_STEPS):
+    def __init__(
+        self, size: int = SIZE, max_walls: int = MAX_WALLS, max_steps: int = MAX_STEPS
+    ):
         self.size = size
         self.max_walls = max_walls
         self.max_steps = max_steps
@@ -177,87 +180,112 @@ class GridWorld:
         new_env.done = self.done
         new_env.consumed_objects = self.consumed_objects.copy()
         return new_env
-    
+
     def visualize(self, ax=None, title="GridWorld State"):
         """Visualize the current state of GridWorld using matplotlib
-        
+
         Args:
             ax: matplotlib axis to draw on (creates new figure if None)
             title: title for the plot
         """
         if ax is None:
             fig, ax = plt.subplots(1, 1, figsize=(8, 8))
-        
+
         ax.clear()
-        
+
         # Set up the grid
         ax.set_xlim(-0.5, self.size - 0.5)
         ax.set_ylim(-0.5, self.size - 0.5)
-        ax.set_aspect('equal')
+        ax.set_aspect("equal")
         ax.invert_yaxis()  # Invert y-axis to match array indexing
-        
+
         # Draw grid lines
         for i in range(self.size + 1):
-            ax.axhline(y=i - 0.5, color='lightgray', linewidth=0.5)
-            ax.axvline(x=i - 0.5, color='lightgray', linewidth=0.5)
-        
+            ax.axhline(y=i - 0.5, color="lightgray", linewidth=0.5)
+            ax.axvline(x=i - 0.5, color="lightgray", linewidth=0.5)
+
         # Draw walls
         for i in range(self.size):
             for j in range(self.size):
                 if self.walls[i, j]:
-                    wall = patches.Rectangle((j - 0.5, i - 0.5), 1, 1, 
-                                           facecolor='black', edgecolor='gray')
+                    wall = patches.Rectangle(
+                        (j - 0.5, i - 0.5), 1, 1, facecolor="black", edgecolor="gray"
+                    )
                     ax.add_patch(wall)
-        
+
         # Define colors for objects
-        object_colors = ['', 'red', 'blue', 'green', 'yellow']
-        object_markers = ['', '●', '■', '▲', '★']
-        
+        object_colors = ["", "red", "blue", "green", "yellow"]
+        object_markers = ["", "●", "■", "▲", "★"]
+
         # Draw objects
         for i in range(self.size):
             for j in range(self.size):
                 if self.objects[i, j] > 0:
                     obj_id = self.objects[i, j]
-                    circle = patches.Circle((j, i), 0.3, 
-                                          facecolor=object_colors[obj_id],
-                                          edgecolor='black', linewidth=2)
+                    circle = patches.Circle(
+                        (j, i),
+                        0.3,
+                        facecolor=object_colors[obj_id],
+                        edgecolor="black",
+                        linewidth=2,
+                    )
                     ax.add_patch(circle)
-                    ax.text(j, i, str(obj_id), ha='center', va='center', 
-                           fontsize=12, fontweight='bold', color='white')
-        
+                    ax.text(
+                        j,
+                        i,
+                        str(obj_id),
+                        ha="center",
+                        va="center",
+                        fontsize=12,
+                        fontweight="bold",
+                        color="white",
+                    )
+
         # Draw agent
-        agent_circle = patches.Circle((self.agent_pos[1], self.agent_pos[0]), 0.35,
-                                    facecolor='purple', edgecolor='indigo', 
-                                    linewidth=3)
+        agent_circle = patches.Circle(
+            (self.agent_pos[1], self.agent_pos[0]),
+            0.35,
+            facecolor="purple",
+            edgecolor="indigo",
+            linewidth=3,
+        )
         ax.add_patch(agent_circle)
-        ax.text(self.agent_pos[1], self.agent_pos[0], 'A', 
-               ha='center', va='center', fontsize=14, fontweight='bold', 
-               color='white')
-        
+        ax.text(
+            self.agent_pos[1],
+            self.agent_pos[0],
+            "A",
+            ha="center",
+            va="center",
+            fontsize=14,
+            fontweight="bold",
+            color="white",
+        )
+
         # Add labels
-        ax.set_xlabel('X')
-        ax.set_ylabel('Y')
+        ax.set_xlabel("X")
+        ax.set_ylabel("Y")
         ax.set_title(f"{title} (Step: {self.step_count}/{self.max_steps})")
-        
+
         # Add legend
         legend_elements = []
-        legend_elements.append(patches.Patch(facecolor='purple', label='Agent'))
-        legend_elements.append(patches.Patch(facecolor='black', label='Wall'))
+        legend_elements.append(patches.Patch(facecolor="purple", label="Agent"))
+        legend_elements.append(patches.Patch(facecolor="black", label="Wall"))
         for i in range(1, self.n_objects + 1):
-            legend_elements.append(patches.Patch(facecolor=object_colors[i], 
-                                               label=f'Object {i}'))
-        ax.legend(handles=legend_elements, loc='upper left', bbox_to_anchor=(1.05, 1))
-        
+            legend_elements.append(
+                patches.Patch(facecolor=object_colors[i], label=f"Object {i}")
+            )
+        ax.legend(handles=legend_elements, loc="upper left", bbox_to_anchor=(1.05, 1))
+
         # Add grid coordinates
         ax.set_xticks(range(self.size))
         ax.set_yticks(range(self.size))
-        
+
         plt.tight_layout()
         return ax
-    
+
     def animate_episode(self, actions, save_path=None, interval=500):
         """Create an animation of an episode
-        
+
         Args:
             actions: list of actions to execute
             save_path: path to save animation (if None, displays in notebook)
@@ -271,16 +299,16 @@ class GridWorld:
         
         # Store states for animation
         states = [self.copy()]
-        
+
         for action in actions:
             _, _, done, _ = self.step(action)
             states.append(self.copy())
             if done:
                 break
-        
+
         # Create figure
         fig, ax = plt.subplots(1, 1, figsize=(8, 8))
-        
+
         def animate(frame):
             state = states[frame]
             # Copy state to current environment
@@ -290,18 +318,25 @@ class GridWorld:
             self.step_count = state.step_count
             self.done = state.done
             self.consumed_objects = state.consumed_objects.copy()
-            
+
             self.visualize(ax, title=f"Episode Progress")
-            
+
             # Add action text
             if frame > 0 and frame - 1 < len(actions):
-                action_names = ['Up', 'Down', 'Left', 'Right', 'Stay']
-                ax.text(0.5, -0.05, f"Action: {action_names[actions[frame-1]]}", 
-                       transform=ax.transAxes, ha='center', fontsize=12)
-        
-        anim = FuncAnimation(fig, animate, frames=len(states), 
-                           interval=interval, repeat=True)
-        
+                action_names = ["Up", "Down", "Left", "Right", "Stay"]
+                ax.text(
+                    0.5,
+                    -0.05,
+                    f"Action: {action_names[actions[frame-1]]}",
+                    transform=ax.transAxes,
+                    ha="center",
+                    fontsize=12,
+                )
+
+        anim = FuncAnimation(
+            fig, animate, frames=len(states), interval=interval, repeat=True
+        )
+
         # Restore initial state
         self.walls = initial_state.walls.copy()
         self.objects = initial_state.objects.copy()
@@ -309,9 +344,9 @@ class GridWorld:
         self.step_count = initial_state.step_count
         self.done = initial_state.done
         self.consumed_objects = initial_state.consumed_objects.copy()
-        
+
         if save_path:
-            anim.save(save_path, writer='pillow')
+            anim.save(save_path, writer="pillow")
             print(f"Animation saved to {save_path}")
-        
+
         return anim

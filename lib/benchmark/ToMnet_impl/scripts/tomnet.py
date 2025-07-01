@@ -9,7 +9,7 @@ class CharacterNet(nn.Module):
     """
     Character Net: Processes past episode trajectories into character embeddings
     e_char,ij = f_θ(τ_ij^(obs))
-    
+
     FIXED VERSION: Uses learnable embedding for N_past=0 instead of zeros
     ENHANCED: Added dropout for regularization
     """
@@ -39,13 +39,11 @@ class CharacterNet(nn.Module):
             nn.Dropout(dropout_rate),
             nn.Linear(hidden_dim, embedding_dim),
         )
-        
+
         # FIXED: Learnable embedding for "no past information" case
         # This allows the model to learn what "no past information" means
         # rather than always returning zeros
-        self.no_past_embedding = nn.Parameter(
-            torch.randn(embedding_dim) * 0.1
-        )
+        self.no_past_embedding = nn.Parameter(torch.randn(embedding_dim) * 0.1)
 
     def forward(self, trajectories: torch.Tensor) -> torch.Tensor:
         """
@@ -55,12 +53,14 @@ class CharacterNet(nn.Module):
             character_embeddings: (batch_size, embedding_dim)
         """
         batch_size, n_past, seq_len, input_dim = trajectories.shape
-        
+
         # Handle empty past trajectories (N_past=0) with zero embedding
         if n_past == 0:
             # Return zero embedding to force uniform/random behavior
             # This ensures N_past=0 gives ~0.2 action likelihood (1/5 actions)
-            return torch.zeros(batch_size, self.embedding_dim, device=trajectories.device)
+            return torch.zeros(
+                batch_size, self.embedding_dim, device=trajectories.device
+            )
 
         # Flatten trajectories for processing
         traj_flat = trajectories.view(batch_size * n_past, seq_len, input_dim)
@@ -81,7 +81,7 @@ class CharacterNet(nn.Module):
         trajectory_embeddings = trajectory_embeddings.view(
             batch_size, n_past, self.embedding_dim
         )
-        
+
         # IMPROVED: Use mean instead of sum for better normalization
         # This prevents embeddings from growing linearly with n_past
         character_embeddings = trajectory_embeddings.mean(dim=1)
@@ -113,7 +113,12 @@ class MentalStateNet(nn.Module):
 
         # LSTM for processing current trajectory
         input_dim = state_dim + action_dim
-        self.lstm = nn.LSTM(input_dim, hidden_dim, batch_first=True, dropout=dropout_rate if dropout_rate > 0 else 0.0)
+        self.lstm = nn.LSTM(
+            input_dim,
+            hidden_dim,
+            batch_first=True,
+            dropout=dropout_rate if dropout_rate > 0 else 0.0,
+        )
 
         # Combine LSTM output with character embedding
         self.fusion = nn.Sequential(
@@ -234,7 +239,7 @@ class PredictionNet(nn.Module):
 
         # Action predictions
         action_logits = self.action_head(shared_features)
-        
+
         action_probs = F.softmax(action_logits, dim=1)
 
         # Object consumption predictions
@@ -255,7 +260,7 @@ class PredictionNet(nn.Module):
 class ToMnet(nn.Module):
     """
     Theory of Mind Network (ToMnet)
-    
+
     FIXED VERSION: Uses improved CharacterNet that properly handles N_past=0
     """
 
@@ -398,7 +403,7 @@ def create_tomnet(
 ) -> ToMnet:
     """
     Create ToMnet configuration for different experiment types
-    
+
     FIXED VERSION: Uses improved CharacterNet
     ENHANCED: Added dropout support for regularization
     """

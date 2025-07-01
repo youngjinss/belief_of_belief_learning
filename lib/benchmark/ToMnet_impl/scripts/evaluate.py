@@ -10,9 +10,7 @@ from tomnet import ToMnet
 from data_generation import ToMnetDataset, collate_fn
 
 
-def compute_kl_divergence(
-    p: np.ndarray, q: np.ndarray, epsilon: float = 1e-8
-) -> float:
+def compute_kl_divergence(p: np.ndarray, q: np.ndarray, epsilon: float = 1e-8) -> float:
     """Compute KL divergence between two probability distributions"""
     # Add small epsilon to avoid log(0)
     p_safe = np.clip(p, epsilon, 1.0)
@@ -55,16 +53,21 @@ class BayesOptimalBaseline:
         """Evaluate Bayes-optimal baseline on dataset"""
         prior_alpha = np.full(self.n_actions, true_alpha)
 
-        results = {"n_past_values": [], "kl_divergences": [], "action_accuracies": [], "action_likelihoods": []}
+        results = {
+            "n_past_values": [],
+            "kl_divergences": [],
+            "action_accuracies": [],
+            "action_likelihoods": [],
+        }
 
         for sample in dataset["data"]:
             # Extract past actions from all trajectories
             past_actions = []
             for traj in sample["past_trajectories"]:
-                if hasattr(traj, 'actions') and len(traj.actions) > 0:
+                if hasattr(traj, "actions") and len(traj.actions) > 0:
                     past_actions.extend(traj.actions)  # Use all actions, not just first
-                elif isinstance(traj, dict) and 'actions' in traj:
-                    past_actions.extend(traj['actions'])
+                elif isinstance(traj, dict) and "actions" in traj:
+                    past_actions.extend(traj["actions"])
 
             # Update posterior using the training alpha as prior
             # This represents what a Bayes-optimal observer would do knowing the training distribution
@@ -79,7 +82,7 @@ class BayesOptimalBaseline:
             predicted_action = np.argmax(predicted_policy)
             true_action = sample["query_action"]
             accuracy = 1.0 if predicted_action == true_action else 0.0
-            
+
             # Action likelihood (probability of true action under predicted policy)
             # Normalize both policies to ensure proper probability calculation
             predicted_policy_norm = predicted_policy / predicted_policy.sum()
@@ -136,7 +139,7 @@ class ToMnetEvaluator:
 
     def evaluate_action_prediction(self, dataset: ToMnetDataset) -> Dict[str, float]:
         """Evaluate action prediction accuracy
-        
+
         Note: This function is NOT used for Figure 3 experiments.
         Figure 3a shows action likelihood (probability), not accuracy.
         Use evaluate_policy_prediction instead for Figure 3.
@@ -217,14 +220,14 @@ class ToMnetEvaluator:
 
                 # Get predicted and true policies
                 predicted_policy = predictions["action_probs"][0].cpu().numpy()
-                
+
                 # Normalize predicted policy to ensure it sums to 1
                 predicted_policy = predicted_policy / (predicted_policy.sum() + 1e-8)
 
                 # Get true policy from original dataset - use correct batch index!
                 original_sample = dataset.data[batch_idx]
                 true_policy = original_sample["true_policy"]
-                
+
                 # Normalize true policy to ensure it sums to 1
                 true_policy = true_policy / (true_policy.sum() + 1e-8)
 
@@ -375,23 +378,36 @@ def evaluate_figure3_cross_species(
 
             # Figure 3a: Evaluate for multiple N_past values
             # Only include results where test_alpha == train_alpha (same-species evaluation)
-            if abs(test_alpha - train_alpha) < 1e-6:  # Use small epsilon for float comparison
+            if (
+                abs(test_alpha - train_alpha) < 1e-6
+            ):  # Use small epsilon for float comparison
                 for n_past in n_past_values:
                     filtered_data = [
-                        sample for sample in test_dataset.data if sample["n_past"] == n_past
+                        sample
+                        for sample in test_dataset.data
+                        if sample["n_past"] == n_past
                     ]
                     if not filtered_data:
-                        print(f"No samples with N_past={n_past} found in {test_alpha_name}")
+                        print(
+                            f"No samples with N_past={n_past} found in {test_alpha_name}"
+                        )
                         continue
 
                     filtered_dataset = ToMnetDataset(
-                        {"data": filtered_data, "meta": test_dataset_raw.get("meta", {})},
+                        {
+                            "data": filtered_data,
+                            "meta": test_dataset_raw.get("meta", {}),
+                        },
                         experiment_type="figure3",
                     )
 
                     # Use policy prediction to get action likelihoods
-                    policy_results = evaluator.evaluate_policy_prediction(filtered_dataset)
-                    mean_action_likelihood = np.mean(policy_results["action_likelihoods"])
+                    policy_results = evaluator.evaluate_policy_prediction(
+                        filtered_dataset
+                    )
+                    mean_action_likelihood = np.mean(
+                        policy_results["action_likelihoods"]
+                    )
 
                     # Store results for Figure 3a
                     results["figure3a"]["action_likelihoods_by_n_past"][n_past].append(
@@ -401,7 +417,10 @@ def evaluate_figure3_cross_species(
                     # Calculate Bayes-optimal baseline for this N_past
                     baseline = BayesOptimalBaseline()
                     bayes_results = baseline.evaluate_on_data(
-                        {"data": filtered_data, "meta": test_dataset_raw.get("meta", {})},
+                        {
+                            "data": filtered_data,
+                            "meta": test_dataset_raw.get("meta", {}),
+                        },
                         train_alpha,  # Use train_alpha for proper Bayes-optimal calculation
                     )
                     bayes_likelihood = np.mean(bayes_results["action_likelihoods"])
@@ -491,63 +510,86 @@ def evaluate_figure3_cross_species(
         if "mixed" in model_name.lower() or "combined" in model_name.lower():
             mixed_model_found = True
             break
-    
-    if mixed_model_found or len(model_paths) >= 3:  # If we have multiple models, create mixed evaluation
+
+    if (
+        mixed_model_found or len(model_paths) >= 3
+    ):  # If we have multiple models, create mixed evaluation
         print("Creating Figure 3d data from available models...")
-        
+
         # Create mixed species evaluation by combining results from different models
         test_alpha_list = sorted(list(set(test_alphas)))
-        
+
         # Use the first few models to represent different training conditions
         selected_models = list(model_paths.items())[:3]  # Use first 3 models
-        
+
         for model_name, model_path in selected_models:
-            model_alpha = float(model_name.split("alpha_")[1]) if "alpha_" in model_name else 0.01
-            
+            model_alpha = (
+                float(model_name.split("alpha_")[1]) if "alpha_" in model_name else 0.01
+            )
+
             # Load and evaluate this model
             model = load_model_from_checkpoint(model_path, "figure3", state_dim, device)
             evaluator = ToMnetEvaluator(model, device)
-            
+
             model_kl_results = []
             for test_alpha_name, test_dataset_raw in test_datasets.items():
-                test_alpha = float(test_alpha_name.split("alpha_")[1]) if "alpha_" in test_alpha_name else 0.01
-                
-                test_dataset = ToMnetDataset(test_dataset_raw, experiment_type="figure3")
-                
+                test_alpha = (
+                    float(test_alpha_name.split("alpha_")[1])
+                    if "alpha_" in test_alpha_name
+                    else 0.01
+                )
+
+                test_dataset = ToMnetDataset(
+                    test_dataset_raw, experiment_type="figure3"
+                )
+
                 # Use N_past=5 for Figure 3d (as specified in the paper)
                 filtered_data = [
                     sample for sample in test_dataset.data if sample["n_past"] == 5
                 ]
                 if filtered_data:
                     filtered_dataset = ToMnetDataset(
-                        {"data": filtered_data, "meta": test_dataset_raw.get("meta", {})},
+                        {
+                            "data": filtered_data,
+                            "meta": test_dataset_raw.get("meta", {}),
+                        },
                         experiment_type="figure3",
                     )
-                    
-                    policy_results = evaluator.evaluate_policy_prediction(filtered_dataset)
+
+                    policy_results = evaluator.evaluate_policy_prediction(
+                        filtered_dataset
+                    )
                     mean_kl = np.mean(policy_results["kl_divergences"])
                     model_kl_results.append(mean_kl)
-            
+
             # Store results for this training condition
             if len(model_kl_results) == len(test_alpha_list):
                 results["figure3d"]["single_species"][model_alpha] = model_kl_results
-        
+
         # Create synthetic "mixed" results by averaging the best performers
         if len(results["figure3d"]["single_species"]) >= 2:
             # Create mixed training results as average of specialized models
             mixed_kl_results = []
-            single_species_results = list(results["figure3d"]["single_species"].values())
-            
+            single_species_results = list(
+                results["figure3d"]["single_species"].values()
+            )
+
             for i in range(len(test_alpha_list)):
                 # For each test alpha, take the minimum KL from available models (best performer)
-                test_kls = [model_results[i] for model_results in single_species_results if i < len(model_results)]
+                test_kls = [
+                    model_results[i]
+                    for model_results in single_species_results
+                    if i < len(model_results)
+                ]
                 if test_kls:
-                    mixed_kl_results.append(min(test_kls))  # Mixed training should perform better
-            
+                    mixed_kl_results.append(
+                        min(test_kls)
+                    )  # Mixed training should perform better
+
             if mixed_kl_results:
                 results["figure3d"]["mixed_species"] = {
                     "test_alphas": test_alpha_list,
-                    "kl_divergences": mixed_kl_results
+                    "kl_divergences": mixed_kl_results,
                 }
     else:
         print("Warning: No mixed species model found, Figure 3d will be incomplete")
@@ -562,7 +604,7 @@ def evaluate_unified_results(
     device: str = "cuda",
 ) -> Dict:
     """Unified evaluation function for general experiments
-    
+
     Note: This function is NOT used for Figure 3 experiments.
     Figure 3 uses evaluate_figure3_cross_species() directly for proper
     cross-species evaluation with action likelihoods (not accuracies).

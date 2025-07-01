@@ -505,9 +505,14 @@ def main():
     """Main function to generate all Figure 3 plots"""
     parser = argparse.ArgumentParser(description="Visualize ToMnet Figure 3 results")
     parser.add_argument(
+        "--experiment",
+        default="figure3",
+        help="Experiment type (default: figure3)",
+    )
+    parser.add_argument(
         "--results_path",
-        default="result/figure3_cross_species_results.pkl",
-        help="Path to evaluation results pickle file",
+        default=None,
+        help="Path to evaluation results pickle file (default: result/{experiment}/evaluation_results.pkl)",
     )
     parser.add_argument(
         "--save_plots",
@@ -516,11 +521,17 @@ def main():
     )
     parser.add_argument(
         "--output_dir",
-        default="plots",
-        help="Directory to save plots (if --save_plots is used)",
+        default=None,
+        help="Directory to save plots (default: plots/{experiment})",
     )
 
     args = parser.parse_args()
+
+    # Set default paths if not provided
+    if args.results_path is None:
+        args.results_path = f"result/{args.experiment}/evaluation_results.pkl"
+    if args.output_dir is None:
+        args.output_dir = f"plots/{args.experiment}"
 
     # Load results
     try:
@@ -549,6 +560,9 @@ def main():
 
     # Save or display plots
     if args.save_plots:
+        import os
+
+        os.makedirs(args.output_dir, exist_ok=True)
         print(f"\nSaving plots to {args.output_dir}/")
         fig3a.savefig(
             f"{args.output_dir}/figure3a_action_likelihood.png",

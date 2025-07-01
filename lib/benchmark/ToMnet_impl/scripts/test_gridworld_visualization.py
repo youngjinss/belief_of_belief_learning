@@ -43,10 +43,10 @@ def test_episode_visualization():
     # Create environment
     env = GridWorld(size=SIZE, max_walls=MAX_WALLS, max_steps=MAX_STEPS)
     env.reset()
-    
+
     # Save initial state for animation
     initial_state = env.copy()
-    
+
     # Generate random actions for an episode
     actions = []
     states_info = []
@@ -102,7 +102,9 @@ def test_episode_visualization():
     print("\nCreating episode animation...")
     # Restore initial state for animation
     env_for_animation = initial_state.copy()
-    animation = env_for_animation.animate_episode(actions, save_path="result/gridworld_episode.gif")
+    animation = env_for_animation.animate_episode(
+        actions, save_path="result/gridworld_episode.gif"
+    )
     print("Animation saved to: gridworld_episode.gif")
 
     return actions, states_info

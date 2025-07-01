@@ -15,9 +15,10 @@
 set -e  # Exit on error
 
 # Default settings
-RESULTS_PATH="result/figure3/figure3_cross_species_results.pkl"
+EXPERIMENT="figure3"
+RESULTS_PATH=""
 SAVE_PLOTS=false
-OUTPUT_DIR="plots"
+OUTPUT_DIR=""
 SHOW_HELP=false
 DEVICE="cpu"
 
@@ -62,13 +63,15 @@ USAGE:
     bash visualize_figure3.sh [OPTIONS]
 
 OPTIONS:
-    --results_path PATH     Path to evaluation results pickle file
-                           (default: result/figure3/figure3_cross_species_results.pkl)
+    --experiment EXP       Experiment type (default: figure3)
+    
+    --results_path PATH    Path to evaluation results pickle file
+                           (default: result/{experiment}/evaluation_results.pkl)
     
     --save                 Save plots to files instead of displaying them
     
     --output_dir DIR       Directory to save plots when using --save
-                           (default: plots)
+                           (default: plots/{experiment})
     
     --device DEVICE        Device to use for any computations (cpu/cuda/mps)
                            (default: cpu)
@@ -103,6 +106,10 @@ EOF
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
+        --experiment)
+            EXPERIMENT="$2"
+            shift 2
+            ;;
         --results_path)
             RESULTS_PATH="$2"
             shift 2
@@ -130,6 +137,15 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# Set default paths if not provided
+if [ -z "$RESULTS_PATH" ]; then
+    RESULTS_PATH="result/$EXPERIMENT/evaluation_results.pkl"
+fi
+
+if [ -z "$OUTPUT_DIR" ]; then
+    OUTPUT_DIR="plots/$EXPERIMENT"
+fi
 
 # Show help if requested
 if [ "$SHOW_HELP" = true ]; then
@@ -163,7 +179,7 @@ fi
 print_success "Found results file: $RESULTS_PATH"
 
 # Prepare visualization command
-PYTHON_CMD="python scripts/visualize_figure3.py --save_plots --results_path \"$RESULTS_PATH\""
+PYTHON_CMD="python scripts/visualize_figure3.py --experiment \"$EXPERIMENT\" --results_path \"$RESULTS_PATH\""
 
 if [ "$SAVE_PLOTS" = true ]; then
     PYTHON_CMD="$PYTHON_CMD --save_plots --output_dir \"$OUTPUT_DIR\""

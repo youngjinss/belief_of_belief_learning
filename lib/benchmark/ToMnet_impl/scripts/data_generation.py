@@ -4,6 +4,7 @@ from typing import List, Dict, Optional
 import pickle
 from tqdm import tqdm
 from multiprocessing import Pool, cpu_count
+import os
 
 from environment import GridWorld, SIZE, MAX_WALLS, MAX_STEPS
 from agents import (
@@ -217,6 +218,7 @@ class DataGenerator:
         }
 
         if save_path:
+            os.makedirs(os.path.dirname(save_path), exist_ok=True)
             with open(save_path, "wb") as f:
                 pickle.dump(dataset, f)
             print(f"Saved {len(all_data)} samples to {save_path}")
@@ -368,6 +370,7 @@ class DataGenerator:
         }
 
         if save_path:
+            os.makedirs(os.path.dirname(save_path), exist_ok=True)
             with open(save_path, "wb") as f:
                 pickle.dump(dataset, f)
             print(f"Saved {len(all_data)} samples to {save_path}")

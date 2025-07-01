@@ -38,11 +38,11 @@ class ExperimentConfig:
                 3.0,
             ]  # Alpha values for Figure 3 cross-species analysis
             self.n_agents = 1000
-            
+
             # Regularization
             self.dropout_rate = 0.3
             self.patience = 30  # Early stopping patience
-            
+
             self.loss_weights = {"action_loss": 1.0}
             self.predictions = ["action"]
         else:
@@ -69,7 +69,7 @@ class ToMnetTrainer:
 
         # Loss weights from config
         self.loss_weights = config.loss_weights
-        
+
         # Track metrics for early stopping
         self.best_val_loss = float("inf")
         self.patience_counter = 0
@@ -126,28 +126,28 @@ class ToMnetTrainer:
             total_losses["weighted_loss"] = (
                 total_losses.get("weighted_loss", 0) + weighted_loss.item()
             )
-            
+
             # Track accuracy
             if "action_pred" in predictions:
                 pred_actions = torch.argmax(predictions["action_pred"], dim=1)
                 all_predictions.extend(pred_actions.cpu().numpy())
                 all_targets.extend(batch["true_actions"].cpu().numpy())
-            
+
             n_batches += 1
 
         # Average losses
         avg_losses = {k: v / n_batches for k, v in total_losses.items()}
-        
+
         # Calculate accuracy
         if all_predictions:
             accuracy = accuracy_score(all_targets, all_predictions)
             avg_losses["accuracy"] = accuracy
             self.train_accuracies.append(accuracy)
-            
+
         self.train_losses.append(
             avg_losses.get("total_loss", avg_losses.get("weighted_loss", 0))
         )
-        
+
         return avg_losses
 
     def validate(self, dataloader: DataLoader) -> Dict[str, float]:
@@ -182,7 +182,7 @@ class ToMnetTrainer:
                     if loss_name not in total_losses:
                         total_losses[loss_name] = 0
                     total_losses[loss_name] += loss_value.item()
-                    
+
                 # Track accuracy
                 if "action_pred" in predictions:
                     pred_actions = torch.argmax(predictions["action_pred"], dim=1)
@@ -193,29 +193,29 @@ class ToMnetTrainer:
 
         # Average losses
         avg_losses = {k: v / n_batches for k, v in total_losses.items()}
-        
+
         # Calculate accuracy
         if all_predictions:
             accuracy = accuracy_score(all_targets, all_predictions)
             avg_losses["accuracy"] = accuracy
             self.val_accuracies.append(accuracy)
-            
+
         val_loss = avg_losses.get("total_loss", avg_losses.get("action_loss", 0))
         self.val_losses.append(val_loss)
-        
+
         # Early stopping logic
         if val_loss < self.best_val_loss:
             self.best_val_loss = val_loss
             self.patience_counter = 0
         else:
             self.patience_counter += 1
-            
+
         return avg_losses
 
     def should_stop_early(self) -> bool:
         """Check if training should stop early"""
         return self.patience_counter >= self.config.patience
-        
+
     def save_checkpoint(self, epoch: int, val_loss: float, save_path: str):
         """Save model checkpoint"""
         checkpoint = {
@@ -240,14 +240,14 @@ class ToMnetTrainer:
         self.model.load_state_dict(checkpoint["model_state_dict"])
         self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         self.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
-        
+
         # Load training history
         self.best_val_loss = checkpoint.get("best_val_loss", float("inf"))
         self.train_losses = checkpoint.get("train_losses", [])
         self.val_losses = checkpoint.get("val_losses", [])
         self.train_accuracies = checkpoint.get("train_accuracies", [])
         self.val_accuracies = checkpoint.get("val_accuracies", [])
-        
+
         return checkpoint["epoch"], checkpoint["val_loss"]
 
 
@@ -279,7 +279,7 @@ def generate_data(
             alpha_values = getattr(args.n_agents, "alpha_values", config.alpha_values)
 
             for alpha in alpha_values:
-                file_path = f"data/figure3_alpha_{alpha}.pkl"
+                file_path = f"data/{experiment_type}/alpha_{alpha}.pkl"
                 if os.path.exists(file_path):
                     print(f"Loading existing data for alpha={alpha}")
                     import pickle
@@ -336,7 +336,7 @@ def generate_data(
                 n_agents=args.n_agents or config.n_agents,
                 n_episodes_per_agent=args.n_episodes_per_agent,
                 alpha=alpha,
-                save_path=f"data/figure3_alpha_{alpha}.pkl",
+                save_path=f"data/{experiment_type}/alpha_{alpha}.pkl",
                 n_workers=args.n_workers,
             )
             datasets[alpha] = dataset
@@ -503,26 +503,30 @@ def train_unified_model(experiment_type: str, args):
             # Create model
             state_dim = dataset["meta"]["state_dim"]
             model = create_model(experiment_type, state_dim, config)
-            
+
             # Split data into train/validation
             data_samples = dataset["data"]
             n_samples = len(data_samples)
             n_train = int(0.8 * n_samples)
-            
+
             # Shuffle data
             shuffled_indices = list(range(n_samples))
             random.shuffle(shuffled_indices)
-            
+
             train_data = [data_samples[i] for i in shuffled_indices[:n_train]]
             val_data = [data_samples[i] for i in shuffled_indices[n_train:]]
-            
+
             train_dataset_dict = {"data": train_data, "meta": dataset["meta"]}
             val_dataset_dict = {"data": val_data, "meta": dataset["meta"]}
 
             # Create datasets and dataloaders
-            train_dataset = ToMnetDataset(train_dataset_dict, experiment_type=experiment_type)
-            val_dataset = ToMnetDataset(val_dataset_dict, experiment_type=experiment_type)
-            
+            train_dataset = ToMnetDataset(
+                train_dataset_dict, experiment_type=experiment_type
+            )
+            val_dataset = ToMnetDataset(
+                val_dataset_dict, experiment_type=experiment_type
+            )
+
             train_loader = DataLoader(
                 train_dataset,
                 batch_size=args.batch_size,
@@ -530,7 +534,7 @@ def train_unified_model(experiment_type: str, args):
                 collate_fn=collate_fn,
                 num_workers=min(4, os.cpu_count()),  # Parallel loading
             )
-            
+
             val_loader = DataLoader(
                 val_dataset,
                 batch_size=args.batch_size,
@@ -549,17 +553,23 @@ def train_unified_model(experiment_type: str, args):
             for epoch in range(args.n_epochs):
                 # Train
                 train_losses = trainer.train_epoch(train_loader)
-                
+
                 # Validate
                 val_losses = trainer.validate(val_loader)
-                
+
                 # Update scheduler
-                trainer.scheduler.step(val_losses.get("total_loss", val_losses.get("action_loss", 0)))
+                trainer.scheduler.step(
+                    val_losses.get("total_loss", val_losses.get("action_loss", 0))
+                )
 
                 # Log progress
                 print(f"Epoch {epoch+1}/{args.n_epochs}")
-                print(f"  Train Loss: {train_losses.get('total_loss', train_losses.get('weighted_loss', 0)):.4f}")
-                print(f"  Val Loss: {val_losses.get('total_loss', val_losses.get('action_loss', 0)):.4f}")
+                print(
+                    f"  Train Loss: {train_losses.get('total_loss', train_losses.get('weighted_loss', 0)):.4f}"
+                )
+                print(
+                    f"  Val Loss: {val_losses.get('total_loss', val_losses.get('action_loss', 0)):.4f}"
+                )
                 if "accuracy" in train_losses:
                     print(f"  Train Acc: {train_losses['accuracy']:.3f}")
                 if "accuracy" in val_losses:
@@ -567,14 +577,17 @@ def train_unified_model(experiment_type: str, args):
                 print(f"  LR: {trainer.optimizer.param_groups[0]['lr']:.6f}")
 
                 # Save best model
-                current_val_loss = val_losses.get("total_loss", val_losses.get("action_loss", 0))
+                current_val_loss = val_losses.get(
+                    "total_loss", val_losses.get("action_loss", 0)
+                )
                 if current_val_loss < best_val_loss:
                     best_val_loss = current_val_loss
-                    save_path = f"models/{experiment_type}_{dataset_name}_best.pth"
+                    os.makedirs(f"models/{experiment_type}", exist_ok=True)
+                    save_path = f"models/{experiment_type}/{dataset_name}_best.pth"
                     os.makedirs(os.path.dirname(save_path), exist_ok=True)
                     trainer.save_checkpoint(epoch, best_val_loss, save_path)
                     print(f"  ✓ New best model saved!")
-                    
+
                 # Check early stopping
                 if trainer.should_stop_early():
                     print(f"  Early stopping at epoch {epoch+1}")
@@ -583,10 +596,14 @@ def train_unified_model(experiment_type: str, args):
             results[dataset_name] = {
                 "best_val_loss": best_val_loss,
                 "model_path": save_path,
-                "final_train_acc": trainer.train_accuracies[-1] if trainer.train_accuracies else 0,
-                "final_val_acc": trainer.val_accuracies[-1] if trainer.val_accuracies else 0,
+                "final_train_acc": (
+                    trainer.train_accuracies[-1] if trainer.train_accuracies else 0
+                ),
+                "final_val_acc": (
+                    trainer.val_accuracies[-1] if trainer.val_accuracies else 0
+                ),
             }
-            
+
             print(f"✓ Completed training for {dataset_name}")
             print(f"  Best validation loss: {best_val_loss:.4f}")
             if trainer.val_accuracies:
@@ -655,14 +672,16 @@ def main():
         results["figure3"] = train_unified_model("figure3", args)
 
     # Save results
+    # Ensure result directory exists
+    os.makedirs(f"result/{args.experiment}", exist_ok=True)
     with open(f"result/{args.experiment}/training_results.json", "w") as f:
         json.dump(results, f, indent=2)
 
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("TRAINING COMPLETED!")
-    print("="*60)
+    print("=" * 60)
     print(f"Results saved to result/{args.experiment}/training_results.json")
-    
+
     # Print summary
     if args.experiment == "figure3" and "figure3" in results:
         print("\nTrained Models Summary:")

@@ -293,10 +293,10 @@ class GridWorld:
         """
         # Save current state to restore later
         initial_state = self.copy()
-        
+
         # Don't reset - use current state as starting point
         # This allows animation from the same initial state as the episode
-        
+
         # Store states for animation
         states = [self.copy()]
 

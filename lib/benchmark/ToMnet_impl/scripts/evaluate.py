@@ -284,10 +284,12 @@ def load_model_from_checkpoint(
     checkpoint = torch.load(model_path, map_location=device)
 
     # Create model using unified function
-    model = create_tomnet(experiment_type=experiment_type, 
-                          state_dim=state_dim,
-                          char_embedding_dim=10,
-                          dropout_rate=0.3)
+    model = create_tomnet(
+        experiment_type=experiment_type,
+        state_dim=state_dim,
+        char_embedding_dim=10,
+        dropout_rate=0.3,
+    )
 
     model.load_state_dict(checkpoint["model_state_dict"])
     return model
@@ -732,11 +734,15 @@ def main():
     parser.add_argument("--device", default="cuda", help="Device to use")
     parser.add_argument(
         "--output_path",
-        default="result/evaluation_results.pkl",
-        help="Path to save results",
+        default=None,
+        help="Path to save results (default: result/{experiment}/evaluation_results.pkl)",
     )
 
     args = parser.parse_args()
+
+    # Set default output path if not provided
+    if args.output_path is None:
+        args.output_path = f"result/{args.experiment}/evaluation_results.pkl"
 
     # Create result directory if it doesn't exist
     import os

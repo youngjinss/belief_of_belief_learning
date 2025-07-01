@@ -564,7 +564,7 @@ def train_unified_model(experiment_type: str, args):
         generate_cross_species_evaluation_files(
             results, datasets, experiment_type, device=args.device
         )
-        
+
         return results
 
 

@@ -157,7 +157,7 @@ run_evaluation() {
         LOG_DIR="log/evaluation/$(date +%Y%m%d_%H%M%S)"
         mkdir -p "$LOG_DIR"
         echo "Starting evaluation at $(date)" > "$LOG_DIR/execution.log"
-        python scripts/evaluate.py >> "$LOG_DIR/execution.log" 2>&1 &
+        python scripts/evaluate.py --experiment figure3 --model_paths_json result/figure3/model_paths.json --data_paths_json result/figure3/data_paths.json --output_path result/figure3/cross_species_results.pkl --device cuda:3  >> "$LOG_DIR/execution.log" 2>&1 &
         EVAL_PID=$!
         echo $EVAL_PID > "$LOG_DIR/process.pid"
         print_info "Evaluation started in background with PID: $EVAL_PID"

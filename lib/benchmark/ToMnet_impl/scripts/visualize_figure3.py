@@ -14,13 +14,13 @@ Usage:
     python visualize_figure3.py [--results_path RESULTS_PATH] [--save_plots] [--output_dir OUTPUT_DIR]
 """
 
+import os
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pickle
 from sklearn.decomposition import PCA
 import argparse
-import os
 
 # Set style
 try:
@@ -38,7 +38,7 @@ ACTION_NAMES = ["Up", "Down", "Left", "Right", "Stay"]
 ACTION_COLORS = ["red", "blue", "green", "orange", "purple"]
 
 
-def load_evaluation_results(results_path="result/figure3_cross_species_results.pkl"):
+def load_evaluation_results(results_path="result/figure3/cross_species_results.pkl"):
     """Load evaluation results from pickle file"""
     print(f"Loading results from: {results_path}")
 
@@ -512,7 +512,7 @@ def main():
     parser.add_argument(
         "--results_path",
         default=None,
-        help="Path to evaluation results pickle file (default: result/{experiment}/evaluation_results.pkl)",
+        help="Path to evaluation results pickle file (default: result/{experiment}/cross_species_results.pkl)",
     )
     parser.add_argument(
         "--save_plots",
@@ -528,6 +528,7 @@ def main():
     args = parser.parse_args()
 
     # Set default paths if not provided
+    print(args.results_path)
     if args.results_path is None:
         args.results_path = f"result/{args.experiment}/cross_species_results.pkl"
     if args.output_dir is None:
@@ -560,7 +561,6 @@ def main():
 
     # Save or display plots
     if args.save_plots:
-        import os
 
         os.makedirs(args.output_dir, exist_ok=True)
         print(f"\nSaving plots to {args.output_dir}/")

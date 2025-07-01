@@ -140,7 +140,7 @@ done
 
 # Set default paths if not provided
 if [ -z "$RESULTS_PATH" ]; then
-    RESULTS_PATH="result/$EXPERIMENT/evaluation_results.pkl"
+    RESULTS_PATH="result/$EXPERIMENT/cross_species_results.pkl"
 fi
 
 if [ -z "$OUTPUT_DIR" ]; then
@@ -179,7 +179,7 @@ fi
 print_success "Found results file: $RESULTS_PATH"
 
 # Prepare visualization command
-PYTHON_CMD="python scripts/visualize_figure3.py --experiment \"$EXPERIMENT\" --results_path \"$RESULTS_PATH\""
+PYTHON_CMD="python scripts/visualize_figure3.py --experiment \"$EXPERIMENT\""
 
 if [ "$SAVE_PLOTS" = true ]; then
     PYTHON_CMD="$PYTHON_CMD --save_plots --output_dir \"$OUTPUT_DIR\""

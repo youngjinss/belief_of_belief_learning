@@ -111,8 +111,10 @@ class Figure5ToMnetTrainer:
             losses = {}
 
             # Action prediction loss
+            action_key = "action_logits" if "action_logits" in predictions else "action_pred"
+            action_targets = batch.get("true_actions", batch.get("true_action"))
             action_loss = nn.CrossEntropyLoss()(
-                predictions["action"], batch["true_action"]
+                predictions[action_key], action_targets
             )
             losses["action_loss"] = action_loss
 
@@ -153,9 +155,10 @@ class Figure5ToMnetTrainer:
             # Track predictions for accuracy calculation
             with torch.no_grad():
                 all_predictions["action"].extend(
-                    torch.argmax(predictions["action"], dim=1).cpu().numpy()
+                    torch.argmax(predictions[action_key], dim=1).cpu().numpy()
                 )
-                all_targets["action"].extend(batch["true_action"].cpu().numpy())
+                action_targets = batch.get("true_actions", batch.get("true_action"))
+                all_targets["action"].extend(action_targets.cpu().numpy())
 
                 if "consumption" in predictions:
                     all_predictions["consumption"].extend(
@@ -205,8 +208,10 @@ class Figure5ToMnetTrainer:
                 losses = {}
 
                 # Action prediction loss
+                action_key = "action_logits" if "action_logits" in predictions else "action_pred"
+                action_targets = batch.get("true_actions", batch.get("true_action"))
                 action_loss = nn.CrossEntropyLoss()(
-                    predictions["action"], batch["true_action"]
+                    predictions[action_key], action_targets
                 )
                 losses["action_loss"] = action_loss
 
@@ -241,9 +246,10 @@ class Figure5ToMnetTrainer:
 
                 # Track predictions for accuracy calculation
                 all_predictions["action"].extend(
-                    torch.argmax(predictions["action"], dim=1).cpu().numpy()
+                    torch.argmax(predictions[action_key], dim=1).cpu().numpy()
                 )
-                all_targets["action"].extend(batch["true_action"].cpu().numpy())
+                action_targets = batch.get("true_actions", batch.get("true_action"))
+                all_targets["action"].extend(action_targets.cpu().numpy())
 
                 if "consumption" in predictions:
                     all_predictions["consumption"].extend(
@@ -309,6 +315,10 @@ class Figure5ToMnetTrainer:
                 self.patience_counter = 0
 
                 # Save best model
+                config_dict = self.config.__dict__.copy()
+                if hasattr(self, 'state_dim'):
+                    config_dict['state_dim'] = self.state_dim
+                
                 torch.save(
                     {
                         "model_state_dict": self.model.state_dict(),
@@ -316,7 +326,7 @@ class Figure5ToMnetTrainer:
                         "epoch": epoch,
                         "val_loss": val_metrics["total_loss"],
                         "val_accuracy": val_metrics["action_accuracy"],
-                        "config": self.config.__dict__,
+                        "config": config_dict,
                     },
                     save_path,
                 )
@@ -452,10 +462,9 @@ def main():
     config = Figure5ExperimentConfig()
 
     model = create_tomnet(
+        experiment_type="figure5",
         state_dim=dataset["meta"]["state_dim"],
         char_embedding_dim=config.char_embedding_dim,
-        use_mental_state_net=config.use_mental_state_net,
-        predictions=config.predictions,
         dropout_rate=config.dropout_rate,
     )
 
@@ -470,6 +479,9 @@ def main():
         device=args.device,
         learning_rate=args.learning_rate,
     )
+    
+    # Store state_dim for saving in checkpoint
+    trainer.state_dim = dataset["meta"]["state_dim"]
 
     # Train model
     save_path = os.path.join(

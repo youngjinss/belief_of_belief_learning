@@ -518,3 +518,46 @@ python scripts/visualize_figure4.py --experiment figure4
 ```
 
 This enhanced implementation provides a complete, production-ready system for ToMnet research with enterprise-level automation, comprehensive evaluation capabilities, and publication-quality visualization tools suitable for serious academic work and potential industrial applications.
+
+## Implementation Details for Figure 5 Reproduction
+### Goal-Directed Agent Environment (Section 3.2)
+
+- Gridworld: 11×11 size with randomly-sampled walls (0-4 walls)
+- Objects: 4 different consumable objects placed in random locations
+- Agent rewards: Each agent has unique reward function ri,a ∈ (0,1) for consuming object a
+    - Reward vectors sampled from Dirichlet distribution with α = 0.01
+    - Move penalty: -0.01 per step
+    - Wall collision penalty: 0.05
+
+
+- Agent behavior: Plans using value iteration with discount factor γ = 1
+- Episode termination: When agent consumes an object or after 31 steps
+
+### Figure 5 Specific Setup
+
+- Partial observations: ToMnet sees only single observation-action pairs from past episodes
+- Past episodes: Npast ~ U{0, 10} (uniformly sampled between 0 and 10)
+Training data: 1000 agents per experiment, each generating behavioral traces on random POMDPs
+- Task: Predict agent's initial action in a new POMDP based on past observations
+
+### Figure 5(b) - Action Prediction vs Npast
+
+- X-axis: Number of past observations (Npast from 0 to 10)
+- Y-axis: Average posterior probability assigned to the true action π̂(at|·)
+- Metric: Shows how prediction accuracy improves with more past observations
+- Baseline: Even at Npast=0, accuracy > chance due to shared policy structure
+
+### Figure 5(d) - Character Embeddings
+
+- Embedding dimension: 2D character embedding space (echar ∈ R²)
+- Visualization: 100 different test agents plotted
+- Color coding: Agents colored by ground-truth preferred object (4 colors)
+- Saturation: Increases with Npast (grey dots at center = Npast=0)
+- Architecture: Only character net used (no mental state net)
+
+### Key Implementation Notes
+
+- Character net aggregates past trajectories: echar,i = ΣNpast(j=1) echar,ij
+- For partial trajectories, each past observation is just a single state-action pair
+- ToMnet learns Bayes-optimal inference specialized to Dirichlet(α=0.01) prior
+- Expected to see clustering in embedding space by preferred object

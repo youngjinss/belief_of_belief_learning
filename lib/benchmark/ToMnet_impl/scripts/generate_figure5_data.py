@@ -24,7 +24,7 @@ def main():
     
     # Output parameters
     parser.add_argument('--output_dir', type=str, default='data/figure5', help='Output directory')
-    parser.add_argument('--experiment_name', type=str, default='figure5_goal_directed', help='Experiment name')
+    parser.add_argument('--experiment_name', type=str, default='goal_directed', help='Experiment name')
     
     args = parser.parse_args()
     

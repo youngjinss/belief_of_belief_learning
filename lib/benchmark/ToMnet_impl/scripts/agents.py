@@ -79,7 +79,8 @@ class GoalDirectedAgent:
 
         # Initialize value function
         self.value_function = np.zeros((size, size))
-        self.policy = np.zeros((size, size, n_actions))
+        # Initialize policy with uniform distribution
+        self.policy = np.ones((size, size, n_actions)) / n_actions
 
         for iteration in range(max_iterations):
             old_values = self.value_function.copy()
@@ -88,6 +89,8 @@ class GoalDirectedAgent:
             for i in range(size):
                 for j in range(size):
                     if env.walls[i, j]:
+                        # Set uniform policy for wall positions (shouldn't happen but for safety)
+                        self.policy[i, j] = np.ones(n_actions) / n_actions
                         continue  # Skip wall positions
 
                     state_values = []
@@ -102,7 +105,13 @@ class GoalDirectedAgent:
 
                     # Update policy (softmax for some stochasticity)
                     state_values = np.array(state_values)
-                    self.policy[i, j] = softmax(state_values / 0.1)  # Temperature = 0.1
+                    # Add numerical stability by clipping values
+                    state_values = np.clip(state_values, -100, 100)
+                    # Check for all equal values (would produce uniform distribution)
+                    if np.allclose(state_values, state_values[0]):
+                        self.policy[i, j] = np.ones(env.n_actions) / env.n_actions
+                    else:
+                        self.policy[i, j] = softmax(state_values / 0.1)  # Temperature = 0.1
 
             # Check convergence
             if np.max(np.abs(self.value_function - old_values)) < convergence_threshold:
@@ -161,7 +170,18 @@ class GoalDirectedAgent:
             return 4  # Stay action if agent position not found
 
         i, j = agent_pos[0][0], agent_pos[1][0]
-        action_probs = self.policy[i, j]
+        action_probs = self.policy[i, j].copy()  # Make a copy to avoid modifying the policy
+        
+        # Safety checks for numerical stability
+        if np.any(np.isnan(action_probs)) or np.sum(action_probs) == 0:
+            # Suppress warnings - too many during SR computation
+            # print(f"Warning: Invalid action probabilities at position ({i}, {j})")
+            action_probs = np.ones(len(action_probs)) / len(action_probs)
+        else:
+            # Ensure probabilities sum to 1 (numerical stability)
+            prob_sum = np.sum(action_probs)
+            if not np.isclose(prob_sum, 1.0):
+                action_probs = action_probs / prob_sum
 
         return np.random.choice(len(action_probs), p=action_probs)
 
@@ -186,19 +206,28 @@ class GoalDirectedAgent:
         Compute successor representation: discounted state occupancy
         Returns array of shape (size, size) with expected future occupancy
         """
+        # Plan on a fresh copy to ensure consistency
+        plan_env = env.copy()
         if self.policy is None:
-            self.plan(env)
+            self.plan(plan_env)
 
         size = env.size
         sr = np.zeros((size, size))
 
         # Simulate trajectories to estimate successor representation
-        n_simulations = 100
-        max_steps = 50
+        # Reduced for performance - was causing hanging with large datasets
+        n_simulations = 10  # Was 100
+        max_steps = 20  # Was 50
 
         for _ in range(n_simulations):
             # Start from current agent position
             temp_env = env.copy()
+            
+            # Skip if agent is in invalid position
+            if temp_env.agent_pos[0] >= size or temp_env.agent_pos[1] >= size:
+                continue
+            if temp_env.walls[temp_env.agent_pos]:
+                continue
 
             for step in range(max_steps):
                 if temp_env.done:

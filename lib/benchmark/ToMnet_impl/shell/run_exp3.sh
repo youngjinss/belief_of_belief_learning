@@ -94,7 +94,7 @@ run_training() {
     
     # Run training in background with logging
     echo "Starting training at $(date)" > "$LOG_DIR/execution.log"
-    python scripts/train_enhanced.py --experiment figure3 --train_individual --batch_size 64 --alpha_values 0.01 0.03 0.1 "$@" >> "$LOG_DIR/execution.log" 2>&1 &
+    python scripts/train_enhanced.py --experiment figure3 --train_individual "$@" >> "$LOG_DIR/execution.log" 2>&1 &
     TRAIN_PID=$!
     echo $TRAIN_PID > "$LOG_DIR/process.pid"
     print_info "Training started in background with PID: $TRAIN_PID"

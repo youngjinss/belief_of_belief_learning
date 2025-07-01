@@ -11,6 +11,7 @@ from agents import (
     create_goal_directed_agents,
 )
 
+
 class TrajectoryData:
     """Container for trajectory data"""
 
@@ -93,7 +94,12 @@ def generate_agent_episodes(args):
 class DataGenerator:
     """Generate training and evaluation data for ToMnet experiments"""
 
-    def __init__(self, grid_size: int = SIZE, max_walls: int = MAX_WALLS, max_steps: int = MAX_STEPS):
+    def __init__(
+        self,
+        grid_size: int = SIZE,
+        max_walls: int = MAX_WALLS,
+        max_steps: int = MAX_STEPS,
+    ):
         self.grid_size = grid_size
         self.max_walls = max_walls
         self.max_steps = max_steps
@@ -472,14 +478,14 @@ def collate_fn(batch):
 
     # Pad sequences
     batch_size = len(batch)
-    
+
     # Handle case where some items have empty past trajectories
     state_action_dim = None
     for item in batch:
         if item["past_trajectories"].size(0) > 0:
             state_action_dim = item["past_trajectories"].size(-1)
             break
-    
+
     # If all past trajectories are empty, use current state dimension
     if state_action_dim is None:
         state_action_dim = batch[0]["current_state"].size(0) + 5  # state + 5 actions

@@ -291,7 +291,7 @@ def generate_data(
     """Generate training data with larger datasets"""
     # Check if data files already exist
     data_files = glob.glob("data/figure*.pkl")
-    if data_files and not args.regenerate_data:
+    if data_files:
         print(f"Found existing data files: {data_files}")
         print("Use --regenerate_data to create new data")
 
@@ -707,9 +707,6 @@ def main():
     )
 
     # Data generation
-    parser.add_argument(
-        "--regenerate_data", action="store_true", help="Regenerate data even if exists"
-    )
     parser.add_argument(
         "--n_workers",
         type=int,

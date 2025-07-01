@@ -24,7 +24,7 @@ class ExperimentConfig:
         self.experiment_type = experiment_type
 
         if experiment_type == "figure3":
-            self.char_embedding_dim = 2
+            self.char_embedding_dim = 10
             self.use_mental_state_net = False
             self.agent_type = "random"
             self.alpha_values = [
@@ -36,6 +36,11 @@ class ExperimentConfig:
                 3.0,
             ]  # Alpha values for Figure 3 cross-species analysis
             self.n_agents = 1000
+            
+            # Regularization
+            self.dropout_rate = 0.3
+            self.patience = 30  # Early stopping patience
+            
             self.loss_weights = {"action_loss": 1.0}
             self.predictions = ["action"]
         else:
@@ -57,7 +62,7 @@ class ToMnetTrainer:
         self.config = config
         self.optimizer = optim.Adam(model.parameters(), lr=learning_rate)
         self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            self.optimizer, mode="min", patience=10, factor=0.5
+            self.optimizer, mode="min", patience=config.patience, factor=0.5
         )
 
         # Loss weights from config
@@ -182,6 +187,7 @@ def create_model(
         experiment_type=experiment_type,
         state_dim=state_dim,
         char_embedding_dim=config.char_embedding_dim,
+        dropout_rate=config.dropout_rate,
     )
 
 
@@ -487,7 +493,7 @@ def main():
     parser.add_argument(
         "--learning_rate", type=float, default=1e-3, help="Learning rate"
     )
-    parser.add_argument("--n_epochs", type=int, default=50, help="Number of epochs")
+    parser.add_argument("--n_epochs", type=int, default=100, help="Number of epochs")
     parser.add_argument("--n_agents", type=int, default=100, help="Number of agents")
     parser.add_argument(
         "--n_episodes_per_agent", type=int, default=100, help="Episodes per agent"

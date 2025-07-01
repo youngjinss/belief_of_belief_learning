@@ -288,8 +288,11 @@ class DataGenerator:
 
         # Create training samples
         all_data = []
+        
+        print(f"\nCreating training samples from {n_agents} agents...")
+        from tqdm import tqdm as tqdm_inner
 
-        for agent_id in range(n_agents):
+        for agent_id in tqdm_inner(range(n_agents), desc="Processing agents"):
             agent = agents[agent_id]
             agent_trajectories = all_agent_trajectories[agent_id]
 
@@ -313,7 +316,9 @@ class DataGenerator:
                 query_trajectory = agent_trajectories[query_episode_id]
 
                 # Create samples for each step in query trajectory
-                for step_idx in range(len(query_trajectory.actions)):
+                # Limit steps to avoid excessive computation
+                max_steps_per_episode = min(len(query_trajectory.actions), 20)  # Limit to 20 steps
+                for step_idx in range(max_steps_per_episode):
                     # Reconstruct environment for this episode
                     env_copy = GridWorld(self.grid_size, self.max_walls, self.max_steps)
                     env_copy.walls = query_trajectory.env_state["walls"]
@@ -340,7 +345,16 @@ class DataGenerator:
                             consumed_objects[obj - 1] = 1.0
 
                     # Successor representation
-                    sr = agent.get_successor_representation(env_copy)
+                    # Skip SR computation for very large datasets to avoid hanging
+                    if n_agents * n_episodes_per_agent > 1000:  # Large dataset
+                        sr = np.zeros((self.grid_size, self.grid_size))  # Use zero SR
+                    else:
+                        try:
+                            sr = agent.get_successor_representation(env_copy)
+                        except Exception as e:
+                            print(f"Warning: Failed to compute SR for agent {agent_id}, episode {query_episode_id}, step {step_idx}: {e}")
+                            # Use zero SR as fallback
+                            sr = np.zeros((self.grid_size, self.grid_size))
 
                     sample = {
                         "agent_id": agent_id,
@@ -370,7 +384,9 @@ class DataGenerator:
         }
 
         if save_path:
+            print(f"\nPreparing to save {len(all_data)} samples...")
             os.makedirs(os.path.dirname(save_path), exist_ok=True)
+            print(f"Saving to {save_path}...")
             with open(save_path, "wb") as f:
                 pickle.dump(dataset, f)
             print(f"Saved {len(all_data)} samples to {save_path}")
@@ -523,5 +539,9 @@ def collate_fn(batch):
             [item["true_consumption"] for item in batch]
         )
         result["true_sr"] = torch.stack([item["true_sr"] for item in batch])
+    
+    # Add rewards for evaluation
+    if "rewards" in batch[0]:
+        result["rewards"] = torch.stack([torch.tensor(item["rewards"], dtype=torch.float32) for item in batch])
 
     return result

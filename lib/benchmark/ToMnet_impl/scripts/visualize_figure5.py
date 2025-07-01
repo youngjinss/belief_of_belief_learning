@@ -32,8 +32,28 @@ except OSError:
 sns.set_palette("husl")
 
 # Object type colors for visualization (different from action colors)
-OBJECT_COLORS = ["red", "blue", "green", "orange", "purple", "brown", "pink", "gray", "cyan"]
-OBJECT_NAMES = ["Object 0", "Object 1", "Object 2", "Object 3", "Object 4", "Object 5", "Object 6", "Object 7", "Object 8"]
+OBJECT_COLORS = [
+    "red",
+    "blue",
+    "green",
+    "orange",
+    "purple",
+    "brown",
+    "pink",
+    "gray",
+    "cyan",
+]
+OBJECT_NAMES = [
+    "Object 0",
+    "Object 1",
+    "Object 2",
+    "Object 3",
+    "Object 4",
+    "Object 5",
+    "Object 6",
+    "Object 7",
+    "Object 8",
+]
 
 
 def load_evaluation_results(results_path="result/figure5/figure5_results.pkl"):
@@ -49,7 +69,7 @@ def load_evaluation_results(results_path="result/figure5/figure5_results.pkl"):
     # Check the data structure
     print("Results loaded successfully!")
     print("Available models:", list(results.keys()))
-    
+
     for model_name, model_results in results.items():
         print(f"\nModel: {model_name}")
         if "figure5b" in model_results:
@@ -68,35 +88,35 @@ def plot_figure5b_n_past_vs_likelihood(results):
 
     # Plot data for each model
     colors = plt.cm.Set1(np.linspace(0, 1, len(results)))
-    
+
     for i, (model_name, model_results) in enumerate(results.items()):
         if "figure5b" not in model_results:
             print(f"Warning: No Figure 5b data found for model {model_name}")
             continue
-            
+
         figure5b_data = model_results["figure5b"]
-        
+
         n_past_values = np.array(figure5b_data["n_past_values"])
         avg_likelihoods = np.array(figure5b_data["avg_action_likelihoods"])
         std_likelihoods = np.array(figure5b_data["std_action_likelihoods"])
         n_samples = np.array(figure5b_data["n_samples"])
-        
+
         # Filter out points with no samples
         valid_mask = n_samples > 0
         if not np.any(valid_mask):
             print(f"Warning: No valid data points for model {model_name}")
             continue
-            
+
         n_past_valid = n_past_values[valid_mask]
         avg_likelihoods_valid = avg_likelihoods[valid_mask]
         std_likelihoods_valid = std_likelihoods[valid_mask]
-        
+
         # Plot with error bars
         ax.errorbar(
             n_past_valid,
             avg_likelihoods_valid,
             yerr=std_likelihoods_valid,
-            marker='o',
+            marker="o",
             markersize=8,
             linewidth=2,
             capsize=5,
@@ -115,7 +135,7 @@ def plot_figure5b_n_past_vs_likelihood(results):
     ax.legend(fontsize=11)
     ax.grid(True, alpha=0.3)
     ax.set_ylim(0, 1.1)
-    
+
     # Set integer ticks for x-axis
     ax.set_xticks(range(0, 11))
 
@@ -136,37 +156,49 @@ def plot_figure5b_n_past_vs_likelihood(results):
 def plot_figure5d_embedding_space(results):
     """Plot 2D embedding space colored by preferred objects with N_past=0 (Figure 5d)"""
     fig, axes = plt.subplots(1, len(results), figsize=(6 * len(results), 6))
-    
+
     # Handle single model case
     if len(results) == 1:
         axes = [axes]
-    
+
     for idx, (model_name, model_results) in enumerate(results.items()):
         ax = axes[idx] if len(results) > 1 else axes[0]
-        
+
         if "figure5d" not in model_results:
             print(f"Warning: No Figure 5d data found for model {model_name}")
-            ax.text(0.5, 0.5, f"No Figure 5d data\nfor {model_name}", 
-                   transform=ax.transAxes, ha='center', va='center',
-                   bbox=dict(boxstyle="round", facecolor="lightcoral", alpha=0.8))
+            ax.text(
+                0.5,
+                0.5,
+                f"No Figure 5d data\nfor {model_name}",
+                transform=ax.transAxes,
+                ha="center",
+                va="center",
+                bbox=dict(boxstyle="round", facecolor="lightcoral", alpha=0.8),
+            )
             continue
-            
+
         figure5d_data = model_results["figure5d"]
-        
+
         embeddings_2d = figure5d_data["embeddings_2d"]
         preferred_objects = figure5d_data["preferred_objects"]
         n_samples = figure5d_data["n_samples"]
-        
+
         if n_samples == 0 or len(embeddings_2d) == 0:
-            ax.text(0.5, 0.5, f"No embedding data\nfor {model_name}", 
-                   transform=ax.transAxes, ha='center', va='center',
-                   bbox=dict(boxstyle="round", facecolor="lightcoral", alpha=0.8))
+            ax.text(
+                0.5,
+                0.5,
+                f"No embedding data\nfor {model_name}",
+                transform=ax.transAxes,
+                ha="center",
+                va="center",
+                bbox=dict(boxstyle="round", facecolor="lightcoral", alpha=0.8),
+            )
             continue
-        
+
         # Get unique preferred objects
         unique_objects = np.unique(preferred_objects)
         n_objects = len(unique_objects)
-        
+
         # Plot scatter with colors representing different preferred objects
         for obj_idx in unique_objects:
             mask = preferred_objects == obj_idx
@@ -211,7 +243,7 @@ def plot_figure5d_embedding_space(results):
         fontweight="bold",
         y=0.95,
     )
-    
+
     plt.tight_layout()
     return fig
 
@@ -271,7 +303,7 @@ def main():
     if args.save_plots:
         os.makedirs(args.output_dir, exist_ok=True)
         print(f"\nSaving plots to {args.output_dir}/")
-        
+
         fig5b.savefig(
             f"{args.output_dir}/figure5b_n_past_vs_likelihood.png",
             dpi=300,
@@ -282,7 +314,7 @@ def main():
             dpi=300,
             bbox_inches="tight",
         )
-        
+
         print("Plots saved successfully!")
     else:
         print("\nDisplaying plots...")

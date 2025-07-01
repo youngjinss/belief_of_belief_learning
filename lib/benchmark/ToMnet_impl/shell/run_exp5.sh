@@ -106,7 +106,7 @@ run_data_generation() {
     
     # Run data generation in background with logging
     echo "Starting data generation at $(date)" > "$LOG_DIR/execution.log"
-    python scripts/generate_figure5_data.py --n_agents 1000 --n_episodes_per_agent 100 --alpha_reward 0.01 "$@" >> "$LOG_DIR/execution.log" 2>&1 &
+    python scripts/generate_figure5_data.py --n_agents 100 --n_episodes_per_agent 100 --alpha_reward 0.01 "$@" >> "$LOG_DIR/execution.log" 2>&1 &
     GEN_PID=$!
     echo $GEN_PID > "$LOG_DIR/process.pid"
     print_info "Data generation started in background with PID: $GEN_PID"
@@ -140,7 +140,7 @@ run_training() {
     
     # Run training in background with logging
     echo "Starting training at $(date)" > "$LOG_DIR/execution.log"
-    python scripts/train_figure5.py --n_agents 1000 --n_episodes_per_agent 100 --n_epochs 100 --alpha_reward 0.01 "$@" >> "$LOG_DIR/execution.log" 2>&1 &
+    python scripts/train_figure5.py --n_agents 100 --n_episodes_per_agent 100 --n_epochs 100 --alpha_reward 0.01 "$@" >> "$LOG_DIR/execution.log" 2>&1 &
     TRAIN_PID=$!
     echo $TRAIN_PID > "$LOG_DIR/process.pid"
     print_info "Training started in background with PID: $TRAIN_PID"

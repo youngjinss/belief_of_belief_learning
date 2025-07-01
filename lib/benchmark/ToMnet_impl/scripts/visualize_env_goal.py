@@ -21,10 +21,7 @@ def test_episode_visualization():
     # Higher reward for object 1, decreasing for objects 2, 3, 4
     rewards = np.array([1.0, 0.5, 0.2, 0.1])
     agent = GoalDirectedAgent(
-        rewards=rewards,
-        movement_cost=0.01,
-        wall_penalty=0.05,
-        gamma=0.99
+        rewards=rewards, movement_cost=0.01, wall_penalty=0.05, gamma=0.99
     )
 
     # Plan optimal policy for the current environment
@@ -55,7 +52,7 @@ def test_episode_visualization():
     while not done and len(actions) < MAX_STEPS:
         # Get current state
         state = env.get_state()
-        
+
         # Get action from goal-directed agent
         action = agent.act(state, env)
         actions.append(action)
@@ -95,8 +92,12 @@ def test_episode_visualization():
 
     # Visualize final state
     fig, ax = plt.subplots(1, 1, figsize=(8, 8))
-    env.visualize(ax=ax, title=f"Goal-Directed Agent (prefers obj {agent.preferred_object})")
-    plt.savefig("result/gridworld_goal_directed_final.png", dpi=150, bbox_inches="tight")
+    env.visualize(
+        ax=ax, title=f"Goal-Directed Agent (prefers obj {agent.preferred_object})"
+    )
+    plt.savefig(
+        "result/gridworld_goal_directed_final.png", dpi=150, bbox_inches="tight"
+    )
     print(f"\nSaved final state to: result/gridworld_goal_directed_final.png")
     plt.show()
 
@@ -135,37 +136,53 @@ def test_static_visualization_with_policy():
     for i, rewards in enumerate(reward_configs):
         # Create agent with specific preferences
         agent = GoalDirectedAgent(
-            rewards=np.array(rewards),
-            movement_cost=0.01,
-            wall_penalty=0.05,
-            gamma=0.99
+            rewards=np.array(rewards), movement_cost=0.01, wall_penalty=0.05, gamma=0.99
         )
 
         # Plan policy
         agent.plan(env)
 
         # Visualize environment
-        env.visualize(ax=axes[i], title=f"Prefers Object {agent.preferred_object} (reward={rewards[agent.preferred_object-1]:.1f})")
+        env.visualize(
+            ax=axes[i],
+            title=f"Prefers Object {agent.preferred_object} (reward={rewards[agent.preferred_object-1]:.1f})",
+        )
 
         # Overlay policy arrows (simplified)
         for row in range(env.size):
             for col in range(env.size):
-                if not env.walls[row, col] and env.objects[row, col] == 0 and (row, col) != env.agent_pos:
+                if (
+                    not env.walls[row, col]
+                    and env.objects[row, col] == 0
+                    and (row, col) != env.agent_pos
+                ):
                     # Get action probabilities for this position
                     mock_state = env.get_state()
                     mock_state[row, col, 5] = 1.0  # Place agent at this position
-                    mock_state[env.agent_pos[0], env.agent_pos[1], 5] = 0.0  # Remove from original position
-                    
+                    mock_state[env.agent_pos[0], env.agent_pos[1], 5] = (
+                        0.0  # Remove from original position
+                    )
+
                     action_probs = agent.get_action_probabilities(mock_state, env)
                     best_action = np.argmax(action_probs)
-                    
+
                     # Draw arrow for best action
                     if best_action < 4:  # Not "stay"
                         delta = env.actions[best_action]
-                        if action_probs[best_action] > 0.3:  # Only show confident actions
-                            axes[i].arrow(col, row, delta[1]*0.3, -delta[0]*0.3, 
-                                        head_width=0.1, head_length=0.1, 
-                                        fc='white', ec='white', alpha=0.7)
+                        if (
+                            action_probs[best_action] > 0.3
+                        ):  # Only show confident actions
+                            axes[i].arrow(
+                                col,
+                                row,
+                                delta[1] * 0.3,
+                                -delta[0] * 0.3,
+                                head_width=0.1,
+                                head_length=0.1,
+                                fc="white",
+                                ec="white",
+                                alpha=0.7,
+                            )
 
     plt.tight_layout()
     plt.savefig("result/gridworld_policy_comparison.png", dpi=150, bbox_inches="tight")
@@ -196,7 +213,7 @@ def test_trajectory_visualization():
         state = env.get_state()
         action = agent.act(state, env)
         actions_taken.append(action)
-        
+
         _, _, done, _ = env.step(action)
         trajectory.append(env.agent_pos)
 
@@ -205,37 +222,52 @@ def test_trajectory_visualization():
 
     # Left plot: Trajectory
     env.visualize(ax=ax1, title="Goal-Directed Agent Trajectory")
-    
+
     # Overlay trajectory
     trajectory = np.array(trajectory)
-    ax1.plot(trajectory[:, 1], trajectory[:, 0], 'w-', linewidth=3, alpha=0.8, label="Path")
-    ax1.plot(trajectory[:, 1], trajectory[:, 0], 'yo', markersize=6, alpha=0.7)
-    
+    ax1.plot(
+        trajectory[:, 1], trajectory[:, 0], "w-", linewidth=3, alpha=0.8, label="Path"
+    )
+    ax1.plot(trajectory[:, 1], trajectory[:, 0], "yo", markersize=6, alpha=0.7)
+
     # Mark start and end
-    ax1.plot(trajectory[0, 1], trajectory[0, 0], 'go', markersize=12, label="Start")
-    ax1.plot(trajectory[-1, 1], trajectory[-1, 0], 'ro', markersize=12, label="End")
+    ax1.plot(trajectory[0, 1], trajectory[0, 0], "go", markersize=12, label="Start")
+    ax1.plot(trajectory[-1, 1], trajectory[-1, 0], "ro", markersize=12, label="End")
     ax1.legend(loc="upper left", bbox_to_anchor=(1.05, 1))
 
     # Right plot: Value function heatmap
-    if hasattr(agent, 'value_function'):
-        im = ax2.imshow(agent.value_function, cmap='viridis', origin='upper')
+    if hasattr(agent, "value_function"):
+        im = ax2.imshow(agent.value_function, cmap="viridis", origin="upper")
         ax2.set_title("Value Function")
         ax2.set_xlabel("Column")
         ax2.set_ylabel("Row")
-        
+
         # Overlay walls and objects
         for i in range(env.size):
             for j in range(env.size):
                 if env.walls[i, j]:
-                    ax2.add_patch(plt.Rectangle((j-0.5, i-0.5), 1, 1, fill=True, color='red', alpha=0.7))
+                    ax2.add_patch(
+                        plt.Rectangle(
+                            (j - 0.5, i - 0.5), 1, 1, fill=True, color="red", alpha=0.7
+                        )
+                    )
                 elif env.objects[i, j] > 0:
-                    ax2.add_patch(plt.Rectangle((j-0.5, i-0.5), 1, 1, fill=True, color='yellow', alpha=0.5))
-        
+                    ax2.add_patch(
+                        plt.Rectangle(
+                            (j - 0.5, i - 0.5),
+                            1,
+                            1,
+                            fill=True,
+                            color="yellow",
+                            alpha=0.5,
+                        )
+                    )
+
         # Mark agent path
-        ax2.plot(trajectory[:, 1], trajectory[:, 0], 'w-', linewidth=2, alpha=0.8)
-        ax2.plot(trajectory[0, 1], trajectory[0, 0], 'go', markersize=8)
-        ax2.plot(trajectory[-1, 1], trajectory[-1, 0], 'ro', markersize=8)
-        
+        ax2.plot(trajectory[:, 1], trajectory[:, 0], "w-", linewidth=2, alpha=0.8)
+        ax2.plot(trajectory[0, 1], trajectory[0, 0], "go", markersize=8)
+        ax2.plot(trajectory[-1, 1], trajectory[-1, 0], "ro", markersize=8)
+
         plt.colorbar(im, ax=ax2, label="Value")
 
     plt.tight_layout()
@@ -265,15 +297,15 @@ def test_multiple_episodes():
 
     for config_idx, rewards in enumerate(reward_configs):
         print(f"\nTesting agent that prefers object {np.argmax(rewards) + 1}:")
-        
+
         episode_stats = []
         for ep in range(n_episodes_per_config):
             env = GridWorld(size=SIZE, max_walls=MAX_WALLS, max_steps=MAX_STEPS)
             env.reset()
-            
+
             agent = GoalDirectedAgent(rewards=np.array(rewards))
             agent.plan(env)
-            
+
             done = False
             steps = 0
             consumed = []
@@ -287,21 +319,29 @@ def test_multiple_episodes():
                 if info["consumed_object"]:
                     consumed = info["consumed_object"]
 
-            episode_stats.append({
-                "config": config_idx,
-                "preferred_obj": agent.preferred_object,
-                "episode": ep + 1,
-                "steps": steps,
-                "consumed": consumed,
-                "success": len(consumed) > 0,
-                "got_preferred": len(consumed) > 0 and consumed[0] == agent.preferred_object
-            })
+            episode_stats.append(
+                {
+                    "config": config_idx,
+                    "preferred_obj": agent.preferred_object,
+                    "episode": ep + 1,
+                    "steps": steps,
+                    "consumed": consumed,
+                    "success": len(consumed) > 0,
+                    "got_preferred": len(consumed) > 0
+                    and consumed[0] == agent.preferred_object,
+                }
+            )
 
         all_stats.extend(episode_stats)
 
         # Print config-specific statistics
-        success_rate = sum(1 for stat in episode_stats if stat["success"]) / n_episodes_per_config
-        preferred_rate = sum(1 for stat in episode_stats if stat["got_preferred"]) / n_episodes_per_config
+        success_rate = (
+            sum(1 for stat in episode_stats if stat["success"]) / n_episodes_per_config
+        )
+        preferred_rate = (
+            sum(1 for stat in episode_stats if stat["got_preferred"])
+            / n_episodes_per_config
+        )
         avg_steps = np.mean([stat["steps"] for stat in episode_stats])
 
         print(f"- Success rate: {success_rate:.1%}")
@@ -321,7 +361,13 @@ if __name__ == "__main__":
     print("\n" + "=" * 50)
     print("All goal-directed agent visualization tests completed!")
     print("Generated files:")
-    print("- result/gridworld_goal_directed_final.png: Final state after goal-directed episode")
-    print("- result/gridworld_goal_directed_episode.gif: Animated goal-directed episode")
-    print("- result/gridworld_policy_comparison.png: Policy comparison for different preferences")
+    print(
+        "- result/gridworld_goal_directed_final.png: Final state after goal-directed episode"
+    )
+    print(
+        "- result/gridworld_goal_directed_episode.gif: Animated goal-directed episode"
+    )
+    print(
+        "- result/gridworld_policy_comparison.png: Policy comparison for different preferences"
+    )
     print("- result/gridworld_goal_trajectory.png: Trajectory with value function")

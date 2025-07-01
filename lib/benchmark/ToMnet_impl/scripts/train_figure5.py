@@ -32,11 +32,17 @@ class Figure5ExperimentConfig:
         self.char_embedding_dim = 10
         self.use_mental_state_net = True  # Figure 5 uses mental state net
         self.agent_type = "goal_directed"
-        
+
         # Figure 5 specific parameters
-        self.alpha_reward_values = [0.01, 0.03, 0.1, 0.3, 1.0]  # Different reward structures
+        self.alpha_reward_values = [
+            0.01,
+            0.03,
+            0.1,
+            0.3,
+            1.0,
+        ]  # Different reward structures
         self.high_cost_ratio = 0.2
-        self.n_agents = 1000
+        self.n_agents = 100
 
         # Regularization
         self.dropout_rate = 0.3
@@ -45,7 +51,7 @@ class Figure5ExperimentConfig:
         self.loss_weights = {
             "action_loss": 1.0,
             "consumption_loss": 0.5,
-            "sr_loss": 0.3
+            "sr_loss": 0.3,
         }
         self.predictions = ["action", "consumption", "successor_representation"]
 
@@ -103,20 +109,20 @@ class Figure5ToMnetTrainer:
 
             # Compute losses
             losses = {}
-            
+
             # Action prediction loss
             action_loss = nn.CrossEntropyLoss()(
                 predictions["action"], batch["true_action"]
             )
             losses["action_loss"] = action_loss
-            
+
             # Object consumption prediction loss
             if "consumption" in predictions and "true_consumption" in batch:
                 consumption_loss = nn.BCEWithLogitsLoss()(
                     predictions["consumption"], batch["true_consumption"]
                 )
                 losses["consumption_loss"] = consumption_loss
-            
+
             # Successor representation loss
             if "successor_representation" in predictions and "true_sr" in batch:
                 sr_loss = nn.MSELoss()(
@@ -146,20 +152,28 @@ class Figure5ToMnetTrainer:
 
             # Track predictions for accuracy calculation
             with torch.no_grad():
-                all_predictions["action"].extend(torch.argmax(predictions["action"], dim=1).cpu().numpy())
+                all_predictions["action"].extend(
+                    torch.argmax(predictions["action"], dim=1).cpu().numpy()
+                )
                 all_targets["action"].extend(batch["true_action"].cpu().numpy())
-                
+
                 if "consumption" in predictions:
-                    all_predictions["consumption"].extend(torch.sigmoid(predictions["consumption"]).cpu().numpy())
-                    all_targets["consumption"].extend(batch["true_consumption"].cpu().numpy())
+                    all_predictions["consumption"].extend(
+                        torch.sigmoid(predictions["consumption"]).cpu().numpy()
+                    )
+                    all_targets["consumption"].extend(
+                        batch["true_consumption"].cpu().numpy()
+                    )
 
             n_batches += 1
 
         # Average losses
         avg_losses = {k: v / n_batches for k, v in total_losses.items()}
-        
+
         # Calculate accuracies
-        action_accuracy = accuracy_score(all_targets["action"], all_predictions["action"])
+        action_accuracy = accuracy_score(
+            all_targets["action"], all_predictions["action"]
+        )
         avg_losses["action_accuracy"] = action_accuracy
 
         return avg_losses
@@ -189,20 +203,20 @@ class Figure5ToMnetTrainer:
 
                 # Compute losses
                 losses = {}
-                
+
                 # Action prediction loss
                 action_loss = nn.CrossEntropyLoss()(
                     predictions["action"], batch["true_action"]
                 )
                 losses["action_loss"] = action_loss
-                
+
                 # Object consumption prediction loss
                 if "consumption" in predictions and "true_consumption" in batch:
                     consumption_loss = nn.BCEWithLogitsLoss()(
                         predictions["consumption"], batch["true_consumption"]
                     )
                     losses["consumption_loss"] = consumption_loss
-                
+
                 # Successor representation loss
                 if "successor_representation" in predictions and "true_sr" in batch:
                     sr_loss = nn.MSELoss()(
@@ -226,20 +240,28 @@ class Figure5ToMnetTrainer:
                 total_losses["total_loss"] += total_loss.item()
 
                 # Track predictions for accuracy calculation
-                all_predictions["action"].extend(torch.argmax(predictions["action"], dim=1).cpu().numpy())
+                all_predictions["action"].extend(
+                    torch.argmax(predictions["action"], dim=1).cpu().numpy()
+                )
                 all_targets["action"].extend(batch["true_action"].cpu().numpy())
-                
+
                 if "consumption" in predictions:
-                    all_predictions["consumption"].extend(torch.sigmoid(predictions["consumption"]).cpu().numpy())
-                    all_targets["consumption"].extend(batch["true_consumption"].cpu().numpy())
+                    all_predictions["consumption"].extend(
+                        torch.sigmoid(predictions["consumption"]).cpu().numpy()
+                    )
+                    all_targets["consumption"].extend(
+                        batch["true_consumption"].cpu().numpy()
+                    )
 
                 n_batches += 1
 
         # Average losses
         avg_losses = {k: v / n_batches for k, v in total_losses.items()}
-        
+
         # Calculate accuracies
-        action_accuracy = accuracy_score(all_targets["action"], all_predictions["action"])
+        action_accuracy = accuracy_score(
+            all_targets["action"], all_predictions["action"]
+        )
         avg_losses["action_accuracy"] = action_accuracy
 
         return avg_losses
@@ -254,43 +276,50 @@ class Figure5ToMnetTrainer:
         """Full training loop"""
         print(f"Training for {n_epochs} epochs...")
         print(f"Model will be saved to: {save_path}")
-        
+
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
 
         for epoch in range(n_epochs):
             print(f"\nEpoch {epoch + 1}/{n_epochs}")
-            
+
             # Training
             train_metrics = self.train_epoch(train_dataloader)
             self.train_losses.append(train_metrics["total_loss"])
             self.train_accuracies.append(train_metrics["action_accuracy"])
-            
+
             # Validation
             val_metrics = self.validate_epoch(val_dataloader)
             self.val_losses.append(val_metrics["total_loss"])
             self.val_accuracies.append(val_metrics["action_accuracy"])
-            
+
             # Scheduler step
             self.scheduler.step(val_metrics["total_loss"])
-            
+
             # Print metrics
-            print(f"Train Loss: {train_metrics['total_loss']:.4f}, Train Acc: {train_metrics['action_accuracy']:.4f}")
-            print(f"Val Loss: {val_metrics['total_loss']:.4f}, Val Acc: {val_metrics['action_accuracy']:.4f}")
-            
+            print(
+                f"Train Loss: {train_metrics['total_loss']:.4f}, Train Acc: {train_metrics['action_accuracy']:.4f}"
+            )
+            print(
+                f"Val Loss: {val_metrics['total_loss']:.4f}, Val Acc: {val_metrics['action_accuracy']:.4f}"
+            )
+
             # Early stopping
             if val_metrics["total_loss"] < self.best_val_loss:
                 self.best_val_loss = val_metrics["total_loss"]
                 self.patience_counter = 0
-                
+
                 # Save best model
-                torch.save({
-                    'model_state_dict': self.model.state_dict(),
-                    'optimizer_state_dict': self.optimizer.state_dict(),
-                    'epoch': epoch,
-                    'val_loss': val_metrics["total_loss"],
-                    'val_accuracy': val_metrics["action_accuracy"],
-                    'config': self.config.__dict__,
-                }, save_path)
+                torch.save(
+                    {
+                        "model_state_dict": self.model.state_dict(),
+                        "optimizer_state_dict": self.optimizer.state_dict(),
+                        "epoch": epoch,
+                        "val_loss": val_metrics["total_loss"],
+                        "val_accuracy": val_metrics["action_accuracy"],
+                        "config": self.config.__dict__,
+                    },
+                    save_path,
+                )
                 print(f"Saved best model to {save_path}")
             else:
                 self.patience_counter += 1
@@ -309,27 +338,51 @@ class Figure5ToMnetTrainer:
 def main():
     """Main training function"""
     parser = argparse.ArgumentParser(description="Train ToMnet for Figure 5")
-    
+
     # Data parameters
     parser.add_argument("--n_agents", type=int, default=100, help="Number of agents")
-    parser.add_argument("--n_episodes_per_agent", type=int, default=100, help="Episodes per agent")
-    parser.add_argument("--alpha_reward", type=float, default=0.01, help="Dirichlet concentration for rewards")
-    parser.add_argument("--high_cost_ratio", type=float, default=0.2, help="Ratio of high-cost agents")
-    
+    parser.add_argument(
+        "--n_episodes_per_agent", type=int, default=100, help="Episodes per agent"
+    )
+    parser.add_argument(
+        "--alpha_reward",
+        type=float,
+        default=0.01,
+        help="Dirichlet concentration for rewards",
+    )
+    parser.add_argument(
+        "--high_cost_ratio", type=float, default=0.2, help="Ratio of high-cost agents"
+    )
+
     # Training parameters
-    parser.add_argument("--n_epochs", type=int, default=100, help="Number of training epochs")
+    parser.add_argument(
+        "--n_epochs", type=int, default=100, help="Number of training epochs"
+    )
     parser.add_argument("--batch_size", type=int, default=32, help="Batch size")
-    parser.add_argument("--learning_rate", type=float, default=1e-3, help="Learning rate")
+    parser.add_argument(
+        "--learning_rate", type=float, default=1e-3, help="Learning rate"
+    )
     parser.add_argument("--device", type=str, default="cuda", help="Device to use")
-    parser.add_argument("--val_split", type=float, default=0.2, help="Validation split ratio")
-    
+    parser.add_argument(
+        "--val_split", type=float, default=0.2, help="Validation split ratio"
+    )
+
     # Output parameters
-    parser.add_argument("--data_dir", type=str, default="data/figure5", help="Data directory")
-    parser.add_argument("--model_dir", type=str, default="models/figure5", help="Model save directory")
-    parser.add_argument("--experiment_name", type=str, default="figure5_goal_directed", help="Experiment name")
-    
+    parser.add_argument(
+        "--data_dir", type=str, default="data/figure5", help="Data directory"
+    )
+    parser.add_argument(
+        "--model_dir", type=str, default="models/figure5", help="Model save directory"
+    )
+    parser.add_argument(
+        "--experiment_name",
+        type=str,
+        default="figure5_goal_directed",
+        help="Experiment name",
+    )
+
     args = parser.parse_args()
-    
+
     print("=" * 60)
     print("Figure 5 ToMnet Training")
     print("=" * 60)
@@ -342,15 +395,15 @@ def main():
     print(f"Batch size: {args.batch_size}")
     print(f"Device: {args.device}")
     print("=" * 60)
-    
+
     # Set device
     if args.device == "cuda" and not torch.cuda.is_available():
         print("CUDA not available, using CPU")
         args.device = "cpu"
-    
+
     # Generate or load data
     data_path = os.path.join(args.data_dir, f"{args.experiment_name}_training_data.pkl")
-    
+
     if not os.path.exists(data_path):
         print("Generating training data...")
         generator = DataGenerator()
@@ -367,42 +420,37 @@ def main():
     else:
         print(f"Loading existing data from {data_path}")
         import pickle
+
         with open(data_path, "rb") as f:
             dataset = pickle.load(f)
         print(f"Loaded {len(dataset['data'])} training samples")
-    
+
     # Create dataset and split
     tomnet_dataset = ToMnetDataset(dataset, experiment_type="figure5")
-    
+
     # Train/validation split
     n_samples = len(tomnet_dataset)
     n_val = int(n_samples * args.val_split)
     n_train = n_samples - n_val
-    
+
     train_dataset, val_dataset = torch.utils.data.random_split(
         tomnet_dataset, [n_train, n_val]
     )
-    
+
     # Create data loaders
     train_dataloader = DataLoader(
-        train_dataset, 
-        batch_size=args.batch_size, 
-        shuffle=True, 
-        collate_fn=collate_fn
+        train_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn
     )
     val_dataloader = DataLoader(
-        val_dataset, 
-        batch_size=args.batch_size, 
-        shuffle=False, 
-        collate_fn=collate_fn
+        val_dataset, batch_size=args.batch_size, shuffle=False, collate_fn=collate_fn
     )
-    
+
     print(f"Training samples: {n_train}")
     print(f"Validation samples: {n_val}")
-    
+
     # Create model
     config = Figure5ExperimentConfig()
-    
+
     model = create_tomnet(
         state_dim=dataset["meta"]["state_dim"],
         char_embedding_dim=config.char_embedding_dim,
@@ -410,9 +458,11 @@ def main():
         predictions=config.predictions,
         dropout_rate=config.dropout_rate,
     )
-    
-    print(f"Created ToMnet model with {sum(p.numel() for p in model.parameters())} parameters")
-    
+
+    print(
+        f"Created ToMnet model with {sum(p.numel() for p in model.parameters())} parameters"
+    )
+
     # Create trainer
     trainer = Figure5ToMnetTrainer(
         model=model,
@@ -420,26 +470,30 @@ def main():
         device=args.device,
         learning_rate=args.learning_rate,
     )
-    
+
     # Train model
-    save_path = os.path.join(args.model_dir, f"{args.experiment_name}_alpha{args.alpha_reward}_model.pth")
+    save_path = os.path.join(
+        args.model_dir, f"{args.experiment_name}_alpha{args.alpha_reward}_model.pth"
+    )
     os.makedirs(args.model_dir, exist_ok=True)
-    
+
     training_history = trainer.train(
         train_dataloader=train_dataloader,
         val_dataloader=val_dataloader,
         n_epochs=args.n_epochs,
         save_path=save_path,
     )
-    
+
     # Save training history
-    history_path = os.path.join(args.model_dir, f"{args.experiment_name}_alpha{args.alpha_reward}_history.json")
+    history_path = os.path.join(
+        args.model_dir, f"{args.experiment_name}_alpha{args.alpha_reward}_history.json"
+    )
     with open(history_path, "w") as f:
         json.dump(training_history, f, indent=2)
-    
+
     print(f"\nTraining completed!")
     print(f"Best model saved to: {save_path}")
-    print(f"Training history saved to: {history_path}") 
+    print(f"Training history saved to: {history_path}")
     print(f"Best validation loss: {trainer.best_val_loss:.4f}")
 
 

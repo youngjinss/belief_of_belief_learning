@@ -6,6 +6,9 @@ import matplotlib.patches as patches
 from matplotlib.animation import FuncAnimation
 from IPython.display import HTML
 
+SIZE = 11
+MAX_WALLS = 4
+MAX_STEPS = 31
 
 class GridWorld:
     """
@@ -13,7 +16,7 @@ class GridWorld:
     Features: random walls (0-4), 4 consumable objects, agent position
     """
 
-    def __init__(self, size: int = 11, max_walls: int = 4, max_steps: int = 31):
+    def __init__(self, size: int = SIZE, max_walls: int = MAX_WALLS, max_steps: int = MAX_STEPS):
         self.size = size
         self.max_walls = max_walls
         self.max_steps = max_steps
@@ -224,7 +227,7 @@ class GridWorld:
         
         # Draw agent
         agent_circle = patches.Circle((self.agent_pos[1], self.agent_pos[0]), 0.35,
-                                    facecolor='purple', edgecolor='darkpurple', 
+                                    facecolor='purple', edgecolor='indigo', 
                                     linewidth=3)
         ax.add_patch(agent_circle)
         ax.text(self.agent_pos[1], self.agent_pos[0], 'A', 

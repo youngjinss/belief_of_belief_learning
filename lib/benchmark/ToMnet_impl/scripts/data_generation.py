@@ -5,12 +5,11 @@ import pickle
 from tqdm import tqdm
 from multiprocessing import Pool, cpu_count
 
-from environment import GridWorld
+from environment import GridWorld, SIZE, MAX_WALLS, MAX_STEPS
 from agents import (
     create_random_agents,
     create_goal_directed_agents,
 )
-
 
 class TrajectoryData:
     """Container for trajectory data"""
@@ -94,7 +93,7 @@ def generate_agent_episodes(args):
 class DataGenerator:
     """Generate training and evaluation data for ToMnet experiments"""
 
-    def __init__(self, grid_size: int = 11, max_walls: int = 4, max_steps: int = 31):
+    def __init__(self, grid_size: int = SIZE, max_walls: int = MAX_WALLS, max_steps: int = MAX_STEPS):
         self.grid_size = grid_size
         self.max_walls = max_walls
         self.max_steps = max_steps

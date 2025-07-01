@@ -831,7 +831,7 @@ class OnlineLearningEnvironment:
             action_a1, vector_d
         )
         print(f"seller's posterior_belief: {posterior_belief}")
-        
+
         # Stage 2: Seller sets prices
         optimal_prices = self.seller.compute_m_star(preference_grid_r, posterior_belief)
         print(f"seller's optimal_prices: {optimal_prices}")
@@ -839,10 +839,10 @@ class OnlineLearningEnvironment:
         # Stage 3: Buyer's final action
         state_t3 = {"vector_r": self.true_preference, "vector_m": optimal_prices}
         print(f"buyer's state_t3: {state_t3}")
-        
+
         action_a3 = self.buyer.act_t3(state_t3)
         print(f"buyer's action_a3: {action_a3}")
-        
+
         # Memory에 관찰 저장
         self.memory.add_observation(action_a1, vector_d)
 

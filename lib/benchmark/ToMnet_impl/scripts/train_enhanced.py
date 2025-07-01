@@ -712,6 +712,10 @@ def main():
     if not args.train_individual and not args.train_mixed:
         args.train_individual = True
         args.train_mixed = True
+        
+    # Defalt of n_workers
+    if args.n_workers is None:
+        args.n_workers = os.cpu_count()
 
     # Create directories
     os.makedirs("data", exist_ok=True)
@@ -723,10 +727,11 @@ def main():
     if args.experiment == "figure3":
         # Get datasets for evaluation file generation
         config = EnhancedExperimentConfig("figure3")
-        generator = DataGenerator("figure3", n_workers=args.n_workers)
-        datasets = generator.load_or_generate_datasets(
+        generator = DataGenerator("figure3")
+        datasets = generator.generate_random_agent_data(
             regenerate=args.regenerate_data,
             alpha_values=config.training_alphas,
+            n_workers=args.n_workers
         )
         results["enhanced_figure3"] = train_enhanced_model("figure3", args)
 

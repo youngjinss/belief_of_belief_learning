@@ -19,8 +19,8 @@ from evaluate import evaluate_model, compute_kl_divergence
 from typing import Dict, Optional, Union
 
 
-class EnhancedExperimentConfig:
-    """Enhanced configuration with larger datasets and generalization techniques"""
+class ExperimentConfig:
+    """Configuration with larger datasets and generalization techniques"""
 
     def __init__(self, experiment_type: str):
         self.experiment_type = experiment_type
@@ -31,19 +31,19 @@ class EnhancedExperimentConfig:
             self.agent_type = "random"
             self.alpha_values = [0.01, 0.03, 0.1, 0.3, 1.0, 3.0]
             
-            # ENHANCED: 10x larger dataset
+            # 10x larger dataset
             self.n_agents = 1000        # Was 100, now 1000
             self.n_episodes_per_agent = 200  # Was 100, now 200
             
-            # ENHANCED: More training epochs with early stopping
+            # More training epochs with early stopping
             self.n_epochs = 200         # Was 50, now 200
             self.patience = 30          # Early stopping patience
             
-            # ENHANCED: Regularization
+            # Regularization
             self.dropout_rate = 0.3
             self.l2_weight = 1e-4
             
-            # ENHANCED: Data augmentation
+            # Data augmentation
             self.augment_data = True
             self.noise_level = 0.01
             
@@ -53,13 +53,13 @@ class EnhancedExperimentConfig:
             raise ValueError(f"Unknown experiment type: {experiment_type}")
 
 
-class EnhancedToMnetTrainer:
-    """Enhanced trainer with generalization techniques"""
+class ToMnetTrainer:
+    """Trainer with generalization techniques"""
 
     def __init__(
         self,
         model: ToMnet,
-        config: EnhancedExperimentConfig,
+        config: ExperimentConfig,
         device: str = "cuda",
         learning_rate: float = 1e-3,
     ):
@@ -67,14 +67,14 @@ class EnhancedToMnetTrainer:
         self.device = device
         self.config = config
         
-        # ENHANCED: Different optimizers and schedulers
+        # Different optimizers and schedulers
         self.optimizer = optim.AdamW(
             model.parameters(), 
             lr=learning_rate,
             weight_decay=config.l2_weight
         )
         
-        # ENHANCED: More sophisticated learning rate scheduling
+        # More sophisticated learning rate scheduling
         self.scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(
             self.optimizer, T_0=20, T_mult=2
         )
@@ -82,7 +82,7 @@ class EnhancedToMnetTrainer:
         # Loss weights from config
         self.loss_weights = config.loss_weights
         
-        # ENHANCED: Track metrics for early stopping
+        # Track metrics for early stopping
         self.best_val_loss = float('inf')
         self.patience_counter = 0
         self.train_losses = []
@@ -108,7 +108,7 @@ class EnhancedToMnetTrainer:
         return batch
 
     def train_epoch(self, dataloader: DataLoader) -> Dict[str, float]:
-        """Enhanced training with metrics tracking"""
+        """Training with metrics tracking"""
         self.model.train()
         total_losses = {}
         all_predictions = []
@@ -122,7 +122,7 @@ class EnhancedToMnetTrainer:
                 for k, v in batch.items()
             }
             
-            # ENHANCED: Data augmentation
+            # Data augmentation
             batch = self.augment_batch(batch)
 
             # Forward pass
@@ -147,7 +147,7 @@ class EnhancedToMnetTrainer:
             self.optimizer.zero_grad()
             weighted_loss.backward()
             
-            # ENHANCED: Gradient clipping
+            # Gradient clipping
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
             self.optimizer.step()
 
@@ -161,7 +161,7 @@ class EnhancedToMnetTrainer:
                 total_losses.get("weighted_loss", 0) + weighted_loss.item()
             )
             
-            # ENHANCED: Track accuracy
+            # Track accuracy
             if 'action_pred' in predictions:
                 pred_actions = torch.argmax(predictions['action_pred'], dim=1)
                 all_predictions.extend(pred_actions.cpu().numpy())
@@ -172,7 +172,7 @@ class EnhancedToMnetTrainer:
         # Average losses
         avg_losses = {k: v / n_batches for k, v in total_losses.items()}
         
-        # ENHANCED: Calculate accuracy
+        # Calculate accuracy
         if all_predictions:
             accuracy = accuracy_score(all_targets, all_predictions)
             avg_losses['accuracy'] = accuracy
@@ -183,7 +183,7 @@ class EnhancedToMnetTrainer:
         return avg_losses
 
     def validate(self, dataloader: DataLoader) -> Dict[str, float]:
-        """Enhanced validation with metrics tracking"""
+        """Validation with metrics tracking"""
         self.model.eval()
         total_losses = {}
         all_predictions = []
@@ -215,7 +215,7 @@ class EnhancedToMnetTrainer:
                         total_losses[loss_name] = 0
                     total_losses[loss_name] += loss_value.item()
 
-                # ENHANCED: Track accuracy
+                # Track accuracy
                 if 'action_pred' in predictions:
                     pred_actions = torch.argmax(predictions['action_pred'], dim=1)
                     all_predictions.extend(pred_actions.cpu().numpy())
@@ -226,7 +226,7 @@ class EnhancedToMnetTrainer:
         # Average losses
         avg_losses = {k: v / n_batches for k, v in total_losses.items()}
         
-        # ENHANCED: Calculate accuracy
+        # Calculate accuracy
         if all_predictions:
             accuracy = accuracy_score(all_targets, all_predictions)
             avg_losses['accuracy'] = accuracy
@@ -235,7 +235,7 @@ class EnhancedToMnetTrainer:
         val_loss = avg_losses.get('total_loss', avg_losses.get('action_loss', 0))
         self.val_losses.append(val_loss)
         
-        # ENHANCED: Early stopping logic
+        # Early stopping logic
         if val_loss < self.best_val_loss:
             self.best_val_loss = val_loss
             self.patience_counter = 0
@@ -249,7 +249,7 @@ class EnhancedToMnetTrainer:
         return self.patience_counter >= self.config.patience
 
     def save_checkpoint(self, epoch: int, val_loss: float, save_path: str):
-        """Enhanced checkpoint saving"""
+        """Checkpoint saving"""
         checkpoint = {
             "epoch": epoch,
             "model_state_dict": self.model.state_dict(),
@@ -267,7 +267,7 @@ class EnhancedToMnetTrainer:
         print(f"Saved checkpoint to {save_path}")
 
     def load_checkpoint(self, checkpoint_path: str):
-        """Load enhanced checkpoint"""
+        """Load checkpoint"""
         checkpoint = torch.load(checkpoint_path, map_location=self.device)
         self.model.load_state_dict(checkpoint["model_state_dict"])
         self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
@@ -283,75 +283,15 @@ class EnhancedToMnetTrainer:
         return checkpoint["epoch"], checkpoint["val_loss"]
 
 
-def create_mixed_generalization_dataset(datasets: Dict, alpha_values: List[float]) -> Dict:
-    """Create datasets with different generalization strategies"""
-    mixed_datasets = {}
-    
-    # Strategy 1: Full mixed dataset (all alphas)
-    print("Creating full mixed dataset...")
-    full_mixed_data = []
-    for alpha, dataset in datasets.items():
-        if alpha != "mixed":
-            full_mixed_data.extend(dataset["data"])
-    
-    mixed_datasets["full_mixed"] = {
-        "data": full_mixed_data,
-        "meta": {
-            "mixed": True,
-            "alpha_values": [a for a in alpha_values if a in datasets],
-            "state_dim": datasets[alpha_values[0]]["meta"]["state_dim"],
-            "strategy": "full_mixed"
-        },
-    }
-    
-    # Strategy 2: Extreme pairs (low-high alpha combinations)
-    extreme_pairs = [(0.01, 3.0), (0.03, 1.0)]
-    for low_alpha, high_alpha in extreme_pairs:
-        if low_alpha in datasets and high_alpha in datasets:
-            print(f"Creating mixed dataset for alphas {low_alpha} and {high_alpha}...")
-            mixed_data = []
-            mixed_data.extend(datasets[low_alpha]["data"])
-            mixed_data.extend(datasets[high_alpha]["data"])
-            
-            mixed_datasets[f"mixed_{low_alpha}_{high_alpha}"] = {
-                "data": mixed_data,
-                "meta": {
-                    "mixed": True,
-                    "alpha_values": [low_alpha, high_alpha],
-                    "state_dim": datasets[low_alpha]["meta"]["state_dim"],
-                    "strategy": "extreme_pair"
-                },
-            }
-    
-    # Strategy 3: Progressive curriculum (start with extreme, add intermediate)
-    print("Creating curriculum dataset...")
-    curriculum_alphas = [0.01, 3.0, 0.1, 1.0]  # Start extreme, add intermediate
-    curriculum_data = []
-    for alpha in curriculum_alphas:
-        if alpha in datasets:
-            curriculum_data.extend(datasets[alpha]["data"])
-    
-    mixed_datasets["curriculum"] = {
-        "data": curriculum_data,
-        "meta": {
-            "mixed": True,
-            "alpha_values": curriculum_alphas,
-            "state_dim": datasets[alpha_values[0]]["meta"]["state_dim"],
-            "strategy": "curriculum"
-        },
-    }
-    
-    return mixed_datasets
 
-
-def generate_enhanced_data(
-    experiment_type: str, config: EnhancedExperimentConfig, args
+def generate_data(
+    experiment_type: str, config: ExperimentConfig, args
 ) -> Dict[str, Dict]:
-    """Generate enhanced training data with larger datasets"""
+    """Generate training data with larger datasets"""
     # Check if data files already exist
-    data_files = glob.glob("data/enhanced_figure*.pkl")
+    data_files = glob.glob("data/figure*.pkl")
     if data_files and not args.regenerate_data:
-        print(f"Found existing enhanced data files: {data_files}")
+        print(f"Found existing data files: {data_files}")
         print("Use --regenerate_data to create new data")
 
         # Load existing data files
@@ -360,17 +300,17 @@ def generate_enhanced_data(
             alpha_values = getattr(args, "alpha_values", config.alpha_values)
 
             for alpha in alpha_values:
-                file_path = f"data/enhanced_figure3_alpha_{alpha}.pkl"
+                file_path = f"data/figure3_alpha_{alpha}.pkl"
                 if os.path.exists(file_path):
-                    print(f"Loading existing enhanced data for alpha={alpha}")
+                    print(f"Loading existing data for alpha={alpha}")
                     import pickle
                     with open(file_path, "rb") as f:
                         datasets[alpha] = pickle.load(f)
 
             return datasets
 
-    # Generate new enhanced data
-    print("Generating ENHANCED datasets (10x larger)...")
+    # Generate new data
+    print("Generating large-scale datasets (10x larger)...")
     data_generator = DataGenerator()
 
     if experiment_type == "figure3":
@@ -378,7 +318,7 @@ def generate_enhanced_data(
         alpha_values = getattr(args, "alpha_values", config.alpha_values)
 
         for alpha in alpha_values:
-            print(f"Generating ENHANCED data for alpha={alpha}")
+            print(f"Generating data for alpha={alpha}")
             print(f"  - Agents: {config.n_agents} (was 100)")
             print(f"  - Episodes per agent: {config.n_episodes_per_agent} (was 100)")
             print(f"  - Expected samples: ~{config.n_agents * config.n_episodes_per_agent}")
@@ -387,16 +327,68 @@ def generate_enhanced_data(
                 n_agents=config.n_agents,
                 n_episodes_per_agent=config.n_episodes_per_agent,
                 alpha=alpha,
-                save_path=f"data/enhanced_figure3_alpha_{alpha}.pkl",
+                save_path=f"data/figure3_alpha_{alpha}.pkl",
                 n_workers=args.n_workers,
             )
             datasets[alpha] = dataset
             print(f"  ✓ Generated {len(dataset['data'])} samples")
 
-        # ENHANCED: Create multiple generalization datasets
-        print("\nCreating generalization datasets...")
-        mixed_datasets = create_mixed_generalization_dataset(datasets, alpha_values)
-        datasets.update(mixed_datasets)
+        # Create mixed dataset for generalization
+        print("\nCreating mixed datasets for generalization...")
+        
+        # Strategy 1: Full mixed dataset (all alphas)
+        print("Creating full mixed dataset...")
+        full_mixed_data = []
+        for alpha, dataset in datasets.items():
+            if alpha != "mixed":
+                full_mixed_data.extend(dataset["data"])
+        
+        datasets["full_mixed"] = {
+            "data": full_mixed_data,
+            "meta": {
+                "mixed": True,
+                "alpha_values": [a for a in alpha_values if a in datasets],
+                "state_dim": datasets[alpha_values[0]]["meta"]["state_dim"],
+                "strategy": "full_mixed"
+            },
+        }
+        
+        # Strategy 2: Extreme pairs (low-high alpha combinations)
+        extreme_pairs = [(0.01, 3.0), (0.03, 1.0)]
+        for low_alpha, high_alpha in extreme_pairs:
+            if low_alpha in datasets and high_alpha in datasets:
+                print(f"Creating mixed dataset for alphas {low_alpha} and {high_alpha}...")
+                mixed_data = []
+                mixed_data.extend(datasets[low_alpha]["data"])
+                mixed_data.extend(datasets[high_alpha]["data"])
+                
+                datasets[f"mixed_{low_alpha}_{high_alpha}"] = {
+                    "data": mixed_data,
+                    "meta": {
+                        "mixed": True,
+                        "alpha_values": [low_alpha, high_alpha],
+                        "state_dim": datasets[low_alpha]["meta"]["state_dim"],
+                        "strategy": "extreme_pair"
+                    },
+                }
+        
+        # Strategy 3: Progressive curriculum (start with extreme, add intermediate)
+        print("Creating curriculum dataset...")
+        curriculum_alphas = [0.01, 3.0, 0.1, 1.0]  # Start extreme, add intermediate
+        curriculum_data = []
+        for alpha in curriculum_alphas:
+            if alpha in datasets:
+                curriculum_data.extend(datasets[alpha]["data"])
+        
+        datasets["curriculum"] = {
+            "data": curriculum_data,
+            "meta": {
+                "mixed": True,
+                "alpha_values": curriculum_alphas,
+                "state_dim": datasets[alpha_values[0]]["meta"]["state_dim"],
+                "strategy": "curriculum"
+            },
+        }
 
         return datasets
 
@@ -404,22 +396,22 @@ def generate_enhanced_data(
         raise ValueError(f"Unknown experiment type: {experiment_type}")
 
 
-def train_enhanced_model(experiment_type: str, args):
-    """Enhanced training function with improved generalization"""
-    print(f"=== ENHANCED Training for {experiment_type.title()} ===")
-    print("Improvements:")
+def train_unified_model(experiment_type: str, args):
+    """Training function with improved generalization"""
+    print(f"=== Training for {experiment_type.title()} with Enhanced Generalization ===")
+    print("Features:")
     print("  • 10x larger datasets")
     print("  • Regularization (dropout, weight decay)")
     print("  • Data augmentation")
     print("  • Early stopping")
     print("  • Mixed-alpha training strategies")
-    print("  • Better optimizers and schedulers")
+    print("  • Advanced optimizers and schedulers")
 
-    # Create enhanced configuration
-    config = EnhancedExperimentConfig(experiment_type)
+    # Create configuration
+    config = ExperimentConfig(experiment_type)
 
-    # Generate enhanced data
-    data = generate_enhanced_data(experiment_type, config, args)
+    # Generate data
+    data = generate_data(experiment_type, config, args)
 
     if experiment_type == "figure3":
         results = {}
@@ -443,7 +435,7 @@ def train_enhanced_model(experiment_type: str, args):
         
         for dataset_name, dataset in training_datasets.items():
             print(f"\n{'='*60}")
-            print(f"Training Enhanced Model: {dataset_name}")
+            print(f"Training Model: {dataset_name}")
             print(f"Dataset size: {len(dataset['data'])} samples")
             if 'alpha_values' in dataset['meta']:
                 print(f"Alpha values: {dataset['meta']['alpha_values']}")
@@ -455,7 +447,7 @@ def train_enhanced_model(experiment_type: str, args):
                 experiment_type=experiment_type,
                 state_dim=state_dim,
                 char_embedding_dim=config.char_embedding_dim,
-                dropout_rate=config.dropout_rate,  # Enhanced
+                dropout_rate=config.dropout_rate,
             )
 
             # Split data into train/validation
@@ -499,10 +491,10 @@ def train_enhanced_model(experiment_type: str, args):
                 num_workers=min(4, os.cpu_count()),
             )
 
-            # Create enhanced trainer
-            trainer = EnhancedToMnetTrainer(model, config, args.device, args.learning_rate)
+            # Create trainer
+            trainer = ToMnetTrainer(model, config, args.device, args.learning_rate)
 
-            # Enhanced training loop
+            # Training loop
             print(f"Training for up to {config.n_epochs} epochs with early stopping...")
             best_val_loss = float("inf")
             
@@ -530,7 +522,7 @@ def train_enhanced_model(experiment_type: str, args):
                 current_val_loss = val_losses.get('total_loss', val_losses.get('action_loss', 0))
                 if current_val_loss < best_val_loss:
                     best_val_loss = current_val_loss
-                    save_path = f"models/enhanced_{experiment_type}_{dataset_name}_best.pth"
+                    save_path = f"models/{experiment_type}_{dataset_name}_best.pth"
                     os.makedirs(os.path.dirname(save_path), exist_ok=True)
                     trainer.save_checkpoint(epoch, best_val_loss, save_path)
                     print(f"  ✓ New best model saved!")
@@ -671,7 +663,7 @@ echo "python scripts/visualize_figure3.py --results_path {eval_dir}/figure3_cros
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Enhanced ToMnet Training")
+    parser = argparse.ArgumentParser(description="ToMnet Training with Generalization")
     parser.add_argument(
         "--experiment",
         choices=["figure3"],
@@ -726,40 +718,40 @@ def main():
 
     if args.experiment == "figure3":
         # Get datasets for evaluation file generation
-        config = EnhancedExperimentConfig("figure3")
+        config = ExperimentConfig("figure3")
         generator = DataGenerator("figure3")
         datasets = generator.generate_random_agent_data(
             regenerate=args.regenerate_data,
-            alpha_values=config.training_alphas,
+            alpha_values=config.alpha_values,
             n_workers=args.n_workers
         )
-        results["enhanced_figure3"] = train_enhanced_model("figure3", args)
+        results["figure3"] = train_unified_model("figure3", args)
 
     # Save results
     results_dir = f"result/{args.experiment}"
     os.makedirs(results_dir, exist_ok=True)
     
-    with open(f"{results_dir}/enhanced_training_results.json", "w") as f:
+    with open(f"{results_dir}/training_results.json", "w") as f:
         json.dump(results, f, indent=2, default=str)
     
     # Generate cross-species evaluation files
-    if args.experiment == "figure3" and "enhanced_figure3" in results:
+    if args.experiment == "figure3" and "figure3" in results:
         generate_cross_species_evaluation_files(
-            results["enhanced_figure3"], 
+            results["figure3"], 
             datasets, 
             args.experiment, 
             device=args.device
         )
 
     print(f"\n{'='*60}")
-    print("ENHANCED TRAINING COMPLETED!")
+    print("TRAINING COMPLETED!")
     print(f"{'='*60}")
-    print(f"Results saved to: {results_dir}/enhanced_training_results.json")
+    print(f"Results saved to: {results_dir}/training_results.json")
     
     # Print summary
-    if args.experiment == "figure3" and "enhanced_figure3" in results:
+    if args.experiment == "figure3" and "figure3" in results:
         print("\nTrained Models Summary:")
-        for model_name, result in results["enhanced_figure3"].items():
+        for model_name, result in results["figure3"].items():
             print(f"  • {model_name}:")
             print(f"    - Best val loss: {result['best_val_loss']:.4f}")
             if 'final_val_acc' in result:
@@ -767,7 +759,7 @@ def main():
             print(f"    - Model path: {result['model_path']}")
 
     print(f"\nNext steps:")
-    print(f"  1. Run cross-species evaluation with enhanced models")
+    print(f"  1. Run cross-species evaluation with trained models")
     print(f"  2. Compare performance against original models")
     print(f"  3. Analyze generalization capabilities")
 

@@ -85,6 +85,13 @@ EOF
 
 # Function to run training
 run_training() {
+    # Check if training results already exist
+    if ls ./models/figure3/*.pth 1> /dev/null 2>&1; then
+        print_warning "Training results already exist in ./models/figure3/"
+        print_info "Skipping training step. Remove ./models/figure3/*.pth to re-train."
+        return 0
+    fi
+    
     print_info "Starting ToMnet training..."
     
     # Create log directory with timestamp
@@ -113,6 +120,13 @@ run_training() {
 
 # Function to run evaluation
 run_evaluation() {
+    # Check if evaluation results already exist
+    if [ -f "./result/figure3/cross_species_results.pkl" ]; then
+        print_warning "Evaluation results already exist at ./result/figure3/cross_species_results.pkl"
+        print_info "Skipping evaluation step. Remove ./result/figure3/cross_species_results.pkl to re-evaluate."
+        return 0
+    fi
+    
     print_info "Starting cross-species evaluation..."
     
     if [ -f "result/figure3/run_cross_species_evaluation.sh" ]; then
@@ -138,13 +152,37 @@ run_evaluation() {
             exit 1
         fi
     else
-        print_error "Evaluation script not found. Run training first."
-        exit 1
+        # If the shell script doesn't exist, try running evaluate.py directly
+        print_info "Running evaluate.py directly..."
+        LOG_DIR="log/evaluation/$(date +%Y%m%d_%H%M%S)"
+        mkdir -p "$LOG_DIR"
+        echo "Starting evaluation at $(date)" > "$LOG_DIR/execution.log"
+        python scripts/evaluate.py >> "$LOG_DIR/execution.log" 2>&1 &
+        EVAL_PID=$!
+        echo $EVAL_PID > "$LOG_DIR/process.pid"
+        print_info "Evaluation started in background with PID: $EVAL_PID"
+        print_info "Logs will be written to: $LOG_DIR/execution.log"
+        
+        # Wait for evaluation to complete
+        wait $EVAL_PID
+        if [ $? -eq 0 ]; then
+            print_success "Evaluation completed!"
+        else
+            print_error "Evaluation failed! Check log: $LOG_DIR/execution.log"
+            exit 1
+        fi
     fi
 }
 
 # Function to run visualization
 run_visualization() {
+    # Check if visualization results already exist
+    if ls ./plots/* 1> /dev/null 2>&1; then
+        print_warning "Visualization results already exist in ./plots/"
+        print_info "Skipping visualization step. Remove ./plots/* to re-generate visualizations."
+        return 0
+    fi
+    
     print_info "Starting Figure 3 visualization..."
     
     # Create log directory with timestamp
@@ -154,7 +192,21 @@ run_visualization() {
     
     # Run visualization in background with logging
     echo "Starting visualization at $(date)" > "$LOG_DIR/execution.log"
-    bash shell/visualize_figure3.sh "$@" >> "$LOG_DIR/execution.log" 2>&1 &
+    
+    # Check if visualize_figure3.sh exists, otherwise try running the python script directly
+    if [ -f "shell/visualize_figure3.sh" ]; then
+        bash shell/visualize_figure3.sh "$@" >> "$LOG_DIR/execution.log" 2>&1 &
+    elif [ -f "scripts/visualize_figure3.py" ]; then
+        print_info "Running visualize_figure3.py directly..."
+        python scripts/visualize_figure3.py "$@" >> "$LOG_DIR/execution.log" 2>&1 &
+    elif [ -f "scripts/visualize_exp3.py" ]; then
+        print_info "Running visualize_exp3.py directly..."
+        python scripts/visualize_exp3.py "$@" >> "$LOG_DIR/execution.log" 2>&1 &
+    else
+        print_error "No visualization script found!"
+        exit 1
+    fi
+    
     VIS_PID=$!
     echo $VIS_PID > "$LOG_DIR/process.pid"
     print_info "Visualization started in background with PID: $VIS_PID"

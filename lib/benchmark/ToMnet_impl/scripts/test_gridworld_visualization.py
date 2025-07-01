@@ -3,12 +3,8 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
-from environment import GridWorld
+from environment import GridWorld, SIZE, MAX_WALLS, MAX_STEPS
 import random
-
-SIZE = 7
-MAX_WALLS = 2
-MAX_STEPS = 51
 
 
 def test_static_visualization():

@@ -7,8 +7,8 @@ from matplotlib.animation import FuncAnimation
 from IPython.display import HTML
 
 SIZE = 7
-MAX_WALLS = 4
-MAX_STEPS = 51
+MAX_WALLS = 6
+MAX_STEPS = 101
 
 
 class GridWorld:

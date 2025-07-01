@@ -735,14 +735,14 @@ def main():
     parser.add_argument(
         "--output_path",
         default=None,
-        help="Path to save results (default: result/{experiment}/evaluation_results.pkl)",
+        help="Path to save results (default: result/{experiment}/cross_species_results.pkl)",
     )
 
     args = parser.parse_args()
 
     # Set default output path if not provided
     if args.output_path is None:
-        args.output_path = f"result/{args.experiment}/evaluation_results.pkl"
+        args.output_path = f"result/{args.experiment}/cross_species_results.pkl"
 
     # Create result directory if it doesn't exist
     import os

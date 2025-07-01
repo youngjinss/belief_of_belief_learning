@@ -434,14 +434,14 @@ python scripts/evaluate.py \\
     --experiment figure3 \\
     --model_paths_json {model_paths_file} \\
     --data_paths_json {data_paths_file} \\
-    --output_path {eval_dir}/figure3_cross_species_results.pkl \\
+    --output_path {eval_dir}/cross_species_results.pkl \\
     --device {device}
 
 echo "Evaluation completed!"
-echo "Results saved to: {eval_dir}/figure3_cross_species_results.pkl"
+echo "Results saved to: {eval_dir}/cross_species_results.pkl"
 echo ""
 echo "To visualize results, run:"
-echo "python scripts/visualize_figure3.py --results_path {eval_dir}/figure3_cross_species_results.pkl --save_plots"
+echo "python scripts/visualize_figure3.py --results_path {eval_dir}/cross_species_results.pkl --save_plots"
 """
 
     eval_script_file = os.path.join(eval_dir, "run_cross_species_evaluation.sh")

@@ -2,6 +2,75 @@ import numpy as np
 from typing import Tuple, List, Dict, Optional
 from scipy.special import softmax
 from environment import GridWorld, MAX_STEPS
+import multiprocessing as mp
+from concurrent.futures import ProcessPoolExecutor, as_completed
+
+
+def _run_single_simulation(args):
+    """
+    Helper function to run a single SR simulation in parallel.
+    
+    Args:
+        args: Tuple containing (env, policy, gamma_sr, remaining_steps, size)
+        
+    Returns:
+        Tuple of (sim_sr, sim_normalizer) for this simulation
+    """
+    env, policy, gamma_sr, remaining_steps, size = args
+    
+    # Skip if agent is in invalid position
+    if env.agent_pos[0] >= size or env.agent_pos[1] >= size:
+        return np.zeros((size, size)), 0
+    if env.walls[env.agent_pos]:
+        return np.zeros((size, size)), 0
+
+    sim_sr = np.zeros((size, size))  # SR for this simulation
+    sim_normalizer = 0
+    
+    # Rollout trajectory until episode termination or max remaining steps
+    for delta_t in range(remaining_steps):
+        if env.done:
+            break
+
+        # Current position at time t + Δt
+        current_pos = env.agent_pos
+        
+        # Add discounted occupancy: γ^{Δt} * I(s_{t+Δt} = s)
+        discount = gamma_sr ** delta_t
+        sim_sr[current_pos] += discount
+        sim_normalizer += discount
+
+        # Take action according to policy
+        state = env.get_state()
+        try:
+            # Extract agent position from state
+            agent_pos = np.where(state[:, :, 5] == 1)
+            if len(agent_pos[0]) == 0:
+                break
+                
+            i, j = agent_pos[0][0], agent_pos[1][0]
+            action_probs = policy[i, j].copy()
+            
+            # Safety checks for numerical stability
+            if np.any(np.isnan(action_probs)) or np.sum(action_probs) == 0:
+                action_probs = np.ones(len(action_probs)) / len(action_probs)
+            else:
+                # Ensure probabilities sum to 1 (numerical stability)
+                prob_sum = np.sum(action_probs)
+                if not np.isclose(prob_sum, 1.0):
+                    action_probs = action_probs / prob_sum
+            
+            action = np.random.choice(len(action_probs), p=action_probs)
+            env.step(action)
+        except:
+            # If action fails, break the simulation
+            break
+            
+        # Check if episode terminated (consumed terminal object)
+        if env.done:
+            break
+
+    return sim_sr, sim_normalizer
 
 
 class RandomAgent:
@@ -227,50 +296,24 @@ class GoalDirectedAgent:
         if remaining_steps <= 0:
             return sr  # Return zero SR if at episode end
 
-        # Monte Carlo estimation of SR with multiple trajectory rollouts
+        # Monte Carlo estimation of SR with multiple trajectory rollouts (parallelized)
         n_simulations = 50  # Increased for better estimation
         total_normalizer = 0  # For normalization factor Z
 
+        # Prepare arguments for parallel simulation
+        simulation_args = []
         for sim in range(n_simulations):
-            # Start from current agent position in environment
             temp_env = env.copy()
-            
-            # Skip if agent is in invalid position
-            if temp_env.agent_pos[0] >= size or temp_env.agent_pos[1] >= size:
-                continue
-            if temp_env.walls[temp_env.agent_pos]:
-                continue
+            simulation_args.append((temp_env, self.policy, gamma_sr, remaining_steps, size))
 
-            sim_sr = np.zeros((size, size))  # SR for this simulation
-            sim_normalizer = 0
-            
-            # Rollout trajectory until episode termination or max remaining steps
-            for delta_t in range(remaining_steps):
-                if temp_env.done:
-                    break
+        # Run simulations in parallel
+        n_processes = min(mp.cpu_count(), n_simulations)
+        
+        with ProcessPoolExecutor(max_workers=n_processes) as executor:
+            simulation_results = list(executor.map(_run_single_simulation, simulation_args))
 
-                # Current position at time t + Δt
-                current_pos = temp_env.agent_pos
-                
-                # Add discounted occupancy: γ^{Δt} * I(s_{t+Δt} = s)
-                discount = gamma_sr ** delta_t
-                sim_sr[current_pos] += discount
-                sim_normalizer += discount
-
-                # Take action according to policy
-                state = temp_env.get_state()
-                try:
-                    action = self.act(state, temp_env)
-                    temp_env.step(action)
-                except:
-                    # If action fails, break the simulation
-                    break
-                    
-                # Check if episode terminated (consumed terminal object)
-                if temp_env.done:
-                    break
-
-            # Accumulate normalized SR from this simulation
+        # Aggregate results from all simulations
+        for sim_sr, sim_normalizer in simulation_results:
             if sim_normalizer > 0:
                 sr += sim_sr / sim_normalizer  # Normalize by Z for this simulation
                 total_normalizer += 1

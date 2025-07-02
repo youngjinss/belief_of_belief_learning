@@ -412,7 +412,7 @@ def main():
         args.device = "cpu"
 
     # Generate or load data
-    data_path = os.path.join(args.data_dir, f"{args.experiment_name}_training_data.pkl")
+    data_path = os.path.join(args.data_dir, "goal_directed_training_data.pkl")
 
     if not os.path.exists(data_path):
         print("Generating training data...")

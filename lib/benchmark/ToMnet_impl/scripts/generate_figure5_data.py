@@ -67,7 +67,7 @@ def main():
 
     # Generate goal-directed agent data
     save_path = os.path.join(
-        args.output_dir, f"{args.experiment_name}_training_data.pkl"
+        args.output_dir, "goal_directed_training_data.pkl"
     )
 
     print("\nGenerating goal-directed agent data...")

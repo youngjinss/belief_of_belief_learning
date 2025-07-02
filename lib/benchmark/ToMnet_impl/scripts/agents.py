@@ -137,7 +137,7 @@ class GoalDirectedAgent:
     def plan(
         self,
         env: GridWorld,
-        max_iterations: int = 1000,
+        max_iterations: int = 100,
         convergence_threshold: float = 1e-6,
     ) -> None:
         """

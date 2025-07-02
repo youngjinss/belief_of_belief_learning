@@ -345,16 +345,8 @@ class DataGenerator:
                             consumed_objects[obj - 1] = 1.0
 
                     # Successor representation
-                    # Skip SR computation for very large datasets to avoid hanging
-                    if n_agents * n_episodes_per_agent > 1000:  # Large dataset
-                        sr = np.zeros((self.grid_size, self.grid_size))  # Use zero SR
-                    else:
-                        try:
-                            sr = agent.get_successor_representation(env_copy)
-                        except Exception as e:
-                            print(f"Warning: Failed to compute SR for agent {agent_id}, episode {query_episode_id}, step {step_idx}: {e}")
-                            # Use zero SR as fallback
-                            sr = np.zeros((self.grid_size, self.grid_size))
+                    # Pass current time step for correct SR computation
+                    sr = agent.get_successor_representation(env_copy, current_time_step=step_idx)
 
                     sample = {
                         "agent_id": agent_id,

@@ -1,7 +1,7 @@
 import numpy as np
 from typing import Tuple, List, Dict, Optional
 from scipy.special import softmax
-from environment import GridWorld
+from environment import GridWorld, MAX_STEPS
 
 
 class RandomAgent:
@@ -200,11 +200,19 @@ class GoalDirectedAgent:
         return self.policy[i, j].copy()
 
     def get_successor_representation(
-        self, env: GridWorld, gamma_sr: float = 0.9
+        self, env: GridWorld, gamma_sr: float = 0.9, current_time_step: int = 0
     ) -> np.ndarray:
         """
-        Compute successor representation: discounted state occupancy
-        Returns array of shape (size, size) with expected future occupancy
+        Compute true successor representation according to Appendix B:
+        SR_γ(s) = 1/Z ∑_{Δt=0}^{T-t} γ^{Δt} I(s_{t+Δt} = s)
+        
+        Args:
+            env: Environment to simulate in
+            gamma_sr: Discount factor for SR computation
+            current_time_step: Current time step t in the episode
+            
+        Returns:
+            Array of shape (size, size) with true discounted future state occupancy
         """
         # Plan on a fresh copy to ensure consistency
         plan_env = env.copy()
@@ -214,13 +222,17 @@ class GoalDirectedAgent:
         size = env.size
         sr = np.zeros((size, size))
 
-        # Simulate trajectories to estimate successor representation
-        # Reduced for performance - was causing hanging with large datasets
-        n_simulations = 10  # Was 100
-        max_steps = 20  # Was 50
+        # Calculate remaining steps in episode (T - t)
+        remaining_steps = MAX_STEPS - current_time_step
+        if remaining_steps <= 0:
+            return sr  # Return zero SR if at episode end
 
-        for _ in range(n_simulations):
-            # Start from current agent position
+        # Monte Carlo estimation of SR with multiple trajectory rollouts
+        n_simulations = 50  # Increased for better estimation
+        total_normalizer = 0  # For normalization factor Z
+
+        for sim in range(n_simulations):
+            # Start from current agent position in environment
             temp_env = env.copy()
             
             # Skip if agent is in invalid position
@@ -229,19 +241,44 @@ class GoalDirectedAgent:
             if temp_env.walls[temp_env.agent_pos]:
                 continue
 
-            for step in range(max_steps):
+            sim_sr = np.zeros((size, size))  # SR for this simulation
+            sim_normalizer = 0
+            
+            # Rollout trajectory until episode termination or max remaining steps
+            for delta_t in range(remaining_steps):
                 if temp_env.done:
                     break
 
-                # Add discounted occupancy
-                discount = gamma_sr**step
-                sr[temp_env.agent_pos] += discount / n_simulations
+                # Current position at time t + Δt
+                current_pos = temp_env.agent_pos
+                
+                # Add discounted occupancy: γ^{Δt} * I(s_{t+Δt} = s)
+                discount = gamma_sr ** delta_t
+                sim_sr[current_pos] += discount
+                sim_normalizer += discount
 
                 # Take action according to policy
                 state = temp_env.get_state()
-                action = self.act(state, temp_env)
-                temp_env.step(action)
+                try:
+                    action = self.act(state, temp_env)
+                    temp_env.step(action)
+                except:
+                    # If action fails, break the simulation
+                    break
+                    
+                # Check if episode terminated (consumed terminal object)
+                if temp_env.done:
+                    break
 
+            # Accumulate normalized SR from this simulation
+            if sim_normalizer > 0:
+                sr += sim_sr / sim_normalizer  # Normalize by Z for this simulation
+                total_normalizer += 1
+
+        # Average across all valid simulations
+        if total_normalizer > 0:
+            sr = sr / total_normalizer
+            
         return sr
 
 

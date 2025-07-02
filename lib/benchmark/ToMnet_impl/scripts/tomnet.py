@@ -628,7 +628,9 @@ class Figure5PredictionNet(nn.Module):
             "action_logits": action_logits,
             "action_pred": action_logits,  # For compatibility
             "action_probs": action_probs,
+            "consumption": consumption_logits,  # Raw logits for loss calculation
             "consumption_probs": consumption_probs,
+            "successor_representation": sr_x,  # Raw logits for loss calculation
             "sr_logits": sr_x,
             "sr_probs": sr_probs,
         }

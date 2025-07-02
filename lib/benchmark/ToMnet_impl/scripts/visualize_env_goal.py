@@ -19,9 +19,9 @@ def test_episode_visualization():
 
     # Create goal-directed agent with specific reward preferences
     # Higher reward for object 1, decreasing for objects 2, 3, 4
-    rewards = np.array([1.0, 0.5, 0.2, 0.1])
+    rewards = np.array([1.0, 0.3, 0.2, 0.1])
     agent = GoalDirectedAgent(
-        rewards=rewards, movement_cost=0.01, wall_penalty=0.05, gamma=0.99
+        rewards=rewards, movement_cost=0.1, wall_penalty=0.1, gamma=0.99
     )
 
     # Plan optimal policy for the current environment

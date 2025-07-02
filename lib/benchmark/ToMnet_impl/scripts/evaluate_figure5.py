@@ -317,7 +317,7 @@ def main():
     os.makedirs(args.output_dir, exist_ok=True)
 
     # Load evaluation data
-    data_path = os.path.join(args.data_dir, f"{args.experiment_name}_training_data.pkl")
+    data_path = os.path.join(args.data_dir, "goal_directed_training_data.pkl")
     if not os.path.exists(data_path):
         raise FileNotFoundError(f"Data file not found: {data_path}")
 

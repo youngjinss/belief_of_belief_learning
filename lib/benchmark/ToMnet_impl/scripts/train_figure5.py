@@ -17,7 +17,8 @@ from typing import Dict, Optional
 import platform
 import glob
 import random
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, mean_squared_error
+from scipy.spatial.distance import cosine
 
 from tomnet import ToMnet, create_tomnet
 from data_generation import DataGenerator, ToMnetDataset, collate_fn
@@ -77,6 +78,12 @@ class Figure5ToMnetTrainer:
         self.val_losses = []
         self.train_accuracies = []
         self.val_accuracies = []
+        
+        # Additional detailed metrics tracking
+        self.detailed_metrics = {
+            'consumption_mse': [],
+            'sr_cosine_similarity': []
+        }
 
     def train_epoch(self, dataloader: DataLoader) -> Dict[str, float]:
         """Train for one epoch"""
@@ -156,12 +163,16 @@ class Figure5ToMnetTrainer:
                 all_targets["action"].extend(action_targets.cpu().numpy())
 
                 if "consumption" in predictions:
-                    all_predictions["consumption"].extend(
-                        torch.sigmoid(predictions["consumption"]).cpu().numpy()
-                    )
-                    all_targets["consumption"].extend(
-                        batch["true_consumption"].cpu().numpy()
-                    )
+                    consumption_preds = torch.sigmoid(predictions["consumption"]).cpu().numpy()
+                    consumption_targets = batch["true_consumption"].cpu().numpy()
+                    all_predictions["consumption"].extend(consumption_preds)
+                    all_targets["consumption"].extend(consumption_targets)
+                
+                if "successor_representation" in predictions:
+                    sr_preds = torch.softmax(predictions["successor_representation"], dim=-1).cpu().numpy()
+                    sr_targets = batch["true_sr"].cpu().numpy()
+                    all_predictions["sr"].extend(sr_preds)
+                    all_targets["sr"].extend(sr_targets)
 
             n_batches += 1
 
@@ -173,6 +184,31 @@ class Figure5ToMnetTrainer:
             all_targets["action"], all_predictions["action"]
         )
         avg_losses["action_accuracy"] = action_accuracy
+        
+        # Calculate detailed consumption metrics
+        if all_predictions["consumption"] and all_targets["consumption"]:
+            consumption_preds = np.array(all_predictions["consumption"])
+            consumption_targets = np.array(all_targets["consumption"])
+            
+            avg_losses["consumption_mse"] = mean_squared_error(consumption_targets, consumption_preds)
+        
+        # Calculate detailed SR metrics
+        if all_predictions["sr"] and all_targets["sr"]:
+            sr_preds = np.array(all_predictions["sr"])
+            sr_targets = np.array(all_targets["sr"])
+            
+            # Cosine similarity between predicted and true SR
+            cosine_similarities = []
+            for i in range(len(sr_preds)):
+                pred_flat = sr_preds[i].flatten()
+                target_flat = sr_targets[i].flatten()
+                
+                # Cosine similarity (1 - cosine distance)
+                if np.linalg.norm(pred_flat) > 0 and np.linalg.norm(target_flat) > 0:
+                    cosine_sim = 1 - cosine(pred_flat, target_flat)
+                    cosine_similarities.append(cosine_sim)
+            
+            avg_losses["sr_cosine_similarity"] = np.mean(cosine_similarities) if cosine_similarities else 0.0
 
         return avg_losses
 
@@ -249,12 +285,16 @@ class Figure5ToMnetTrainer:
                 all_targets["action"].extend(action_targets.cpu().numpy())
 
                 if "consumption" in predictions:
-                    all_predictions["consumption"].extend(
-                        torch.sigmoid(predictions["consumption"]).cpu().numpy()
-                    )
-                    all_targets["consumption"].extend(
-                        batch["true_consumption"].cpu().numpy()
-                    )
+                    consumption_preds = torch.sigmoid(predictions["consumption"]).cpu().numpy()
+                    consumption_targets = batch["true_consumption"].cpu().numpy()
+                    all_predictions["consumption"].extend(consumption_preds)
+                    all_targets["consumption"].extend(consumption_targets)
+                
+                if "successor_representation" in predictions:
+                    sr_preds = torch.softmax(predictions["successor_representation"], dim=-1).cpu().numpy()
+                    sr_targets = batch["true_sr"].cpu().numpy()
+                    all_predictions["sr"].extend(sr_preds)
+                    all_targets["sr"].extend(sr_targets)
 
                 n_batches += 1
 
@@ -266,6 +306,31 @@ class Figure5ToMnetTrainer:
             all_targets["action"], all_predictions["action"]
         )
         avg_losses["action_accuracy"] = action_accuracy
+        
+        # Calculate detailed consumption metrics
+        if all_predictions["consumption"] and all_targets["consumption"]:
+            consumption_preds = np.array(all_predictions["consumption"])
+            consumption_targets = np.array(all_targets["consumption"])
+            
+            avg_losses["consumption_mse"] = mean_squared_error(consumption_targets, consumption_preds)
+        
+        # Calculate detailed SR metrics
+        if all_predictions["sr"] and all_targets["sr"]:
+            sr_preds = np.array(all_predictions["sr"])
+            sr_targets = np.array(all_targets["sr"])
+            
+            # Cosine similarity between predicted and true SR
+            cosine_similarities = []
+            for i in range(len(sr_preds)):
+                pred_flat = sr_preds[i].flatten()
+                target_flat = sr_targets[i].flatten()
+                
+                # Cosine similarity (1 - cosine distance)
+                if np.linalg.norm(pred_flat) > 0 and np.linalg.norm(target_flat) > 0:
+                    cosine_sim = 1 - cosine(pred_flat, target_flat)
+                    cosine_similarities.append(cosine_sim)
+            
+            avg_losses["sr_cosine_similarity"] = np.mean(cosine_similarities) if cosine_similarities else 0.0
 
         return avg_losses
 
@@ -294,6 +359,9 @@ class Figure5ToMnetTrainer:
             val_metrics = self.validate_epoch(val_dataloader)
             self.val_losses.append(val_metrics["total_loss"])
             self.val_accuracies.append(val_metrics["action_accuracy"])
+            
+            # Store detailed metrics for both training and validation
+            self._store_detailed_metrics(train_metrics, val_metrics)
 
             # Scheduler step
             self.scheduler.step(val_metrics["total_loss"])
@@ -305,6 +373,13 @@ class Figure5ToMnetTrainer:
             print(
                 f"Val Loss: {val_metrics['total_loss']:.4f}, Val Acc: {val_metrics['action_accuracy']:.4f}"
             )
+            
+            # Print detailed metrics if available
+            if 'consumption_mse' in train_metrics:
+                print(f"Consumption MSE - Train: {train_metrics['consumption_mse']:.4f}, Val: {val_metrics['consumption_mse']:.4f}")
+            
+            if 'sr_cosine_similarity' in train_metrics:
+                print(f"SR Cosine Similarity - Train: {train_metrics['sr_cosine_similarity']:.4f}, Val: {val_metrics['sr_cosine_similarity']:.4f}")
 
             # Early stopping
             if val_metrics["total_loss"] < self.best_val_loss:
@@ -339,7 +414,27 @@ class Figure5ToMnetTrainer:
             "val_losses": self.val_losses,
             "train_accuracies": self.train_accuracies,
             "val_accuracies": self.val_accuracies,
+            "detailed_metrics": self.detailed_metrics,
         }
+    
+    def _store_detailed_metrics(self, train_metrics: Dict[str, float], val_metrics: Dict[str, float]):
+        """Store detailed metrics for consumption and SR predictions"""
+        
+        # Consumption metrics
+        for metric_key in ['consumption_mse']:
+            if metric_key not in self.detailed_metrics:
+                self.detailed_metrics[metric_key] = {'train': [], 'val': []}
+            
+            self.detailed_metrics[metric_key]['train'].append(train_metrics.get(metric_key, 0.0))
+            self.detailed_metrics[metric_key]['val'].append(val_metrics.get(metric_key, 0.0))
+        
+        # SR metrics
+        for metric_key in ['sr_cosine_similarity']:
+            if metric_key not in self.detailed_metrics:
+                self.detailed_metrics[metric_key] = {'train': [], 'val': []}
+            
+            self.detailed_metrics[metric_key]['train'].append(train_metrics.get(metric_key, 0.0))
+            self.detailed_metrics[metric_key]['val'].append(val_metrics.get(metric_key, 0.0))
 
 
 def main():

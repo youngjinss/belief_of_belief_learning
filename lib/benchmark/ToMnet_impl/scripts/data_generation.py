@@ -92,6 +92,103 @@ def generate_agent_episodes(args):
     return agent_id, agent_trajectories
 
 
+def create_training_samples_for_agent(args):
+    """Helper function to create training samples for a single agent (for parallel processing)"""
+    (
+        agent_id,
+        agent,
+        agent_trajectories,
+        n_episodes_per_agent,
+        min_past,
+        max_past,
+        grid_size,
+        max_walls,
+        max_steps
+    ) = args
+    
+    agent_samples = []
+    
+    # Create training samples for this agent
+    for query_episode_id in range(n_episodes_per_agent):
+        # Sample number of past episodes
+        n_past = np.random.randint(min_past, max_past + 1)
+
+        # Select past episodes
+        available_episodes = [
+            i for i in range(n_episodes_per_agent) if i != query_episode_id
+        ]
+        if len(available_episodes) >= n_past:
+            past_episode_ids = np.random.choice(
+                available_episodes, n_past, replace=False
+            )
+        else:
+            past_episode_ids = available_episodes
+
+        past_trajectories = [agent_trajectories[i] for i in past_episode_ids]
+        query_trajectory = agent_trajectories[query_episode_id]
+
+        # Create samples for each step in query trajectory
+        # Limit steps to avoid excessive computation
+        max_steps_per_episode = min(
+            len(query_trajectory.actions), MAX_STEPS
+        )
+        
+        # Reconstruct environment once per episode (cache for reuse)
+        env_copy = GridWorld(grid_size, max_walls, max_steps)
+        env_copy.walls = query_trajectory.env_state["walls"]
+        env_copy.objects = query_trajectory.env_state["objects"]
+        env_copy.agent_pos = query_trajectory.env_state["initial_agent_pos"]
+        
+        # Pre-compute successor representations for all steps in batch
+        sr_cache = {}
+        for step_idx in range(max_steps_per_episode):
+            if step_idx not in sr_cache:
+                sr_cache[step_idx] = agent.get_successor_representation(
+                    env_copy, current_time_step=step_idx
+                )
+        
+        # Object consumption (compute once per episode)
+        consumed_objects = np.zeros(4)  # One-hot encoding
+        if "consumed_object" in query_trajectory.__dict__:
+            for obj in query_trajectory.consumed_object:
+                consumed_objects[obj - 1] = 1.0
+        
+        # Build trajectories incrementally to avoid redundant copying
+        current_trajectory = TrajectoryData()
+        
+        for step_idx in range(max_steps_per_episode):
+            # Get true labels
+            current_state = query_trajectory.states[step_idx]
+            true_action = query_trajectory.actions[step_idx]
+
+            # Create sample with current trajectory state
+            sample = {
+                "agent_id": agent_id,
+                "rewards": agent.rewards,
+                "movement_cost": agent.movement_cost,
+                "past_trajectories": past_trajectories,
+                "current_trajectory": TrajectoryData(),  # Empty trajectory for step 0
+                "query_state": current_state,
+                "true_action": true_action,
+                "true_consumption": consumed_objects,
+                "true_sr": sr_cache[step_idx].flatten(),
+                "n_past": len(past_trajectories),
+                "step_idx": step_idx,
+            }
+            
+            # Copy current trajectory data up to this step
+            for i in range(step_idx):
+                sample["current_trajectory"].add_step(
+                    query_trajectory.states[i],
+                    query_trajectory.actions[i],
+                    query_trajectory.rewards[i],
+                )
+            
+            agent_samples.append(sample)
+    
+    return agent_samples
+
+
 class DataGenerator:
     """Generate training and evaluation data for ToMnet experiments"""
 
@@ -286,86 +383,39 @@ class DataGenerator:
             for agent_id, trajectories in results:
                 all_agent_trajectories[agent_id] = trajectories
 
-        # Create training samples
-        all_data = []
-
+        # Create training samples in parallel
         print(f"\nCreating training samples from {n_agents} agents...")
-        from tqdm import tqdm as tqdm_inner
-
-        for agent_id in tqdm_inner(range(n_agents), desc="Processing agents"):
-            agent = agents[agent_id]
-            agent_trajectories = all_agent_trajectories[agent_id]
-
-            # Create training samples
-            for query_episode_id in range(n_episodes_per_agent):
-                # Sample number of past episodes
-                n_past = np.random.randint(min_past, max_past + 1)
-
-                # Select past episodes
-                available_episodes = [
-                    i for i in range(n_episodes_per_agent) if i != query_episode_id
-                ]
-                if len(available_episodes) >= n_past:
-                    past_episode_ids = np.random.choice(
-                        available_episodes, n_past, replace=False
-                    )
-                else:
-                    past_episode_ids = available_episodes
-
-                past_trajectories = [agent_trajectories[i] for i in past_episode_ids]
-                query_trajectory = agent_trajectories[query_episode_id]
-
-                # Create samples for each step in query trajectory
-                # Limit steps to avoid excessive computation
-                max_steps_per_episode = min(
-                    len(query_trajectory.actions), MAX_STEPS
-                )  # Limit to 20 steps
-                for step_idx in range(max_steps_per_episode):
-                    # Reconstruct environment for this episode
-                    env_copy = GridWorld(self.grid_size, self.max_walls, self.max_steps)
-                    env_copy.walls = query_trajectory.env_state["walls"]
-                    env_copy.objects = query_trajectory.env_state["objects"]
-                    env_copy.agent_pos = query_trajectory.env_state["initial_agent_pos"]
-
-                    # Get current trajectory up to step_idx
-                    current_trajectory = TrajectoryData()
-                    for i in range(step_idx):
-                        current_trajectory.add_step(
-                            query_trajectory.states[i],
-                            query_trajectory.actions[i],
-                            query_trajectory.rewards[i],
-                        )
-
-                    # Get true labels
-                    current_state = query_trajectory.states[step_idx]
-                    true_action = query_trajectory.actions[step_idx]
-
-                    # Object consumption (which object will be consumed eventually)
-                    consumed_objects = np.zeros(4)  # One-hot encoding
-                    if "consumed_object" in query_trajectory.__dict__:
-                        for obj in query_trajectory.consumed_object:
-                            consumed_objects[obj - 1] = 1.0
-
-                    # Successor representation
-                    # Pass current time step for correct SR computation
-                    sr = agent.get_successor_representation(
-                        env_copy, current_time_step=step_idx
-                    )
-
-                    sample = {
-                        "agent_id": agent_id,
-                        "rewards": agent.rewards,
-                        "movement_cost": agent.movement_cost,
-                        "past_trajectories": past_trajectories,
-                        "current_trajectory": current_trajectory,
-                        "query_state": current_state,
-                        "true_action": true_action,
-                        "true_consumption": consumed_objects,
-                        "true_sr": sr.flatten(),
-                        "n_past": len(past_trajectories),
-                        "step_idx": step_idx,
-                    }
-                    all_data.append(sample)
+        
+        # Prepare arguments for parallel processing of training samples
+        sample_creation_args = []
+        for agent_id in range(n_agents):
+            sample_creation_args.append((
+                agent_id,
+                agents[agent_id],
+                all_agent_trajectories[agent_id],
+                n_episodes_per_agent,
+                min_past,
+                max_past,
+                self.grid_size,
+                self.max_walls,
+                self.max_steps
+            ))
+        
+        # Process training samples in parallel with chunk size optimization
+        all_data = []
+        chunk_size = max(1, n_agents // (n_workers * 4))  # Optimize chunk size for better load balancing
+        
+        with Pool(n_workers) as pool:
+            results = list(
+                tqdm(
+                    pool.imap(create_training_samples_for_agent, sample_creation_args, chunksize=chunk_size),
+                    total=n_agents,
+                    desc="Processing agents"
+                )
+            )
+            
+            for agent_samples in results:
+                all_data.extend(agent_samples)
 
         dataset = {
             "data": all_data,

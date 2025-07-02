@@ -268,10 +268,8 @@ class Figure5CharacterNet(nn.Module):
         self.bn1 = nn.BatchNorm2d(32)
         self.relu = nn.ReLU(inplace=True)
 
-        # 5-layer ResNet with 32 channels (line 586)
+        # 3-layer ResNet with 32 channels (reduced for simple 3x3 maze)
         self.resnet_blocks = nn.Sequential(
-            ResidualBlock(32),
-            ResidualBlock(32),
             ResidualBlock(32),
             ResidualBlock(32),
             ResidualBlock(32),
@@ -539,10 +537,8 @@ class Figure5PredictionNet(nn.Module):
         self.bn1 = nn.BatchNorm2d(32)
         self.relu = nn.ReLU(inplace=True)
 
-        # 5-layer ResNet
+        # 3-layer ResNet (reduced for simple 3x3 maze)
         self.resnet_blocks = nn.Sequential(
-            ResidualBlock(32),
-            ResidualBlock(32),
             ResidualBlock(32),
             ResidualBlock(32),
             ResidualBlock(32),

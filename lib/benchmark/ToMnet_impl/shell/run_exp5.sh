@@ -115,7 +115,7 @@ run_data_generation() {
     
     # Run data generation in background with logging
     echo "Starting data generation at $(date)" > "$LOG_DIR/execution.log"
-    python scripts/generate_figure5_data.py --n_agents 100 --n_episodes_per_agent 100 --alpha_reward 0.01 "$@" >> "$LOG_DIR/execution.log" 2>&1 &
+    python scripts/generate_figure5_data.py --n_agents 500 --n_episodes_per_agent 50 --alpha_reward 0.01 "$@" >> "$LOG_DIR/execution.log" 2>&1 &
     GEN_PID=$!
     echo $GEN_PID > "$LOG_DIR/process.pid"
     print_info "Data generation started in background with PID: $GEN_PID"

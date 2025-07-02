@@ -42,7 +42,7 @@ class Figure5ExperimentConfig:
 
         # Regularization
         self.dropout_rate = 0.3
-        self.patience = 30  # Early stopping patience
+        self.patience = 10  # Early stopping patience (reduced for simple task)
 
         self.loss_weights = {
             "action_loss": 1.0,

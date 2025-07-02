@@ -82,7 +82,10 @@ class Figure5ToMnetTrainer:
         self.val_accuracies = []
 
         # Additional detailed metrics tracking
-        self.detailed_metrics = {"consumption_mse": [], "sr_cosine_similarity": []}
+        self.detailed_metrics = {
+            "consumption_mse": {"train": [], "val": []},
+            "sr_cosine_similarity": {"train": [], "val": []}
+        }
 
     def train_epoch(self, dataloader: DataLoader) -> Dict[str, float]:
         """Train for one epoch"""

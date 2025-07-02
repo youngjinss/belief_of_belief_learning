@@ -1,44 +1,81 @@
-# ToMnet Implementation for Figure 3 Reproduction
+# ToMnet Implementation for Reproduction
 
 ## Overview
-This implementation reproduces the qualitative results from Figure 3 of the "Machine Theory of Mind" paper (Rabinowitz et al., 2018). The focus is on demonstrating ToMnet's ability to infer character traits of random agents through observation of their behavioral trajectories.
+This implementation reproduces the qualitative results of the "Machine Theory of Mind" paper (Rabinowitz et al., 2018). The focus is on demonstrating ToMnet's ability to infer character traits of random agents through observation of their behavioral trajectories.
 
 The implementation provides a complete, production-ready system with enterprise-level automation, comprehensive evaluation capabilities, and publication-quality visualization tools.
 
-## ToMnet Architecture for Figure 3
+## ToMnet Architecture for Figure 3 (from Appendix A.2)
+
+**Data Configuration**:
+- Variable number of past episodes: $ N_{past} \sim U{0, 10}$
+- Each trajectory consists of a **single state-action pair** (length 1)
+- When $ N_{past} = 0$, character embedding is set to $ e_{char} = 0 $
 
 ### Core Mathematical Framework
 The ToMnet implementation for Figure 3 uses a simplified architecture focused on character inference:
 
 1. **Character Net ($f_\theta$)**: 
-   - Processes past episode trajectories $\{\tau_{ij}\}$ into character embeddings
+   - Input: Single state/action pair per trajectory
+   - Output: $ e_{char, i} \in R^2 $
+      - Processes past episode trajectories $\{\tau_{ij}\}$ into character embeddings
    - Function: $e_{char,ij} = f_\theta(\tau_{ij}^{obs})$
    - Aggregation: $e_{char,i} = \sum_j e_{char,ij}$
    - Implementation: 3-layer MLP with ReLU activations
    - Output: 2D embeddings for visualization
+   - Processing pipeline:
+        1. Spatialize action and concatenate with state
+        2. 1-layer convnet with 8 feature planes and ReLU
+        3. Convolutional LSTM processing sequence indexed by j
+        4. Average pooling
+        5. Fully-connected layer to 2D embedding space
 
 2. **Mental State Net**:
    - **Omitted in Figure 3 experiments** as specified in the paper
    - This simplification focuses on character-level inference only
 
 3. **Prediction Net**:
+   - Input: Spatialized $ e_{char,i} $ concatenated with query state
    - Outputs action probabilities: $\hat{\pi}(a_t \mid x_t^{obs}, e_{char})$
    - Function: concatenates current state with character embedding
    - Implementation: 2-layer MLP with softmax output for 5 actions
+       - 2-layer convnet with 32 feature planes and ReLUs
+       - Average pooling
+       - Fully-connected layer to 5-dim logits
+       - Softmax for action probabilities
 
-### Loss Function
+4. **Training Details**:
+    - Optimizer: Adam with learning rate 10⁻⁴
+    - Batch size: 16
+    - Training iterations: 40k minibatches
 
+
+## Loss Function
+The ToMnet is trained with the following loss components:
+
+### Action Prediction Loss
 $$ L_{action} = -\log \hat{\pi}(a_t^{obs} \mid x_t^{obs}, e_{char}) $$
+
+### Consumption Prediction Loss
+$$  L_{consumption,i} = \sum_k -\log p_{c_k}(c_k \mid x_t^{obs}, e_{char,i}, e_{mental,i}) $$
+
+### Successor Representation Loss
+$$ L_{SR,i} = \sum \tau \sum_s -{SR} \tau(s) \log \hat{SR} \tau(s) $$ 
+where $ {SR} \tau(s) = (1/Z) \sum_(\Delta t=0)^{T-t} \tau^{\Delta t} I(s_{t + \Delta t} = s) $
+
 
 ## Implementation Components
 
-### Environment (environment.py)
-**GridWorld Class**:
-- **State Representation**: 11×11×6 tensor with channels for walls, 4 object types, and agent position
-- **Random Generation**: Each episode generates 0-4 random walls and places 4 consumable objects
-- **Action Space**: {up, down, left, right, stay} = {0, 1, 2, 3, 4}
-- **Episode Termination**: Ends when agent consumes an object or reaches 31 steps
-- **State Flattening**: Converts 3D state to 726-dimensional vector for neural network input
+### Environment (environment.py, Gridworld Environment)
+- Grid size: 11×11
+- Walls: Randomly sampled between endpoints (can be diagonal)
+  - Sections 3.1-3.2: 0-4 walls
+  - Sections 3.3-3.5: 0-6 walls
+- Objects: 4 consumable terminal objects
+- Episode termination:
+  - Object consumption
+  - Timeout: 31 steps (Sections 3.1-3.2) or 51 steps (Sections 3.3-3.5)
+
 
 ### Agents (agents.py)
 **RandomAgent Class**:
@@ -46,11 +83,27 @@ $$ L_{action} = -\log \hat{\pi}(a_t^{obs} \mid x_t^{obs}, e_{char}) $$
 - **Behavior**: Uses fixed policy throughout all episodes (no learning)
 - **Species Parameter**: $\alpha$ controls stochasticity ($\alpha=0.01$: near-deterministic, $\alpha=3.0$: highly stochastic)
 - **Dominant Action**: Tracks $\argmax(\pi_i)$ for embedding visualization coloring
+- No reward function
+- Policy sampled from Dirichlet(α)
 
 **GoalDirectedAgent Class** (for completeness, not used in Figure 3):
 - **Planning**: Uses value iteration to compute optimal policy for each environment
 - **Rewards**: Sampled from Dirichlet distribution over 4 object types
 - **Policy**: Softmax over Q-values with temperature parameter
+- Rewards: ri ~ Dirichlet(α=0.01) for object preferences
+- Move penalty: -0.01
+- Wall collision penalty: 0.05
+- Greedy variant: move penalty 0.5
+- Planning: Value iteration with γ = 1
+
+**Deep RL Agents (Sections 3.3-3.5)**:
+- Additional subgoal object (non-terminal)
+- Move penalty: -0.005
+- Wall collision penalty: 0.05
+- Episode end without object penalty: -1
+- Subgoal reward: +1
+- Preferred object reward: +1
+- Other objects: 0 reward (but terminal)
 
 ### ToMnet Implementation (tomnet.py)
 **CharacterNet Class**:
@@ -519,7 +572,26 @@ python scripts/visualize_figure4.py --experiment figure4
 
 This enhanced implementation provides a complete, production-ready system for ToMnet research with enterprise-level automation, comprehensive evaluation capabilities, and publication-quality visualization tools suitable for serious academic work and potential industrial applications.
 
-## Implementation Details for Figure 5 Reproduction
+# ToMnet Architecture Details for Figure 5 (from Appendix A.3.2)
+
+**Data Configuration**:
+- Character embedding from many past episodes: Npast ~ U{0, 10}
+- **Key difference**: Only single observation-action pair (snapshot) from each past episode
+- No full trajectories - just one time point per past episode
+
+**Character Net Architecture**:
+- Input: Single state/action pair from each past trajectory τij
+- Processing per pair:
+  1. Spatialize and concatenate (same as Experiment 1)
+  2. 5-layer ResNet with 32 channels, ReLU, batch-norm
+  3. Average pooling
+  4. Fully-connected layer to echar,ij ∈ R²
+- Aggregation: echar,i = ΣNpast(j=1) echar,ij
+
+**Mental Net**: None
+
+**Prediction Net**: Same as Experiment 1 (Section A.3.1)
+
 ### Goal-Directed Agent Environment (Section 3.2)
 
 - Gridworld: 11×11 size with randomly-sampled walls (0-4 walls)

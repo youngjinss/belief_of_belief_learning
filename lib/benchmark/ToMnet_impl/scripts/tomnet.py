@@ -417,7 +417,7 @@ def create_tomnet(
         # Figure 5: Goal-directed agents with higher-dimensional embeddings
         if char_embedding_dim is None:
             char_embedding_dim = 8
-        use_mental_state = True  # Figure 5 uses mental state
+        use_mental_state = False  # Figure 5 does NOT use mental state (per README line 591)
     else:
         raise ValueError(f"Unknown experiment_type: {experiment_type}")
 

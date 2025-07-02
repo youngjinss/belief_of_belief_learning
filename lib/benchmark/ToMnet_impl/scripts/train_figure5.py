@@ -30,7 +30,7 @@ class Figure5ExperimentConfig:
 
     def __init__(self):
         self.char_embedding_dim = 10
-        self.use_mental_state_net = True  # Figure 5 uses mental state net
+        self.use_mental_state_net = False  # Figure 5 does NOT use mental state net (per README line 591)
         self.agent_type = "goal_directed"
 
         # Figure 5 specific parameters

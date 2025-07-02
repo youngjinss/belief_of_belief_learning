@@ -1,5 +1,6 @@
 #!/bin/bash
 # nohup bash shell/run_exp5.sh all > experiment.log 2>&1 &
+# kill -9 $(pgrep -f generate_figure5_data.py)
 # Main launcher script for ToMnet Figure 5 experiments
 # 
 # This script provides a convenient way to run the complete Figure 5 workflow
@@ -156,7 +157,7 @@ run_training() {
     
     # Run training in background with logging
     echo "Starting training at $(date)" > "$LOG_DIR/execution.log"
-    python scripts/train_figure5.py --n_agents 100 --n_episodes_per_agent 100 --n_epochs 100 --alpha_reward 0.01 "$@" >> "$LOG_DIR/execution.log" 2>&1 &
+    python scripts/train_figure5.py --n_epochs 100 --alpha_reward 0.01 --batch_size 512 --device cuda:3 "$@" >> "$LOG_DIR/execution.log" 2>&1 &
     TRAIN_PID=$!
     echo $TRAIN_PID > "$LOG_DIR/process.pid"
     print_info "Training started in background with PID: $TRAIN_PID"

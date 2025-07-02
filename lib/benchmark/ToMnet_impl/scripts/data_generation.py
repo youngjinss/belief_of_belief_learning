@@ -317,7 +317,7 @@ class DataGenerator:
 
                 # Create samples for each step in query trajectory
                 # Limit steps to avoid excessive computation
-                max_steps_per_episode = min(len(query_trajectory.actions), 20)  # Limit to 20 steps
+                max_steps_per_episode = min(len(query_trajectory.actions), MAX_STEPS)  # Limit to 20 steps
                 for step_idx in range(max_steps_per_episode):
                     # Reconstruct environment for this episode
                     env_copy = GridWorld(self.grid_size, self.max_walls, self.max_steps)

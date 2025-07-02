@@ -90,6 +90,14 @@ EOF
 
 # Function to run data generation
 run_data_generation() {
+    # Check for help flag
+    for arg in "$@"; do
+        if [[ "$arg" == "--help" || "$arg" == "-h" ]]; then
+            python scripts/generate_figure5_data.py --help
+            return 0
+        fi
+    done
+    
     # Check if data already exists
     if ls ./data/figure5/*.pkl 1> /dev/null 2>&1; then
         print_warning "Training data already exists in ./data/figure5/"
@@ -124,6 +132,14 @@ run_data_generation() {
 
 # Function to run training
 run_training() {
+    # Check for help flag
+    for arg in "$@"; do
+        if [[ "$arg" == "--help" || "$arg" == "-h" ]]; then
+            python scripts/train_figure5.py --help
+            return 0
+        fi
+    done
+    
     # Check if training results already exist
     if ls ./models/figure5/*.pth 1> /dev/null 2>&1; then
         print_warning "Training results already exist in ./models/figure5/"
@@ -158,6 +174,14 @@ run_training() {
 
 # Function to run evaluation
 run_evaluation() {
+    # Check for help flag
+    for arg in "$@"; do
+        if [[ "$arg" == "--help" || "$arg" == "-h" ]]; then
+            python scripts/evaluate_figure5.py --help
+            return 0
+        fi
+    done
+    
     # Check if evaluation results already exist
     if [ -f "./result/figure5/figure5_results.pkl" ]; then
         print_warning "Evaluation results already exist at ./result/figure5/figure5_results.pkl"
@@ -192,6 +216,14 @@ run_evaluation() {
 
 # Function to run visualization
 run_visualization() {
+    # Check for help flag
+    for arg in "$@"; do
+        if [[ "$arg" == "--help" || "$arg" == "-h" ]]; then
+            python scripts/visualize_figure5.py --help
+            return 0
+        fi
+    done
+    
     # Check if visualization results already exist
     if ls ./plots/figure5/* 1> /dev/null 2>&1; then
         print_warning "Visualization results already exist in ./plots/figure5/"

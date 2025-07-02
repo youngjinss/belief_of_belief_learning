@@ -133,7 +133,9 @@ class Figure3CharacterNet(nn.Module):
         # Assuming 11x11 grid with 6 channels for state
         # State channels: walls, agent, 4 object types
         self.state_channels = 6
-        self.grid_size = 11
+        self.grid_size = np.sqrt(state_dim // 6)
+        if self.grid_size % 1 != 0:
+            raise ValueError("Grid size must be a perfect square")
         
         # 1-layer convnet with 8 feature planes (line 28)
         self.conv1 = nn.Conv2d(self.state_channels + action_dim, 8, kernel_size=3, padding=1)
@@ -229,7 +231,9 @@ class Figure5CharacterNet(nn.Module):
         
         # Assuming 11x11 grid with 6 channels for state
         self.state_channels = 6
-        self.grid_size = 11
+        self.grid_size = np.sqrt(state_dim // 6)
+        if self.grid_size % 1 != 0:
+            raise ValueError("Grid size must be a perfect square")
         
         # Initial convolution to 32 channels
         self.conv1 = nn.Conv2d(self.state_channels + action_dim, 32, kernel_size=3, padding=1)

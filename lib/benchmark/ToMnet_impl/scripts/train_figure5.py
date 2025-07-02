@@ -368,11 +368,11 @@ def main():
     parser.add_argument(
         "--n_epochs", type=int, default=100, help="Number of training epochs"
     )
-    parser.add_argument("--batch_size", type=int, default=32, help="Batch size")
+    parser.add_argument("--batch_size", type=int, default=512, help="Batch size")
     parser.add_argument(
         "--learning_rate", type=float, default=1e-3, help="Learning rate"
     )
-    parser.add_argument("--device", type=str, default="cuda", help="Device to use")
+    parser.add_argument("--device", type=str, default="cuda:3", help="Device to use")
     parser.add_argument(
         "--val_split", type=float, default=0.2, help="Validation split ratio"
     )

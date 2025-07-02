@@ -301,7 +301,7 @@ class GoalDirectedAgent:
             return sr  # Return zero SR if at episode end
 
         # Monte Carlo estimation of SR with multiple trajectory rollouts (parallelized)
-        n_simulations = 50  # Increased for better estimation
+        n_simulations = 15  # Increased for better estimation
         total_normalizer = 0  # For normalization factor Z
 
         # Prepare arguments for parallel simulation

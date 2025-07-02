@@ -6,7 +6,7 @@ import matplotlib.patches as patches
 from matplotlib.animation import FuncAnimation
 from IPython.display import HTML
 
-SIZE = 4
+SIZE = 3
 MAX_WALLS = 2
 MAX_STEPS = 31
 N_OBJECTS = 2
@@ -26,7 +26,7 @@ class GridWorld:
         self.max_steps = max_steps
 
         # Object colors (4 different objects)
-        self.n_objects = 4
+        self.n_objects = N_OBJECTS
 
         # Action space: up, down, left, right, stay
         self.actions = {0: (-1, 0), 1: (1, 0), 2: (0, -1), 3: (0, 1), 4: (0, 0)}

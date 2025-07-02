@@ -131,9 +131,17 @@ class Figure5ToMnetTrainer:
             if "successor_representation" in predictions and "true_sr" in batch:
                 # Cross-entropy between predicted and empirical successor representation
                 # L_SR = Σ_τ Σ_s -SR_τ(s) log ŜR_τ(s)
-                sr_loss = nn.CrossEntropyLoss()(
-                    predictions["successor_representation"], batch["true_sr"]
-                )
+                pred_sr = predictions["successor_representation"]  # (batch, 3, grid_size, grid_size)
+                true_sr = batch["true_sr"]  # (batch, 3*grid_size^2)
+                
+                # Reshape predictions to match target format: (batch, 3*grid_size^2)
+                batch_size = pred_sr.shape[0]
+                pred_sr_flat = pred_sr.view(batch_size, -1)  # (batch, 3*grid_size^2)
+                
+                # Convert true_sr to class indices for CrossEntropyLoss
+                true_sr_indices = torch.argmax(true_sr, dim=1)  # (batch,)
+                
+                sr_loss = nn.CrossEntropyLoss()(pred_sr_flat, true_sr_indices)
                 losses["sr_loss"] = sr_loss
 
             # Weighted total loss
@@ -271,9 +279,17 @@ class Figure5ToMnetTrainer:
                 if "successor_representation" in predictions and "true_sr" in batch:
                     # Cross-entropy between predicted and empirical successor representation
                     # L_SR = Σ_τ Σ_s -SR_τ(s) log ŜR_τ(s)
-                    sr_loss = nn.CrossEntropyLoss()(
-                        predictions["successor_representation"], batch["true_sr"]
-                    )
+                    pred_sr = predictions["successor_representation"]  # (batch, 3, grid_size, grid_size)
+                    true_sr = batch["true_sr"]  # (batch, 3*grid_size^2)
+                    
+                    # Reshape predictions to match target format: (batch, 3*grid_size^2)
+                    batch_size = pred_sr.shape[0]
+                    pred_sr_flat = pred_sr.view(batch_size, -1)  # (batch, 3*grid_size^2)
+                    
+                    # Convert true_sr to class indices for CrossEntropyLoss
+                    true_sr_indices = torch.argmax(true_sr, dim=1)  # (batch,)
+                    
+                    sr_loss = nn.CrossEntropyLoss()(pred_sr_flat, true_sr_indices)
                     losses["sr_loss"] = sr_loss
 
                 # Weighted total loss

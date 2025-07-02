@@ -3,21 +3,12 @@ from typing import Tuple, List, Dict, Optional
 from scipy.special import softmax
 from environment import GridWorld, MAX_STEPS
 import multiprocessing as mp
-from concurrent.futures import ProcessPoolExecutor, as_completed
 
 
-def _run_single_simulation(args):
+def _run_single_simulation_serial(env, policy, gamma_sr, remaining_steps, size):
     """
-    Helper function to run a single SR simulation in parallel.
-
-    Args:
-        args: Tuple containing (env, policy, gamma_sr, remaining_steps, size)
-
-    Returns:
-        Tuple of (sim_sr, sim_normalizer) for this simulation
+    Serial version of SR simulation (no pickling required).
     """
-    env, policy, gamma_sr, remaining_steps, size = args
-
     # Skip if agent is in invalid position
     if env.agent_pos[0] >= size or env.agent_pos[1] >= size:
         return np.zeros((size, size)), 0
@@ -111,6 +102,7 @@ class GoalDirectedAgent:
         movement_cost: float = 0.01,
         wall_penalty: float = 0.05,
         gamma: float = 0.99,
+        use_parallel_sr: bool = False  # Option to use parallel or serial SR
     ):
         """
         Args:
@@ -118,11 +110,13 @@ class GoalDirectedAgent:
             movement_cost: Cost per movement step
             wall_penalty: Additional penalty for hitting walls
             gamma: Discount factor for value iteration
+            use_parallel_sr: Whether to use parallel processing for SR computation
         """
         self.rewards = rewards  # r_i,a for consuming object a
         self.movement_cost = movement_cost
         self.wall_penalty = wall_penalty
         self.gamma = gamma
+        self.use_parallel_sr = use_parallel_sr
 
         # Store preferred object for visualization
         self.preferred_object = (
@@ -276,14 +270,14 @@ class GoalDirectedAgent:
         self, env: GridWorld, gamma_sr: float = 0.9, current_time_step: int = 0
     ) -> np.ndarray:
         """
-        Compute true successor representation according to Appendix B:
-        SR_γ(s) = 1/Z ∑_{Δt=0}^{T-t} γ^{Δt} I(s_{t+Δt} = s)
-
+        Compute true successor representation with SERIAL processing by default.
+        The parallel version has too much overhead for small simulations.
+        
         Args:
             env: Environment to simulate in
             gamma_sr: Discount factor for SR computation
             current_time_step: Current time step t in the episode
-
+            
         Returns:
             Array of shape (size, size) with true discounted future state occupancy
         """
@@ -300,28 +294,17 @@ class GoalDirectedAgent:
         if remaining_steps <= 0:
             return sr  # Return zero SR if at episode end
 
-        # Monte Carlo estimation of SR with multiple trajectory rollouts (parallelized)
-        n_simulations = 15  # Increased for better estimation
+        # Monte Carlo estimation of SR - SERIAL version
+        n_simulations = 15
         total_normalizer = 0  # For normalization factor Z
 
-        # Prepare arguments for parallel simulation
-        simulation_args = []
+        # Run simulations serially (much faster for small simulations)
         for sim in range(n_simulations):
             temp_env = env.copy()
-            simulation_args.append(
-                (temp_env, self.policy, gamma_sr, remaining_steps, size)
+            sim_sr, sim_normalizer = _run_single_simulation_serial(
+                temp_env, self.policy, gamma_sr, remaining_steps, size
             )
-
-        # Run simulations in parallel
-        n_processes = min(mp.cpu_count(), n_simulations)
-
-        with ProcessPoolExecutor(max_workers=n_processes) as executor:
-            simulation_results = list(
-                executor.map(_run_single_simulation, simulation_args)
-            )
-
-        # Aggregate results from all simulations
-        for sim_sr, sim_normalizer in simulation_results:
+            
             if sim_normalizer > 0:
                 sr += sim_sr / sim_normalizer  # Normalize by Z for this simulation
                 total_normalizer += 1
@@ -343,10 +326,10 @@ def create_goal_directed_agents(
 ) -> List[GoalDirectedAgent]:
     """
     Create population of goal-directed agents with diverse reward preferences
-
+    
     Args:
         n_agents: Number of agents to create
-        alpha_reward: Dirichlet concentration for reward sampling
+        alpha_reward: Dirichlet concentration for reward sampling  
         high_cost_ratio: Fraction of agents with high movement cost (0.5 vs 0.01)
     """
     agents = []

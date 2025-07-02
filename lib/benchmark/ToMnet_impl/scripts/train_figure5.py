@@ -500,7 +500,7 @@ def main():
     )
     parser.add_argument("--batch_size", type=int, default=512, help="Batch size")
     parser.add_argument(
-        "--learning_rate", type=float, default=1e-3, help="Learning rate"
+        "--learning_rate", type=float, default=1e-1, help="Learning rate"
     )
     parser.add_argument("--device", type=str, default="cuda:3", help="Device to use")
     parser.add_argument(

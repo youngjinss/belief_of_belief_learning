@@ -394,9 +394,212 @@ class MentalStateNet(nn.Module):
         return mental_embedding
 
 
+class Figure3PredictionNet(nn.Module):
+    """
+    Prediction Net for Figure 3: Only action prediction head
+    As specified in README lines 37-45
+    """
+    
+    def __init__(
+        self,
+        state_dim: int,
+        char_embedding_dim: int,
+        n_actions: int = 5,
+        dropout_rate: float = 0.0,
+    ):
+        super().__init__()
+        self.state_dim = state_dim
+        self.char_embedding_dim = char_embedding_dim
+        self.n_actions = n_actions
+        
+        # Assuming 11x11 grid with 6 channels for state
+        self.state_channels = 6
+        grid_size_float = np.sqrt(state_dim // 6)
+        if grid_size_float % 1 != 0:
+            raise ValueError("Grid size must be a perfect square")
+        self.grid_size = int(grid_size_float)
+        
+        # 2-layer convnet with 32 feature planes and ReLUs (line 42)
+        self.conv1 = nn.Conv2d(self.state_channels + char_embedding_dim, 32, kernel_size=3, padding=1)
+        self.conv2 = nn.Conv2d(32, 32, kernel_size=3, padding=1)
+        self.relu = nn.ReLU()
+        
+        # Average pooling (line 43)
+        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        
+        # Fully-connected layer to 5-dim logits (line 44)
+        self.fc = nn.Linear(32, n_actions)
+        
+    def forward(
+        self,
+        current_state: torch.Tensor,
+        character_embedding: torch.Tensor,
+        mental_embedding: Optional[torch.Tensor] = None,
+    ) -> Dict[str, torch.Tensor]:
+        """
+        Args:
+            current_state: (batch_size, state_dim)
+            character_embedding: (batch_size, char_embedding_dim)
+            mental_embedding: Unused in Figure 3
+        Returns:
+            Dict containing action_logits and action_probs
+        """
+        batch_size = current_state.size(0)
+        
+        # Reshape state to grid format
+        state_grid = current_state.view(batch_size, self.state_channels, self.grid_size, self.grid_size)
+        
+        # Spatialize character embedding (expand to match grid size)
+        char_expanded = character_embedding.unsqueeze(-1).unsqueeze(-1).expand(
+            batch_size, self.char_embedding_dim, self.grid_size, self.grid_size
+        )
+        
+        # Concatenate current state with character embedding (line 38)
+        conv_input = torch.cat([state_grid, char_expanded], dim=1)
+        
+        # 2-layer convnet with 32 feature planes and ReLUs (line 42)
+        x = self.relu(self.conv1(conv_input))
+        x = self.relu(self.conv2(x))
+        
+        # Average pooling (line 43)
+        x = self.avgpool(x)
+        x = x.view(x.size(0), -1)  # Flatten
+        
+        # Fully-connected layer to 5-dim logits (line 44)
+        action_logits = self.fc(x)
+        
+        # Softmax for action probabilities (line 45)
+        action_probs = F.softmax(action_logits, dim=1)
+        
+        return {
+            "action_logits": action_logits,
+            "action_pred": action_logits,  # For compatibility
+            "action_probs": action_probs,
+        }
+
+
+class Figure5PredictionNet(nn.Module):
+    """
+    Prediction Net for Figure 5: Shared torso with three prediction heads
+    As specified in README lines 223-245
+    """
+    
+    def __init__(
+        self,
+        state_dim: int,
+        char_embedding_dim: int,
+        n_actions: int = 5,
+        n_objects: int = 4,
+        dropout_rate: float = 0.0,
+    ):
+        super().__init__()
+        self.state_dim = state_dim
+        self.char_embedding_dim = char_embedding_dim
+        self.n_actions = n_actions
+        self.n_objects = n_objects
+        
+        # Assuming 11x11 grid with 6 channels for state
+        self.state_channels = 6
+        grid_size_float = np.sqrt(state_dim // 6)
+        if grid_size_float % 1 != 0:
+            raise ValueError("Grid size must be a perfect square")
+        self.grid_size = int(grid_size_float)
+        
+        # Shared Torso: 5-layer ResNet with 32 channels (lines 227-228)
+        self.conv1 = nn.Conv2d(self.state_channels + char_embedding_dim, 32, kernel_size=3, padding=1)
+        self.bn1 = nn.BatchNorm2d(32)
+        self.relu = nn.ReLU(inplace=True)
+        
+        # 5-layer ResNet
+        self.resnet_blocks = nn.Sequential(
+            ResidualBlock(32),
+            ResidualBlock(32),
+            ResidualBlock(32),
+            ResidualBlock(32),
+            ResidualBlock(32),
+        )
+        
+        # Action Prediction Head (lines 230-234)
+        self.action_conv = nn.Conv2d(32, 32, kernel_size=3, padding=1)
+        self.action_avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        self.action_fc = nn.Linear(32, n_actions)
+        
+        # Consumption Prediction Head (lines 235-239)
+        self.consumption_conv = nn.Conv2d(32, 32, kernel_size=3, padding=1)
+        self.consumption_avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        self.consumption_fc = nn.Linear(32, n_objects)
+        
+        # Successor Representation Prediction Head (lines 241-245)
+        self.sr_conv1 = nn.Conv2d(32, 32, kernel_size=3, padding=1)
+        self.sr_conv2 = nn.Conv2d(32, 3, kernel_size=3, padding=1)  # 3 channels for 3 discount factors
+        
+    def forward(
+        self,
+        current_state: torch.Tensor,
+        character_embedding: torch.Tensor,
+        mental_embedding: Optional[torch.Tensor] = None,
+    ) -> Dict[str, torch.Tensor]:
+        """
+        Args:
+            current_state: (batch_size, state_dim)
+            character_embedding: (batch_size, char_embedding_dim)
+            mental_embedding: Unused in Figure 5
+        Returns:
+            Dict containing action predictions, consumption predictions, and SR predictions
+        """
+        batch_size = current_state.size(0)
+        
+        # Reshape state to grid format
+        state_grid = current_state.view(batch_size, self.state_channels, self.grid_size, self.grid_size)
+        
+        # Spatialize character embedding and concatenate with query state (line 227)
+        char_expanded = character_embedding.unsqueeze(-1).unsqueeze(-1).expand(
+            batch_size, self.char_embedding_dim, self.grid_size, self.grid_size
+        )
+        conv_input = torch.cat([state_grid, char_expanded], dim=1)
+        
+        # Shared Torso: 5-layer ResNet with 32 channels (line 228)
+        x = self.conv1(conv_input)
+        x = self.bn1(x)
+        x = self.relu(x)
+        x = self.resnet_blocks(x)
+        
+        # Action Prediction Head (lines 230-234)
+        action_x = self.relu(self.action_conv(x))
+        action_x = self.action_avgpool(action_x)
+        action_x = action_x.view(action_x.size(0), -1)
+        action_logits = self.action_fc(action_x)
+        action_probs = F.softmax(action_logits, dim=1)
+        
+        # Consumption Prediction Head (lines 235-239)
+        consumption_x = self.relu(self.consumption_conv(x))
+        consumption_x = self.consumption_avgpool(consumption_x)
+        consumption_x = consumption_x.view(consumption_x.size(0), -1)
+        consumption_logits = self.consumption_fc(consumption_x)
+        consumption_probs = torch.sigmoid(consumption_logits)
+        
+        # Successor Representation Prediction Head (lines 241-245)
+        sr_x = self.relu(self.sr_conv1(x))
+        sr_x = self.sr_conv2(sr_x)  # (batch, 3, grid_size, grid_size)
+        
+        # Softmax over each channel independently (line 244)
+        # Gives predicted normalized SRs for three discount factors: γ = 0.5, 0.9, 0.99
+        sr_probs = F.softmax(sr_x.view(batch_size, 3, -1), dim=2)  # Softmax over spatial dims
+        sr_probs = sr_probs.view(batch_size, 3, self.grid_size, self.grid_size)
+        
+        return {
+            "action_logits": action_logits,
+            "action_pred": action_logits,  # For compatibility
+            "action_probs": action_probs,
+            "consumption_probs": consumption_probs,
+            "sr_logits": sr_x,
+            "sr_probs": sr_probs,
+        }
+
+
 class PredictionNet(nn.Module):
     """
-    Prediction Net: Outputs behavioral predictions
+    Legacy Prediction Net: Outputs behavioral predictions
     - Next-step action probabilities
     - Object consumption probabilities
     - Successor representations
@@ -619,12 +822,14 @@ class ToMnet(nn.Module):
             )
             losses["consumption_loss"] = consumption_loss
 
-        # Successor representation loss
+        # Successor representation loss - using cross-entropy as specified in README line 66
         if "true_sr" in targets:
-            sr_loss = F.kl_div(
-                F.log_softmax(predictions["sr_logits"], dim=-1),
+            # Cross-entropy between predicted and empirical successor representation
+            # L_SR = Σ_τ Σ_s -SR_τ(s) log ŜR_τ(s)
+            sr_loss = F.cross_entropy(
+                predictions["sr_logits"], 
                 targets["true_sr"],
-                reduction="batchmean",
+                reduction="mean"
             )
             losses["sr_loss"] = sr_loss
 
@@ -680,7 +885,8 @@ def create_tomnet(
     else:
         raise ValueError(f"Unknown experiment_type: {experiment_type}")
 
-    return ToMnet(
+    # Create ToMnet instance
+    tomnet = ToMnet(
         state_dim=state_dim,
         action_dim=action_dim,
         n_actions=n_actions,
@@ -692,3 +898,22 @@ def create_tomnet(
         dropout_rate=dropout_rate,
         character_net=character_net,
     )
+    
+    # Replace with experiment-specific prediction net
+    if experiment_type == "figure3":
+        tomnet.prediction_net = Figure3PredictionNet(
+            state_dim=state_dim,
+            char_embedding_dim=char_embedding_dim,
+            n_actions=n_actions,
+            dropout_rate=dropout_rate,
+        )
+    elif experiment_type == "figure5":
+        tomnet.prediction_net = Figure5PredictionNet(
+            state_dim=state_dim,
+            char_embedding_dim=char_embedding_dim,
+            n_actions=n_actions,
+            n_objects=n_objects,
+            dropout_rate=dropout_rate,
+        )
+    
+    return tomnet

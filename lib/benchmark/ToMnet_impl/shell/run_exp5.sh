@@ -44,7 +44,7 @@ DESCRIPTION:
     and generating Figure 5b,d visualizations.
 
 USAGE:
-    bash run_figure5.sh [COMMAND] [OPTIONS]
+    bash run_exp5.sh [COMMAND] [OPTIONS]
 
 COMMANDS:
     generate [OPTIONS]      Generate goal-directed agent training data
@@ -57,19 +57,19 @@ COMMANDS:
 
 EXAMPLES:
     # Complete workflow with default settings
-    bash run_figure5.sh all
+    bash run_exp5.sh all
     
     # Generate data only
-    bash run_figure5.sh generate --n_agents 200 --n_episodes_per_agent 100
+    bash run_exp5.sh generate --n_agents 200 --n_episodes_per_agent 100
     
     # Train models with custom parameters
-    bash run_figure5.sh train --n_epochs 50 --batch_size 64
+    bash run_exp5.sh train --n_epochs 50 --batch_size 64
     
     # Generate visualizations and save plots
-    bash run_figure5.sh visualize --save
+    bash run_exp5.sh visualize --save
     
     # Clean up all generated files
-    bash run_figure5.sh clean
+    bash run_exp5.sh clean
 
 WORKFLOW:
     1. Data Generation: Creates goal-directed agent training data
@@ -292,7 +292,7 @@ case "$COMMAND" in
         ;;
     *)
         print_error "Unknown command: $COMMAND"
-        echo "Use 'bash run_figure5.sh help' for usage information"
+        echo "Use 'bash run_exp5.sh help' for usage information"
         exit 1
         ;;
 esac

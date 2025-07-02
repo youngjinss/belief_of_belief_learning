@@ -43,7 +43,7 @@ DESCRIPTION:
     Complete workflow for running ToMnet experiments and generating Figure 3 visualizations.
 
 USAGE:
-    bash run_experiment.sh [COMMAND] [OPTIONS]
+    bash run_exp3.sh [COMMAND] [OPTIONS]
 
 COMMANDS:
     train [OPTIONS]         Train ToMnet models
@@ -55,16 +55,16 @@ COMMANDS:
 
 EXAMPLES:
     # Complete workflow with default settings
-    bash run_experiment3.sh all
+    bash run_exp3.sh all
     
     # Train models only
-    bash run_experiment3.sh train --n_agents 100 --n_epochs 50
+    bash run_exp3.sh train --n_agents 100 --n_epochs 50
     
     # Generate visualizations with custom output
-    bash run_experiment3.sh visualize --save --output_dir my_plots
+    bash run_exp3.sh visualize --save --output_dir my_plots
     
     # Clean up all generated files
-    bash run_experiment3.sh clean
+    bash run_exp3.sh clean
 
 WORKFLOW:
     1. Training: Creates models for different alpha values
@@ -157,7 +157,7 @@ run_evaluation() {
         LOG_DIR="log/evaluation/$(date +%Y%m%d_%H%M%S)"
         mkdir -p "$LOG_DIR"
         echo "Starting evaluation at $(date)" > "$LOG_DIR/execution.log"
-        python scripts/evaluate.py --experiment figure3 --model_paths_json result/figure3/model_paths.json --data_paths_json result/figure3/data_paths.json --output_path result/figure3/cross_species_results.pkl --device cuda:3  >> "$LOG_DIR/execution.log" 2>&1 &
+        python scripts/evaluate.py --experiment figure3 --model_paths_json result/figure3/model_paths.json --data_paths_json result/figure3/data_paths.json --output_path result/figure3/cross_species_results.pkl --device cuda:3 "$@" >> "$LOG_DIR/execution.log" 2>&1 &
         EVAL_PID=$!
         echo $EVAL_PID > "$LOG_DIR/process.pid"
         print_info "Evaluation started in background with PID: $EVAL_PID"
@@ -274,7 +274,7 @@ case "$COMMAND" in
         ;;
     *)
         print_error "Unknown command: $COMMAND"
-        echo "Use 'bash run_experiment.sh help' for usage information"
+        echo "Use 'bash run_exp3.sh help' for usage information"
         exit 1
         ;;
 esac

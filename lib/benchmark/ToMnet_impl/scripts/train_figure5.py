@@ -29,18 +29,11 @@ class Figure5ExperimentConfig:
     """Configuration for Figure 5 experiment"""
 
     def __init__(self):
-        self.char_embedding_dim = 10
+        self.char_embedding_dim = 8
         self.use_mental_state_net = False  # Figure 5 does NOT use mental state net (per README line 591)
         self.agent_type = "goal_directed"
 
         # Figure 5 specific parameters
-        self.alpha_reward_values = [
-            0.01,
-            0.03,
-            0.1,
-            0.3,
-            1.0,
-        ]  # Different reward structures
         self.high_cost_ratio = 0.2
         self.n_agents = 100
 
@@ -125,9 +118,11 @@ class Figure5ToMnetTrainer:
                 )
                 losses["consumption_loss"] = consumption_loss
 
-            # Successor representation loss
+            # Successor representation loss - using cross-entropy as specified in README line 66
             if "successor_representation" in predictions and "true_sr" in batch:
-                sr_loss = nn.MSELoss()(
+                # Cross-entropy between predicted and empirical successor representation
+                # L_SR = Σ_τ Σ_s -SR_τ(s) log ŜR_τ(s)
+                sr_loss = nn.CrossEntropyLoss()(
                     predictions["successor_representation"], batch["true_sr"]
                 )
                 losses["sr_loss"] = sr_loss
@@ -222,9 +217,11 @@ class Figure5ToMnetTrainer:
                     )
                     losses["consumption_loss"] = consumption_loss
 
-                # Successor representation loss
+                # Successor representation loss - using cross-entropy as specified in README line 66
                 if "successor_representation" in predictions and "true_sr" in batch:
-                    sr_loss = nn.MSELoss()(
+                    # Cross-entropy between predicted and empirical successor representation
+                    # L_SR = Σ_τ Σ_s -SR_τ(s) log ŜR_τ(s)
+                    sr_loss = nn.CrossEntropyLoss()(
                         predictions["successor_representation"], batch["true_sr"]
                     )
                     losses["sr_loss"] = sr_loss

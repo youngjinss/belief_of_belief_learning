@@ -65,17 +65,16 @@ class CharacterNet(nn.Module):
         # Flatten trajectories for processing
         traj_flat = trajectories.view(batch_size * n_past, seq_len, input_dim)
 
-        # Process each trajectory segment
-        embeddings = []
-        for i in range(seq_len):
-            step_input = traj_flat[:, i, :]  # (batch_size * n_past, input_dim)
-            step_embedding = self.mlp(
-                step_input
-            )  # (batch_size * n_past, embedding_dim)
-            embeddings.append(step_embedding)
-
-        # Average over sequence length
-        trajectory_embeddings = torch.stack(embeddings, dim=1).mean(dim=1)
+        # Vectorized processing - reshape to process all timesteps at once
+        # Reshape from (batch_size * n_past, seq_len, input_dim) to (batch_size * n_past * seq_len, input_dim)
+        traj_reshaped = traj_flat.view(batch_size * n_past * seq_len, input_dim)
+        
+        # Process all timesteps at once through MLP
+        embeddings_flat = self.mlp(traj_reshaped)  # (batch_size * n_past * seq_len, embedding_dim)
+        
+        # Reshape back and average over sequence length
+        embeddings = embeddings_flat.view(batch_size * n_past, seq_len, self.embedding_dim)
+        trajectory_embeddings = embeddings.mean(dim=1)  # (batch_size * n_past, embedding_dim)
 
         # Reshape and aggregate over past episodes
         trajectory_embeddings = trajectory_embeddings.view(
@@ -198,25 +197,24 @@ class Figure3CharacterNet(nn.Module):
             )
         )
 
-        # Process each timestep through convnet
-        conv_outputs = []
-        for t in range(seq_len):
-            # Concatenate state and spatialized action
-            state_t = state_grid[:, t]  # (batch*n_past, 6, 11, 11)
-            action_t = action_expanded[:, t]  # (batch*n_past, 5, 11, 11)
-            conv_input = torch.cat(
-                [state_t, action_t], dim=1
-            )  # (batch*n_past, 11, 11, 11)
-
-            # Apply convolution
-            conv_out = self.relu(self.conv1(conv_input))  # (batch*n_past, 8, 11, 11)
-            conv_out_flat = conv_out.view(batch_size * n_past, -1)  # Flatten
-            conv_outputs.append(conv_out_flat)
-
-        # Stack for LSTM processing
-        lstm_input = torch.stack(
-            conv_outputs, dim=1
-        )  # (batch*n_past, seq_len, conv_output_size)
+        # Vectorized convolution processing
+        # Reshape to process all timesteps at once
+        state_grid_flat = state_grid.permute(1, 0, 2, 3, 4).contiguous()  # (seq_len, batch*n_past, 6, 11, 11)
+        action_expanded_flat = action_expanded.permute(1, 0, 2, 3, 4).contiguous()  # (seq_len, batch*n_past, 5, 11, 11)
+        
+        # Reshape for batch processing
+        state_grid_all = state_grid_flat.view(seq_len * batch_size * n_past, self.state_channels, self.grid_size, self.grid_size)
+        action_expanded_all = action_expanded_flat.view(seq_len * batch_size * n_past, self.action_dim, self.grid_size, self.grid_size)
+        
+        # Concatenate all timesteps
+        conv_input_all = torch.cat([state_grid_all, action_expanded_all], dim=1)  # (seq_len*batch*n_past, 11, 11, 11)
+        
+        # Apply convolution to all timesteps at once
+        conv_out_all = self.relu(self.conv1(conv_input_all))  # (seq_len*batch*n_past, 8, 11, 11)
+        
+        # Flatten and reshape for LSTM
+        conv_out_flat = conv_out_all.view(seq_len, batch_size * n_past, -1)  # (seq_len, batch*n_past, conv_output_size)
+        lstm_input = conv_out_flat.permute(1, 0, 2)  # (batch*n_past, seq_len, conv_output_size)
 
         # Process through LSTM
         lstm_out, (hidden, _) = self.lstm(lstm_input)
@@ -303,68 +301,53 @@ class Figure5CharacterNet(nn.Module):
                 batch_size, self.embedding_dim, device=trajectories.device
             )
 
-        # Process each past episode
-        embeddings = []
-
-        for i in range(batch_size):
-            episode_embeddings = []
-
-            for j in range(n_past):
-                # Get single state-action pair (seq_len=1 for Figure 5)
-                traj = trajectories[i, j]  # (seq_len, state_dim + action_dim)
-
-                # For Figure 5, we typically have seq_len=1
-                # Take the first (and usually only) timestep
-                state_action = traj[0]  # (state_dim + action_dim,)
-
-                # Split state and action
-                state_flat = state_action[: self.state_dim]
-                action = state_action[self.state_dim :]
-
-                # Reshape state to grid format
-                state_grid = state_flat.view(
-                    self.state_channels, self.grid_size, self.grid_size
-                )
-
-                # Spatialize action (expand to match grid size)
-                action_expanded = (
-                    action.unsqueeze(-1)
-                    .unsqueeze(-1)
-                    .expand(self.action_dim, self.grid_size, self.grid_size)
-                )
-
-                # Concatenate state and spatialized action
-                conv_input = torch.cat([state_grid, action_expanded], dim=0).unsqueeze(
-                    0
-                )  # (1, 11, 11, 11)
-
-                # Apply initial convolution
-                x = self.conv1(conv_input)
-                x = self.bn1(x)
-                x = self.relu(x)
-
-                # Apply ResNet blocks
-                x = self.resnet_blocks(x)
-
-                # Average pooling
-                x = self.avgpool(x)
-                x = x.view(x.size(0), -1)  # Flatten
-
-                # Generate embedding
-                embedding = self.fc(x)  # (1, embedding_dim)
-                episode_embeddings.append(embedding.squeeze(0))
-
-            # Sum embeddings from all past episodes (line 589)
-            if episode_embeddings:
-                char_embedding = torch.stack(episode_embeddings).sum(dim=0)
-            else:
-                char_embedding = torch.zeros(
-                    self.embedding_dim, device=trajectories.device
-                )
-
-            embeddings.append(char_embedding)
-
-        character_embeddings = torch.stack(embeddings)  # (batch_size, embedding_dim)
+        # Vectorized processing - reshape to process all episodes at once
+        # Take first timestep (seq_len=1 for Figure 5)
+        trajectories_flat = trajectories[:, :, 0, :]  # (batch_size, n_past, state_dim + action_dim)
+        
+        # Reshape to process all batch*n_past samples together
+        trajectories_flat = trajectories_flat.view(batch_size * n_past, input_dim)
+        
+        # Split state and action
+        state_flat = trajectories_flat[:, : self.state_dim]  # (batch*n_past, state_dim)
+        action_flat = trajectories_flat[:, self.state_dim :]  # (batch*n_past, action_dim)
+        
+        # Reshape state to grid format
+        state_grid = state_flat.view(
+            batch_size * n_past, self.state_channels, self.grid_size, self.grid_size
+        )
+        
+        # Spatialize action (expand to match grid size)
+        action_expanded = (
+            action_flat.unsqueeze(-1)
+            .unsqueeze(-1)
+            .expand(batch_size * n_past, self.action_dim, self.grid_size, self.grid_size)
+        )
+        
+        # Concatenate state and spatialized action
+        conv_input = torch.cat([state_grid, action_expanded], dim=1)  # (batch*n_past, 11, 11, 11)
+        
+        # Apply initial convolution
+        x = self.conv1(conv_input)
+        x = self.bn1(x)
+        x = self.relu(x)
+        
+        # Apply ResNet blocks
+        x = self.resnet_blocks(x)
+        
+        # Average pooling
+        x = self.avgpool(x)
+        x = x.view(x.size(0), -1)  # (batch*n_past, 32)
+        
+        # Generate embeddings
+        embeddings = self.fc(x)  # (batch*n_past, embedding_dim)
+        
+        # Reshape back to (batch_size, n_past, embedding_dim)
+        embeddings = embeddings.view(batch_size, n_past, self.embedding_dim)
+        
+        # Sum embeddings from all past episodes (line 589)
+        character_embeddings = embeddings.sum(dim=1)  # (batch_size, embedding_dim)
+        
         return character_embeddings
 
 

@@ -37,6 +37,10 @@ def main():
     parser.add_argument(
         "--n_workers", type=int, default=None, help="Number of parallel workers"
     )
+    parser.add_argument(
+        "--gamma_values", type=float, nargs='+', default=[0.5, 0.9, 0.99], 
+        help="Discount factors for successor representation (default: 0.5 0.9 0.99)"
+    )
 
     # Output parameters
     parser.add_argument(
@@ -56,6 +60,7 @@ def main():
     print(f"Alpha reward: {args.alpha_reward}")
     print(f"High cost ratio: {args.high_cost_ratio}")
     print(f"Past episodes range: {args.min_past}-{args.max_past}")
+    print(f"Gamma values: {args.gamma_values}")
     print(f"Output directory: {args.output_dir}")
     print("=" * 60)
 
@@ -76,6 +81,7 @@ def main():
         high_cost_ratio=args.high_cost_ratio,
         min_past=args.min_past,
         max_past=args.max_past,
+        gamma_values=args.gamma_values,
         save_path=save_path,
         n_workers=args.n_workers,
     )

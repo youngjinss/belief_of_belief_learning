@@ -103,7 +103,8 @@ def create_training_samples_for_agent(args):
         max_past,
         grid_size,
         max_walls,
-        max_steps
+        max_steps,
+        gamma_values
     ) = args
     
     agent_samples = []
@@ -139,13 +140,19 @@ def create_training_samples_for_agent(args):
         env_copy.objects = query_trajectory.env_state["objects"]
         env_copy.agent_pos = query_trajectory.env_state["initial_agent_pos"]
         
-        # Pre-compute successor representations for all steps in batch
+        # Pre-compute successor representations for all steps in batch with discount factors
         sr_cache = {}
         for step_idx in range(max_steps_per_episode):
             if step_idx not in sr_cache:
-                sr_cache[step_idx] = agent.get_successor_representation(
-                    env_copy, current_time_step=step_idx
-                )
+                # Compute SR for all 3 discount factors
+                sr_all_gammas = []
+                for gamma in gamma_values:
+                    sr = agent.get_successor_representation(
+                        env_copy, gamma_sr=gamma, current_time_step=step_idx
+                    )
+                    sr_all_gammas.append(sr)
+                # Stack along first dimension: (3, grid_size, grid_size)
+                sr_cache[step_idx] = np.stack(sr_all_gammas, axis=0)
         
         # Object consumption (compute once per episode)
         consumed_objects = np.zeros(4)  # One-hot encoding
@@ -330,6 +337,7 @@ class DataGenerator:
         high_cost_ratio: float = 0.2,
         min_past: int = 0,
         max_past: int = 10,
+        gamma_values: List[float] = [0.5, 0.9, 0.99],
         save_path: Optional[str] = None,
         n_workers: Optional[int] = None,
     ) -> Dict:
@@ -398,7 +406,8 @@ class DataGenerator:
                 max_past,
                 self.grid_size,
                 self.max_walls,
-                self.max_steps
+                self.max_steps,
+                gamma_values
             ))
         
         # Process training samples in parallel with chunk size optimization

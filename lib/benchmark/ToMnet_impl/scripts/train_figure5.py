@@ -185,8 +185,8 @@ class Figure5ToMnetTrainer:
                     pred_sr = predictions["successor_representation"]  # (batch, 3, grid_size, grid_size)
                     batch_size = pred_sr.shape[0]
                     pred_sr_flat = pred_sr.view(batch_size, 3, -1)  # (batch, 3, grid_size^2)
-                    sr_preds = torch.softmax(pred_sr_flat, dim=2).cpu().numpy()  # Apply softmax over spatial dim
-                    sr_preds = sr_preds.reshape(batch_size, -1)  # (batch, 3*grid_size^2)
+                    sr_probs = torch.softmax(pred_sr_flat, dim=2).cpu().numpy()  # Apply softmax over spatial dim
+                    sr_preds = sr_probs.reshape(batch_size, -1)  # (batch, 3*grid_size^2)
                     
                     sr_targets = batch["true_sr"].cpu().numpy()
                     all_predictions["sr"].extend(sr_preds)
@@ -329,8 +329,8 @@ class Figure5ToMnetTrainer:
                     pred_sr = predictions["successor_representation"]  # (batch, 3, grid_size, grid_size)
                     batch_size = pred_sr.shape[0]
                     pred_sr_flat = pred_sr.view(batch_size, 3, -1)  # (batch, 3, grid_size^2)
-                    sr_preds = torch.softmax(pred_sr_flat, dim=2).cpu().numpy()  # Apply softmax over spatial dim
-                    sr_preds = sr_preds.reshape(batch_size, -1)  # (batch, 3*grid_size^2)
+                    sr_probs = torch.softmax(pred_sr_flat, dim=2).cpu().numpy()  # Apply softmax over spatial dim
+                    sr_preds = sr_probs.reshape(batch_size, -1)  # (batch, 3*grid_size^2)
                     
                     sr_targets = batch["true_sr"].cpu().numpy()
                     all_predictions["sr"].extend(sr_preds)

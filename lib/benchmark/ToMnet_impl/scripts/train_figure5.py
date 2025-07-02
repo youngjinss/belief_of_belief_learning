@@ -84,7 +84,7 @@ class Figure5ToMnetTrainer:
         # Additional detailed metrics tracking
         self.detailed_metrics = {
             "consumption_mse": {"train": [], "val": []},
-            "sr_cosine_similarity": {"train": [], "val": []}
+            "sr_cosine_similarity": {"train": [], "val": []},
         }
 
     def train_epoch(self, dataloader: DataLoader) -> Dict[str, float]:

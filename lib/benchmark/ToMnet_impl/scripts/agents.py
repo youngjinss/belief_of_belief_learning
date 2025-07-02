@@ -102,7 +102,7 @@ class GoalDirectedAgent:
         movement_cost: float = 0.01,
         wall_penalty: float = 0.05,
         gamma: float = 0.99,
-        use_parallel_sr: bool = False  # Option to use parallel or serial SR
+        use_parallel_sr: bool = False,  # Option to use parallel or serial SR
     ):
         """
         Args:
@@ -272,12 +272,12 @@ class GoalDirectedAgent:
         """
         Compute true successor representation with SERIAL processing by default.
         The parallel version has too much overhead for small simulations.
-        
+
         Args:
             env: Environment to simulate in
             gamma_sr: Discount factor for SR computation
             current_time_step: Current time step t in the episode
-            
+
         Returns:
             Array of shape (size, size) with true discounted future state occupancy
         """
@@ -304,7 +304,7 @@ class GoalDirectedAgent:
             sim_sr, sim_normalizer = _run_single_simulation_serial(
                 temp_env, self.policy, gamma_sr, remaining_steps, size
             )
-            
+
             if sim_normalizer > 0:
                 sr += sim_sr / sim_normalizer  # Normalize by Z for this simulation
                 total_normalizer += 1
@@ -326,10 +326,10 @@ def create_goal_directed_agents(
 ) -> List[GoalDirectedAgent]:
     """
     Create population of goal-directed agents with diverse reward preferences
-    
+
     Args:
         n_agents: Number of agents to create
-        alpha_reward: Dirichlet concentration for reward sampling  
+        alpha_reward: Dirichlet concentration for reward sampling
         high_cost_ratio: Fraction of agents with high movement cost (0.5 vs 0.01)
     """
     agents = []

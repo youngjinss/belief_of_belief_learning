@@ -6,9 +6,10 @@ import matplotlib.patches as patches
 from matplotlib.animation import FuncAnimation
 from IPython.display import HTML
 
-SIZE = 6
-MAX_WALLS = 4
+SIZE = 4
+MAX_WALLS = 2
 MAX_STEPS = 31
+N_OBJECTS = 2
 
 
 class GridWorld:

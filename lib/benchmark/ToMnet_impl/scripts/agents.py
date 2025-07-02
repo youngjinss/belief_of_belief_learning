@@ -138,7 +138,7 @@ class GoalDirectedAgent:
         self,
         env: GridWorld,
         max_iterations: int = 100,
-        convergence_threshold: float = 1e-6,
+        convergence_threshold: float = 1,
     ) -> None:
         """
         Run value iteration to compute optimal policy for given environment

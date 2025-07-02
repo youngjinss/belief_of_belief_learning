@@ -106,7 +106,9 @@ def evaluate_model_on_data(
                 results["character_embeddings"].extend(char_embeddings)
 
             # Action predictions
-            action_key = "action_logits" if "action_logits" in predictions else "action_pred"
+            action_key = (
+                "action_logits" if "action_logits" in predictions else "action_pred"
+            )
             action_probs = F.softmax(predictions[action_key], dim=-1)
             predicted_actions = torch.argmax(action_probs, dim=-1)
             true_actions = batch.get("true_actions", batch.get("true_action"))

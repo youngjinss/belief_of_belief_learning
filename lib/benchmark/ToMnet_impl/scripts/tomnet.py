@@ -91,7 +91,7 @@ class CharacterNet(nn.Module):
 
 class ResidualBlock(nn.Module):
     """Residual block for ResNet architecture"""
-    
+
     def __init__(self, channels: int, use_batchnorm: bool = True):
         super().__init__()
         self.conv1 = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
@@ -99,7 +99,7 @@ class ResidualBlock(nn.Module):
         self.bn1 = nn.BatchNorm2d(channels) if use_batchnorm else nn.Identity()
         self.bn2 = nn.BatchNorm2d(channels) if use_batchnorm else nn.Identity()
         self.relu = nn.ReLU(inplace=True)
-        
+
     def forward(self, x):
         residual = x
         out = self.conv1(x)
@@ -117,7 +117,7 @@ class Figure3CharacterNet(nn.Module):
     Character Net for Figure 3: ConvNet + LSTM architecture
     As specified in README lines 26-31
     """
-    
+
     def __init__(
         self,
         state_dim: int,
@@ -129,7 +129,7 @@ class Figure3CharacterNet(nn.Module):
         self.state_dim = state_dim
         self.action_dim = action_dim
         self.embedding_dim = embedding_dim
-        
+
         # Assuming 11x11 grid with 6 channels for state
         # State channels: walls, agent, 4 object types
         self.state_channels = 6
@@ -137,22 +137,24 @@ class Figure3CharacterNet(nn.Module):
         if grid_size_float % 1 != 0:
             raise ValueError("Grid size must be a perfect square")
         self.grid_size = int(grid_size_float)
-        
+
         # 1-layer convnet with 8 feature planes (line 28)
-        self.conv1 = nn.Conv2d(self.state_channels + action_dim, 8, kernel_size=3, padding=1)
+        self.conv1 = nn.Conv2d(
+            self.state_channels + action_dim, 8, kernel_size=3, padding=1
+        )
         self.relu = nn.ReLU()
-        
+
         # Convolutional LSTM (line 29)
         # Using regular LSTM after flattening conv features
         conv_output_size = int(8 * self.grid_size * self.grid_size)
         self.lstm = nn.LSTM(conv_output_size, 128, batch_first=True)
-        
+
         # Fully-connected layer to 2D embedding space (line 31)
         self.fc = nn.Linear(128, embedding_dim)
-        
+
         # Learnable embedding for N_past=0 case
         self.no_past_embedding = nn.Parameter(torch.randn(embedding_dim) * 0.1)
-        
+
     def forward(self, trajectories: torch.Tensor) -> torch.Tensor:
         """
         Args:
@@ -161,54 +163,78 @@ class Figure3CharacterNet(nn.Module):
             character_embeddings: (batch_size, embedding_dim)
         """
         batch_size, n_past, seq_len, input_dim = trajectories.shape
-        
+
         if n_past == 0:
-            return torch.zeros(batch_size, self.embedding_dim, device=trajectories.device)
-        
+            return torch.zeros(
+                batch_size, self.embedding_dim, device=trajectories.device
+            )
+
         # Reshape trajectories for processing
         traj_flat = trajectories.view(batch_size * n_past, seq_len, input_dim)
-        
+
         # Split state and action
-        state_flat = traj_flat[:, :, :self.state_dim]  # Flattened state
-        action_flat = traj_flat[:, :, self.state_dim:]  # One-hot action
-        
+        state_flat = traj_flat[:, :, : self.state_dim]  # Flattened state
+        action_flat = traj_flat[:, :, self.state_dim :]  # One-hot action
+
         # Reshape state to grid format
-        state_grid = state_flat.view(batch_size * n_past, seq_len, self.state_channels, self.grid_size, self.grid_size)
-        
-        # Spatialize action (expand to match grid size)
-        action_expanded = action_flat.unsqueeze(-1).unsqueeze(-1).expand(
-            batch_size * n_past, seq_len, self.action_dim, self.grid_size, self.grid_size
+        state_grid = state_flat.view(
+            batch_size * n_past,
+            seq_len,
+            self.state_channels,
+            self.grid_size,
+            self.grid_size,
         )
-        
+
+        # Spatialize action (expand to match grid size)
+        action_expanded = (
+            action_flat.unsqueeze(-1)
+            .unsqueeze(-1)
+            .expand(
+                batch_size * n_past,
+                seq_len,
+                self.action_dim,
+                self.grid_size,
+                self.grid_size,
+            )
+        )
+
         # Process each timestep through convnet
         conv_outputs = []
         for t in range(seq_len):
             # Concatenate state and spatialized action
             state_t = state_grid[:, t]  # (batch*n_past, 6, 11, 11)
             action_t = action_expanded[:, t]  # (batch*n_past, 5, 11, 11)
-            conv_input = torch.cat([state_t, action_t], dim=1)  # (batch*n_past, 11, 11, 11)
-            
+            conv_input = torch.cat(
+                [state_t, action_t], dim=1
+            )  # (batch*n_past, 11, 11, 11)
+
             # Apply convolution
             conv_out = self.relu(self.conv1(conv_input))  # (batch*n_past, 8, 11, 11)
             conv_out_flat = conv_out.view(batch_size * n_past, -1)  # Flatten
             conv_outputs.append(conv_out_flat)
-        
+
         # Stack for LSTM processing
-        lstm_input = torch.stack(conv_outputs, dim=1)  # (batch*n_past, seq_len, conv_output_size)
-        
+        lstm_input = torch.stack(
+            conv_outputs, dim=1
+        )  # (batch*n_past, seq_len, conv_output_size)
+
         # Process through LSTM
         lstm_out, (hidden, _) = self.lstm(lstm_input)
-        
+
         # Use final hidden state
         final_hidden = hidden[-1]  # (batch*n_past, 128)
-        
+
         # Generate embeddings
         trajectory_embeddings = self.fc(final_hidden)  # (batch*n_past, embedding_dim)
-        
+
         # Reshape and aggregate
-        trajectory_embeddings = trajectory_embeddings.view(batch_size, n_past, self.embedding_dim)
-        character_embeddings = trajectory_embeddings.sum(dim=1)  # Sum over past episodes
-        
+        trajectory_embeddings = trajectory_embeddings.view(
+            batch_size, n_past, self.embedding_dim
+        )
+        character_embeddings = trajectory_embeddings.sum(
+            dim=1
+        )  # Sum over past episodes
+
         return character_embeddings
 
 
@@ -217,7 +243,7 @@ class Figure5CharacterNet(nn.Module):
     Character Net for Figure 5: 5-layer ResNet architecture
     As specified in README lines 582-589
     """
-    
+
     def __init__(
         self,
         state_dim: int,
@@ -229,19 +255,21 @@ class Figure5CharacterNet(nn.Module):
         self.state_dim = state_dim
         self.action_dim = action_dim
         self.embedding_dim = embedding_dim
-        
+
         # Assuming 11x11 grid with 6 channels for state
         self.state_channels = 6
         grid_size_float = np.sqrt(state_dim // 6)
         if grid_size_float % 1 != 0:
             raise ValueError("Grid size must be a perfect square")
         self.grid_size = int(grid_size_float)
-        
+
         # Initial convolution to 32 channels
-        self.conv1 = nn.Conv2d(self.state_channels + action_dim, 32, kernel_size=3, padding=1)
+        self.conv1 = nn.Conv2d(
+            self.state_channels + action_dim, 32, kernel_size=3, padding=1
+        )
         self.bn1 = nn.BatchNorm2d(32)
         self.relu = nn.ReLU(inplace=True)
-        
+
         # 5-layer ResNet with 32 channels (line 586)
         self.resnet_blocks = nn.Sequential(
             ResidualBlock(32),
@@ -250,16 +278,16 @@ class Figure5CharacterNet(nn.Module):
             ResidualBlock(32),
             ResidualBlock(32),
         )
-        
+
         # Average pooling (line 587)
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        
+
         # Fully-connected layer to embedding (line 588)
         self.fc = nn.Linear(32, embedding_dim)
-        
+
         # Learnable embedding for N_past=0 case
         self.no_past_embedding = nn.Parameter(torch.randn(embedding_dim) * 0.1)
-        
+
     def forward(self, trajectories: torch.Tensor) -> torch.Tensor:
         """
         Args:
@@ -269,63 +297,73 @@ class Figure5CharacterNet(nn.Module):
             character_embeddings: (batch_size, embedding_dim)
         """
         batch_size, n_past, seq_len, input_dim = trajectories.shape
-        
+
         if n_past == 0:
-            return torch.zeros(batch_size, self.embedding_dim, device=trajectories.device)
-        
+            return torch.zeros(
+                batch_size, self.embedding_dim, device=trajectories.device
+            )
+
         # Process each past episode
         embeddings = []
-        
+
         for i in range(batch_size):
             episode_embeddings = []
-            
+
             for j in range(n_past):
                 # Get single state-action pair (seq_len=1 for Figure 5)
                 traj = trajectories[i, j]  # (seq_len, state_dim + action_dim)
-                
+
                 # For Figure 5, we typically have seq_len=1
                 # Take the first (and usually only) timestep
                 state_action = traj[0]  # (state_dim + action_dim,)
-                
+
                 # Split state and action
-                state_flat = state_action[:self.state_dim]
-                action = state_action[self.state_dim:]
-                
+                state_flat = state_action[: self.state_dim]
+                action = state_action[self.state_dim :]
+
                 # Reshape state to grid format
-                state_grid = state_flat.view(self.state_channels, self.grid_size, self.grid_size)
-                
-                # Spatialize action (expand to match grid size)
-                action_expanded = action.unsqueeze(-1).unsqueeze(-1).expand(
-                    self.action_dim, self.grid_size, self.grid_size
+                state_grid = state_flat.view(
+                    self.state_channels, self.grid_size, self.grid_size
                 )
-                
+
+                # Spatialize action (expand to match grid size)
+                action_expanded = (
+                    action.unsqueeze(-1)
+                    .unsqueeze(-1)
+                    .expand(self.action_dim, self.grid_size, self.grid_size)
+                )
+
                 # Concatenate state and spatialized action
-                conv_input = torch.cat([state_grid, action_expanded], dim=0).unsqueeze(0)  # (1, 11, 11, 11)
-                
+                conv_input = torch.cat([state_grid, action_expanded], dim=0).unsqueeze(
+                    0
+                )  # (1, 11, 11, 11)
+
                 # Apply initial convolution
                 x = self.conv1(conv_input)
                 x = self.bn1(x)
                 x = self.relu(x)
-                
+
                 # Apply ResNet blocks
                 x = self.resnet_blocks(x)
-                
+
                 # Average pooling
                 x = self.avgpool(x)
                 x = x.view(x.size(0), -1)  # Flatten
-                
+
                 # Generate embedding
                 embedding = self.fc(x)  # (1, embedding_dim)
                 episode_embeddings.append(embedding.squeeze(0))
-            
+
             # Sum embeddings from all past episodes (line 589)
             if episode_embeddings:
                 char_embedding = torch.stack(episode_embeddings).sum(dim=0)
             else:
-                char_embedding = torch.zeros(self.embedding_dim, device=trajectories.device)
-            
+                char_embedding = torch.zeros(
+                    self.embedding_dim, device=trajectories.device
+                )
+
             embeddings.append(char_embedding)
-        
+
         character_embeddings = torch.stack(embeddings)  # (batch_size, embedding_dim)
         return character_embeddings
 
@@ -399,7 +437,7 @@ class Figure3PredictionNet(nn.Module):
     Prediction Net for Figure 3: Only action prediction head
     As specified in README lines 37-45
     """
-    
+
     def __init__(
         self,
         state_dim: int,
@@ -411,25 +449,27 @@ class Figure3PredictionNet(nn.Module):
         self.state_dim = state_dim
         self.char_embedding_dim = char_embedding_dim
         self.n_actions = n_actions
-        
+
         # Assuming 11x11 grid with 6 channels for state
         self.state_channels = 6
         grid_size_float = np.sqrt(state_dim // 6)
         if grid_size_float % 1 != 0:
             raise ValueError("Grid size must be a perfect square")
         self.grid_size = int(grid_size_float)
-        
+
         # 2-layer convnet with 32 feature planes and ReLUs (line 42)
-        self.conv1 = nn.Conv2d(self.state_channels + char_embedding_dim, 32, kernel_size=3, padding=1)
+        self.conv1 = nn.Conv2d(
+            self.state_channels + char_embedding_dim, 32, kernel_size=3, padding=1
+        )
         self.conv2 = nn.Conv2d(32, 32, kernel_size=3, padding=1)
         self.relu = nn.ReLU()
-        
+
         # Average pooling (line 43)
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        
+
         # Fully-connected layer to 5-dim logits (line 44)
         self.fc = nn.Linear(32, n_actions)
-        
+
     def forward(
         self,
         current_state: torch.Tensor,
@@ -445,32 +485,36 @@ class Figure3PredictionNet(nn.Module):
             Dict containing action_logits and action_probs
         """
         batch_size = current_state.size(0)
-        
+
         # Reshape state to grid format
-        state_grid = current_state.view(batch_size, self.state_channels, self.grid_size, self.grid_size)
-        
-        # Spatialize character embedding (expand to match grid size)
-        char_expanded = character_embedding.unsqueeze(-1).unsqueeze(-1).expand(
-            batch_size, self.char_embedding_dim, self.grid_size, self.grid_size
+        state_grid = current_state.view(
+            batch_size, self.state_channels, self.grid_size, self.grid_size
         )
-        
+
+        # Spatialize character embedding (expand to match grid size)
+        char_expanded = (
+            character_embedding.unsqueeze(-1)
+            .unsqueeze(-1)
+            .expand(batch_size, self.char_embedding_dim, self.grid_size, self.grid_size)
+        )
+
         # Concatenate current state with character embedding (line 38)
         conv_input = torch.cat([state_grid, char_expanded], dim=1)
-        
+
         # 2-layer convnet with 32 feature planes and ReLUs (line 42)
         x = self.relu(self.conv1(conv_input))
         x = self.relu(self.conv2(x))
-        
+
         # Average pooling (line 43)
         x = self.avgpool(x)
         x = x.view(x.size(0), -1)  # Flatten
-        
+
         # Fully-connected layer to 5-dim logits (line 44)
         action_logits = self.fc(x)
-        
+
         # Softmax for action probabilities (line 45)
         action_probs = F.softmax(action_logits, dim=1)
-        
+
         return {
             "action_logits": action_logits,
             "action_pred": action_logits,  # For compatibility
@@ -483,7 +527,7 @@ class Figure5PredictionNet(nn.Module):
     Prediction Net for Figure 5: Shared torso with three prediction heads
     As specified in README lines 223-245
     """
-    
+
     def __init__(
         self,
         state_dim: int,
@@ -497,19 +541,21 @@ class Figure5PredictionNet(nn.Module):
         self.char_embedding_dim = char_embedding_dim
         self.n_actions = n_actions
         self.n_objects = n_objects
-        
+
         # Assuming 11x11 grid with 6 channels for state
         self.state_channels = 6
         grid_size_float = np.sqrt(state_dim // 6)
         if grid_size_float % 1 != 0:
             raise ValueError("Grid size must be a perfect square")
         self.grid_size = int(grid_size_float)
-        
+
         # Shared Torso: 5-layer ResNet with 32 channels (lines 227-228)
-        self.conv1 = nn.Conv2d(self.state_channels + char_embedding_dim, 32, kernel_size=3, padding=1)
+        self.conv1 = nn.Conv2d(
+            self.state_channels + char_embedding_dim, 32, kernel_size=3, padding=1
+        )
         self.bn1 = nn.BatchNorm2d(32)
         self.relu = nn.ReLU(inplace=True)
-        
+
         # 5-layer ResNet
         self.resnet_blocks = nn.Sequential(
             ResidualBlock(32),
@@ -518,21 +564,23 @@ class Figure5PredictionNet(nn.Module):
             ResidualBlock(32),
             ResidualBlock(32),
         )
-        
+
         # Action Prediction Head (lines 230-234)
         self.action_conv = nn.Conv2d(32, 32, kernel_size=3, padding=1)
         self.action_avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.action_fc = nn.Linear(32, n_actions)
-        
+
         # Consumption Prediction Head (lines 235-239)
         self.consumption_conv = nn.Conv2d(32, 32, kernel_size=3, padding=1)
         self.consumption_avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.consumption_fc = nn.Linear(32, n_objects)
-        
+
         # Successor Representation Prediction Head (lines 241-245)
         self.sr_conv1 = nn.Conv2d(32, 32, kernel_size=3, padding=1)
-        self.sr_conv2 = nn.Conv2d(32, 3, kernel_size=3, padding=1)  # 3 channels for 3 discount factors
-        
+        self.sr_conv2 = nn.Conv2d(
+            32, 3, kernel_size=3, padding=1
+        )  # 3 channels for 3 discount factors
+
     def forward(
         self,
         current_state: torch.Tensor,
@@ -548,45 +596,51 @@ class Figure5PredictionNet(nn.Module):
             Dict containing action predictions, consumption predictions, and SR predictions
         """
         batch_size = current_state.size(0)
-        
+
         # Reshape state to grid format
-        state_grid = current_state.view(batch_size, self.state_channels, self.grid_size, self.grid_size)
-        
+        state_grid = current_state.view(
+            batch_size, self.state_channels, self.grid_size, self.grid_size
+        )
+
         # Spatialize character embedding and concatenate with query state (line 227)
-        char_expanded = character_embedding.unsqueeze(-1).unsqueeze(-1).expand(
-            batch_size, self.char_embedding_dim, self.grid_size, self.grid_size
+        char_expanded = (
+            character_embedding.unsqueeze(-1)
+            .unsqueeze(-1)
+            .expand(batch_size, self.char_embedding_dim, self.grid_size, self.grid_size)
         )
         conv_input = torch.cat([state_grid, char_expanded], dim=1)
-        
+
         # Shared Torso: 5-layer ResNet with 32 channels (line 228)
         x = self.conv1(conv_input)
         x = self.bn1(x)
         x = self.relu(x)
         x = self.resnet_blocks(x)
-        
+
         # Action Prediction Head (lines 230-234)
         action_x = self.relu(self.action_conv(x))
         action_x = self.action_avgpool(action_x)
         action_x = action_x.view(action_x.size(0), -1)
         action_logits = self.action_fc(action_x)
         action_probs = F.softmax(action_logits, dim=1)
-        
+
         # Consumption Prediction Head (lines 235-239)
         consumption_x = self.relu(self.consumption_conv(x))
         consumption_x = self.consumption_avgpool(consumption_x)
         consumption_x = consumption_x.view(consumption_x.size(0), -1)
         consumption_logits = self.consumption_fc(consumption_x)
         consumption_probs = torch.sigmoid(consumption_logits)
-        
+
         # Successor Representation Prediction Head (lines 241-245)
         sr_x = self.relu(self.sr_conv1(x))
         sr_x = self.sr_conv2(sr_x)  # (batch, 3, grid_size, grid_size)
-        
+
         # Softmax over each channel independently (line 244)
         # Gives predicted normalized SRs for three discount factors: γ = 0.5, 0.9, 0.99
-        sr_probs = F.softmax(sr_x.view(batch_size, 3, -1), dim=2)  # Softmax over spatial dims
+        sr_probs = F.softmax(
+            sr_x.view(batch_size, 3, -1), dim=2
+        )  # Softmax over spatial dims
         sr_probs = sr_probs.view(batch_size, 3, self.grid_size, self.grid_size)
-        
+
         return {
             "action_logits": action_logits,
             "action_pred": action_logits,  # For compatibility
@@ -735,7 +789,7 @@ class ToMnet(nn.Module):
         else:
             self.character_net = CharacterNet(
                 state_dim, action_dim, hidden_dim, char_embedding_dim, dropout_rate
-        )
+            )
 
         if use_mental_state:
             self.mental_state_net = MentalStateNet(
@@ -827,9 +881,7 @@ class ToMnet(nn.Module):
             # Cross-entropy between predicted and empirical successor representation
             # L_SR = Σ_τ Σ_s -SR_τ(s) log ŜR_τ(s)
             sr_loss = F.cross_entropy(
-                predictions["sr_logits"], 
-                targets["true_sr"],
-                reduction="mean"
+                predictions["sr_logits"], targets["true_sr"], reduction="mean"
             )
             losses["sr_loss"] = sr_loss
 
@@ -874,7 +926,9 @@ def create_tomnet(
         # Figure 5: Goal-directed agents with higher-dimensional embeddings
         if char_embedding_dim is None:
             char_embedding_dim = 8
-        use_mental_state = False  # Figure 5 does NOT use mental state (per README line 591)
+        use_mental_state = (
+            False  # Figure 5 does NOT use mental state (per README line 591)
+        )
         # Create Figure 5 specific CharacterNet with 5-layer ResNet
         character_net = Figure5CharacterNet(
             state_dim=state_dim,
@@ -898,7 +952,7 @@ def create_tomnet(
         dropout_rate=dropout_rate,
         character_net=character_net,
     )
-    
+
     # Replace with experiment-specific prediction net
     if experiment_type == "figure3":
         tomnet.prediction_net = Figure3PredictionNet(
@@ -915,5 +969,5 @@ def create_tomnet(
             n_objects=n_objects,
             dropout_rate=dropout_rate,
         )
-    
+
     return tomnet

@@ -66,9 +66,7 @@ def main():
     generator = DataGenerator()
 
     # Generate goal-directed agent data
-    save_path = os.path.join(
-        args.output_dir, "goal_directed_training_data.pkl"
-    )
+    save_path = os.path.join(args.output_dir, "goal_directed_training_data.pkl")
 
     print("\nGenerating goal-directed agent data...")
     dataset = generator.generate_goal_directed_agent_data(

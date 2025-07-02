@@ -288,7 +288,7 @@ class DataGenerator:
 
         # Create training samples
         all_data = []
-        
+
         print(f"\nCreating training samples from {n_agents} agents...")
         from tqdm import tqdm as tqdm_inner
 
@@ -317,7 +317,9 @@ class DataGenerator:
 
                 # Create samples for each step in query trajectory
                 # Limit steps to avoid excessive computation
-                max_steps_per_episode = min(len(query_trajectory.actions), MAX_STEPS)  # Limit to 20 steps
+                max_steps_per_episode = min(
+                    len(query_trajectory.actions), MAX_STEPS
+                )  # Limit to 20 steps
                 for step_idx in range(max_steps_per_episode):
                     # Reconstruct environment for this episode
                     env_copy = GridWorld(self.grid_size, self.max_walls, self.max_steps)
@@ -346,7 +348,9 @@ class DataGenerator:
 
                     # Successor representation
                     # Pass current time step for correct SR computation
-                    sr = agent.get_successor_representation(env_copy, current_time_step=step_idx)
+                    sr = agent.get_successor_representation(
+                        env_copy, current_time_step=step_idx
+                    )
 
                     sample = {
                         "agent_id": agent_id,
@@ -531,9 +535,11 @@ def collate_fn(batch):
             [item["true_consumption"] for item in batch]
         )
         result["true_sr"] = torch.stack([item["true_sr"] for item in batch])
-    
+
     # Add rewards for evaluation
     if "rewards" in batch[0]:
-        result["rewards"] = torch.stack([torch.tensor(item["rewards"], dtype=torch.float32) for item in batch])
+        result["rewards"] = torch.stack(
+            [torch.tensor(item["rewards"], dtype=torch.float32) for item in batch]
+        )
 
     return result

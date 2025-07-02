@@ -9,15 +9,15 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 def _run_single_simulation(args):
     """
     Helper function to run a single SR simulation in parallel.
-    
+
     Args:
         args: Tuple containing (env, policy, gamma_sr, remaining_steps, size)
-        
+
     Returns:
         Tuple of (sim_sr, sim_normalizer) for this simulation
     """
     env, policy, gamma_sr, remaining_steps, size = args
-    
+
     # Skip if agent is in invalid position
     if env.agent_pos[0] >= size or env.agent_pos[1] >= size:
         return np.zeros((size, size)), 0
@@ -26,7 +26,7 @@ def _run_single_simulation(args):
 
     sim_sr = np.zeros((size, size))  # SR for this simulation
     sim_normalizer = 0
-    
+
     # Rollout trajectory until episode termination or max remaining steps
     for delta_t in range(remaining_steps):
         if env.done:
@@ -34,9 +34,9 @@ def _run_single_simulation(args):
 
         # Current position at time t + Δt
         current_pos = env.agent_pos
-        
+
         # Add discounted occupancy: γ^{Δt} * I(s_{t+Δt} = s)
-        discount = gamma_sr ** delta_t
+        discount = gamma_sr**delta_t
         sim_sr[current_pos] += discount
         sim_normalizer += discount
 
@@ -47,10 +47,10 @@ def _run_single_simulation(args):
             agent_pos = np.where(state[:, :, 5] == 1)
             if len(agent_pos[0]) == 0:
                 break
-                
+
             i, j = agent_pos[0][0], agent_pos[1][0]
             action_probs = policy[i, j].copy()
-            
+
             # Safety checks for numerical stability
             if np.any(np.isnan(action_probs)) or np.sum(action_probs) == 0:
                 action_probs = np.ones(len(action_probs)) / len(action_probs)
@@ -59,13 +59,13 @@ def _run_single_simulation(args):
                 prob_sum = np.sum(action_probs)
                 if not np.isclose(prob_sum, 1.0):
                     action_probs = action_probs / prob_sum
-            
+
             action = np.random.choice(len(action_probs), p=action_probs)
             env.step(action)
         except:
             # If action fails, break the simulation
             break
-            
+
         # Check if episode terminated (consumed terminal object)
         if env.done:
             break
@@ -180,7 +180,9 @@ class GoalDirectedAgent:
                     if np.allclose(state_values, state_values[0]):
                         self.policy[i, j] = np.ones(env.n_actions) / env.n_actions
                     else:
-                        self.policy[i, j] = softmax(state_values / 0.1)  # Temperature = 0.1
+                        self.policy[i, j] = softmax(
+                            state_values / 0.1
+                        )  # Temperature = 0.1
 
             # Check convergence
             if np.max(np.abs(self.value_function - old_values)) < convergence_threshold:
@@ -239,8 +241,10 @@ class GoalDirectedAgent:
             return 4  # Stay action if agent position not found
 
         i, j = agent_pos[0][0], agent_pos[1][0]
-        action_probs = self.policy[i, j].copy()  # Make a copy to avoid modifying the policy
-        
+        action_probs = self.policy[
+            i, j
+        ].copy()  # Make a copy to avoid modifying the policy
+
         # Safety checks for numerical stability
         if np.any(np.isnan(action_probs)) or np.sum(action_probs) == 0:
             # Suppress warnings - too many during SR computation
@@ -274,12 +278,12 @@ class GoalDirectedAgent:
         """
         Compute true successor representation according to Appendix B:
         SR_γ(s) = 1/Z ∑_{Δt=0}^{T-t} γ^{Δt} I(s_{t+Δt} = s)
-        
+
         Args:
             env: Environment to simulate in
             gamma_sr: Discount factor for SR computation
             current_time_step: Current time step t in the episode
-            
+
         Returns:
             Array of shape (size, size) with true discounted future state occupancy
         """
@@ -304,13 +308,17 @@ class GoalDirectedAgent:
         simulation_args = []
         for sim in range(n_simulations):
             temp_env = env.copy()
-            simulation_args.append((temp_env, self.policy, gamma_sr, remaining_steps, size))
+            simulation_args.append(
+                (temp_env, self.policy, gamma_sr, remaining_steps, size)
+            )
 
         # Run simulations in parallel
         n_processes = min(mp.cpu_count(), n_simulations)
-        
+
         with ProcessPoolExecutor(max_workers=n_processes) as executor:
-            simulation_results = list(executor.map(_run_single_simulation, simulation_args))
+            simulation_results = list(
+                executor.map(_run_single_simulation, simulation_args)
+            )
 
         # Aggregate results from all simulations
         for sim_sr, sim_normalizer in simulation_results:
@@ -321,7 +329,7 @@ class GoalDirectedAgent:
         # Average across all valid simulations
         if total_normalizer > 0:
             sr = sr / total_normalizer
-            
+
         return sr
 
 

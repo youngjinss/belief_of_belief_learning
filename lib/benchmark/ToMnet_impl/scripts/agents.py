@@ -127,6 +127,11 @@ class GoalDirectedAgent:
         self.value_function = None
         self.policy = None
         self.converged = False
+        
+        # Caching for precomputed matrices
+        self._cached_env_hash = None
+        self._cached_transitions = None
+        self._cached_rewards = None
 
     def plan(
         self,
@@ -136,6 +141,7 @@ class GoalDirectedAgent:
     ) -> None:
         """
         Run value iteration to compute optimal policy for given environment
+        Optimized version with vectorized operations and precomputed transitions
         """
         size = env.size
         n_actions = env.n_actions
@@ -145,40 +151,88 @@ class GoalDirectedAgent:
         # Initialize policy with uniform distribution
         self.policy = np.ones((size, size, n_actions)) / n_actions
 
+        # Precompute valid state mask (non-wall positions)
+        valid_states = ~env.walls
+        
+        # Check if we can use cached precomputed matrices
+        env_hash = self._compute_env_hash(env)
+        if env_hash != self._cached_env_hash:
+            # Precompute transition matrices for all actions
+            self._cached_transitions = self._precompute_transitions(env)
+            # Precompute reward matrix
+            self._cached_rewards = self._precompute_rewards(env)
+            self._cached_env_hash = env_hash
+        
+        transitions = self._cached_transitions
+        reward_matrix = self._cached_rewards
+
         for iteration in range(max_iterations):
             old_values = self.value_function.copy()
 
-            # Update value function for each state
-            for i in range(size):
-                for j in range(size):
-                    if env.walls[i, j]:
-                        # Set uniform policy for wall positions (shouldn't happen but for safety)
-                        self.policy[i, j] = np.ones(n_actions) / n_actions
-                        continue  # Skip wall positions
+            # Vectorized value updates for all valid states simultaneously
+            new_values = np.zeros((size, size))
+            new_policy = np.zeros((size, size, n_actions))
+            
+            # For each action, compute Q-values across all states
+            q_values = np.zeros((size, size, n_actions))
+            
+            for action in range(n_actions):
+                # Vectorized computation of expected rewards + discounted future values
+                next_states = transitions[action]  # (size, size, 2) - next positions
+                
+                # Compute rewards for this action across all states
+                action_rewards = reward_matrix[:, :, action]
+                
+                # Vectorized computation of next state values
+                ni_coords = next_states[:, :, 0]  # Next i coordinates
+                nj_coords = next_states[:, :, 1]  # Next j coordinates
+                
+                # Create bounds mask
+                valid_bounds = ((ni_coords >= 0) & (ni_coords < size) & 
+                              (nj_coords >= 0) & (nj_coords < size))
+                
+                # Use advanced indexing for vectorized lookup
+                next_values = np.zeros((size, size))
+                valid_transitions = valid_states & valid_bounds
+                
+                if np.any(valid_transitions):
+                    next_values[valid_transitions] = self.value_function[
+                        ni_coords[valid_transitions], nj_coords[valid_transitions]
+                    ]
+                
+                q_values[:, :, action] = action_rewards + self.gamma * next_values
+            
+            # Update value function and policy for valid states only
+            valid_mask = valid_states
+            new_values[valid_mask] = np.max(q_values[valid_mask], axis=-1)
+            
+            # Vectorized policy update with softmax
+            # Clip Q-values for numerical stability
+            q_values_clipped = np.clip(q_values, -100, 100)
+            
+            # Compute softmax policies for all states at once
+            temperature = 0.1
+            exp_q = np.exp(q_values_clipped / temperature)
+            policy_probs = exp_q / np.sum(exp_q, axis=-1, keepdims=True)
+            
+            # Handle numerical issues and uniform distributions
+            uniform_policy = np.ones(n_actions) / n_actions
+            
+            # Check for states where all Q-values are equal (within tolerance)
+            q_range = np.max(q_values_clipped, axis=-1) - np.min(q_values_clipped, axis=-1)
+            uniform_mask = q_range < 1e-8
+            
+            # Apply uniform policy where needed
+            new_policy[uniform_mask] = uniform_policy
+            new_policy[~uniform_mask] = policy_probs[~uniform_mask]
+            
+            # Set uniform policy for wall states
+            new_policy[~valid_states] = uniform_policy
+            
+            self.value_function = new_values
+            self.policy = new_policy
 
-                    state_values = []
-
-                    # Evaluate each action
-                    for action in range(n_actions):
-                        value = self._evaluate_action(env, (i, j), action)
-                        state_values.append(value)
-
-                    # Bellman update
-                    self.value_function[i, j] = max(state_values)
-
-                    # Update policy (softmax for some stochasticity)
-                    state_values = np.array(state_values)
-                    # Add numerical stability by clipping values
-                    state_values = np.clip(state_values, -100, 100)
-                    # Check for all equal values (would produce uniform distribution)
-                    if np.allclose(state_values, state_values[0]):
-                        self.policy[i, j] = np.ones(env.n_actions) / env.n_actions
-                    else:
-                        self.policy[i, j] = softmax(
-                            state_values / 0.1
-                        )  # Temperature = 0.1
-
-            # Check convergence
+            # Check convergence using vectorized operations
             if np.max(np.abs(self.value_function - old_values)) < convergence_threshold:
                 self.converged = True
                 break
@@ -187,6 +241,80 @@ class GoalDirectedAgent:
             print(
                 f"Warning: Value iteration did not converge after {max_iterations} iterations"
             )
+
+    def _compute_env_hash(self, env: GridWorld) -> int:
+        """
+        Compute a hash of the environment to detect changes
+        Only considers walls and objects, not agent position
+        """
+        import hashlib
+        env_data = np.concatenate([
+            env.walls.flatten().astype(np.uint8),
+            env.objects.flatten().astype(np.uint8)
+        ])
+        return int(hashlib.md5(env_data.tobytes()).hexdigest()[:8], 16)
+
+    def _precompute_transitions(self, env: GridWorld) -> np.ndarray:
+        """
+        Precompute transition matrices for all actions
+        Returns array of shape (n_actions, size, size, 2) with next positions
+        """
+        size = env.size
+        n_actions = env.n_actions
+        transitions = np.zeros((n_actions, size, size, 2), dtype=np.int32)
+        
+        for action in range(n_actions):
+            delta = env.actions[action]
+            for i in range(size):
+                for j in range(size):
+                    new_pos = (i + delta[0], j + delta[1])
+                    
+                    # Check bounds and walls
+                    if (new_pos[0] < 0 or new_pos[0] >= size or 
+                        new_pos[1] < 0 or new_pos[1] >= size or 
+                        env.walls[new_pos]):
+                        # Stay in same position
+                        transitions[action, i, j] = [i, j]
+                    else:
+                        # Move to new position
+                        transitions[action, i, j] = list(new_pos)
+        
+        return transitions
+
+    def _precompute_rewards(self, env: GridWorld) -> np.ndarray:
+        """
+        Precompute reward matrix for all state-action pairs
+        Returns array of shape (size, size, n_actions) with immediate rewards
+        """
+        size = env.size
+        n_actions = env.n_actions
+        reward_matrix = np.zeros((size, size, n_actions))
+        
+        for i in range(size):
+            for j in range(size):
+                for action in range(n_actions):
+                    delta = env.actions[action]
+                    new_pos = (i + delta[0], j + delta[1])
+                    
+                    # Base movement cost
+                    reward = -self.movement_cost
+                    
+                    # Check if action leads to wall or out of bounds
+                    if (new_pos[0] < 0 or new_pos[0] >= size or 
+                        new_pos[1] < 0 or new_pos[1] >= size or 
+                        env.walls[new_pos]):
+                        # Wall penalty
+                        reward -= self.wall_penalty
+                    else:
+                        # Check if new position has object
+                        next_i, next_j = new_pos
+                        if env.objects[next_i, next_j] > 0:
+                            obj_id = env.objects[next_i, next_j] - 1
+                            reward += self.rewards[obj_id]
+                    
+                    reward_matrix[i, j, action] = reward
+        
+        return reward_matrix
 
     def _evaluate_action(
         self, env: GridWorld, pos: Tuple[int, int], action: int

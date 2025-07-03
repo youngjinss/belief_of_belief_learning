@@ -504,12 +504,8 @@ class DataProcessor:
         all_games["consumption_labels_history"] = unfolded_consumption_labels
         all_games["sr_maps_history"] = unfolded_sr_maps
 
-        print(f"traj_zp history shape: ")
+        print(f"traj_zp history shape: {all_games['traj_history_zp'].shape}")
         print(f"samples: {all_games['traj_history_zp'].shape[0]}")
-        print(f"Depth: {all_games['traj_history_zp'].shape[4]}")
-        print(
-            f"map size {all_games['traj_history_zp'].shape[2]} x {all_games['traj_history_zp'].shape[3]}"
-        )
         print(f"trajectory size: {all_games['traj_history_zp'].shape[1]}")
 
         print("Zero Padding was applied!")

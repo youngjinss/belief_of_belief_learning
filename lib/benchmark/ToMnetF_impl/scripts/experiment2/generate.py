@@ -99,7 +99,7 @@ def save_game_with_labels(
         agent.step_picked_goal.append(len(agent.trajectory) - 1)
 
     # Get the path to folder
-    gf = os.path.join(base_dir, name)
+    gf = base_dir if name == "" else os.path.join(base_dir, name)
     os.makedirs(gf, exist_ok=True)
 
     files = os.listdir(gf)
@@ -192,7 +192,7 @@ def generate_trajectories(config=None):
     )
 
     # Create output directory
-    full_output_dir = os.path.join(save_dir, output_dir)
+    full_output_dir = save_dir
     os.makedirs(full_output_dir, exist_ok=True)
 
     for i in range(n_games):
@@ -237,7 +237,7 @@ def generate_trajectories(config=None):
             env=env,
             sr_maps=sr_maps,
             consumption_labels=consumption_labels,
-            name=output_dir,
+            name="",
             base_dir=save_dir,
         )
 

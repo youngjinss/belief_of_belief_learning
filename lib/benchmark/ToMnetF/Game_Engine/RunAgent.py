@@ -11,19 +11,31 @@ import numpy as np
 ROWS = 13
 COLS = 13
 SIGHT = 3
-N_GAMES = 10000
+N_GAMES = 10
+MAX_MOVES = 50
+OBSERVABILITY = "full"
+OUTPUT_DIR = "Experiment2"
+SHUFFLE = False
+NO_WALLS = True
 
-env = World(row_size=ROWS, col_size=COLS, shuffle=False, no_walls=False)
+env = World(
+    row_size=ROWS,
+    col_size=COLS,
+    max_moves_per_episode=MAX_MOVES,
+    shuffle=SHUFFLE,
+    no_walls=NO_WALLS,
+)
+
 for i in range(N_GAMES):
     env.reset()
     env.render()
-    agent = Agent.AgentStar(env, SIGHT, observability="full")
+    agent = Agent.AgentStar(env, SIGHT, observability=OBSERVABILITY)
 
     while True:
         agent.update_world_observation()
         agent.render()
 
-        action = agent.chose_action(observability="full")
+        action = agent.chose_action(observability=OBSERVABILITY)
         # print(action)
 
         observe, terminate, goal_picked, reward = env.execute(action)
@@ -40,4 +52,4 @@ for i in range(N_GAMES):
 
         # input("Press the <Enter> key to continue...")
 
-    agent.save_game(name="Experiment2")
+    agent.save_game(name=OUTPUT_DIR)

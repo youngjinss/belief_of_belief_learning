@@ -56,7 +56,3 @@ def run():
 
 mg.init()
 run()
-# mg.reset()
-# run()
-# mg.reset()
-# run()

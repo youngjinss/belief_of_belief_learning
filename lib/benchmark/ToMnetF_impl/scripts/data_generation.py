@@ -506,7 +506,7 @@ class DataProcessor:
 
         print(f"traj_zp history shape: {all_games['traj_history_zp'].shape}")
         print(f"samples: {all_games['traj_history_zp'].shape[0]}")
-        print(f"trajectory size: {all_games['traj_history_zp'].shape[1]}")
+        print(f"trajectory size: {all_games['traj_history_zp'].shape}")
 
         print("Zero Padding was applied!")
 

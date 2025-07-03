@@ -13,7 +13,7 @@ lib/benchmark/Machine_ToM/
 lib/benchmark/RepBelief/
 lib/benchmark/AmortizedNestedReasoning/
 lib/benchmark/ToMnet-N/
-lib/benchmark/ToMnetF/*
+lib/benchmark/ToMnetF/
 
 # lib 폴더 내 ToMnet 구현한 결과 데이터 무시
 lib/benchmark/ToMnet_impl/data/
@@ -28,7 +28,7 @@ lib/benchmark/ToMnet_impl/debug_results/
 lib/benchmark/ToMnet_impl/shell/debug/
 lib/benchmark/ToMnet_impl/scripts/debug/
 
-# lib 폴더 내 ToMnetF 구현 결과 데이터 무시
+# lib 폴더 내 ToMnetF_impl 구현 결과 데이터 무시
 lib/benchmark/ToMnetF_impl/data/
 lib/benchmark/ToMnetF_impl/models/
 lib/benchmark/ToMnetF_impl/log/

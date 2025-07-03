@@ -14,6 +14,7 @@ ToMnetF_impl/
 │   ├── environment.py              # LabMaze GridWorld environment
 │   ├── data_generation.py          # Agnostic data processing and loading utilities
 │   └── experiment1/                # Experiment-specific implementations
+│       ├── config.py               # Environment configuration
 │       ├── agents.py               # A* and Random agents
 │       ├── tomnet.py               # ToMnetF CNN architecture
 │       ├── generate.py             # Experiment-specific trajectory generation
@@ -271,3 +272,8 @@ If you use this implementation, please cite the original ToMnet paper and acknow
   year={2018}
 }
 ```
+
+## Experiemnt history
+
+1. ** Exp1 **: ToMnet + A* star agent (only action prediction)
+2. ** Exp2 **: ToMnet + A* star agent (action prediction, SR, consumption)

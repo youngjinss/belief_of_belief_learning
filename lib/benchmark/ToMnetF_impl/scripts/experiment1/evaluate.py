@@ -11,6 +11,7 @@ from sklearn.metrics import (
 )
 from tomnet import ToMnet
 from torch.utils.data import DataLoader, TensorDataset
+from config import Config
 
 """
 Cross-species evaluation and metrics for ToMnetF
@@ -271,82 +272,32 @@ def analyze_action_likelihood(model, test_loader, device, output_dir, n_samples=
 
 
 if __name__ == "__main__":
-    import argparse
+    # Initialize configuration
+    config = Config()
+    
+    device = config.device if torch.cuda.is_available() else "cpu"
+    
+    # Default model and data paths
+    model_paths = [os.path.join(config.model_dir, f"exp{config.experiment_no}_best.pth")]
+    test_data_paths = [os.path.join(config.data_dir, f"processed_data_exp{config.experiment_no}.pkl")]
+    
+    # Get model parameters from config
+    model_kwargs = config.get_model_kwargs()
 
-    parser = argparse.ArgumentParser(
-        description="Cross-species evaluation and metrics for ToMnetF"
-    )
-    parser.add_argument(
-        "--model_paths",
-        type=str,
-        nargs="+",
-        default=["../../models/experiment1/exp1_best.pth"],
-        help="List of paths to trained models",
-    )
-    parser.add_argument(
-        "--test_data_paths",
-        type=str,
-        nargs="+",
-        default=["../../data/experiment1/processed_data_exp1.pkl"],
-        help="List of paths to test datasets",
-    )
-    parser.add_argument(
-        "--device", type=str, default="cuda:0", help="Computing device (cuda:0, cpu)"
-    )
-    parser.add_argument(
-        "--result_dir",
-        type=str,
-        default="../../result/experiment1",
-        help="Directory to save results",
-    )
-    parser.add_argument(
-        "--experiment_no", type=int, default=1, help="Experiment number"
-    )
-    parser.add_argument("--batch_size", type=int, default=512, help="Model batch size")
-    parser.add_argument(
-        "--residual_blocks", type=int, default=5, help="Number of residual blocks"
-    )
-    parser.add_argument(
-        "--n_echar", type=int, default=8, help="Character embedding size"
-    )
-    parser.add_argument("--out_channels", type=int, default=32, help="Output channels")
-    parser.add_argument(
-        "--trajectory_size", type=int, default=10, help="Max trajectory size"
-    )
-    parser.add_argument("--width", type=int, default=13, help="Map width")
-    parser.add_argument("--height", type=int, default=13, help="Map height")
-    parser.add_argument("--depth", type=int, default=10, help="Input depth")
-
-    args = parser.parse_args()
-
-    device = args.device if torch.cuda.is_available() else "cpu"
-
-    # Model parameters
-    model_kwargs = {
-        "Batch": args.batch_size,
-        "ResidualBlocks": args.residual_blocks,
-        "N_echar": args.n_echar,
-        "out_channels": args.out_channels,
-        "Max_trajectory_size": args.trajectory_size,
-        "Width": args.width,
-        "Height": args.height,
-        "Depth": args.depth,
-    }
-
-    if all(os.path.exists(path) for path in args.model_paths + args.test_data_paths):
+    if all(os.path.exists(path) for path in model_paths + test_data_paths):
         results = cross_species_evaluation(
-            model_paths=args.model_paths,
-            test_data_paths=args.test_data_paths,
+            model_paths=model_paths,
+            test_data_paths=test_data_paths,
             device=device,
-            result_dir=args.result_dir,
-            experiment_no=args.experiment_no,
+            result_dir=config.result_dir,
+            experiment_no=config.experiment_no,
             **model_kwargs,
         )
         print(f"Evaluation completed successfully!")
     else:
         missing_files = [
             path
-            for path in args.model_paths + args.test_data_paths
+            for path in model_paths + test_data_paths
             if not os.path.exists(path)
         ]
         print(f"Missing files: {missing_files}")

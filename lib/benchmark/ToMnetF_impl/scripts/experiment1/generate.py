@@ -4,6 +4,7 @@ sys.path.append('..')
 
 from environment import World
 import agents as Agent
+from config import Config
 
 """
 Experiment-specific trajectory generation for Experiment 1
@@ -13,33 +14,26 @@ Original code from https://github.com/Nik-Kras/ToMnet-N
 """
 
 
-def generate_trajectories(
-    n_games=10000,
-    rows=13,
-    cols=13,
-    sight=3,
-    max_moves=50,
-    observability="full",
-    output_dir="experiment1",
-    shuffle=False,
-    no_walls=False,
-    save_dir="../../data",
-):
+def generate_trajectories(config=None):
     """
     Generate trajectories for Experiment 1 using A* agents
-
+    
     Args:
-        n_games: Number of games to generate
-        rows: Grid height
-        cols: Grid width
-        sight: Agent sight radius
-        max_moves: Maximum moves per episode
-        observability: "full" or "partial"
-        output_dir: Directory to save games
-        shuffle: Whether to shuffle goals after pickup
-        no_walls: Whether to use empty maze
-        save_dir: Base directory for saving data
+        config: Config object containing all parameters. If None, uses default values.
     """
+    if config is None:
+        config = Config()
+    
+    n_games = config.n_games
+    rows = config.rows
+    cols = config.cols
+    sight = config.sight
+    max_moves = config.max_moves
+    observability = config.observability
+    output_dir = config.output_dir
+    shuffle = config.shuffle
+    no_walls = config.no_walls
+    save_dir = config.data_dir
 
     env = World(
         row_size=rows,
@@ -94,54 +88,68 @@ if __name__ == "__main__":
         description="Generate trajectories for Experiment 1 using A* agents"
     )
     parser.add_argument(
-        "--n_games", type=int, default=100000, help="Number of games to generate"
+        "--config_override", action="store_true", 
+        help="Override config with command line arguments"
     )
-    parser.add_argument("--rows", type=int, default=13, help="Grid height")
-    parser.add_argument("--cols", type=int, default=13, help="Grid width")
-    parser.add_argument("--sight", type=int, default=3, help="Agent sight radius")
     parser.add_argument(
-        "--max_moves", type=int, default=50, help="Maximum moves per episode"
+        "--n_games", type=int, help="Number of games to generate"
+    )
+    parser.add_argument("--rows", type=int, help="Grid height")
+    parser.add_argument("--cols", type=int, help="Grid width")
+    parser.add_argument("--sight", type=int, help="Agent sight radius")
+    parser.add_argument(
+        "--max_moves", type=int, help="Maximum moves per episode"
     )
     parser.add_argument(
         "--observability",
         type=str,
-        default="full",
         choices=["full", "partial"],
         help="Observability type: full or partial",
     )
     parser.add_argument(
-        "--output_dir", type=str, default="experiment1", help="Directory to save games"
+        "--output_dir", type=str, help="Directory to save games"
     )
     parser.add_argument(
         "--shuffle",
         action="store_true",
-        default=False,
         help="Whether to shuffle goals after pickup",
     )
     parser.add_argument(
         "--no_walls",
         action="store_true",
-        default=False,
         help="Whether to use empty maze",
     )
     parser.add_argument(
         "--save_dir",
         type=str,
-        default="../../data",
         help="Base directory for saving data",
     )
 
     args = parser.parse_args()
 
-    generate_trajectories(
-        n_games=args.n_games,
-        rows=args.rows,
-        cols=args.cols,
-        sight=args.sight,
-        max_moves=args.max_moves,
-        observability=args.observability,
-        output_dir=args.output_dir,
-        shuffle=args.shuffle,
-        no_walls=args.no_walls,
-        save_dir=args.save_dir,
-    )
+    config = Config()
+    
+    # Override config with command line arguments if specified
+    if args.config_override:
+        if args.n_games is not None:
+            config.n_games = args.n_games
+        if args.rows is not None:
+            config.rows = args.rows
+        if args.cols is not None:
+            config.cols = args.cols
+        if args.sight is not None:
+            config.sight = args.sight
+        if args.max_moves is not None:
+            config.max_moves = args.max_moves
+        if args.observability is not None:
+            config.observability = args.observability
+        if args.output_dir is not None:
+            config.output_dir = args.output_dir
+        if args.shuffle:
+            config.shuffle = args.shuffle
+        if args.no_walls:
+            config.no_walls = args.no_walls
+        if args.save_dir is not None:
+            config.data_dir = args.save_dir
+
+    generate_trajectories(config)

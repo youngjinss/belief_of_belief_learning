@@ -61,13 +61,7 @@ run_data_generation() {
     log_step "Logging data generation output to: $RUN_LOG_DIR/data_generation.log"
     
     cd "$SCRIPTS_DIR/experiment1"
-    python generate.py \
-        --n_games "$N_GAMES" \
-        --output_dir "experiment1" \
-        --save_dir "../../data" \
-        --observability "full" \
-        --max_moves 50 \
-        > "$RUN_LOG_DIR/data_generation.log" 2>&1
+    python generate.py > "$RUN_LOG_DIR/data_generation.log" 2>&1
     
     log_step "Data generation completed"
 }

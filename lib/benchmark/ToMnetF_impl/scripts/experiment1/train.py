@@ -10,6 +10,7 @@ sys.path.append('..')
 
 from tomnet import ToMnet
 from data_generation import generate_input_data
+from config import Config
 
 """
 Advanced training system for ToMnetF
@@ -315,86 +316,8 @@ def create_training_plots(train_history, plot_dir, experiment_no):
 
 
 if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser(
-        description="Train ToMnet model with comprehensive logging and evaluation"
-    )
-    parser.add_argument(
-        "--data_dir",
-        type=str,
-        default="../../data/experiment1",
-        help="Directory containing training data",
-    )
-    parser.add_argument(
-        "--model_dir",
-        type=str,
-        default="../../models/experiment1",
-        help="Directory to save models",
-    )
-    parser.add_argument(
-        "--result_dir",
-        type=str,
-        default="../../result/experiment1",
-        help="Directory to save results",
-    )
-    parser.add_argument(
-        "--plot_dir",
-        type=str,
-        default="../../plots/experiment1",
-        help="Directory to save plots",
-    )
-    parser.add_argument(
-        "--log_dir",
-        type=str,
-        default="../../log/training",
-        help="Directory to save logs",
-    )
-    parser.add_argument(
-        "--experiment_no", type=int, default=1, help="Experiment number"
-    )
-    parser.add_argument(
-        "--epochs", type=int, default=50, help="Number of training epochs"
-    )
-    parser.add_argument(
-        "--batch_size", type=int, default=512, help="Training batch size"
-    )
-    parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate")
-    parser.add_argument("--ts", type=int, default=10, help="Trajectory size")
-    parser.add_argument("--height", type=int, default=13, help="Map height")
-    parser.add_argument("--width", type=int, default=13, help="Map width")
-    parser.add_argument("--depth", type=int, default=10, help="Tensor depth")
-    parser.add_argument(
-        "--training_proportion",
-        type=float,
-        default=0.9,
-        help="Train/val split proportion",
-    )
-    parser.add_argument(
-        "--use_percentage", type=float, default=0.9, help="Percentage of data to use"
-    )
-    parser.add_argument(
-        "--device", type=str, default="cuda:0", help="CUDA device (e.g., cuda:0, cpu)"
-    )
-
-    args = parser.parse_args()
-
-    # Train model
-    model, history, results = train_tomnet(
-        data_dir=args.data_dir,
-        model_dir=args.model_dir,
-        result_dir=args.result_dir,
-        plot_dir=args.plot_dir,
-        log_dir=args.log_dir,
-        experiment_no=args.experiment_no,
-        epochs=args.epochs,
-        batch_size=args.batch_size,
-        lr=args.lr,
-        ts=args.ts,
-        height=args.height,
-        width=args.width,
-        depth=args.depth,
-        training_proportion=args.training_proportion,
-        use_percentage=args.use_percentage,
-        device=args.device,
-    )
+    # Initialize configuration
+    config = Config()
+    
+    # Train model using config parameters
+    model, history, results = train_tomnet(**config.get_training_kwargs())

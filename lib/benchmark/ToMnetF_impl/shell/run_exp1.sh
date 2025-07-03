@@ -22,13 +22,6 @@ RUN_LOG_DIR="$LOG_DIR/experiment1/$TIMESTAMP"
 # Create directories
 mkdir -p "$DATA_DIR" "$MODELS_DIR" "$RESULTS_DIR" "$PLOTS_DIR" "$LOG_DIR" "$RUN_LOG_DIR"
 
-# Default parameters
-N_GAMES=5000
-EPOCHS=50
-BATCH_SIZE=512
-LR=1e-4
-DEVICE="cuda:3"
-
 # Parse command line arguments
 COMMAND=${1:-all}
 
@@ -41,13 +34,6 @@ print_usage() {
     echo "  evaluate        Evaluate trained model"
     echo "  visualize       Create plots and visualizations"
     echo "  all             Run complete pipeline"
-    echo ""
-    echo "Environment variables:"
-    echo "  N_GAMES=$N_GAMES"
-    echo "  EPOCHS=$EPOCHS"
-    echo "  BATCH_SIZE=$BATCH_SIZE"
-    echo "  LR=$LR"
-    echo "  DEVICE=$DEVICE"
 }
 
 log_step() {

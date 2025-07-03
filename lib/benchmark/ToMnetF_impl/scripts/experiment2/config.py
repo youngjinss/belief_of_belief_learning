@@ -33,7 +33,7 @@ class Config:
         self.device = "cuda:3"
         
         # Data directories
-        self.data_dir = "../../data/experiment2/experiment2"
+        self.data_dir = "../../data/experiment2"
         self.model_dir = "../../models/experiment2"
         self.result_dir = "../../result/experiment2"
         self.plot_dir = "../../plots/experiment2"

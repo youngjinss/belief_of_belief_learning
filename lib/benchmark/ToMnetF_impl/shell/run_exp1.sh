@@ -1,5 +1,5 @@
 #!/bin/bash
-
+# nohup bash shell/run_exp1.sh all > experiment.log 2>&1 &
 # Complete workflow automation for ToMnetF experiment1
 # Usage: bash run_exp1.sh [data_generation|train|evaluate|visualize|all]
 
@@ -19,11 +19,11 @@ LOG_DIR="$BASE_DIR/log"
 mkdir -p "$DATA_DIR" "$MODELS_DIR" "$RESULTS_DIR" "$PLOTS_DIR" "$LOG_DIR"
 
 # Default parameters
-N_GAMES=10000
+N_GAMES=5000
 EPOCHS=50
 BATCH_SIZE=512
 LR=1e-4
-DEVICE="cuda:0"
+DEVICE="cuda:3"
 
 # Parse command line arguments
 COMMAND=${1:-all}

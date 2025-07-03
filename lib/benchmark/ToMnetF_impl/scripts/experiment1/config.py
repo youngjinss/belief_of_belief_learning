@@ -17,7 +17,6 @@ class Config:
         self.no_walls = False
         
         # Model hyperparameters
-        self.batch = int(os.getenv("BATCH_SIZE", 512))
         self.batch_size = int(os.getenv("BATCH_SIZE", 512))
         self.residual_blocks = 5
         self.e_char = 8
@@ -26,7 +25,6 @@ class Config:
         self.depth = 10
         
         # Training settings
-        self.epoch = int(os.getenv("EPOCHS", 50))
         self.epochs = int(os.getenv("EPOCHS", 50))
         self.lr = 1e-4
         self.max_trajectory_size = 10

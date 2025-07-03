@@ -1,22 +1,24 @@
 class Config:
     def __init__(self):
+        import os
+        
         # Agent and environment settings
         self.agent_type = "a_star"
         self.observability = "full"
         self.sight = 3
-        self.n_games = 5000
+        self.n_games = int(os.getenv("N_GAMES", 5000))
         self.rows = 13
         self.cols = 13
         self.width = 13
         self.height = 13
         self.max_moves = 50
-        self.output_dir = "experiment"
+        self.output_dir = "experiment2"
         self.shuffle = False
         self.no_walls = False
         
         # Model hyperparameters
-        self.batch = 512
-        self.batch_size = 512
+        self.batch = int(os.getenv("BATCH_SIZE", 512))
+        self.batch_size = int(os.getenv("BATCH_SIZE", 512))
         self.residual_blocks = 5
         self.e_char = 8
         self.out_channels = 32
@@ -24,8 +26,8 @@ class Config:
         self.depth = 10
         
         # Training settings
-        self.epoch = 50
-        self.epochs = 50
+        self.epoch = int(os.getenv("EPOCHS", 50))
+        self.epochs = int(os.getenv("EPOCHS", 50))
         self.lr = 1e-4
         self.max_trajectory_size = 10
         self.ts = 10
@@ -33,7 +35,7 @@ class Config:
         self.device = "cuda:3"
         
         # Data directories
-        self.data_dir = "../../data/experiment2"
+        self.data_dir = "../../data/experiment2/experiment2"
         self.model_dir = "../../models/experiment2"
         self.result_dir = "../../result/experiment2"
         self.plot_dir = "../../plots/experiment2"

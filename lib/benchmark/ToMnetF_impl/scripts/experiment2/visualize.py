@@ -556,8 +556,8 @@ def plot_character_embeddings(
 
 def create_summary_report(
     experiment_no,
-    result_dir="../../result/experiment1",
-    plot_dir="../../plots/experiment1",
+    result_dir="../../result/experiment2",
+    plot_dir="../../plots/experiment2",
 ):
     """
     Create a summary report with all visualizations
@@ -607,13 +607,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--result_dir",
         type=str,
-        default="../../result/experiment1",
+        default="../../result/experiment2",
         help="Results directory",
     )
     parser.add_argument(
         "--plot_dir",
         type=str,
-        default="../../plots/experiment1",
+        default="../../plots/experiment2",
         help="Plots directory",
     )
     parser.add_argument(

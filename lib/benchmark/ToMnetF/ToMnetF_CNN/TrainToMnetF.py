@@ -14,20 +14,19 @@ import matplotlib.pyplot as plt
 
 HEIGHT = 13  # map size
 WIDTH = 13  # map size
-EPOCHS = 100
+EPOCHS = 50
 BATCH = 512
 TS = 10  # Trajectory size / length = time frames
 DEPTH = 10  # depth of the tensor (channels)
 TRAINING_PROPORTION = 0.9
 LR = 1e-04
-EXPERIMENT_NO = 2
+EXPERIMENT_NO = 1
 
-dir = "./data/Saved Games/Experiment2/"
+dir = "./data/Saved Games/Experiment1/"
 
 dl = DL.DataReader(TS, HEIGHT, WIDTH, DEPTH, EXPERIMENT_NO)
 
-all_games = dl.LoadAllGames(use_percentage=1.0, directory=dir)
-print(f"Total size: {len(all_games)}")
+all_games = dl.LoadAllGames(use_percentage=0.9, directory=dir)
 
 dp = DP.DataProcessor(TS, HEIGHT, WIDTH, DEPTH)
 

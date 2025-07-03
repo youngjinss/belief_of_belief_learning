@@ -13,6 +13,8 @@ import GameSequenceDrawer as gsd
 simple_map = map
 W = 13
 H = 13
+data_path = "./data/Saved Games/Experiment2/test13.txt"
+model_path = "./Results/Model/Experiment2/ToMnetF.pt"
 
 for i in range(100):
     model = ToMnet(
@@ -26,13 +28,13 @@ for i in range(100):
         Depth=10,
     )
 
-    model.load_state_dict(torch.load("ToMnetF/Results/Model/Experiment1/ToMnetF.pt"))
+    model.load_state_dict(torch.load(model_path))
     # print("model loaded")
 
     # get new MDP
-    dataLoader = DL.DataReader(10, 13, 13, 10, experiment_no=0)
+    dataLoader = DL.DataReader(10, 13, 13, 10, experiment_no=2)
     traj_new, act_new, goal_new, _ = dataLoader.ReadOneGame(
-        "ToMnetF/data/Saved Games/demo/test16.txt"
+        data_path
     )
     # traj_new, act_new, goal_new, _ = dataLoader.ReadOneGame("ToMnetF/data/Saved Games/demo/test29.txt")
     # traj_new, act_new, goal_new, _ = dataLoader.ReadOneGame("ToMnetF/data/Saved Games/demo/test46.txt")
@@ -41,7 +43,7 @@ for i in range(100):
 
     # get old
     game_past, act_past, goal_past, _ = dataLoader.ReadOneGame(
-        "ToMnetF/data/Saved Games/Experiment1/test13.txt"
+        data_path
     )
     trajectories_past, current_states_past, actions_past, goals_past = (
         dataLoader.generateDataFromGame(game_past, act_past, goal_past)
@@ -50,8 +52,8 @@ for i in range(100):
         :, :, :, :10
     ]  # games cant be longer than 10 steps
 
-    width = 13
-    height = 13
+    W = 13
+    H = 13
 
     def predict(model, past_MDP_trajectories, new_MDP_curr, new_actual_dir):
 
@@ -76,14 +78,14 @@ for i in range(100):
                 # (6, 13, 13)
 
                 if i == 0:
-                    for row in range(width):
-                        for col in range(height):
+                    for row in range(W):
+                        for col in range(H):
                             if walls_layer[row, col] == 0:
                                 simple_map[row, col] = 1
 
                 player_layer = curr.squeeze(dim=0)[1, ...]
-                for row in range(width):
-                    for col in range(height):
+                for row in range(W):
+                    for col in range(H):
                         if player_layer[row, col] == 1:
                             old_position = [row, col]
                             player_position = [row, col]
@@ -119,8 +121,8 @@ for i in range(100):
                 goal_layer = curr.squeeze(dim=0)[2:6, ...]
 
                 if i == 0:
-                    for row in range(width):
-                        for col in range(height):
+                    for row in range(W):
+                        for col in range(H):
                             if goal_layer[0, row, col] == 1:
                                 simple_map[row, col] = 2
                             elif goal_layer[1, row, col] == 1:

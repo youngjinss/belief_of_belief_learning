@@ -12,11 +12,11 @@ ROWS = 13
 COLS = 13
 SIGHT = 3
 N_GAMES = 100000
-MAX_MOVES = 30
+MAX_MOVES = 50
 OBSERVABILITY = "full"
-OUTPUT_DIR = "Experiment2"
+OUTPUT_DIR = "Experiment1"
 SHUFFLE = False
-NO_WALLS = True
+NO_WALLS = False
 
 env = World(
     row_size=ROWS,

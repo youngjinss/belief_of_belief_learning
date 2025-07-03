@@ -45,7 +45,7 @@ def generate_trajectories(config=None):
     )
 
     # Create output directory
-    full_output_dir = os.path.join(save_dir, output_dir)
+    full_output_dir = save_dir
     os.makedirs(full_output_dir, exist_ok=True)
 
     for i in range(n_games):
@@ -77,7 +77,7 @@ def generate_trajectories(config=None):
 
             # input("Press the <Enter> key to continue...")
 
-        agent.save_game(name=output_dir, base_dir=save_dir)
+        agent.save_game(name="", base_dir=save_dir)
 
     print(f"Generated {n_games} games successfully!")
 

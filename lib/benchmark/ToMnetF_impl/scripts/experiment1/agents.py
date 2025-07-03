@@ -341,7 +341,7 @@ class AgentStar:
             self.step_picked_goal.append(len(self.trajectory) - 1)
 
         # Get the path to folder
-        gf = os.path.join(base_dir, name)  # path to games folder
+        gf = base_dir if name == "" else os.path.join(base_dir, name)  # path to games folder
         os.makedirs(gf, exist_ok=True)
 
         files = os.listdir(gf)

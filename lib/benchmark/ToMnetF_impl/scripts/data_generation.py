@@ -101,34 +101,21 @@ class DataReader:
                 and not x.startswith("SR_gamma_")
             ):
 
-                # [(posX, posY), trajectory move]
-                if x[0] == "[" and x[2] == "," and x[5] == "]":  # both are single digit
-                    temp_pos = (int(x[1]), int(x[4]))
-                    temp_traj = int(x[9])
-
+                # Parse trajectory lines: [x, y] : action : goal
+                import re
+                pattern = r'\[(\d+),\s*(\d+)\]\s*:\s*(\d+)\s*:\s*(\w+)'
+                match = re.match(pattern, x)
+                
+                if match:
+                    pos_x = int(match.group(1))
+                    pos_y = int(match.group(2))
+                    temp_traj = int(match.group(3))
+                    temp_pos = (pos_x, pos_y)
+                    
                     actions.append(temp_traj)
-
-                elif (
-                    x[0] == "[" and x[3] == "," and x[6] == "]"
-                ):  # first is double digit second single digit
-                    temp_pos = (int(x[1] + x[2]), int(x[5]))
-                    temp_traj = int(x[10])
-
-                    actions.append(temp_traj)
-
-                elif (
-                    x[0] == "[" and x[2] == "," and x[6] == "]"
-                ):  # first is single digit second double digit
-                    temp_pos = (int(x[1]), int(x[4] + x[5]))
-                    temp_traj = int(x[10])
-
-                    actions.append(temp_traj)
-
-                else:  # Both double
-                    temp_pos = (int(x[1] + x[2]), int(x[5] + x[6]))
-                    temp_traj = int(x[11])
-
-                    actions.append(temp_traj)
+                else:
+                    # Skip malformed lines
+                    continue
 
                 trajectory[temp_pos] = temp_traj
 

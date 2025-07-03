@@ -75,8 +75,6 @@ class PredNet(nn.Module):
         x = F.relu(x)
 
         x = self.fc3(x)
-        x = F.relu(x)
-
-        x = self.softmax(x)
+        # Remove ReLU and softmax - CrossEntropyLoss handles this
 
         return x

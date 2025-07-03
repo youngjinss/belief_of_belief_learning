@@ -65,7 +65,7 @@ trainDataSet = TensorDataset(
 valDataSet = TensorDataset(
     data_traj[train_size:, ...], data_curr[train_size:, ...], data_act[train_size:, ...]
 )
-TrainLoader = DataLoader(trainDataSet, batch_size=BATCH, shuffle=False, drop_last=True)
+TrainLoader = DataLoader(trainDataSet, batch_size=BATCH, shuffle=True, drop_last=True)
 ValLoader = DataLoader(valDataSet, batch_size=BATCH, shuffle=False, drop_last=True)
 print("Trainining size: ", len(TrainLoader.dataset))
 print("Validation size: ", len(ValLoader.dataset))
@@ -129,8 +129,8 @@ def train():
         for idx, data in enumerate(TrainLoader, 0):
             traj, curr, act = data
             traj, curr, act = traj.to(device), curr.to(device), act.to(device)
-            act = act.squeeze()
-            act = act.type(torch.int64)
+            act = act.squeeze(-1)  # Specify dimension to squeeze
+            act = act.type(torch.long)
             optimizer.zero_grad()
 
             output = model([traj, curr])
@@ -145,7 +145,7 @@ def train():
             correct_pred_train += (y_hat == act).sum().item()
             all_pred_train += act.size(0)
 
-            running_loss_train += loss.item() * traj.size(0)
+            running_loss_train += loss.item()
 
         train_acc = 100 * correct_pred_train / all_pred_train
         train_accuracy.append(train_acc)
@@ -156,7 +156,8 @@ def train():
             for idx, data in enumerate(ValLoader, 0):
                 traj, curr, act = data
                 traj, curr, act = traj.to(device), curr.to(device), act.to(device)
-                act = act.type(torch.int64)
+                act = act.squeeze(-1)
+                act = act.type(torch.long)
 
                 output = model([traj, curr])
 
@@ -168,7 +169,7 @@ def train():
                 correct_pred_val += (y_hat == act).sum().item()
                 all_pred_val += act.size(0)
 
-                running_loss_val += loss.item() * traj.size(0)
+                running_loss_val += loss.item()
 
             val_acc = 100 * correct_pred_val / all_pred_val
             val_accuracy.append(val_acc)

@@ -52,13 +52,7 @@ class CharNet(nn.Module):
         x = self.conv_1(x)  # (Batch x channels x Width x Height x time frame)
 
         for i in range(self.n):
-            self.res_blocks.append(ResidualBlock(
-                in_channels=self.out_channels,
-                out_channels=self.out_channels,
-                kernel_size=(3, 3),
-                padding=1,
-                stride=1,
-            ))
+            x = self.res_blocks[i](x)
 
         x = torch.mean(x, [2, 3])
 

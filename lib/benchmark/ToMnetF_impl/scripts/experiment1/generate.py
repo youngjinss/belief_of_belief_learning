@@ -1,8 +1,6 @@
-import sys
 import os
-import numpy as np
-
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import sys
+sys.path.append('..')
 
 from environment import World
 import agents as Agent

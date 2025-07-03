@@ -4,13 +4,11 @@ import matplotlib.pyplot as plt
 import os
 import json
 import pickle
-from datetime import datetime
-from tomnet import ToMnet
 import sys
-import os
+from datetime import datetime
+sys.path.append('..')
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
+from tomnet import ToMnet
 from data_generation import generate_input_data
 
 """
@@ -225,11 +223,11 @@ def train_tomnet(
         val_loss = running_loss_val / len(val_loader)
 
         # Store history
-        train_history["epoch"].append(epoch)
-        train_history["train_accuracy"].append(train_acc)
-        train_history["train_loss"].append(train_loss)
-        train_history["val_accuracy"].append(val_acc)
-        train_history["val_loss"].append(val_loss)
+        train_history["epoch"].append(int(epoch))
+        train_history["train_accuracy"].append(float(train_acc))
+        train_history["train_loss"].append(float(train_loss))
+        train_history["val_accuracy"].append(float(val_acc))
+        train_history["val_loss"].append(float(val_loss))
 
         # Save best model
         if val_acc > best_val_acc:
@@ -260,13 +258,13 @@ def train_tomnet(
     # Save training results
     results = {
         "experiment_no": experiment_no,
-        "best_val_accuracy": best_val_acc,
-        "final_train_accuracy": train_history["train_accuracy"][-1],
-        "final_val_accuracy": train_history["val_accuracy"][-1],
+        "best_val_accuracy": float(best_val_acc),
+        "final_train_accuracy": float(train_history["train_accuracy"][-1]),
+        "final_val_accuracy": float(train_history["val_accuracy"][-1]),
         "epochs": epochs,
         "batch_size": batch_size,
         "learning_rate": lr,
-        "model_parameters": pytorch_total_params,
+        "model_parameters": int(pytorch_total_params),
         "timestamp": timestamp,
         "best_model_path": best_model_path,
         "final_model_path": final_model_path,

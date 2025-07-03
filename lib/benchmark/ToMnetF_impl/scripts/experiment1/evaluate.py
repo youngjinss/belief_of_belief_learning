@@ -79,14 +79,14 @@ def evaluate_model(model, test_loader, device, save_predictions=False, output_di
         mask = targets == action
         if np.sum(mask) > 0:
             action_acc = accuracy_score(targets[mask], predictions[mask])
-            action_accuracy[f"action_{action}"] = action_acc
+            action_accuracy[f"action_{action}"] = float(action_acc)
 
     # Confidence statistics
     confidence_stats = {
-        "mean_confidence": np.mean(np.max(probabilities, axis=1)),
-        "std_confidence": np.std(np.max(probabilities, axis=1)),
-        "min_confidence": np.min(np.max(probabilities, axis=1)),
-        "max_confidence": np.max(np.max(probabilities, axis=1)),
+        "mean_confidence": float(np.mean(np.max(probabilities, axis=1))),
+        "std_confidence": float(np.std(np.max(probabilities, axis=1))),
+        "min_confidence": float(np.min(np.max(probabilities, axis=1))),
+        "max_confidence": float(np.max(np.max(probabilities, axis=1))),
     }
 
     metrics = {
@@ -256,9 +256,9 @@ def analyze_action_likelihood(model, test_loader, device, output_dir, n_samples=
     for action, likelihoods in action_likelihoods.items():
         if likelihoods:
             stats[f"action_{action}"] = {
-                "mean": np.mean(likelihoods),
-                "std": np.std(likelihoods),
-                "median": np.median(likelihoods),
+                "mean": float(np.mean(likelihoods)),
+                "std": float(np.std(likelihoods)),
+                "median": float(np.median(likelihoods)),
                 "count": len(likelihoods),
             }
 

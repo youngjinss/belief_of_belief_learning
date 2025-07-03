@@ -24,21 +24,20 @@ for i in range(N_GAMES):
         agent.render()
 
         action = agent.chose_action(observability="full")
-        #print(action)
-        
+        # print(action)
+
         observe, terminate, goal_picked, reward = env.execute(action)
-        
 
         if goal_picked:
-            #print("You have picked a goal, reward = {}".format(reward))
+            # print("You have picked a goal, reward = {}".format(reward))
             agent.on_pickup(reward)
             # added to terminate after picking one goal
-            #terminate = True
+            # terminate = True
 
         if terminate:
-            #print("Game result: ", reward)
+            # print("Game result: ", reward)
             break
 
-        #input("Press the <Enter> key to continue...")
+        # input("Press the <Enter> key to continue...")
 
     agent.save_game(name="Experiment2")

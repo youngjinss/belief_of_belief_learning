@@ -3,12 +3,19 @@ import Env as Env
 import heapq
 import re
 import os
+
 """
 Code taken from https://github.com/Nik-Kras/ToMnet-N
 @Author Nikita Krasnytskyi
 @Modified by Filip Borowiak
 """
-adjacent_squares = ((0, -1), (0, 1), (-1, 0), (1, 0),)
+adjacent_squares = (
+    (0, -1),
+    (0, 1),
+    (-1, 0),
+    (1, 0),
+)
+
 
 class Node:
     """
@@ -37,13 +44,16 @@ class Node:
     def __gt__(self, other):
         return self.f > other.f
 
+
 class AgentStar:
     def __init__(self, env: Env, sight, observability="partial", consume_goals=1):
         self.env = env
         self.consume_goals = consume_goals
         self.observability = observability
-        if self.observability == "partial": self.sight = min(sight, self.env.height)
-        else: self.sight = None
+        if self.observability == "partial":
+            self.sight = min(sight, self.env.height)
+        else:
+            self.sight = None
         self.position = env.players_position
         self.memory = np.full((env.width, env.height), None)
         self.trajectory = []
@@ -77,7 +87,11 @@ class AgentStar:
         result_point = None
         for row in self.memory:
             for point in row:
-                if point in self.env.GoalValue and value < self.env.GoalValue[point] and point not in ignore_list:
+                if (
+                    point in self.env.GoalValue
+                    and value < self.env.GoalValue[point]
+                    and point not in ignore_list
+                ):
                     value = self.env.GoalValue[point]
                     result_point = point
 
@@ -106,13 +120,15 @@ class AgentStar:
                 result = self.astar(observability=observability)
 
         if self.env.goal_picked != 0:
-            self.step_picked_goal.append(len(self.trajectory)-1)
+            self.step_picked_goal.append(len(self.trajectory) - 1)
         self.position_trajectory.append(self.position)
         self.trajectory.append(result)
         return result
 
     def on_pickup(self, reward):
-        self.memory[self.env.players_position[0], self.env.players_position[1]] = self.env.objectsEnum["Path"]
+        self.memory[self.env.players_position[0], self.env.players_position[1]] = (
+            self.env.objectsEnum["Path"]
+        )
         self.picked_goal = True
 
     # Astar-like algorithm
@@ -176,16 +192,27 @@ class AgentStar:
             for new_position in adjacent_squares:  # Adjacent squares
 
                 # Get node position
-                node_position = (current_node.position[0] + new_position[0], current_node.position[1] + new_position[1])
+                node_position = (
+                    current_node.position[0] + new_position[0],
+                    current_node.position[1] + new_position[1],
+                )
 
                 # Make sure within range
-                if node_position[0] > (self.env.width - 1) or node_position[0] < 0 \
-                        or node_position[1] > (self.env.height - 1) or node_position[1] < 0:
+                if (
+                    node_position[0] > (self.env.width - 1)
+                    or node_position[0] < 0
+                    or node_position[1] > (self.env.height - 1)
+                    or node_position[1] < 0
+                ):
                     continue
 
                 # Make sure we don't wall into walls
                 point_obj = self.memory[node_position[0], node_position[1]]
-                if not (point_obj == self.env.objectsEnum["Path"] or point_obj == self.goal_found or point_obj == self.max_goal):
+                if not (
+                    point_obj == self.env.objectsEnum["Path"]
+                    or point_obj == self.goal_found
+                    or point_obj == self.max_goal
+                ):
                     continue
 
                 new_node = Node(current_node, node_position)
@@ -196,7 +223,16 @@ class AgentStar:
             # Loop through children
             for child in children:
                 # Child is on the closed list
-                if len([closed_child for closed_child in closed_list if closed_child == child]) > 0:
+                if (
+                    len(
+                        [
+                            closed_child
+                            for closed_child in closed_list
+                            if closed_child == child
+                        ]
+                    )
+                    > 0
+                ):
                     continue
 
                 # Create the f, g, and h values
@@ -205,21 +241,31 @@ class AgentStar:
                 # Use ASTAR for path optimization
                 # For Full-observability
                 if observability == "full":
-                    child.h = ((child.position[0] - end_node.position[0]) ** 2) + ((child.position[1] - end_node.position[1]) ** 2)
+                    child.h = ((child.position[0] - end_node.position[0]) ** 2) + (
+                        (child.position[1] - end_node.position[1]) ** 2
+                    )
                 else:
                     child.h = 0
                 child.f = child.g + child.h
 
                 # Child is already in the open list
-                if len([open_node for open_node in open_list if
-                        child.position == open_node.position and child.g > open_node.g]) > 0:
+                if (
+                    len(
+                        [
+                            open_node
+                            for open_node in open_list
+                            if child.position == open_node.position
+                            and child.g > open_node.g
+                        ]
+                    )
+                    > 0
+                ):
                     continue
 
                 # Add the child to the open list
                 heapq.heappush(open_list, child)
 
         return -1
-
 
     def update_world_observation(self):
         position, sight_array = self.env.get_sight(self.sight, self.observability)
@@ -236,7 +282,11 @@ class AgentStar:
                     y = j + position[1] - half_sight
 
                     sight_elem = sight_array[i, j]
-                    if -1 < x < self.env.width and -1 < y < self.env.height and sight_elem is not None:
+                    if (
+                        -1 < x < self.env.width
+                        and -1 < y < self.env.height
+                        and sight_elem is not None
+                    ):
                         self.memory[x, y] = sight_elem
 
     def render(self):
@@ -247,20 +297,29 @@ class AgentStar:
             for col in range(self.env.height):
 
                 # Draw player
-                if self.position == [row, col]: row_string += u" \u25CB " # u" \u25CC "
+                if self.position == [row, col]:
+                    row_string += " \u25CB "  # u" \u25CC "
 
                 # Draw walls, paths and goals
                 else:
-                    if   self.memory[row, col] is None:                      row_string += ' ? '  # Unexplored
-                    elif self.memory[row, col] == self.env.objectsEnum["Wall"]:   row_string += ' # '  # Wall
-                    elif self.memory[row, col] == self.env.objectsEnum["Path"]:   row_string += ' - '  # Path
-                    elif self.memory[row, col] == self.env.objectsEnum["Goal A"]: row_string += ' A '  # Goal 1
-                    elif self.memory[row, col] == self.env.objectsEnum["Goal B"]: row_string += ' B '  # Goal 2
-                    elif self.memory[row, col] == self.env.objectsEnum["Goal C"]: row_string += ' C '  # Goal 3
-                    elif self.memory[row, col] == self.env.objectsEnum["Goal D"]: row_string += ' D '  # Goal 4
-                    else: print("ERROR: Incorrect map value! Position: " ,row, ", ", col)
+                    if self.memory[row, col] is None:
+                        row_string += " ? "  # Unexplored
+                    elif self.memory[row, col] == self.env.objectsEnum["Wall"]:
+                        row_string += " # "  # Wall
+                    elif self.memory[row, col] == self.env.objectsEnum["Path"]:
+                        row_string += " - "  # Path
+                    elif self.memory[row, col] == self.env.objectsEnum["Goal A"]:
+                        row_string += " A "  # Goal 1
+                    elif self.memory[row, col] == self.env.objectsEnum["Goal B"]:
+                        row_string += " B "  # Goal 2
+                    elif self.memory[row, col] == self.env.objectsEnum["Goal C"]:
+                        row_string += " C "  # Goal 3
+                    elif self.memory[row, col] == self.env.objectsEnum["Goal D"]:
+                        row_string += " D "  # Goal 4
+                    else:
+                        print("ERROR: Incorrect map value! Position: ", row, ", ", col)
 
-            row_string += '\n'
+            row_string += "\n"
             graph += row_string
         print(graph)
         return graph
@@ -269,56 +328,63 @@ class AgentStar:
         A function saves a game: Maze (walls, goals, player), 
         Consumed Goal, Length of trajectory and each trajectory step to .txt file
     """
+
     def save_game(self, name="TestFolder"):
 
         # Shouldn't be here, but it fixes the save of last goal :(
         if self.env.goal_picked != 0:
-            self.step_picked_goal.append(len(self.trajectory)-1)
-        
+            self.step_picked_goal.append(len(self.trajectory) - 1)
+
         # Get the path to folder
-        gf = os.path.join('TomNetF','data', 'Saved Games', name) # path to games folder
+        gf = os.path.join("data", "Saved Games", name)  # path to games folder
         files = os.listdir(gf)
         r = re.compile(".*.txt")
         files = list(filter(r.match, files))
 
         # Chose the number for the new name
-        #print("There are files in the folder: ", files)
+        # print("There are files in the folder: ", files)
         max_number = 0
         for file in files:
             if max_number < int(file[4:-4]):
                 max_number = int(file[4:-4])
 
-        #print("The max current number is: ", max_number)
-        new_name_number = max_number+1
+        # print("The max current number is: ", max_number)
+        new_name_number = max_number + 1
 
         # Save the Game line by line
-        new_file_path = os.path.join(gf, 'test' + str(new_name_number) + '.txt')
+        new_file_path = os.path.join(gf, "test" + str(new_name_number) + ".txt")
         realmap = self.render()
 
-        with open(new_file_path, 'w') as f:
-            f.write('Maze:\n')
+        with open(new_file_path, "w") as f:
+            f.write("Maze:\n")
 
             # Save the Maze (Walls, Goals, Player)
-            wall_line = '#' * (self.env.height+2)
-            f.write(wall_line + '\n')
+            wall_line = "#" * (self.env.height + 2)
+            f.write(wall_line + "\n")
             for i in range(self.env.width):
-                f.write(self.env.init_map[i] + '\n')
-            f.write(wall_line + '\n')
+                f.write(self.env.init_map[i] + "\n")
+            f.write(wall_line + "\n")
             for i, goal in enumerate(self.env.consumed_goal):
-                f.write('Goal Consumed #' + str(i+1) + ' : '+ goal +'\n')
-            f.write('Trajectory length: ' + str(len(self.trajectory)) + '\n')
+                f.write("Goal Consumed #" + str(i + 1) + " : " + goal + "\n")
+            f.write("Trajectory length: " + str(len(self.trajectory)) + "\n")
 
             # Save moves
             for i in range(len(self.trajectory)):
-                msg = str(self.position_trajectory[i]) + ' : ' + str(self.trajectory[i]) + ' : '
+                msg = (
+                    str(self.position_trajectory[i])
+                    + " : "
+                    + str(self.trajectory[i])
+                    + " : "
+                )
                 picked_bool = False
                 for j in range(len(self.step_picked_goal)):
                     if self.step_picked_goal[j] == i:
-                        msg = msg + self.env.consumed_goal[j]  # If consumed First goal here - mention which
+                        msg = (
+                            msg + self.env.consumed_goal[j]
+                        )  # If consumed First goal here - mention which
                         picked_bool = True
                 if not picked_bool:
-                    msg = msg + "X"                         # If didn't consume - put X
-                f.write(msg + '\n')
+                    msg = msg + "X"  # If didn't consume - put X
+                f.write(msg + "\n")
 
             f.close()
-

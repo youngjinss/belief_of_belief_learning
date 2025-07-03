@@ -6,7 +6,8 @@ import json
 import pickle
 import sys
 from datetime import datetime
-sys.path.append('..')
+
+sys.path.append("..")
 
 from tomnet import ToMnet
 from data_generation import generate_input_data
@@ -27,7 +28,7 @@ def train_tomnet(config=None):
     """
     if config is None:
         config = Config()
-    
+
     # Extract parameters from config
     data_dir = config.data_dir
     model_dir = config.model_dir
@@ -220,7 +221,7 @@ def train_tomnet(config=None):
             best_val_acc = val_acc
             best_model_path = os.path.join(model_dir, f"exp{experiment_no}_best.pth")
             torch.save(model.state_dict(), best_model_path)
-        
+
         print(
             f"Epoch: {epoch:3d} | Train Loss: {train_loss:.4f} | Train Acc: {train_acc:.4f}% | Val Acc: {val_acc:.4f}%"
         )
@@ -231,9 +232,9 @@ def train_tomnet(config=None):
     # Save final model
     final_model_path = os.path.join(model_dir, f"exp{experiment_no}_final.pth")
     torch.save(model.state_dict(), final_model_path)
-    
+
     # Ensure best_model_path is defined (fallback to final model if no best was saved)
-    if 'best_model_path' not in locals():
+    if "best_model_path" not in locals():
         best_model_path = final_model_path
 
     # Save training history
@@ -306,66 +307,39 @@ def create_training_plots(train_history, plot_dir, experiment_no):
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(
-        description="Train ToMnet model for Experiment 1"
-    )
+    parser = argparse.ArgumentParser(description="Train ToMnet model for Experiment 1")
     parser.add_argument(
-        "--config_override", action="store_true", 
-        help="Override config with command line arguments"
+        "--config_override",
+        action="store_true",
+        help="Override config with command line arguments",
     )
     parser.add_argument(
         "--data_dir", type=str, help="Directory containing training data"
     )
-    parser.add_argument(
-        "--model_dir", type=str, help="Directory to save models"
-    )
-    parser.add_argument(
-        "--result_dir", type=str, help="Directory to save results"
-    )
-    parser.add_argument(
-        "--plot_dir", type=str, help="Directory to save plots"
-    )
-    parser.add_argument(
-        "--log_dir", type=str, help="Directory to save logs"
-    )
-    parser.add_argument(
-        "--experiment_no", type=int, help="Experiment number"
-    )
-    parser.add_argument(
-        "--epochs", type=int, help="Number of training epochs"
-    )
-    parser.add_argument(
-        "--batch_size", type=int, help="Training batch size"
-    )
-    parser.add_argument(
-        "--lr", type=float, help="Learning rate"
-    )
-    parser.add_argument(
-        "--ts", type=int, help="Trajectory size"
-    )
-    parser.add_argument(
-        "--height", type=int, help="Map height"
-    )
-    parser.add_argument(
-        "--width", type=int, help="Map width"
-    )
-    parser.add_argument(
-        "--depth", type=int, help="Tensor depth"
-    )
+    parser.add_argument("--model_dir", type=str, help="Directory to save models")
+    parser.add_argument("--result_dir", type=str, help="Directory to save results")
+    parser.add_argument("--plot_dir", type=str, help="Directory to save plots")
+    parser.add_argument("--log_dir", type=str, help="Directory to save logs")
+    parser.add_argument("--experiment_no", type=int, help="Experiment number")
+    parser.add_argument("--epochs", type=int, help="Number of training epochs")
+    parser.add_argument("--batch_size", type=int, help="Training batch size")
+    parser.add_argument("--lr", type=float, help="Learning rate")
+    parser.add_argument("--ts", type=int, help="Trajectory size")
+    parser.add_argument("--height", type=int, help="Map height")
+    parser.add_argument("--width", type=int, help="Map width")
+    parser.add_argument("--depth", type=int, help="Tensor depth")
     parser.add_argument(
         "--training_proportion", type=float, help="Train/val split proportion"
     )
     parser.add_argument(
         "--use_percentage", type=float, help="Percentage of data to use"
     )
-    parser.add_argument(
-        "--device", type=str, help="CUDA device (e.g., cuda:0)"
-    )
+    parser.add_argument("--device", type=str, help="CUDA device (e.g., cuda:0)")
 
     args = parser.parse_args()
 
     config = Config()
-    
+
     # Override config with command line arguments if specified
     if args.config_override:
         if args.data_dir is not None:

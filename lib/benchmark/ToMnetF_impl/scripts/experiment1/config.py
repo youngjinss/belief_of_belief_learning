@@ -1,7 +1,7 @@
 class Config:
     def __init__(self):
         import os
-        
+
         # Agent and environment settings
         self.agent_type = "a_star"
         self.observability = "full"
@@ -15,7 +15,7 @@ class Config:
         self.output_dir = "data"
         self.shuffle = False
         self.no_walls = False
-        
+
         # Model hyperparameters
         self.batch_size = int(os.getenv("BATCH_SIZE", 512))
         self.residual_blocks = 5
@@ -23,7 +23,7 @@ class Config:
         self.out_channels = 32
         self.time_frame = 10
         self.depth = 10
-        
+
         # Training settings
         self.epochs = int(os.getenv("EPOCHS", 50))
         self.lr = 1e-4
@@ -31,18 +31,18 @@ class Config:
         self.ts = 10
         self.training_proportion = 0.9
         self.device = "cuda:3"
-        
+
         # Data directories
         self.data_dir = "../../data/experiment1"
         self.model_dir = "../../models/experiment1"
         self.result_dir = "../../result/experiment1"
         self.plot_dir = "../../plots/experiment1"
         self.log_dir = "../../log/training"
-        
+
         # Experiment specific
         self.experiment_no = 1
         self.use_percentage = 0.9
-        
+
     def get_model_kwargs(self):
         """Return model parameters for ToMnet initialization"""
         return {
@@ -55,7 +55,7 @@ class Config:
             "Height": self.height,
             "Depth": self.depth,
         }
-        
+
     def get_training_kwargs(self):
         """Return training parameters"""
         return {
@@ -76,7 +76,7 @@ class Config:
             "use_percentage": self.use_percentage,
             "device": self.device,
         }
-        
+
     def get_evaluation_kwargs(self):
         """Return evaluation parameters"""
         return {

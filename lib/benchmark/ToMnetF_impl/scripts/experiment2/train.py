@@ -6,7 +6,8 @@ import json
 import pickle
 import sys
 from datetime import datetime
-sys.path.append('..')
+
+sys.path.append("..")
 
 from tomnet import ToMnet
 from data_generation import generate_input_data
@@ -27,7 +28,7 @@ def train_tomnet(config=None):
     """
     if config is None:
         config = Config()
-    
+
     # Extract parameters from config
     data_dir = config.data_dir
     model_dir = config.model_dir
@@ -93,7 +94,7 @@ def train_tomnet(config=None):
     print(f"Current states: {data_curr.shape}")
     print(f"Actions: {data_act.shape}")
     print(f"Labels: {data_labels.shape}")
-    
+
     # Check if SR and consumption data are available
     has_new_labels = data_consumption is not None and data_sr is not None
     if has_new_labels:
@@ -104,7 +105,9 @@ def train_tomnet(config=None):
 
     # Create dataset
     if has_new_labels:
-        dataset = TensorDataset(data_traj, data_curr, data_act, data_consumption, data_sr)
+        dataset = TensorDataset(
+            data_traj, data_curr, data_act, data_consumption, data_sr
+        )
     else:
         dataset = TensorDataset(data_traj, data_curr, data_act)
 
@@ -115,12 +118,18 @@ def train_tomnet(config=None):
 
     if has_new_labels:
         train_dataset = TensorDataset(
-            data_traj[:train_size], data_curr[:train_size], data_act[:train_size],
-            data_consumption[:train_size], data_sr[:train_size]
+            data_traj[:train_size],
+            data_curr[:train_size],
+            data_act[:train_size],
+            data_consumption[:train_size],
+            data_sr[:train_size],
         )
         val_dataset = TensorDataset(
-            data_traj[train_size:], data_curr[train_size:], data_act[train_size:],
-            data_consumption[train_size:], data_sr[train_size:]
+            data_traj[train_size:],
+            data_curr[train_size:],
+            data_act[train_size:],
+            data_consumption[train_size:],
+            data_sr[train_size:],
         )
     else:
         train_dataset = TensorDataset(
@@ -159,7 +168,7 @@ def train_tomnet(config=None):
     consumption_loss_fn = torch.nn.BCEWithLogitsLoss()
     sr_loss_fn = torch.nn.CrossEntropyLoss()  # Cross-entropy for SR distributions
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=0.001)
-    
+
     # Loss weights
     action_weight = 1.0
     consumption_weight = 1.0
@@ -205,17 +214,17 @@ def train_tomnet(config=None):
                 batch_size = act.size(0)
                 consumption_target = torch.zeros(batch_size, 4).to(device)
                 sr_target = torch.zeros(batch_size, 3, 13, 13).to(device)
-            
+
             act = act.squeeze(-1).type(torch.long)
 
             optimizer.zero_grad()
 
             action_pred, consumption_pred, sr_pred = model([traj, curr])
-            
+
             # Calculate losses
             action_loss = action_loss_fn(action_pred, act)
             consumption_loss = consumption_loss_fn(consumption_pred, consumption_target)
-            
+
             # For SR loss, we need to reshape and apply cross-entropy per channel
             sr_loss = 0
             for i in range(3):  # 3 discount factors
@@ -225,12 +234,14 @@ def train_tomnet(config=None):
                 sr_target_indices = torch.argmax(sr_target_i, dim=1)
                 sr_loss += sr_loss_fn(sr_pred_i, sr_target_indices)
             sr_loss = sr_loss / 3  # Average over discount factors
-            
+
             # Combined loss
-            loss = (action_weight * action_loss + 
-                    consumption_weight * consumption_loss + 
-                    sr_weight * sr_loss)
-            
+            loss = (
+                action_weight * action_loss
+                + consumption_weight * consumption_loss
+                + sr_weight * sr_loss
+            )
+
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
@@ -260,28 +271,34 @@ def train_tomnet(config=None):
                     batch_size = act.size(0)
                     consumption_target = torch.zeros(batch_size, 4).to(device)
                     sr_target = torch.zeros(batch_size, 3, 13, 13).to(device)
-                
+
                 act = act.squeeze(-1).type(torch.long)
 
                 action_pred, consumption_pred, sr_pred = model([traj, curr])
-                
+
                 # Calculate losses
                 action_loss = action_loss_fn(action_pred, act)
-                consumption_loss = consumption_loss_fn(consumption_pred, consumption_target)
-                
+                consumption_loss = consumption_loss_fn(
+                    consumption_pred, consumption_target
+                )
+
                 # For SR loss
                 sr_loss = 0
                 for i in range(3):  # 3 discount factors
                     sr_pred_i = sr_pred[:, i, :, :].contiguous().view(batch_size, -1)
-                    sr_target_i = sr_target[:, i, :, :].contiguous().view(batch_size, -1)
+                    sr_target_i = (
+                        sr_target[:, i, :, :].contiguous().view(batch_size, -1)
+                    )
                     sr_target_indices = torch.argmax(sr_target_i, dim=1)
                     sr_loss += sr_loss_fn(sr_pred_i, sr_target_indices)
                 sr_loss = sr_loss / 3
-                
+
                 # Combined loss
-                loss = (action_weight * action_loss + 
-                        consumption_weight * consumption_loss + 
-                        sr_weight * sr_loss)
+                loss = (
+                    action_weight * action_loss
+                    + consumption_weight * consumption_loss
+                    + sr_weight * sr_loss
+                )
 
                 # Calculate validation accuracy (action prediction only for now)
                 _, y_hat = torch.max(action_pred.data, 1)
@@ -321,9 +338,9 @@ def train_tomnet(config=None):
     # Save final model
     final_model_path = os.path.join(model_dir, f"exp{experiment_no}_final.pth")
     torch.save(model.state_dict(), final_model_path)
-    
+
     # Ensure best_model_path is defined (fallback to final model if no best was saved)
-    if 'best_model_path' not in locals():
+    if "best_model_path" not in locals():
         best_model_path = final_model_path
 
     # Save training history
@@ -396,66 +413,39 @@ def create_training_plots(train_history, plot_dir, experiment_no):
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(
-        description="Train ToMnet model for Experiment 2"
-    )
+    parser = argparse.ArgumentParser(description="Train ToMnet model for Experiment 2")
     parser.add_argument(
-        "--config_override", action="store_true", 
-        help="Override config with command line arguments"
+        "--config_override",
+        action="store_true",
+        help="Override config with command line arguments",
     )
     parser.add_argument(
         "--data_dir", type=str, help="Directory containing training data"
     )
-    parser.add_argument(
-        "--model_dir", type=str, help="Directory to save models"
-    )
-    parser.add_argument(
-        "--result_dir", type=str, help="Directory to save results"
-    )
-    parser.add_argument(
-        "--plot_dir", type=str, help="Directory to save plots"
-    )
-    parser.add_argument(
-        "--log_dir", type=str, help="Directory to save logs"
-    )
-    parser.add_argument(
-        "--experiment_no", type=int, help="Experiment number"
-    )
-    parser.add_argument(
-        "--epochs", type=int, help="Number of training epochs"
-    )
-    parser.add_argument(
-        "--batch_size", type=int, help="Training batch size"
-    )
-    parser.add_argument(
-        "--lr", type=float, help="Learning rate"
-    )
-    parser.add_argument(
-        "--ts", type=int, help="Trajectory size"
-    )
-    parser.add_argument(
-        "--height", type=int, help="Map height"
-    )
-    parser.add_argument(
-        "--width", type=int, help="Map width"
-    )
-    parser.add_argument(
-        "--depth", type=int, help="Tensor depth"
-    )
+    parser.add_argument("--model_dir", type=str, help="Directory to save models")
+    parser.add_argument("--result_dir", type=str, help="Directory to save results")
+    parser.add_argument("--plot_dir", type=str, help="Directory to save plots")
+    parser.add_argument("--log_dir", type=str, help="Directory to save logs")
+    parser.add_argument("--experiment_no", type=int, help="Experiment number")
+    parser.add_argument("--epochs", type=int, help="Number of training epochs")
+    parser.add_argument("--batch_size", type=int, help="Training batch size")
+    parser.add_argument("--lr", type=float, help="Learning rate")
+    parser.add_argument("--ts", type=int, help="Trajectory size")
+    parser.add_argument("--height", type=int, help="Map height")
+    parser.add_argument("--width", type=int, help="Map width")
+    parser.add_argument("--depth", type=int, help="Tensor depth")
     parser.add_argument(
         "--training_proportion", type=float, help="Train/val split proportion"
     )
     parser.add_argument(
         "--use_percentage", type=float, help="Percentage of data to use"
     )
-    parser.add_argument(
-        "--device", type=str, help="CUDA device (e.g., cuda:0)"
-    )
+    parser.add_argument("--device", type=str, help="CUDA device (e.g., cuda:0)")
 
     args = parser.parse_args()
 
     config = Config()
-    
+
     # Override config with command line arguments if specified
     if args.config_override:
         if args.data_dir is not None:

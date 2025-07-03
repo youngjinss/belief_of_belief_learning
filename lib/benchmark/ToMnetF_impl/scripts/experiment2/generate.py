@@ -1,6 +1,7 @@
 import os
 import sys
-sys.path.append('..')
+
+sys.path.append("..")
 
 from environment import World
 import agents as Agent
@@ -16,69 +17,73 @@ Modified for SR and consumption prediction
 """
 
 
-def calculate_successor_representation(trajectory, positions, grid_size=13, gammas=[0.5, 0.9, 0.99]):
+def calculate_successor_representation(
+    trajectory, positions, grid_size=13, gammas=[0.5, 0.9, 0.99]
+):
     """
     Calculate successor representation for different discount factors
-    
+
     Args:
         trajectory: List of actions taken
         positions: List of positions visited
         grid_size: Size of the grid
         gammas: List of discount factors
-        
+
     Returns:
         sr_maps: Array of shape (len(gammas), grid_size, grid_size) with normalized SR
     """
     sr_maps = np.zeros((len(gammas), grid_size, grid_size))
-    
+
     # Calculate SR for each discount factor
     for gamma_idx, gamma in enumerate(gammas):
         sr_map = np.zeros((grid_size, grid_size))
-        
+
         # Count discounted future state visitations
         for t, pos in enumerate(positions):
             for future_t in range(t, len(positions)):
                 discount = gamma ** (future_t - t)
                 future_pos = positions[future_t]
                 sr_map[future_pos[0], future_pos[1]] += discount
-        
+
         # Normalize the SR map
         if sr_map.sum() > 0:
             sr_map = sr_map / sr_map.sum()
-            
+
         sr_maps[gamma_idx] = sr_map
-    
+
     return sr_maps
 
 
 def calculate_consumption_labels(consumed_goals):
     """
     Calculate consumption labels for goals A, B, C, D
-    
+
     Args:
         consumed_goals: String of consumed goals (e.g., "AB" or "D")
-        
+
     Returns:
         consumption_vector: Binary vector of length 4 indicating which goals were consumed
     """
     consumption_vector = np.zeros(4, dtype=np.float32)
-    
-    if 'A' in consumed_goals:
+
+    if "A" in consumed_goals:
         consumption_vector[0] = 1.0
-    if 'B' in consumed_goals:
+    if "B" in consumed_goals:
         consumption_vector[1] = 1.0
-    if 'C' in consumed_goals:
+    if "C" in consumed_goals:
         consumption_vector[2] = 1.0
-    if 'D' in consumed_goals:
+    if "D" in consumed_goals:
         consumption_vector[3] = 1.0
-        
+
     return consumption_vector
 
 
-def save_game_with_labels(agent, env, sr_maps, consumption_labels, name="experiment2", base_dir="../../data"):
+def save_game_with_labels(
+    agent, env, sr_maps, consumption_labels, name="experiment2", base_dir="../../data"
+):
     """
     Save game data with SR and consumption labels
-    
+
     Args:
         agent: The agent that played the game
         env: The environment
@@ -88,7 +93,7 @@ def save_game_with_labels(agent, env, sr_maps, consumption_labels, name="experim
         base_dir: Base directory for saving
     """
     import re
-    
+
     # Shouldn't be here, but it fixes the save of last goal :(
     if env.goal_picked != 0:
         agent.step_picked_goal.append(len(agent.trajectory) - 1)
@@ -124,10 +129,14 @@ def save_game_with_labels(agent, env, sr_maps, consumption_labels, name="experim
         for i, goal in enumerate(env.consumed_goal):
             f.write("Goal Consumed #" + str(i + 1) + " : " + goal + "\n")
         f.write("Trajectory length: " + str(len(agent.trajectory)) + "\n")
-        
+
         # Save consumption labels
-        f.write("Consumption Labels: " + ",".join(map(str, consumption_labels.tolist())) + "\n")
-        
+        f.write(
+            "Consumption Labels: "
+            + ",".join(map(str, consumption_labels.tolist()))
+            + "\n"
+        )
+
         # Save SR maps (as flattened arrays for each gamma)
         for gamma_idx, gamma in enumerate([0.5, 0.9, 0.99]):
             sr_flat = sr_maps[gamma_idx].flatten()
@@ -156,13 +165,13 @@ def save_game_with_labels(agent, env, sr_maps, consumption_labels, name="experim
 def generate_trajectories(config=None):
     """
     Generate trajectories for Experiment 2 using A* agents with SR and consumption labels
-    
+
     Args:
         config: Config object containing all parameters. If None, uses default values.
     """
     if config is None:
         config = Config()
-    
+
     n_games = config.n_games
     rows = config.rows
     cols = config.cols
@@ -217,13 +226,11 @@ def generate_trajectories(config=None):
 
         # Calculate SR and consumption labels
         sr_maps = calculate_successor_representation(
-            agent.trajectory, 
-            agent.position_trajectory,
-            grid_size=rows
+            agent.trajectory, agent.position_trajectory, grid_size=rows
         )
-        
+
         consumption_labels = calculate_consumption_labels(env.consumed_goal)
-        
+
         # Save game with additional SR and consumption data
         save_game_with_labels(
             agent=agent,
@@ -231,7 +238,7 @@ def generate_trajectories(config=None):
             sr_maps=sr_maps,
             consumption_labels=consumption_labels,
             name=output_dir,
-            base_dir=save_dir
+            base_dir=save_dir,
         )
 
     print(f"Generated {n_games} games successfully!")
@@ -244,27 +251,22 @@ if __name__ == "__main__":
         description="Generate trajectories for Experiment 2 using A* agents with SR and consumption labels"
     )
     parser.add_argument(
-        "--config_override", action="store_true", 
-        help="Override config with command line arguments"
+        "--config_override",
+        action="store_true",
+        help="Override config with command line arguments",
     )
-    parser.add_argument(
-        "--n_games", type=int, help="Number of games to generate"
-    )
+    parser.add_argument("--n_games", type=int, help="Number of games to generate")
     parser.add_argument("--rows", type=int, help="Grid height")
     parser.add_argument("--cols", type=int, help="Grid width")
     parser.add_argument("--sight", type=int, help="Agent sight radius")
-    parser.add_argument(
-        "--max_moves", type=int, help="Maximum moves per episode"
-    )
+    parser.add_argument("--max_moves", type=int, help="Maximum moves per episode")
     parser.add_argument(
         "--observability",
         type=str,
         choices=["full", "partial"],
         help="Observability type: full or partial",
     )
-    parser.add_argument(
-        "--output_dir", type=str, help="Directory to save games"
-    )
+    parser.add_argument("--output_dir", type=str, help="Directory to save games")
     parser.add_argument(
         "--shuffle",
         action="store_true",
@@ -284,7 +286,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     config = Config()
-    
+
     # Override config with command line arguments if specified
     if args.config_override:
         if args.n_games is not None:

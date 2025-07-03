@@ -129,13 +129,19 @@ def cross_species_evaluation(config=None, model_paths=None, test_data_paths=None
     """
     if config is None:
         config = Config()
-    
+
     # Use provided paths or default from config
     if model_paths is None:
-        model_paths = [os.path.join(config.model_dir, f"exp{config.experiment_no}_best.pth")]
+        model_paths = [
+            os.path.join(config.model_dir, f"exp{config.experiment_no}_best.pth")
+        ]
     if test_data_paths is None:
-        test_data_paths = [os.path.join(config.data_dir, f"processed_data_exp{config.experiment_no}.pkl")]
-    
+        test_data_paths = [
+            os.path.join(
+                config.data_dir, f"processed_data_exp{config.experiment_no}.pkl"
+            )
+        ]
+
     device = config.device if torch.cuda.is_available() else "cpu"
     result_dir = config.result_dir
     experiment_no = config.experiment_no
@@ -171,7 +177,9 @@ def cross_species_evaluation(config=None, model_paths=None, test_data_paths=None
                 test_data["data_current_state"],
                 test_data["data_actions"],
             )
-            test_loader = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False)
+            test_loader = DataLoader(
+                test_dataset, batch_size=config.batch_size, shuffle=False
+            )
 
             # Evaluate
             metrics = evaluate_model(
@@ -213,7 +221,9 @@ def cross_species_evaluation(config=None, model_paths=None, test_data_paths=None
     return results
 
 
-def analyze_action_likelihood(config=None, model=None, test_loader=None, n_samples=1000):
+def analyze_action_likelihood(
+    config=None, model=None, test_loader=None, n_samples=1000
+):
     """
     Analyze action likelihood distributions
 
@@ -225,17 +235,21 @@ def analyze_action_likelihood(config=None, model=None, test_loader=None, n_sampl
     """
     if config is None:
         config = Config()
-    
+
     device = config.device if torch.cuda.is_available() else "cpu"
     output_dir = config.result_dir
-    
+
     if model is None:
-        model_path = os.path.join(config.model_dir, f"exp{config.experiment_no}_best.pth")
+        model_path = os.path.join(
+            config.model_dir, f"exp{config.experiment_no}_best.pth"
+        )
         model_kwargs = config.get_model_kwargs()
         model = load_model(model_path, device, **model_kwargs)
-    
+
     if test_loader is None:
-        test_data_path = os.path.join(config.data_dir, f"processed_data_exp{config.experiment_no}.pkl")
+        test_data_path = os.path.join(
+            config.data_dir, f"processed_data_exp{config.experiment_no}.pkl"
+        )
         with open(test_data_path, "rb") as f:
             test_data = pickle.load(f)
         test_dataset = TensorDataset(
@@ -243,7 +257,9 @@ def analyze_action_likelihood(config=None, model=None, test_loader=None, n_sampl
             test_data["data_current_state"],
             test_data["data_actions"],
         )
-        test_loader = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False)
+        test_loader = DataLoader(
+            test_dataset, batch_size=config.batch_size, shuffle=False
+        )
 
     model.eval()
     action_likelihoods = {i: [] for i in range(4)}
@@ -301,27 +317,20 @@ if __name__ == "__main__":
         description="Evaluate ToMnet model for Experiment 1"
     )
     parser.add_argument(
-        "--config_override", action="store_true", 
-        help="Override config with command line arguments"
+        "--config_override",
+        action="store_true",
+        help="Override config with command line arguments",
     )
-    parser.add_argument(
-        "--data_dir", type=str, help="Directory containing test data"
-    )
+    parser.add_argument("--data_dir", type=str, help="Directory containing test data")
     parser.add_argument(
         "--model_dir", type=str, help="Directory containing trained models"
     )
     parser.add_argument(
         "--result_dir", type=str, help="Directory to save evaluation results"
     )
-    parser.add_argument(
-        "--experiment_no", type=int, help="Experiment number"
-    )
-    parser.add_argument(
-        "--batch_size", type=int, help="Evaluation batch size"
-    )
-    parser.add_argument(
-        "--device", type=str, help="CUDA device (e.g., cuda:0)"
-    )
+    parser.add_argument("--experiment_no", type=int, help="Experiment number")
+    parser.add_argument("--batch_size", type=int, help="Evaluation batch size")
+    parser.add_argument("--device", type=str, help="CUDA device (e.g., cuda:0)")
     parser.add_argument(
         "--model_paths", type=str, nargs="+", help="Paths to trained models"
     )
@@ -329,7 +338,9 @@ if __name__ == "__main__":
         "--test_data_paths", type=str, nargs="+", help="Paths to test datasets"
     )
     parser.add_argument(
-        "--analysis_only", action="store_true", help="Run action likelihood analysis only"
+        "--analysis_only",
+        action="store_true",
+        help="Run action likelihood analysis only",
     )
     parser.add_argument(
         "--n_samples", type=int, default=1000, help="Number of samples for analysis"
@@ -338,7 +349,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     config = Config()
-    
+
     # Override config with command line arguments if specified
     if args.config_override:
         if args.data_dir is not None:
@@ -357,29 +368,32 @@ if __name__ == "__main__":
     # Use command line model and data paths if provided
     model_paths = args.model_paths
     test_data_paths = args.test_data_paths
-    
+
     if model_paths is None:
-        model_paths = [os.path.join(config.model_dir, f"exp{config.experiment_no}_best.pth")]
+        model_paths = [
+            os.path.join(config.model_dir, f"exp{config.experiment_no}_best.pth")
+        ]
     if test_data_paths is None:
-        test_data_paths = [os.path.join(config.data_dir, f"processed_data_exp{config.experiment_no}.pkl")]
+        test_data_paths = [
+            os.path.join(
+                config.data_dir, f"processed_data_exp{config.experiment_no}.pkl"
+            )
+        ]
 
     if args.analysis_only:
         # Run action likelihood analysis only
         print("Running action likelihood analysis...")
-        stats = analyze_action_likelihood(
-            config=config,
-            n_samples=args.n_samples
-        )
+        stats = analyze_action_likelihood(config=config, n_samples=args.n_samples)
         print(f"Action likelihood analysis completed!")
         for action, action_stats in stats.items():
-            print(f"{action}: mean={action_stats['mean']:.4f}, std={action_stats['std']:.4f}")
+            print(
+                f"{action}: mean={action_stats['mean']:.4f}, std={action_stats['std']:.4f}"
+            )
     else:
         # Run full cross-species evaluation
         if all(os.path.exists(path) for path in model_paths + test_data_paths):
             results = cross_species_evaluation(
-                config=config,
-                model_paths=model_paths,
-                test_data_paths=test_data_paths
+                config=config, model_paths=model_paths, test_data_paths=test_data_paths
             )
             print(f"Evaluation completed successfully!")
         else:

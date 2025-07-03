@@ -76,20 +76,30 @@ class DataReader:
                 consumed.append(x)
             if idx == 17:
                 trajectory_length.append(x)
-            
+
             # Parse consumption labels if present
             if x.startswith("Consumption Labels:"):
                 consumption_str = x.split(":")[1].strip()
-                consumption_labels = np.array([float(val) for val in consumption_str.split(",")], dtype=np.float32)
-            
+                consumption_labels = np.array(
+                    [float(val) for val in consumption_str.split(",")], dtype=np.float32
+                )
+
             # Parse SR maps if present
             if x.startswith("SR_gamma_"):
                 gamma_str = x.split(":")[0].split("_")[-1]
                 sr_str = x.split(":")[1].strip()
-                sr_values = np.array([float(val) for val in sr_str.split(",")], dtype=np.float32)
-                sr_maps[gamma_str] = sr_values.reshape(self.MAZE_WIDTH, self.MAZE_HEIGHT)
+                sr_values = np.array(
+                    [float(val) for val in sr_str.split(",")], dtype=np.float32
+                )
+                sr_maps[gamma_str] = sr_values.reshape(
+                    self.MAZE_WIDTH, self.MAZE_HEIGHT
+                )
 
-            if idx >= 18 and not x.startswith("Consumption Labels:") and not x.startswith("SR_gamma_"):
+            if (
+                idx >= 18
+                and not x.startswith("Consumption Labels:")
+                and not x.startswith("SR_gamma_")
+            ):
 
                 # [(posX, posY), trajectory move]
                 if x[0] == "[" and x[2] == "," and x[5] == "]":  # both are single digit
@@ -188,13 +198,15 @@ class DataReader:
         # traj = torch.tensor(steps)
         # If SR maps were loaded, convert to numpy array with 3 channels
         if sr_maps:
-            sr_array = np.zeros((3, self.MAZE_WIDTH, self.MAZE_HEIGHT), dtype=np.float32)
-            for i, gamma in enumerate(['0.5', '0.9', '0.99']):
+            sr_array = np.zeros(
+                (3, self.MAZE_WIDTH, self.MAZE_HEIGHT), dtype=np.float32
+            )
+            for i, gamma in enumerate(["0.5", "0.9", "0.99"]):
                 if gamma in sr_maps:
                     sr_array[i] = sr_maps[gamma]
         else:
             sr_array = None
-            
+
         return traj, act, goal, directions, consumption_labels, sr_array
 
         # print(f"map size: {map.shape}\n")
@@ -287,14 +299,19 @@ class DataReader:
 
             # Prepare data from one game
             # The dimensions differ, so only list is applicable (no numpy arrays)
-            data_trajectories1, data_current_state1, data_actions1, data_labels1, consumption_labels1, sr_maps1 = (
-                self.generateDataFromGame(
-                    trajectories=trajectories[i], 
-                    actions=actions[i], 
-                    labels=labels[i],
-                    consumption_labels=consumption_labels_list[i],
-                    sr_map=sr_maps_list[i]
-                )
+            (
+                data_trajectories1,
+                data_current_state1,
+                data_actions1,
+                data_labels1,
+                consumption_labels1,
+                sr_maps1,
+            ) = self.generateDataFromGame(
+                trajectories=trajectories[i],
+                actions=actions[i],
+                labels=labels[i],
+                consumption_labels=consumption_labels_list[i],
+                sr_map=sr_maps_list[i],
             )
 
             # Append to a single structure
@@ -337,7 +354,9 @@ class DataReader:
 
         return all_games
 
-    def generateDataFromGame(self, trajectories, actions, labels, consumption_labels, sr_map):
+    def generateDataFromGame(
+        self, trajectories, actions, labels, consumption_labels, sr_map
+    ):
 
         # Make full data from a game
         data_trajectories = []
@@ -357,7 +376,7 @@ class DataReader:
             )  # Current state # (1walls + 1player + 4goals)
             data_actions.append(actions[i, ...])  # Next Action
             data_labels.append(labels[i, ...])  # Consumed Goal
-            
+
             # For consumption labels and SR maps, use the same values for all timesteps
             # since they represent the final state of the episode
             if consumption_labels is not None:
@@ -365,14 +384,23 @@ class DataReader:
             else:
                 # Default to zeros if not available (for backward compatibility)
                 data_consumption_labels.append(np.zeros(4, dtype=np.float32))
-                
+
             if sr_map is not None:
                 data_sr_maps.append(sr_map)
             else:
                 # Default to zeros if not available (for backward compatibility)
-                data_sr_maps.append(np.zeros((3, self.MAZE_WIDTH, self.MAZE_HEIGHT), dtype=np.float32))
+                data_sr_maps.append(
+                    np.zeros((3, self.MAZE_WIDTH, self.MAZE_HEIGHT), dtype=np.float32)
+                )
 
-        return data_trajectories, data_current_state, data_actions, data_labels, data_consumption_labels, data_sr_maps
+        return (
+            data_trajectories,
+            data_current_state,
+            data_actions,
+            data_labels,
+            data_consumption_labels,
+            data_sr_maps,
+        )
 
     def goal_sym_to_num(self, goal_sym):
         out = 0
@@ -437,7 +465,9 @@ class DataProcessor:
             cur = all_current_states[i]
             act = all_actions[i]
             goal = all_labels[i]
-            consumption = all_consumption_labels[i] if i < len(all_consumption_labels) else []
+            consumption = (
+                all_consumption_labels[i] if i < len(all_consumption_labels) else []
+            )
             sr_map = all_sr_maps[i] if i < len(all_sr_maps) else []
             N_traj = len(
                 traj
@@ -450,8 +480,18 @@ class DataProcessor:
                 current_state = cur[j]
                 current_action = act[j]
                 current_goal = goal[j]
-                current_consumption = consumption[j] if j < len(consumption) else np.zeros(4, dtype=np.float32)
-                current_sr_map = sr_map[j] if j < len(sr_map) else np.zeros((3, self.MAZE_WIDTH, self.MAZE_HEIGHT), dtype=np.float32)
+                current_consumption = (
+                    consumption[j]
+                    if j < len(consumption)
+                    else np.zeros(4, dtype=np.float32)
+                )
+                current_sr_map = (
+                    sr_map[j]
+                    if j < len(sr_map)
+                    else np.zeros(
+                        (3, self.MAZE_WIDTH, self.MAZE_HEIGHT), dtype=np.float32
+                    )
+                )
 
                 ### Trajectory
                 zero_pad_trajectory = np.zeros(shape=uniform_shape)
@@ -477,10 +517,10 @@ class DataProcessor:
 
                 ### Goal
                 unfolded_goal_history.append(current_goal)
-                
+
                 ### Consumption labels
                 unfolded_consumption_labels.append(current_consumption)
-                
+
                 ### SR maps
                 unfolded_sr_maps.append(current_sr_map)
 
@@ -564,13 +604,13 @@ def generate_input_data(
     data_curr = torch.tensor(data_current_state, dtype=torch.float32)
     data_act = torch.tensor(data_actions, dtype=torch.float32)
     data_labels = torch.tensor(data_labels, dtype=torch.float32)
-    
+
     # Convert consumption and SR data if available
     if data_consumption_labels is not None:
         data_consumption = torch.tensor(data_consumption_labels, dtype=torch.float32)
     else:
         data_consumption = None
-        
+
     if data_sr_maps is not None:
         data_sr = torch.tensor(data_sr_maps, dtype=torch.float32)
     else:

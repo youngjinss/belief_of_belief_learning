@@ -22,10 +22,12 @@ plt.style.use("seaborn-v0_8")
 sns.set_palette("husl")
 
 
-def visualize_successor_representation(sr_map, maze_map, output_path, title="Successor Representation"):
+def visualize_successor_representation(
+    sr_map, maze_map, output_path, title="Successor Representation"
+):
     """
     Visualize successor representation as a heatmap overlay on the maze
-    
+
     Args:
         sr_map: numpy array of shape (height, width) with SR values
         maze_map: numpy array of shape (height, width) with maze layout
@@ -33,85 +35,93 @@ def visualize_successor_representation(sr_map, maze_map, output_path, title="Suc
         title: Title for the plot
     """
     fig, axes = plt.subplots(1, 3, figsize=(15, 5))
-    
+
     gammas = [0.5, 0.9, 0.99]
-    
+
     for i, (ax, gamma) in enumerate(zip(axes, gammas)):
         # Create a combined visualization
         combined_map = np.zeros_like(maze_map, dtype=float)
-        
+
         # Set walls to -1 for clear distinction
         combined_map[maze_map == 0] = -1  # Walls
-        
+
         # Overlay SR values on non-wall areas
         non_wall_mask = maze_map != 0
         if len(sr_map.shape) == 3:  # Multiple gamma values
             sr_values = sr_map[i]
         else:
             sr_values = sr_map
-            
+
         combined_map[non_wall_mask] = sr_values[non_wall_mask]
-        
+
         # Create heatmap
-        im = ax.imshow(combined_map, cmap='viridis', interpolation='nearest')
-        ax.set_title(f'SR (γ={gamma})', fontsize=12, fontweight='bold')
-        ax.set_xlabel('X Position')
-        ax.set_ylabel('Y Position')
-        
+        im = ax.imshow(combined_map, cmap="viridis", interpolation="nearest")
+        ax.set_title(f"SR (γ={gamma})", fontsize=12, fontweight="bold")
+        ax.set_xlabel("X Position")
+        ax.set_ylabel("Y Position")
+
         # Add colorbar
         cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-        cbar.set_label('Visit Probability', rotation=270, labelpad=15)
-        
+        cbar.set_label("Visit Probability", rotation=270, labelpad=15)
+
         # Add grid
         ax.grid(True, alpha=0.3)
         ax.set_xticks(range(maze_map.shape[1]))
         ax.set_yticks(range(maze_map.shape[0]))
-    
-    plt.suptitle(title, fontsize=14, fontweight='bold')
+
+    plt.suptitle(title, fontsize=14, fontweight="bold")
     plt.tight_layout()
-    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.close()
 
 
 def visualize_consumption_predictions(consumption_pred, consumption_true, output_path):
     """
     Visualize consumption predictions vs true labels
-    
+
     Args:
         consumption_pred: Predicted consumption probabilities (batch_size, 4)
         consumption_true: True consumption labels (batch_size, 4)
         output_path: Path to save the visualization
     """
-    goals = ['Goal A', 'Goal B', 'Goal C', 'Goal D']
-    
+    goals = ["Goal A", "Goal B", "Goal C", "Goal D"]
+
     fig, axes = plt.subplots(2, 2, figsize=(12, 10))
     axes = axes.flatten()
-    
+
     for i, (ax, goal) in enumerate(zip(axes, goals)):
         # Create scatter plot
         ax.scatter(consumption_true[:, i], consumption_pred[:, i], alpha=0.6, s=20)
-        
+
         # Add diagonal line for perfect prediction
         min_val = min(consumption_true[:, i].min(), consumption_pred[:, i].min())
         max_val = max(consumption_true[:, i].max(), consumption_pred[:, i].max())
-        ax.plot([min_val, max_val], [min_val, max_val], 'r--', alpha=0.8, label='Perfect Prediction')
-        
-        ax.set_xlabel('True Consumption')
-        ax.set_ylabel('Predicted Consumption')
-        ax.set_title(f'{goal} Consumption Prediction')
+        ax.plot(
+            [min_val, max_val],
+            [min_val, max_val],
+            "r--",
+            alpha=0.8,
+            label="Perfect Prediction",
+        )
+
+        ax.set_xlabel("True Consumption")
+        ax.set_ylabel("Predicted Consumption")
+        ax.set_title(f"{goal} Consumption Prediction")
         ax.legend()
         ax.grid(True, alpha=0.3)
-    
-    plt.suptitle('Consumption Prediction Accuracy', fontsize=14, fontweight='bold')
+
+    plt.suptitle("Consumption Prediction Accuracy", fontsize=14, fontweight="bold")
     plt.tight_layout()
-    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.close()
 
 
-def visualize_maze_trajectory_with_sr(maze_map, trajectory_positions, sr_map, output_path):
+def visualize_maze_trajectory_with_sr(
+    maze_map, trajectory_positions, sr_map, output_path
+):
     """
     Visualize maze with agent trajectory and SR overlay
-    
+
     Args:
         maze_map: numpy array of maze layout
         trajectory_positions: List of (x, y) positions
@@ -119,47 +129,55 @@ def visualize_maze_trajectory_with_sr(maze_map, trajectory_positions, sr_map, ou
         output_path: Path to save visualization
     """
     fig, axes = plt.subplots(1, 3, figsize=(18, 6))
-    
+
     gammas = [0.5, 0.9, 0.99]
-    
+
     for i, (ax, gamma) in enumerate(zip(axes, gammas)):
         # Start with maze layout
         display_map = maze_map.copy().astype(float)
-        
+
         # Overlay SR values
         if len(sr_map.shape) == 3:
             sr_values = sr_map[i]
         else:
             sr_values = sr_map
-            
+
         # Normalize SR values for better visualization
-        sr_normalized = (sr_values - sr_values.min()) / (sr_values.max() - sr_values.min() + 1e-8)
-        
+        sr_normalized = (sr_values - sr_values.min()) / (
+            sr_values.max() - sr_values.min() + 1e-8
+        )
+
         # Create visualization
-        im = ax.imshow(sr_normalized, cmap='YlOrRd', alpha=0.7)
-        
+        im = ax.imshow(sr_normalized, cmap="YlOrRd", alpha=0.7)
+
         # Overlay maze walls
         wall_mask = maze_map == 0
-        ax.imshow(np.where(wall_mask, 0, np.nan), cmap='gray', alpha=0.8)
-        
+        ax.imshow(np.where(wall_mask, 0, np.nan), cmap="gray", alpha=0.8)
+
         # Plot trajectory
         if trajectory_positions:
-            traj_x = [pos[1] for pos in trajectory_positions]  # Note: x,y swapped for matplotlib
+            traj_x = [
+                pos[1] for pos in trajectory_positions
+            ]  # Note: x,y swapped for matplotlib
             traj_y = [pos[0] for pos in trajectory_positions]
-            ax.plot(traj_x, traj_y, 'b-', linewidth=3, alpha=0.8, label='Agent Trajectory')
-            ax.plot(traj_x[0], traj_y[0], 'go', markersize=10, label='Start')
-            ax.plot(traj_x[-1], traj_y[-1], 'ro', markersize=10, label='End')
-        
-        ax.set_title(f'SR (γ={gamma}) with Trajectory')
+            ax.plot(
+                traj_x, traj_y, "b-", linewidth=3, alpha=0.8, label="Agent Trajectory"
+            )
+            ax.plot(traj_x[0], traj_y[0], "go", markersize=10, label="Start")
+            ax.plot(traj_x[-1], traj_y[-1], "ro", markersize=10, label="End")
+
+        ax.set_title(f"SR (γ={gamma}) with Trajectory")
         ax.legend()
         ax.grid(True, alpha=0.3)
-        
+
         # Add colorbar
         plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-    
-    plt.suptitle('Successor Representation with Agent Trajectory', fontsize=14, fontweight='bold')
+
+    plt.suptitle(
+        "Successor Representation with Agent Trajectory", fontsize=14, fontweight="bold"
+    )
     plt.tight_layout()
-    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.close()
 
 

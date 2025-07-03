@@ -1,6 +1,7 @@
 import os
 import sys
-sys.path.append('..')
+
+sys.path.append("..")
 
 from environment import World
 import agents as Agent
@@ -17,13 +18,13 @@ Original code from https://github.com/Nik-Kras/ToMnet-N
 def generate_trajectories(config=None):
     """
     Generate trajectories for Experiment 1 using A* agents
-    
+
     Args:
         config: Config object containing all parameters. If None, uses default values.
     """
     if config is None:
         config = Config()
-    
+
     n_games = config.n_games
     rows = config.rows
     cols = config.cols
@@ -88,27 +89,22 @@ if __name__ == "__main__":
         description="Generate trajectories for Experiment 1 using A* agents"
     )
     parser.add_argument(
-        "--config_override", action="store_true", 
-        help="Override config with command line arguments"
+        "--config_override",
+        action="store_true",
+        help="Override config with command line arguments",
     )
-    parser.add_argument(
-        "--n_games", type=int, help="Number of games to generate"
-    )
+    parser.add_argument("--n_games", type=int, help="Number of games to generate")
     parser.add_argument("--rows", type=int, help="Grid height")
     parser.add_argument("--cols", type=int, help="Grid width")
     parser.add_argument("--sight", type=int, help="Agent sight radius")
-    parser.add_argument(
-        "--max_moves", type=int, help="Maximum moves per episode"
-    )
+    parser.add_argument("--max_moves", type=int, help="Maximum moves per episode")
     parser.add_argument(
         "--observability",
         type=str,
         choices=["full", "partial"],
         help="Observability type: full or partial",
     )
-    parser.add_argument(
-        "--output_dir", type=str, help="Directory to save games"
-    )
+    parser.add_argument("--output_dir", type=str, help="Directory to save games")
     parser.add_argument(
         "--shuffle",
         action="store_true",
@@ -128,7 +124,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     config = Config()
-    
+
     # Override config with command line arguments if specified
     if args.config_override:
         if args.n_games is not None:

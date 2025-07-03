@@ -15,8 +15,12 @@ RESULTS_DIR="$BASE_DIR/result/experiment1"
 PLOTS_DIR="$BASE_DIR/plots/experiment1"
 LOG_DIR="$BASE_DIR/log"
 
+# Create timestamp for this run
+TIMESTAMP=$(date '+%Y%m%d_%H%M%S')
+RUN_LOG_DIR="$LOG_DIR/experiment1/$TIMESTAMP"
+
 # Create directories
-mkdir -p "$DATA_DIR" "$MODELS_DIR" "$RESULTS_DIR" "$PLOTS_DIR" "$LOG_DIR"
+mkdir -p "$DATA_DIR" "$MODELS_DIR" "$RESULTS_DIR" "$PLOTS_DIR" "$LOG_DIR" "$RUN_LOG_DIR"
 
 # Default parameters
 N_GAMES=5000
@@ -47,11 +51,14 @@ print_usage() {
 }
 
 log_step() {
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1"
+    local message="$(date '+%Y-%m-%d %H:%M:%S') - $1"
+    echo "$message"
+    echo "$message" >> "$RUN_LOG_DIR/execution.log"
 }
 
 run_data_generation() {
     log_step "Starting data generation for experiment $EXPERIMENT_NO"
+    log_step "Logging data generation output to: $RUN_LOG_DIR/data_generation.log"
     
     cd "$SCRIPTS_DIR/experiment1"
     python generate.py \
@@ -59,13 +66,15 @@ run_data_generation() {
         --output_dir "experiment1" \
         --save_dir "../../data" \
         --observability "full" \
-        --max_moves 50
+        --max_moves 50 \
+        > "$RUN_LOG_DIR/data_generation.log" 2>&1
     
     log_step "Data generation completed"
 }
 
 run_training() {
     log_step "Starting training for experiment $EXPERIMENT_NO"
+    log_step "Logging training output to: $RUN_LOG_DIR/training.log"
     
     cd "$SCRIPTS_DIR/experiment1"
     python train.py \
@@ -77,13 +86,15 @@ run_training() {
         --data_dir "../../data/experiment1" \
         --model_dir "../../models/experiment1" \
         --result_dir "../../result/experiment1" \
-        --plot_dir "../../plots/experiment1"
+        --plot_dir "../../plots/experiment1" \
+        > "$RUN_LOG_DIR/training.log" 2>&1
     
     log_step "Training completed"
 }
 
 run_evaluation() {
     log_step "Starting evaluation for experiment $EXPERIMENT_NO"
+    log_step "Logging evaluation output to: $RUN_LOG_DIR/evaluation.log"
     
     cd "$SCRIPTS_DIR/experiment1"
     python evaluate.py \
@@ -91,20 +102,23 @@ run_evaluation() {
         --device "$DEVICE" \
         --model_paths "../../models/experiment1/exp${EXPERIMENT_NO}_best.pth" \
         --test_data_paths "../../data/experiment1/processed_data_exp${EXPERIMENT_NO}.pkl" \
-        --result_dir "../../result/experiment1"
+        --result_dir "../../result/experiment1" \
+        > "$RUN_LOG_DIR/evaluation.log" 2>&1
     
     log_step "Evaluation completed"
 }
 
 run_visualization() {
     log_step "Starting visualization for experiment $EXPERIMENT_NO"
+    log_step "Logging visualization output to: $RUN_LOG_DIR/visualization.log"
     
     cd "$SCRIPTS_DIR/experiment1"
     python visualize.py \
         --experiment_no "$EXPERIMENT_NO" \
         --result_dir "../../result/experiment1" \
         --plot_dir "../../plots/experiment1" \
-        --plot_type "all"
+        --plot_type "all" \
+        > "$RUN_LOG_DIR/visualization.log" 2>&1
     
     log_step "Visualization completed"
 }
@@ -125,6 +139,7 @@ case $COMMAND in
         ;;
     all)
         log_step "Running complete ToMnetF pipeline for experiment $EXPERIMENT_NO"
+        log_step "All logs will be saved to: $RUN_LOG_DIR/"
         run_data_generation
         run_training
         run_evaluation
@@ -143,3 +158,19 @@ case $COMMAND in
 esac
 
 log_step "Script completed successfully"
+log_step "Log files saved to: $RUN_LOG_DIR/"
+echo ""
+echo "Log files created:"
+echo "  - $RUN_LOG_DIR/execution.log (main script execution log)"
+if [ -f "$RUN_LOG_DIR/data_generation.log" ]; then
+    echo "  - $RUN_LOG_DIR/data_generation.log"
+fi
+if [ -f "$RUN_LOG_DIR/training.log" ]; then
+    echo "  - $RUN_LOG_DIR/training.log"
+fi
+if [ -f "$RUN_LOG_DIR/evaluation.log" ]; then
+    echo "  - $RUN_LOG_DIR/evaluation.log"
+fi
+if [ -f "$RUN_LOG_DIR/visualization.log" ]; then
+    echo "  - $RUN_LOG_DIR/visualization.log"
+fi

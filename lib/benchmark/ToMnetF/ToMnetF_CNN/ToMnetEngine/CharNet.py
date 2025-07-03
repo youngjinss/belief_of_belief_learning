@@ -2,7 +2,7 @@ import torch
 from torch import nn
 from ToMnetEngine.Blocks.TimeDistirbutedCnn import TimeDistributedConv2d as Conv2dT
 from ToMnetEngine.Blocks.LSTM import LSTM as lstm
-from ToMnetEngine.Blocks.ResBlock import ResidualBlock
+from ToMnetEngine.Blocks.TimeDistributedResBlock import TimeDistributedResidualBlock
 
 """
 @Author Filip Borowiak 
@@ -36,7 +36,7 @@ class CharNet(nn.Module):
         self.res_blocks = nn.ModuleList()
 
         for i in range(self.n):
-            self.res_blocks.append(ResidualBlock(
+            self.res_blocks.append(TimeDistributedResidualBlock(
                 in_channels=self.out_channels,
                 out_channels=self.out_channels,
                 kernel_size=(3, 3),

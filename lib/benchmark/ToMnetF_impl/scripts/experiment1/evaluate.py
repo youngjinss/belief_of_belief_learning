@@ -118,25 +118,28 @@ def evaluate_model(model, test_loader, device, save_predictions=False, output_di
     return metrics
 
 
-def cross_species_evaluation(
-    model_paths,
-    test_data_paths,
-    device="cuda:0",
-    result_dir="../../result/experiment1",
-    experiment_no=1,
-    **model_kwargs,
-):
+def cross_species_evaluation(config=None, model_paths=None, test_data_paths=None):
     """
     Perform cross-species evaluation across different model types
 
     Args:
-        model_paths: List of paths to trained models
-        test_data_paths: List of paths to test datasets
-        device: Computing device
-        result_dir: Directory to save results
-        experiment_no: Experiment number
-        **model_kwargs: Model initialization parameters
+        config: Config object containing all evaluation parameters
+        model_paths: Optional list of paths to trained models (overrides config)
+        test_data_paths: Optional list of paths to test datasets (overrides config)
     """
+    if config is None:
+        config = Config()
+    
+    # Use provided paths or default from config
+    if model_paths is None:
+        model_paths = [os.path.join(config.model_dir, f"exp{config.experiment_no}_best.pth")]
+    if test_data_paths is None:
+        test_data_paths = [os.path.join(config.data_dir, f"processed_data_exp{config.experiment_no}.pkl")]
+    
+    device = config.device if torch.cuda.is_available() else "cpu"
+    result_dir = config.result_dir
+    experiment_no = config.experiment_no
+    model_kwargs = config.get_model_kwargs()
 
     os.makedirs(result_dir, exist_ok=True)
 
@@ -168,7 +171,7 @@ def cross_species_evaluation(
                 test_data["data_current_state"],
                 test_data["data_actions"],
             )
-            test_loader = DataLoader(test_dataset, batch_size=256, shuffle=False)
+            test_loader = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False)
 
             # Evaluate
             metrics = evaluate_model(
@@ -210,17 +213,37 @@ def cross_species_evaluation(
     return results
 
 
-def analyze_action_likelihood(model, test_loader, device, output_dir, n_samples=1000):
+def analyze_action_likelihood(config=None, model=None, test_loader=None, n_samples=1000):
     """
     Analyze action likelihood distributions
 
     Args:
-        model: Trained model
-        test_loader: Test data loader
-        device: Computing device
-        output_dir: Output directory
+        config: Config object containing evaluation parameters
+        model: Trained model (if None, loads from config)
+        test_loader: Test data loader (if None, creates from config)
         n_samples: Number of samples to analyze
     """
+    if config is None:
+        config = Config()
+    
+    device = config.device if torch.cuda.is_available() else "cpu"
+    output_dir = config.result_dir
+    
+    if model is None:
+        model_path = os.path.join(config.model_dir, f"exp{config.experiment_no}_best.pth")
+        model_kwargs = config.get_model_kwargs()
+        model = load_model(model_path, device, **model_kwargs)
+    
+    if test_loader is None:
+        test_data_path = os.path.join(config.data_dir, f"processed_data_exp{config.experiment_no}.pkl")
+        with open(test_data_path, "rb") as f:
+            test_data = pickle.load(f)
+        test_dataset = TensorDataset(
+            test_data["data_trajectories"],
+            test_data["data_current_state"],
+            test_data["data_actions"],
+        )
+        test_loader = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False)
 
     model.eval()
     action_likelihoods = {i: [] for i in range(4)}
@@ -272,33 +295,98 @@ def analyze_action_likelihood(model, test_loader, device, output_dir, n_samples=
 
 
 if __name__ == "__main__":
-    # Initialize configuration
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Evaluate ToMnet model for Experiment 1"
+    )
+    parser.add_argument(
+        "--config_override", action="store_true", 
+        help="Override config with command line arguments"
+    )
+    parser.add_argument(
+        "--data_dir", type=str, help="Directory containing test data"
+    )
+    parser.add_argument(
+        "--model_dir", type=str, help="Directory containing trained models"
+    )
+    parser.add_argument(
+        "--result_dir", type=str, help="Directory to save evaluation results"
+    )
+    parser.add_argument(
+        "--experiment_no", type=int, help="Experiment number"
+    )
+    parser.add_argument(
+        "--batch_size", type=int, help="Evaluation batch size"
+    )
+    parser.add_argument(
+        "--device", type=str, help="CUDA device (e.g., cuda:0)"
+    )
+    parser.add_argument(
+        "--model_paths", type=str, nargs="+", help="Paths to trained models"
+    )
+    parser.add_argument(
+        "--test_data_paths", type=str, nargs="+", help="Paths to test datasets"
+    )
+    parser.add_argument(
+        "--analysis_only", action="store_true", help="Run action likelihood analysis only"
+    )
+    parser.add_argument(
+        "--n_samples", type=int, default=1000, help="Number of samples for analysis"
+    )
+
+    args = parser.parse_args()
+
     config = Config()
     
-    device = config.device if torch.cuda.is_available() else "cpu"
-    
-    # Default model and data paths
-    model_paths = [os.path.join(config.model_dir, f"exp{config.experiment_no}_best.pth")]
-    test_data_paths = [os.path.join(config.data_dir, f"processed_data_exp{config.experiment_no}.pkl")]
-    
-    # Get model parameters from config
-    model_kwargs = config.get_model_kwargs()
+    # Override config with command line arguments if specified
+    if args.config_override:
+        if args.data_dir is not None:
+            config.data_dir = args.data_dir
+        if args.model_dir is not None:
+            config.model_dir = args.model_dir
+        if args.result_dir is not None:
+            config.result_dir = args.result_dir
+        if args.experiment_no is not None:
+            config.experiment_no = args.experiment_no
+        if args.batch_size is not None:
+            config.batch_size = args.batch_size
+        if args.device is not None:
+            config.device = args.device
 
-    if all(os.path.exists(path) for path in model_paths + test_data_paths):
-        results = cross_species_evaluation(
-            model_paths=model_paths,
-            test_data_paths=test_data_paths,
-            device=device,
-            result_dir=config.result_dir,
-            experiment_no=config.experiment_no,
-            **model_kwargs,
+    # Use command line model and data paths if provided
+    model_paths = args.model_paths
+    test_data_paths = args.test_data_paths
+    
+    if model_paths is None:
+        model_paths = [os.path.join(config.model_dir, f"exp{config.experiment_no}_best.pth")]
+    if test_data_paths is None:
+        test_data_paths = [os.path.join(config.data_dir, f"processed_data_exp{config.experiment_no}.pkl")]
+
+    if args.analysis_only:
+        # Run action likelihood analysis only
+        print("Running action likelihood analysis...")
+        stats = analyze_action_likelihood(
+            config=config,
+            n_samples=args.n_samples
         )
-        print(f"Evaluation completed successfully!")
+        print(f"Action likelihood analysis completed!")
+        for action, action_stats in stats.items():
+            print(f"{action}: mean={action_stats['mean']:.4f}, std={action_stats['std']:.4f}")
     else:
-        missing_files = [
-            path
-            for path in model_paths + test_data_paths
-            if not os.path.exists(path)
-        ]
-        print(f"Missing files: {missing_files}")
-        print("Please train the model and generate data first.")
+        # Run full cross-species evaluation
+        if all(os.path.exists(path) for path in model_paths + test_data_paths):
+            results = cross_species_evaluation(
+                config=config,
+                model_paths=model_paths,
+                test_data_paths=test_data_paths
+            )
+            print(f"Evaluation completed successfully!")
+        else:
+            missing_files = [
+                path
+                for path in model_paths + test_data_paths
+                if not os.path.exists(path)
+            ]
+            print(f"Missing files: {missing_files}")
+            print("Please train the model and generate data first.")

@@ -18,45 +18,33 @@ Advanced training system for ToMnetF
 """
 
 
-def train_tomnet(
-    data_dir="../../data/experiment1",
-    model_dir="../../models/experiment1",
-    result_dir="../../result/experiment1",
-    plot_dir="../../plots/experiment1",
-    log_dir="../../log/training",
-    experiment_no=1,
-    epochs=50,
-    batch_size=512,
-    lr=1e-4,
-    ts=10,
-    height=13,
-    width=13,
-    depth=10,
-    training_proportion=0.9,
-    use_percentage=0.9,
-    device="cuda:0",
-):
+def train_tomnet(config=None):
     """
     Train ToMnet model with comprehensive logging and evaluation
 
     Args:
-        data_dir: Directory containing training data
-        model_dir: Directory to save models
-        result_dir: Directory to save results
-        plot_dir: Directory to save plots
-        log_dir: Directory to save logs
-        experiment_no: Experiment number
-        epochs: Number of training epochs
-        batch_size: Training batch size
-        lr: Learning rate
-        ts: Trajectory size
-        height: Map height
-        width: Map width
-        depth: Tensor depth
-        training_proportion: Train/val split
-        use_percentage: Percentage of data to use
-        device: CUDA device
+        config: Config object containing all training parameters. If None, uses default values.
     """
+    if config is None:
+        config = Config()
+    
+    # Extract parameters from config
+    data_dir = config.data_dir
+    model_dir = config.model_dir
+    result_dir = config.result_dir
+    plot_dir = config.plot_dir
+    log_dir = config.log_dir
+    experiment_no = config.experiment_no
+    epochs = config.epochs
+    batch_size = config.batch_size
+    lr = config.lr
+    ts = config.ts
+    height = config.height
+    width = config.width
+    depth = config.depth
+    training_proportion = config.training_proportion
+    use_percentage = config.use_percentage
+    device = config.device
 
     # Create directories
     os.makedirs(model_dir, exist_ok=True)
@@ -157,16 +145,7 @@ def train_tomnet(
     device = torch.device(device if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    model = ToMnet(
-        Batch=batch_size,
-        ResidualBlocks=5,
-        N_echar=8,
-        out_channels=32,
-        Max_trajectory_size=ts,
-        Width=width,
-        Height=height,
-        Depth=depth,
-    )
+    model = ToMnet(**config.get_model_kwargs())
     model = model.to(device)
 
     # Print model parameters
@@ -310,8 +289,14 @@ def train_tomnet(
                 all_pred_val += act.size(0)
                 running_loss_val += loss.item()
 
-        val_acc = 100 * correct_pred_val / all_pred_val
-        val_loss = running_loss_val / len(val_loader)
+        # Handle case where validation set is empty
+        if all_pred_val > 0:
+            val_acc = 100 * correct_pred_val / all_pred_val
+            val_loss = running_loss_val / len(val_loader)
+        else:
+            val_acc = 0.0
+            val_loss = 0.0
+            print(f"Warning: No validation data in epoch {epoch}")
 
         # Store history
         train_history["epoch"].append(int(epoch))
@@ -320,12 +305,11 @@ def train_tomnet(
         train_history["val_accuracy"].append(float(val_acc))
         train_history["val_loss"].append(float(val_loss))
 
-        # Save best model
+        # Save best model if validation accuracy improved
         if val_acc > best_val_acc:
             best_val_acc = val_acc
             best_model_path = os.path.join(model_dir, f"exp{experiment_no}_best.pth")
             torch.save(model.state_dict(), best_model_path)
-            print(f"New best model saved with val_acc: {val_acc:.4f}%")
 
         print(
             f"Epoch: {epoch:3d} | Train Loss: {train_loss:.4f} | Train Acc: {train_acc:.4f}% | Val Acc: {val_acc:.4f}%"
@@ -337,6 +321,10 @@ def train_tomnet(
     # Save final model
     final_model_path = os.path.join(model_dir, f"exp{experiment_no}_final.pth")
     torch.save(model.state_dict(), final_model_path)
+    
+    # Ensure best_model_path is defined (fallback to final model if no best was saved)
+    if 'best_model_path' not in locals():
+        best_model_path = final_model_path
 
     # Save training history
     history_path = os.path.join(result_dir, f"exp{experiment_no}_training_history.json")
@@ -406,8 +394,102 @@ def create_training_plots(train_history, plot_dir, experiment_no):
 
 
 if __name__ == "__main__":
-    # Initialize configuration
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Train ToMnet model for Experiment 2"
+    )
+    parser.add_argument(
+        "--config_override", action="store_true", 
+        help="Override config with command line arguments"
+    )
+    parser.add_argument(
+        "--data_dir", type=str, help="Directory containing training data"
+    )
+    parser.add_argument(
+        "--model_dir", type=str, help="Directory to save models"
+    )
+    parser.add_argument(
+        "--result_dir", type=str, help="Directory to save results"
+    )
+    parser.add_argument(
+        "--plot_dir", type=str, help="Directory to save plots"
+    )
+    parser.add_argument(
+        "--log_dir", type=str, help="Directory to save logs"
+    )
+    parser.add_argument(
+        "--experiment_no", type=int, help="Experiment number"
+    )
+    parser.add_argument(
+        "--epochs", type=int, help="Number of training epochs"
+    )
+    parser.add_argument(
+        "--batch_size", type=int, help="Training batch size"
+    )
+    parser.add_argument(
+        "--lr", type=float, help="Learning rate"
+    )
+    parser.add_argument(
+        "--ts", type=int, help="Trajectory size"
+    )
+    parser.add_argument(
+        "--height", type=int, help="Map height"
+    )
+    parser.add_argument(
+        "--width", type=int, help="Map width"
+    )
+    parser.add_argument(
+        "--depth", type=int, help="Tensor depth"
+    )
+    parser.add_argument(
+        "--training_proportion", type=float, help="Train/val split proportion"
+    )
+    parser.add_argument(
+        "--use_percentage", type=float, help="Percentage of data to use"
+    )
+    parser.add_argument(
+        "--device", type=str, help="CUDA device (e.g., cuda:0)"
+    )
+
+    args = parser.parse_args()
+
     config = Config()
     
+    # Override config with command line arguments if specified
+    if args.config_override:
+        if args.data_dir is not None:
+            config.data_dir = args.data_dir
+        if args.model_dir is not None:
+            config.model_dir = args.model_dir
+        if args.result_dir is not None:
+            config.result_dir = args.result_dir
+        if args.plot_dir is not None:
+            config.plot_dir = args.plot_dir
+        if args.log_dir is not None:
+            config.log_dir = args.log_dir
+        if args.experiment_no is not None:
+            config.experiment_no = args.experiment_no
+        if args.epochs is not None:
+            config.epochs = args.epochs
+        if args.batch_size is not None:
+            config.batch_size = args.batch_size
+        if args.lr is not None:
+            config.lr = args.lr
+        if args.ts is not None:
+            config.ts = args.ts
+        if args.height is not None:
+            config.height = args.height
+        if args.width is not None:
+            config.width = args.width
+        if args.depth is not None:
+            config.depth = args.depth
+        if args.training_proportion is not None:
+            config.training_proportion = args.training_proportion
+        if args.use_percentage is not None:
+            config.use_percentage = args.use_percentage
+        if args.device is not None:
+            config.device = args.device
+
     # Train model using config parameters
-    model, history, results = train_tomnet(**config.get_training_kwargs())
+    model, history, results = train_tomnet(config)

@@ -33,7 +33,7 @@ lib/benchmark/ToMnetF_impl/models/
 lib/benchmark/ToMnetF_impl/log/
 lib/benchmark/ToMnetF_impl/plots/
 lib/benchmark/ToMnetF_impl/result/
-lib/benchmark/ToMnetF_impl/experiment.log
+lib/benchmark/ToMnetF_impl/experiment*.log
 
 # lib 폴더 내 ToMnetF 데이터 무시
 lib/benchmark/ToMnetF/data

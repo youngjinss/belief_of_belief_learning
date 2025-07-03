@@ -71,17 +71,7 @@ run_training() {
     log_step "Logging training output to: $RUN_LOG_DIR/training.log"
     
     cd "$SCRIPTS_DIR/experiment1"
-    python train.py \
-        --experiment_no "$EXPERIMENT_NO" \
-        --epochs "$EPOCHS" \
-        --batch_size "$BATCH_SIZE" \
-        --lr "$LR" \
-        --device "$DEVICE" \
-        --data_dir "../../data/experiment1" \
-        --model_dir "../../models/experiment1" \
-        --result_dir "../../result/experiment1" \
-        --plot_dir "../../plots/experiment1" \
-        > "$RUN_LOG_DIR/training.log" 2>&1
+    python train.py > "$RUN_LOG_DIR/training.log" 2>&1
     
     log_step "Training completed"
 }
@@ -91,13 +81,7 @@ run_evaluation() {
     log_step "Logging evaluation output to: $RUN_LOG_DIR/evaluation.log"
     
     cd "$SCRIPTS_DIR/experiment1"
-    python evaluate.py \
-        --experiment_no "$EXPERIMENT_NO" \
-        --device "$DEVICE" \
-        --model_paths "../../models/experiment1/exp${EXPERIMENT_NO}_best.pth" \
-        --test_data_paths "../../data/experiment1/processed_data_exp${EXPERIMENT_NO}.pkl" \
-        --result_dir "../../result/experiment1" \
-        > "$RUN_LOG_DIR/evaluation.log" 2>&1
+    python evaluate.py > "$RUN_LOG_DIR/evaluation.log" 2>&1
     
     log_step "Evaluation completed"
 }

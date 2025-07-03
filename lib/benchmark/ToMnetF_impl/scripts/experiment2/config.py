@@ -12,7 +12,7 @@ class Config:
         self.width = 13
         self.height = 13
         self.max_moves = 50
-        self.output_dir = "experiment2"
+        self.output_dir = "data"
         self.shuffle = False
         self.no_walls = False
         

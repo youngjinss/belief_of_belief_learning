@@ -182,6 +182,7 @@ def train():
         )
 
     print("Finished Training!")
+    plt.figure(figsize=(10, 5))
     plt.plot(
         [epoch for epoch in range(EPOCHS)], train_accuracy, label="Training accuracy"
     )
@@ -194,10 +195,11 @@ def train():
     plt.legend()
     plt.title("Training and Validation Accuracy")
     plt.savefig(
-        f"ToMnetF/Results/Model/Experiment{EXPERIMENT_NO}/accuracy_experiment{EXPERIMENT_NO}"
+        f"./Results/Model/Experiment{EXPERIMENT_NO}/accuracy_experiment{EXPERIMENT_NO}"
     )
-    plt.show()
+    plt.close()
 
+    plt.figure(figsize=(10, 5))
     plt.plot([epoch for epoch in range(EPOCHS)], train_loss, label="Training loss")
     plt.plot([epoch for epoch in range(EPOCHS)], val_loss, label="Validation loss")
     plt.xlabel("Epoch")
@@ -206,13 +208,13 @@ def train():
     plt.legend()
     plt.title("Training and Validation Loss")
     plt.savefig(
-        f"ToMnetF/Results/Model/Experiment{EXPERIMENT_NO}/loss_experiment{EXPERIMENT_NO}"
+        f"./Results/Model/Experiment{EXPERIMENT_NO}/loss_experiment{EXPERIMENT_NO}"
     )
-    plt.show()
+    plt.close()
 
 
 train()
 
 print("Saving Model")
-model.SaveModel(f"ToMnetF/Results/Model/Experiment{EXPERIMENT_NO}/ToMnetF.pt")
+model.SaveModel(f"./Results/Model/Experiment{EXPERIMENT_NO}/ToMnetF.pt")
 print("Model Saved - Bye!")

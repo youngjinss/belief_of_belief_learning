@@ -360,7 +360,7 @@ class AgentStar:
 
         # Save the Game line by line
         new_file_path = os.path.join(gf, "test" + str(new_name_number) + ".txt")
-        realmap = self.render()
+        # realmap = self.render()
 
         with open(new_file_path, "w") as f:
             f.write("Maze:\n")

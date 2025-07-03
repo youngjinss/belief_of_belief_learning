@@ -96,7 +96,6 @@ model = ToMnet(
     Width=WIDTH,
     Height=HEIGHT,
     Depth=DEPTH,
-    device=device,
 )
 model = model.to(device)
 

@@ -19,7 +19,6 @@ class ToMnet(nn.Module):
         Width: int,
         Height: int,
         Depth: int,
-        device: torch.device,
     ):
         super(ToMnet, self).__init__()
 
@@ -40,7 +39,6 @@ class ToMnet(nn.Module):
             out_channels=self.out_channels,
             time_frame=self.ts,
         )
-        self.char_net = self.char_net.to(device)
 
         self.pred_net = PredNet(
             Batch=self.B,
@@ -49,7 +47,6 @@ class ToMnet(nn.Module):
             out_channels=self.out_channels,
             time_frame=self.ts,
         )
-        self.pred_net = self.pred_net.to(device)
 
     def SaveModel(self, destination):
         torch.save(self.state_dict(), destination)

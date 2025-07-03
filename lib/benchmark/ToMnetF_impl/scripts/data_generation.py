@@ -328,14 +328,11 @@ class DataReader:
         values = [val for _, val in directions_total.items()]
 
         # Create result directory for plots
-        result_dir = f"../../../result/experiment{self.EXPERIMENT_NO}"
-        os.makedirs(result_dir, exist_ok=True)
-
         plt.bar(names, values)
         plt.grid(True)
         plt.legend()
         plt.title("Distribution of Actions")
-        plt.savefig(f"{result_dir}/action_distribution")
+        plt.savefig(f"{directory}/action_distribution")
         plt.show()
 
         return all_games

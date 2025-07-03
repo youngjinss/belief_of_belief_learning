@@ -43,6 +43,12 @@ log_step() {
 }
 
 run_data_generation() {
+    # Check if data already exists
+    if [ -f "$DATA_DIR/processed_data_exp1.pkl" ]; then
+        log_step "Data generation skipped - processed_data_exp1.pkl already exists"
+        return 0
+    fi
+    
     log_step "Starting data generation for experiment $EXPERIMENT_NO"
     log_step "Logging data generation output to: $RUN_LOG_DIR/data_generation.log"
     
@@ -53,6 +59,12 @@ run_data_generation() {
 }
 
 run_training() {
+    # Check if training already completed
+    if [ -f "$MODELS_DIR/exp1_best.pth" ] && [ -f "$RESULTS_DIR/exp1_results.json" ]; then
+        log_step "Training skipped - exp1_best.pth and exp1_results.json already exist"
+        return 0
+    fi
+    
     log_step "Starting training for experiment $EXPERIMENT_NO"
     log_step "Logging training output to: $RUN_LOG_DIR/training.log"
     
@@ -63,6 +75,12 @@ run_training() {
 }
 
 run_evaluation() {
+    # Check if evaluation already completed
+    if [ -f "$RESULTS_DIR/cross_species_evaluation_exp1.json" ]; then
+        log_step "Evaluation skipped - cross_species_evaluation_exp1.json already exists"
+        return 0
+    fi
+    
     log_step "Starting evaluation for experiment $EXPERIMENT_NO"
     log_step "Logging evaluation output to: $RUN_LOG_DIR/evaluation.log"
     
@@ -73,6 +91,12 @@ run_evaluation() {
 }
 
 run_visualization() {
+    # Check if visualization already completed
+    if [ -f "$PLOTS_DIR/training_curves_exp1.png" ] && [ -f "$PLOTS_DIR/confusion_matrix_exp1.png" ]; then
+        log_step "Visualization skipped - training_curves_exp1.png and confusion_matrix_exp1.png already exist"
+        return 0
+    fi
+    
     log_step "Starting visualization for experiment $EXPERIMENT_NO"
     log_step "Logging visualization output to: $RUN_LOG_DIR/visualization.log"
     

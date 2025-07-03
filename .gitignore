@@ -13,6 +13,7 @@ lib/benchmark/Machine_ToM/
 lib/benchmark/RepBelief/
 lib/benchmark/AmortizedNestedReasoning/
 lib/benchmark/ToMnet-N/
+lib/benchmark/ToMnetF/*
 
 # lib 폴더 내 ToMnet 구현한 결과 데이터 무시
 lib/benchmark/ToMnet_impl/data/
@@ -34,10 +35,6 @@ lib/benchmark/ToMnetF_impl/log/
 lib/benchmark/ToMnetF_impl/plots/
 lib/benchmark/ToMnetF_impl/result/
 lib/benchmark/ToMnetF_impl/experiment*.log
-
-# lib 폴더 내 ToMnetF 데이터 무시
-lib/benchmark/ToMnetF/data
-lib/benchmark/ToMnetF/Results/
 
 # lib 폴더 내 (구현된) env 무시
 lib/env/lb-foraging/

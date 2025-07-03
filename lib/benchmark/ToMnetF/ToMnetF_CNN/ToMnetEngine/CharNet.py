@@ -33,7 +33,7 @@ class CharNet(nn.Module):
         self.conv_1 = Conv2dT(
             time_frame=self.time_frame
         )  # Use time frame conv2d to process different lengths of sequence
-        self.res_blocks = [None] * self.n
+        self.res_blocks = nn.ModuleList()
 
         for i in range(self.n):
             self.res_blocks[i] = ResidualBlock(

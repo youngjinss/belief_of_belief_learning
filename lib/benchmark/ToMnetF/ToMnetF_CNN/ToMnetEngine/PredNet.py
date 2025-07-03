@@ -33,7 +33,7 @@ class PredNet(nn.Module):
             stride=1,
             padding=1,
         )
-        self.res_blocks = [None] * self.n
+        self.res_blocks = nn.ModuleList()
 
         for i in range(self.n):
             self.res_blocks[i] = ResidualBlock(

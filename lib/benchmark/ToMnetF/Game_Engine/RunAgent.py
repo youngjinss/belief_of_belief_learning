@@ -11,8 +11,8 @@ import numpy as np
 ROWS = 13
 COLS = 13
 SIGHT = 3
-N_GAMES = 10
-MAX_MOVES = 50
+N_GAMES = 100000
+MAX_MOVES = 30
 OBSERVABILITY = "full"
 OUTPUT_DIR = "Experiment2"
 SHUFFLE = False
@@ -28,12 +28,12 @@ env = World(
 
 for i in range(N_GAMES):
     env.reset()
-    env.render()
+    # env.render()
     agent = Agent.AgentStar(env, SIGHT, observability=OBSERVABILITY)
 
     while True:
         agent.update_world_observation()
-        agent.render()
+        # agent.render()
 
         action = agent.chose_action(observability=OBSERVABILITY)
         # print(action)

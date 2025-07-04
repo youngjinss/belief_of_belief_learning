@@ -42,7 +42,6 @@ class DataReader:
         steps = []
         consumption_labels = None
         sr_maps = {}
-        past_episodes = []  # Store past episodes for N_past
 
         traj = np.empty(
             (self.MAZE_DEPTH_TRAJECTORY, self.MAZE_WIDTH, self.MAZE_HEIGHT, 1)
@@ -98,29 +97,10 @@ class DataReader:
                     self.MAZE_WIDTH, self.MAZE_HEIGHT
                 )
             
-            # Parse N_past
-            if x.startswith("N_past:"):
-                n_past = int(x.split(":")[1].strip())
-            
-            # Parse past episodes
-            if x.startswith("Past_episode_"):
-                # Format: Past_episode_0: [x,y]:action
-                episode_str = x.split(":")[1:]
-                pos_str = episode_str[0].strip()
-                action = int(episode_str[1].strip())
-                # Extract position from [x,y]
-                pos_match = re.match(r'\[(\d+),(\d+)\]', pos_str)
-                if pos_match:
-                    pos_x = int(pos_match.group(1))
-                    pos_y = int(pos_match.group(2))
-                    past_episodes.append(((pos_x, pos_y), action))
-
             if (
                 idx >= 18
                 and not x.startswith("Consumption Labels:")
                 and not x.startswith("SR_gamma_")
-                and not x.startswith("N_past:")
-                and not x.startswith("Past_episode_")
             ):
 
                 # Parse trajectory lines: [x, y] : action : goal
@@ -139,6 +119,7 @@ class DataReader:
                     continue
 
                 trajectory[temp_pos] = temp_traj
+
 
         map = np.array(map)  # Map
         consumed = consumed[0][19]  # Consumed goal
@@ -215,7 +196,7 @@ class DataReader:
         else:
             sr_array = None
 
-        return traj, act, goal, directions, consumption_labels, sr_array, past_episodes
+        return traj, act, goal, directions, consumption_labels, sr_array
 
     def LoadAllGames(self, use_percentage, directory):
         # Get names of games
@@ -239,7 +220,6 @@ class DataReader:
         labels = []  # np.empty(1)
         consumption_labels_list = []
         sr_maps_list = []
-        past_episodes_list = []  # Store past episodes for each game
         """
             How to read Actions:
             0 - UP
@@ -262,7 +242,7 @@ class DataReader:
         for i, file in enumerate(files):
 
             # Read one game
-            traj, act, goal, directions, consumption_labels, sr_map, past_episodes = self.ReadOneGame(
+            traj, act, goal, directions, consumption_labels, sr_map = self.ReadOneGame(
                 filename=os.path.join(directory, file)
             )
 
@@ -277,7 +257,6 @@ class DataReader:
             labels.append(goal)
             consumption_labels_list.append(consumption_labels)
             sr_maps_list.append(sr_map)
-            past_episodes_list.append(past_episodes)
 
             # Keep track on progress
             if i >= int(np.ceil(j * Nfraction / 100)) - 1:
@@ -293,7 +272,6 @@ class DataReader:
         data_labels = []
         data_consumption_labels = []
         data_sr_maps = []
-        data_past_episodes = []
         j = 0  # for tracking progress (%)
 
         # Process Game-per-Game
@@ -312,14 +290,12 @@ class DataReader:
                 data_labels1,
                 consumption_labels1,
                 sr_maps1,
-                past_episodes1,
             ) = self.generateDataFromGame(
                 trajectories=trajectories[i],
                 actions=actions[i],
                 labels=labels[i],
                 consumption_labels=consumption_labels_list[i],
                 sr_map=sr_maps_list[i],
-                past_episodes=past_episodes_list[i],
             )
 
             # Append to a single structure
@@ -329,7 +305,6 @@ class DataReader:
             data_labels.append(data_labels1)
             data_consumption_labels.append(consumption_labels1)
             data_sr_maps.append(sr_maps1)
-            data_past_episodes.append(past_episodes1)
 
             # Keep track on progress
             if i >= int(np.ceil(j * Nfraction / 100)) - 1:
@@ -346,7 +321,6 @@ class DataReader:
             "labels_history": data_labels,
             "consumption_labels_history": data_consumption_labels,
             "sr_maps_history": data_sr_maps,
-            "past_episodes_history": data_past_episodes,
         }
 
         print(f"Directions count: {directions_total}")
@@ -365,7 +339,7 @@ class DataReader:
         return all_games
 
     def generateDataFromGame(
-        self, trajectories, actions, labels, consumption_labels, sr_map, past_episodes
+        self, trajectories, actions, labels, consumption_labels, sr_map
     ):
 
         # Make full data from a game
@@ -375,7 +349,6 @@ class DataReader:
         data_labels = []
         data_consumption_labels = []
         data_sr_maps = []
-        data_past_episodes = []
 
         MIN_ACTIONS = 6
         for i in range(MIN_ACTIONS, trajectories.shape[-1]):
@@ -404,8 +377,6 @@ class DataReader:
                     np.zeros((3, self.MAZE_WIDTH, self.MAZE_HEIGHT), dtype=np.float32)
                 )
             
-            # Add past episodes
-            data_past_episodes.append(past_episodes)
 
         return (
             data_trajectories,
@@ -414,7 +385,6 @@ class DataReader:
             data_labels,
             data_consumption_labels,
             data_sr_maps,
-            data_past_episodes,
         )
 
     def goal_sym_to_num(self, goal_sym):
@@ -449,7 +419,6 @@ class DataProcessor:
         # "current_state_history": data_current_state, # (1walls + 1player + 4goals)
         # "actions_history": data_actions,             # actions
         # "labels_history": data_labels                # goals
-        # "past_episodes_history": data_past_episodes  # past episodes for N_past
         # }
         uniform_shape = (
             1,
@@ -465,15 +434,12 @@ class DataProcessor:
         unfolded_goal_history = []
         unfolded_consumption_labels = []
         unfolded_sr_maps = []
-        unfolded_past_episodes = []
-        unfolded_n_past = []
         all_trajectories = all_games["traj_history"]
         all_current_states = all_games["current_state_history"]
         all_actions = all_games["actions_history"]
         all_labels = all_games["labels_history"]
         all_consumption_labels = all_games.get("consumption_labels_history", [])
         all_sr_maps = all_games.get("sr_maps_history", [])
-        all_past_episodes = all_games.get("past_episodes_history", [])
         N_all_games = len(all_trajectories)
 
         # Go one by one game
@@ -489,7 +455,6 @@ class DataProcessor:
                 all_consumption_labels[i] if i < len(all_consumption_labels) else []
             )
             sr_map = all_sr_maps[i] if i < len(all_sr_maps) else []
-            past_eps = all_past_episodes[i] if i < len(all_past_episodes) else []
             N_traj = len(
                 traj
             )  # traj.shape[0]      # Number of trajectories in current game
@@ -512,9 +477,6 @@ class DataProcessor:
                     else np.zeros(
                         (3, self.MAZE_WIDTH, self.MAZE_HEIGHT), dtype=np.float32
                     )
-                )
-                current_past_episodes = (
-                    past_eps[j] if j < len(past_eps) else []
                 )
 
                 ### Trajectory
@@ -547,24 +509,6 @@ class DataProcessor:
 
                 ### SR maps
                 unfolded_sr_maps.append(current_sr_map)
-                
-                ### Past episodes
-                # Process past episodes and pad them
-                n_past = len(current_past_episodes)
-                unfolded_n_past.append(n_past)
-                
-                # Create padded past episodes tensor
-                # Shape: (MAX_N_PAST, 6) where 6 = 2 (position) + 4 (one-hot action)
-                past_episodes_tensor = np.zeros((self.MAX_N_PAST, 6), dtype=np.float32)
-                
-                for ep_idx, (pos, action) in enumerate(current_past_episodes[:self.MAX_N_PAST]):
-                    # Position
-                    past_episodes_tensor[ep_idx, 0] = pos[0]
-                    past_episodes_tensor[ep_idx, 1] = pos[1]
-                    # One-hot action
-                    past_episodes_tensor[ep_idx, 2 + action] = 1.0
-                
-                unfolded_past_episodes.append(past_episodes_tensor)
 
             # Keep track on progress
             if i >= int(N_all_games * tracker_var / 100) - 2:
@@ -577,8 +521,6 @@ class DataProcessor:
         unfolded_goal_history = np.array(unfolded_goal_history)
         unfolded_consumption_labels = np.array(unfolded_consumption_labels)
         unfolded_sr_maps = np.array(unfolded_sr_maps)
-        unfolded_past_episodes = np.array(unfolded_past_episodes)
-        unfolded_n_past = np.array(unfolded_n_past)
 
         all_games["traj_history"] = all_trajectories
         all_games["traj_history_zp"] = zero_padded_trajectories
@@ -587,13 +529,10 @@ class DataProcessor:
         all_games["labels_history"] = unfolded_goal_history
         all_games["consumption_labels_history"] = unfolded_consumption_labels
         all_games["sr_maps_history"] = unfolded_sr_maps
-        all_games["past_episodes_history"] = unfolded_past_episodes
-        all_games["n_past_history"] = unfolded_n_past
 
         print(f"traj_zp history shape: {all_games['traj_history_zp'].shape}")
         print(f"samples: {all_games['traj_history_zp'].shape[0]}")
         print(f"trajectory size: {all_games['traj_history_zp'].shape}")
-        print(f"past episodes shape: {all_games['past_episodes_history'].shape}")
 
         print("Zero Padding was applied!")
 
@@ -647,8 +586,6 @@ def generate_input_data(
     data_labels = all_games["labels_history"]
     data_consumption_labels = all_games.get("consumption_labels_history", None)
     data_sr_maps = all_games.get("sr_maps_history", None)
-    data_past_episodes = all_games.get("past_episodes_history", None)
-    data_n_past = all_games.get("n_past_history", None)
 
     # Convert to tensors
     data_traj = torch.tensor(data_trajectories_zp, dtype=torch.float32)
@@ -667,16 +604,6 @@ def generate_input_data(
     else:
         data_sr = None
     
-    # Convert past episodes data
-    if data_past_episodes is not None:
-        data_past_eps = torch.tensor(data_past_episodes, dtype=torch.float32)
-    else:
-        data_past_eps = None
-    
-    if data_n_past is not None:
-        data_n_past_tensor = torch.tensor(data_n_past, dtype=torch.long)
-    else:
-        data_n_past_tensor = None
 
     # Save processed data
     processed_data = {
@@ -686,8 +613,6 @@ def generate_input_data(
         "data_labels": data_labels,
         "data_consumption_labels": data_consumption,
         "data_sr_maps": data_sr,
-        "data_past_episodes": data_past_eps,
-        "data_n_past": data_n_past_tensor,
         "metadata": {
             "time_step": time_step,
             "height": height,
@@ -708,8 +633,10 @@ def generate_input_data(
     print(f"Number of samples: {data_traj.shape[0]}")
     print(f"Trajectory shape: {data_traj.shape}")
     print(f"Current state shape: {data_curr.shape}")
-    if data_past_eps is not None:
-        print(f"Past episodes shape: {data_past_eps.shape}")
+    if data_consumption is not None:
+        print(f"Consumption labels shape: {data_consumption.shape}")
+    if data_sr is not None:
+        print(f"SR maps shape: {data_sr.shape}")
 
     return processed_data
 

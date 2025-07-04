@@ -187,29 +187,39 @@ class CharNet(nn.Module):
         self.lstm = LSTM(self.out_channels, self.hidden_size_lstm)
 
         # Character embedding layers
+        self.e_char = nn.Linear(self.hidden_size_lstm, N_echar)
+        
         if self.use_n_past:
-            # Past episode processing network
-            # Input: (position_x, position_y, action_one_hot) = 6 dimensions
-            self.past_episode_encoder = nn.Sequential(
-                nn.Linear(6, self.out_channels),
-                nn.ReLU(),
-                nn.Linear(self.out_channels, self.N_echar),
+            # Past episode processing using same architecture as current trajectory
+            # Each past episode has same format as current trajectory
+            self.past_conv_1 = TimeDistributedConv2d(
+                out_channels=out_channels,
+                time_step=self.time_step
             )
+            self.past_res_blocks = nn.ModuleList()
             
-            # Final character embedding combines current trajectory + past episodes
-            self.e_char = nn.Linear(self.hidden_size_lstm, N_echar)
-        else:
-            self.e_char = nn.Linear(self.hidden_size_lstm, N_echar)
+            for i in range(self.n):
+                self.past_res_blocks.append(
+                    TimeDistributedResidualBlock(
+                        in_channels=self.out_channels,
+                        out_channels=self.out_channels,
+                        kernel_size=(3, 3),
+                        padding=1,
+                        stride=1,
+                    )
+                )
+            
+            self.past_lstm = LSTM(self.out_channels, self.hidden_size_lstm)
+            self.past_e_char = nn.Linear(self.hidden_size_lstm, N_echar)
 
-    def forward(self, x, past_episodes=None, n_past=None):
+    def forward(self, x, past_episodes=None):
         """
         Args:
-            x: Current trajectory tensor (Batch x channels x Width x Height x time_frame)
-            past_episodes: Past episodes tensor (Batch x max_n_past x 6)
-            n_past: Number of past episodes per sample (Batch,)
+            x: Current trajectory tensor (Batch x channels x Width x Height x time_step)
+            past_episodes: Past episodes tensor (Batch x max_n_past x channels x Width x Height x time_step)
         """
         # Process current trajectory
-        x = self.conv_1(x)  # (Batch x channels x Width x Height x time frame)
+        x = self.conv_1(x)  # (Batch x channels x Width x Height x time_step)
 
         for i in range(self.n):
             x = self.res_blocks[i](x)
@@ -224,22 +234,37 @@ class CharNet(nn.Module):
 
         # Process past episodes if available
         if self.use_n_past and past_episodes is not None:
-            batch_size = past_episodes.size(0)
+            batch_size, n_past_max = past_episodes.size(0), past_episodes.size(1)
             
             # Initialize character embedding from past episodes
             e_char_past = torch.zeros(batch_size, self.N_echar).to(past_episodes.device)
             
-            # Process each sample in the batch
-            for i in range(batch_size):
-                if n_past is not None and n_past[i] > 0:
-                    # Get past episodes for this sample
-                    sample_past_episodes = past_episodes[i, :n_past[i]]  # (n_past[i], 6)
+            # Process each past episode and sum according to: e_char,i = sum(e_char,ij)
+            for ep_idx in range(n_past_max):
+                # Get episode ep_idx for all samples in batch
+                episode_batch = past_episodes[:, ep_idx]  # (batch, channels, height, width, time_step)
+                
+                # Check if episode is non-zero (not masked)
+                episode_mask = torch.sum(episode_batch.view(batch_size, -1), dim=1) > 0  # (batch,)
+                
+                if episode_mask.any():
+                    # Process this episode through the same network architecture
+                    ep_x = self.past_conv_1(episode_batch)
                     
-                    # Encode each past episode
-                    encoded_episodes = self.past_episode_encoder(sample_past_episodes)  # (n_past[i], N_echar)
+                    for i in range(self.n):
+                        ep_x = self.past_res_blocks[i](ep_x)
                     
-                    # Sum contributions according to paper: e_char,i = sum(e_char,ij)
-                    e_char_past[i] = torch.sum(encoded_episodes, dim=0)
+                    ep_x = torch.mean(ep_x, [2, 3])
+                    ep_x = ep_x.reshape([batch_size, self.time_step, self.out_channels])
+                    ep_x = self.past_lstm(ep_x)
+                    
+                    # Get character embedding for this episode
+                    ep_e_char = self.past_e_char(ep_x)  # (batch, N_echar)
+                    
+                    # Add to cumulative sum only for non-masked episodes
+                    for batch_idx in range(batch_size):
+                        if episode_mask[batch_idx]:
+                            e_char_past[batch_idx] += ep_e_char[batch_idx]
             
             # Combine trajectory and past episode embeddings
             e_char_combined = e_char_traj + e_char_past
@@ -416,11 +441,9 @@ class ToMnet(nn.Module):
         input_current_state = data[1]  #  input_current
         
         # Check if past episodes data is provided
-    
         if len(data) > 2 and self.use_n_past:
-            past_episodes = data[2]  # past episodes tensor
-            n_past = data[3] if len(data) > 3 else None  # number of past episodes
-            e_char = self.char_net(input_trajectory, past_episodes, n_past)
+            past_episodes = data[2]  # past episodes tensor (batch, n_past_max, channels, height, width, time_step)
+            e_char = self.char_net(input_trajectory, past_episodes)
         else:
             e_char = self.char_net(input_trajectory)
 

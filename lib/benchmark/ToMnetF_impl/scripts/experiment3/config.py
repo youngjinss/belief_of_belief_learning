@@ -21,7 +21,7 @@ class Config:
         self.residual_blocks = 5
         self.e_char = 8
         self.out_channels = 32
-        self.time_step = 10  # Unified trajectory/time parameter
+        self.time_step = 50  # slicing time step = same with max_moves
         self.depth = 10
 
         # Training settings
@@ -44,6 +44,7 @@ class Config:
         # N_past settings for character embedding
         self.n_past_min = 0  # Minimum number of past episodes
         self.n_past_max = 10  # Maximum number of past episodes
+        self.n_past_infer = 10 # Maximum number for inference
         self.use_n_past = True  # Whether to use past episodes for character embedding
 
     def get_model_kwargs(self):

@@ -12,11 +12,84 @@ sys.path.append("..")
 from tomnet import ToMnet
 from data_generation import generate_input_data
 from config import Config
+from visualize import create_additional_visualizations
+import random
 
 """
 Advanced training system for ToMnetF
 @Author Filip Borowiak
 """
+
+
+def generate_past_episodes_from_batch(trajectories, goals, batch_size, n_past_min, n_past_max, max_n_past):
+    """
+    Generate past episodes by randomly sampling from other trajectories in the batch
+    with the same goal, using fully vectorized operations for efficiency
+    
+    Args:
+        trajectories: Batch of trajectories [batch_size, depth, height, width, time_step]
+        goals: Batch of goal labels [batch_size] 
+        batch_size: Size of current batch
+        n_past_min: Minimum number of past episodes to sample
+        n_past_max: Maximum number of past episodes to sample
+        max_n_past: Maximum number of past episodes for consistent tensor shape
+        
+    Returns:
+        past_episodes_batch: [batch_size, max_n_past, depth, height, width, time_step]
+    """
+    device = trajectories.device
+    depth, height, width, time_step = trajectories.shape[1:]
+    
+    # Initialize past episodes tensor
+    past_episodes_batch = torch.zeros(
+        (batch_size, max_n_past, depth, height, width, time_step), 
+        dtype=trajectories.dtype, 
+        device=device
+    )
+    
+    # Generate random n_past values for all samples at once
+    n_past_values = torch.randint(n_past_min, n_past_max + 1, (batch_size,), device=device)
+    
+    # Create goal similarity matrix (batch_size x batch_size)
+    # same_goal_mask[i, j] = True if sample i and j have the same goal
+    goals_expanded = goals.unsqueeze(1)  # [batch_size, 1]
+    same_goal_mask = (goals_expanded == goals.unsqueeze(0))  # [batch_size, batch_size]
+    
+    # Exclude self-matches by setting diagonal to False
+    same_goal_mask.fill_diagonal_(False)
+    
+    # Create random sampling matrix for all samples at once
+    # For each sample, we create random indices for selecting past episodes
+    rand_matrix = torch.rand(batch_size, batch_size, device=device)
+    
+    # Mask out invalid sources (different goals or self)
+    rand_matrix = rand_matrix * same_goal_mask.float()
+    
+    # For each sample, sort the random values to get sampling order
+    sorted_vals, sorted_indices = torch.sort(rand_matrix, dim=1, descending=True)
+    
+    # Process all samples in parallel
+    for ep_idx in range(max_n_past):
+        # Create mask for samples that need this episode
+        needs_episode = n_past_values > ep_idx
+        
+        if needs_episode.any():
+            # Get the source indices for this episode position
+            source_indices = sorted_indices[needs_episode, ep_idx]
+            
+            # Check if source is valid (non-zero in sorted_vals means same goal)
+            valid_sources = sorted_vals[needs_episode, ep_idx] > 0
+            
+            # Create indices for assignment
+            target_indices = torch.where(needs_episode)[0]
+            valid_targets = target_indices[valid_sources]
+            valid_sources_idx = source_indices[valid_sources]
+            
+            # Vectorized copy of trajectories
+            if len(valid_targets) > 0:
+                past_episodes_batch[valid_targets, ep_idx] = trajectories[valid_sources_idx]
+    
+    return past_episodes_batch
 
 
 def train_tomnet(config=None):
@@ -88,14 +161,16 @@ def train_tomnet(config=None):
     data_labels = processed_data["data_labels"]
     data_consumption = processed_data.get("data_consumption_labels", None)
     data_sr = processed_data.get("data_sr_maps", None)
-    data_past_episodes = processed_data.get("data_past_episodes", None)
-    data_n_past = processed_data.get("data_n_past", None)
 
     print(f"Data shapes:")
     print(f"Trajectories: {data_traj.shape}")
     print(f"Current states: {data_curr.shape}")
     print(f"Actions: {data_act.shape}")
     print(f"Labels: {data_labels.shape}")
+    
+    # Convert labels to tensor if not already
+    if not isinstance(data_labels, torch.Tensor):
+        data_labels = torch.tensor(data_labels, dtype=torch.long)
 
     # Check if SR and consumption data are available
     has_new_labels = data_consumption is not None and data_sr is not None
@@ -105,20 +180,13 @@ def train_tomnet(config=None):
     else:
         print("Warning: SR and consumption labels not found. Using dummy labels.")
     
-    # Check if N_past data is available
-    has_n_past = data_past_episodes is not None and data_n_past is not None
-    if has_n_past:
-        print(f"Past episodes: {data_past_episodes.shape}")
-        print(f"N_past: {data_n_past.shape}")
-    else:
-        print("Warning: N_past data not found. Character embedding will use trajectory only.")
+    # N_past will be handled by randomly sampling from batch data during training
+    print("N_past will be generated by randomly sampling from other trajectories in each batch")
 
-    # Create dataset - include N_past data if available
-    dataset_components = [data_traj, data_curr, data_act]
+    # Create dataset - include labels for goal-based sampling
+    dataset_components = [data_traj, data_curr, data_act, data_labels]
     if has_new_labels:
         dataset_components.extend([data_consumption, data_sr])
-    if has_n_past:
-        dataset_components.extend([data_past_episodes, data_n_past])
     
     dataset = TensorDataset(*dataset_components)
 
@@ -198,10 +266,10 @@ def train_tomnet(config=None):
         model.train()
         for idx, data in enumerate(train_loader):
             # Parse data based on what's available
-            traj, curr, act = data[0], data[1], data[2]
-            traj, curr, act = traj.to(device), curr.to(device), act.to(device)
+            traj, curr, act, goals = data[0], data[1], data[2], data[3]
+            traj, curr, act, goals = traj.to(device), curr.to(device), act.to(device), goals.to(device)
             
-            data_idx = 3
+            data_idx = 4  # Updated since we now have goals at index 3
             
             # Handle consumption and SR labels
             if has_new_labels and len(data) > data_idx:
@@ -214,12 +282,19 @@ def train_tomnet(config=None):
                 consumption_target = torch.zeros(batch_size, 4).to(device)
                 sr_target = torch.zeros(batch_size, 3, 13, 13).to(device)
             
-            # Handle N_past data
+            # Generate N_past data by randomly sampling from batch trajectories with same goal
             model_inputs = [traj, curr]
-            if has_n_past and len(data) > data_idx:
-                past_episodes = data[data_idx].to(device)
-                n_past = data[data_idx + 1].to(device)
-                model_inputs.extend([past_episodes, n_past])
+            
+            # Generate past episodes from other trajectories in the batch with same goal
+            past_episodes_batch = generate_past_episodes_from_batch(
+                trajectories=traj,
+                goals=goals,
+                batch_size=traj.size(0),
+                n_past_min=config.n_past_min,
+                n_past_max=config.n_past_max,
+                max_n_past=config.n_past_max
+            )
+            model_inputs.append(past_episodes_batch)
 
             act = act.squeeze(-1).type(torch.long)
 
@@ -266,10 +341,10 @@ def train_tomnet(config=None):
         with torch.no_grad():
             for idx, data in enumerate(val_loader):
                 # Parse data based on what's available
-                traj, curr, act = data[0], data[1], data[2]
-                traj, curr, act = traj.to(device), curr.to(device), act.to(device)
+                traj, curr, act, goals = data[0], data[1], data[2], data[3]
+                traj, curr, act, goals = traj.to(device), curr.to(device), act.to(device), goals.to(device)
                 
-                data_idx = 3
+                data_idx = 4  # Updated since we now have goals at index 3
                 
                 # Handle consumption and SR labels
                 if has_new_labels and len(data) > data_idx:
@@ -282,12 +357,19 @@ def train_tomnet(config=None):
                     consumption_target = torch.zeros(batch_size, 4).to(device)
                     sr_target = torch.zeros(batch_size, 3, 13, 13).to(device)
                 
-                # Handle N_past data
+                # Generate N_past data by randomly sampling from batch trajectories with same goal
                 model_inputs = [traj, curr]
-                if has_n_past and len(data) > data_idx:
-                    past_episodes = data[data_idx].to(device)
-                    n_past = data[data_idx + 1].to(device)
-                    model_inputs.extend([past_episodes, n_past])
+                
+                # Generate past episodes from other trajectories in the batch with same goal
+                past_episodes_batch = generate_past_episodes_from_batch(
+                    trajectories=traj,
+                    goals=goals,
+                    batch_size=traj.size(0),
+                    n_past_min=config.n_past_min,
+                    n_past_max=config.n_past_max,
+                    max_n_past=config.n_past_max
+                )
+                model_inputs.append(past_episodes_batch)
 
                 act = act.squeeze(-1).type(torch.long)
 
@@ -367,6 +449,10 @@ def train_tomnet(config=None):
 
     # Create plots
     create_training_plots(train_history, plot_dir, experiment_no)
+    
+    # Create additional visualizations with model
+    # Always use has_n_past=True since we generate past episodes from batch data
+    create_additional_visualizations(model, val_loader, plot_dir, experiment_no, device, has_n_past=True)
 
     # Save training results
     results = {
@@ -425,6 +511,8 @@ def create_training_plots(train_history, plot_dir, experiment_no):
     plt.close()
 
     print(f"Plots saved to: {plot_dir}")
+
+
 
 
 if __name__ == "__main__":

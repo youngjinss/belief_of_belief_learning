@@ -213,7 +213,7 @@ class DataReader:
         print("Saved Games found: ", Nfiles)
         print("Saved Games loaded: ", Nfraction)
         print("Percentage of loaded games: ", use_percentage * 100, "%")
-        print("Games names: ", files)
+        print("Games names: ", len(files))
 
         # Save all trajectories and labels
         trajectories = (

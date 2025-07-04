@@ -8,12 +8,8 @@ lib/backup/
 log/*
 
 # lib 폴더 내 benchmark 무시
-lib/benchmark/pogema/
-lib/benchmark/Machine_ToM/
-lib/benchmark/RepBelief/
-lib/benchmark/AmortizedNestedReasoning/
-lib/benchmark/ToMnet-N/
-lib/benchmark/ToMnetF/
+lib/benchmark/backup/
+lib/benchmark/.claude/
 
 # lib 폴더 내 ToMnet 구현한 결과 데이터 무시
 lib/benchmark/ToMnet_impl/data/

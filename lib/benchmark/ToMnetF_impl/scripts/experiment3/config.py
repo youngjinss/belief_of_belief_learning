@@ -17,7 +17,7 @@ class Config:
         self.no_walls = False
 
         # Model hyperparameters
-        self.batch_size = int(os.getenv("BATCH_SIZE", 64))
+        self.batch_size = int(os.getenv("BATCH_SIZE", 128))
         self.residual_blocks = 5
         self.e_char = 8
         self.out_channels = 32
@@ -25,7 +25,7 @@ class Config:
         self.depth = 10
 
         # Training settings
-        self.epochs = int(os.getenv("EPOCHS", 50))
+        self.epochs = int(os.getenv("EPOCHS", 100))
         self.lr = 1e-4
         self.training_proportion = 0.9
         self.device = "cuda:3"
@@ -43,8 +43,8 @@ class Config:
 
         # N_past settings for character embedding
         self.n_past_min = 0  # Minimum number of past episodes
-        self.n_past_max = 10  # Maximum number of past episodes
-        self.n_past_infer = 10  # Maximum number for inference
+        self.n_past_max = 5  # Maximum number of past episodes
+        self.n_past_infer = 5  # Maximum number for inference
         self.use_n_past = True  # Whether to use past episodes for character embedding
 
     def get_model_kwargs(self):

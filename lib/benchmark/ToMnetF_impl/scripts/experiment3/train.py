@@ -74,11 +74,14 @@ def generate_past_episodes_from_batch(trajectories, goals, batch_size, n_past_mi
         needs_episode = n_past_values > ep_idx
         
         if needs_episode.any():
+            # Make sure we don't exceed batch dimension
+            effective_ep_idx = min(ep_idx, batch_size - 1)
+            
             # Get the source indices for this episode position
-            source_indices = sorted_indices[needs_episode, ep_idx]
+            source_indices = sorted_indices[needs_episode, effective_ep_idx]
             
             # Check if source is valid (non-zero in sorted_vals means same goal)
-            valid_sources = sorted_vals[needs_episode, ep_idx] > 0
+            valid_sources = sorted_vals[needs_episode, effective_ep_idx] > 0
             
             # Create indices for assignment
             target_indices = torch.where(needs_episode)[0]

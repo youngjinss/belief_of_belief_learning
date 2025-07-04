@@ -294,15 +294,15 @@ class PredNet(nn.Module):
         )
 
         # Shared feature extraction
-        self.fc1 = nn.Linear(out_channels, 64)
-        self.fc2 = nn.Linear(64, 128)
+        self.fc1 = nn.Linear(out_channels, out_channels)
+        self.fc2 = nn.Linear(out_channels, out_channels)
 
         # Action prediction head
-        self.fc3_action = nn.Linear(128, 4)
+        self.fc3_action = nn.Linear(self.out_channels, 4)
 
         # Consumption prediction head (4 goals: A, B, C, D)
         # Each output represents p(c_k) for object k being consumed
-        self.fc3_consumption = nn.Linear(128, 4)
+        self.fc3_consumption = nn.Linear(self.out_channels, 4)
 
         # SR prediction heads for different discount factors
         # Output 13x13 grids for 3 different gammas

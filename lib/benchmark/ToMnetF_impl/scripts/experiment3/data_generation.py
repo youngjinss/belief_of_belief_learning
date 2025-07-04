@@ -91,7 +91,11 @@ class DataReader:
 
             # Parse old SR maps format if present (for backward compatibility)
             # Only parse old format if we're not in the new sparse data section
-            if x.startswith("SR_gamma_") and not parsing_sr_data and current_timestep is None:
+            if (
+                x.startswith("SR_gamma_")
+                and not parsing_sr_data
+                and current_timestep is None
+            ):
                 gamma_str = x.split(":")[0].split("_")[-1]
                 sr_str = x.split(":")[1].strip()
                 # Check if this looks like old dense format (comma-separated floats)
@@ -118,7 +122,8 @@ class DataReader:
                     x.strip().replace("Timestep_", "").replace(":", "")
                 )
                 sr_maps[gamma_str] = sr_values.reshape(
-                    self.MAZE_WIDTH, self.MAZE_HEIGHT                
+                    self.MAZE_WIDTH, self.MAZE_HEIGHT
+                )
                 if current_timestep not in sr_data_per_timestep:
                     sr_data_per_timestep[current_timestep] = {}
                 continue
@@ -141,7 +146,6 @@ class DataReader:
                                 sparse_sr.append((pos, val))
 
                 sr_data_per_timestep[current_timestep][gamma_str] = sparse_sr
->>>>>>> 93addb0 (sr map step마다 찍히게 변경)
 
             if (
                 idx >= 18
@@ -336,7 +340,7 @@ class DataReader:
 
             # Debug: Print trajectory length
             print(f"Game {i}: trajectory length = {trajectories[i].shape[0]}")
-            
+
             # Consider only games with more than 6 moves
             if trajectories[i].shape[0] < 6:
                 print(f"Skipping game {i}: too short ({trajectories[i].shape[0]} < 6)")
@@ -432,7 +436,9 @@ class DataReader:
             # For SR maps, use the appropriate data for the current timestep i
             if sr_map is not None and isinstance(sr_map, dict) and i in sr_map:
                 # New sparse format: convert to dense representation for this timestep
-                sr_dense = np.zeros((3, self.MAZE_WIDTH, self.MAZE_HEIGHT), dtype=np.float32)
+                sr_dense = np.zeros(
+                    (3, self.MAZE_WIDTH, self.MAZE_HEIGHT), dtype=np.float32
+                )
                 for gamma_idx, gamma in enumerate(["0.5", "0.9", "0.99"]):
                     if gamma in sr_map[i]:
                         sparse_data = sr_map[i][gamma]

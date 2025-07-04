@@ -183,7 +183,7 @@ class DataReader:
             steps.append(tensor)  # each step (record) is one decision data
             traj = np.stack(steps, axis=-1)  # traj consists of many steps records
 
-        # traj = torch.tensor(steps) 
+        # traj = torch.tensor(steps)
         # If SR maps were loaded, convert to numpy array with 3 channels
         if sr_maps:
             sr_array = np.zeros(

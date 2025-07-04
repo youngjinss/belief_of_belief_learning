@@ -16,10 +16,10 @@ Modified for experiment3 with N_past episodes support
 
 
 class DataReader:
-    def __init__(self, ts, w, h, d, experiment_no):
+    def __init__(self, time_step, w, h, d, experiment_no):
 
         self.EXPERIMENT_NO = experiment_no
-        self.MAX_TRAJECTORY_SIZE = ts
+        self.MAX_TRAJECTORY_SIZE = time_step
         self.MAZE_WIDTH = w  # 13
         self.MAZE_HEIGHT = h  # 13
         self.MAZE_DEPTH_TRAJECTORY = (
@@ -434,8 +434,8 @@ class DataReader:
 
 class DataProcessor:
 
-    def __init__(self, ts, w, h, d, max_n_past=10):
-        self.MAX_TRAJECTORY_SIZE = ts  # 20-50
+    def __init__(self, time_step, w, h, d, max_n_past=10):
+        self.MAX_TRAJECTORY_SIZE = time_step  # 20-50
         self.MAZE_WIDTH = w  # 13
         self.MAZE_HEIGHT = h  # 13
         self.MAZE_DEPTH = d  # 11 (1player + 1wall + 4goals + 5 actions = 11)
@@ -604,7 +604,7 @@ def generate_input_data(
     data_dir="../data/experiment3",
     output_dir="../data/experiment3",
     use_percentage=0.9,
-    ts=10,
+    time_step=10,
     height=13,
     width=13,
     depth=10,
@@ -618,7 +618,7 @@ def generate_input_data(
         data_dir: Directory containing game txt files
         output_dir: Directory to save processed data
         use_percentage: Percentage of games to use
-        ts: Trajectory size/length
+        time_step: Trajectory size/length
         height: Map height
         width: Map width
         depth: Tensor depth (channels)
@@ -630,14 +630,14 @@ def generate_input_data(
     os.makedirs(output_dir, exist_ok=True)
 
     # Initialize data reader and processor
-    dl = DataReader(ts, height, width, depth, experiment_no)
-    dp = DataProcessor(ts, height, width, depth, max_n_past)
+    dl = DataReader(time_step, height, width, depth, experiment_no)
+    dp = DataProcessor(time_step, height, width, depth, max_n_past)
 
     # Load all games
     all_games = dl.LoadAllGames(use_percentage=use_percentage, directory=data_dir)
 
     # Apply zero padding
-    all_games = dp.zeroPadding(ts, all_games)
+    all_games = dp.zeroPadding(time_step, all_games)
 
     # Extract processed data
     data_trajectories = all_games["traj_history"]
@@ -689,7 +689,7 @@ def generate_input_data(
         "data_past_episodes": data_past_eps,
         "data_n_past": data_n_past_tensor,
         "metadata": {
-            "ts": ts,
+            "time_step": time_step,
             "height": height,
             "width": width,
             "depth": depth,
@@ -738,7 +738,7 @@ if __name__ == "__main__":
         default=0.9,
         help="Percentage of games to use (0.0-1.0)",
     )
-    parser.add_argument("--ts", type=int, default=10, help="Trajectory size/length")
+    parser.add_argument("--time_step", type=int, default=10, help="Trajectory size/length")
     parser.add_argument("--height", type=int, default=13, help="Map height")
     parser.add_argument("--width", type=int, default=13, help="Map width")
     parser.add_argument("--depth", type=int, default=10, help="Tensor depth (channels)")
@@ -756,7 +756,7 @@ if __name__ == "__main__":
         data_dir=args.data_dir,
         output_dir=args.output_dir,
         use_percentage=args.use_percentage,
-        ts=args.ts,
+        time_step=args.time_step,
         height=args.height,
         width=args.width,
         depth=args.depth,

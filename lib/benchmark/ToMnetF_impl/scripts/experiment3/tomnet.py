@@ -110,9 +110,9 @@ class TimeDistributedResidualBlock(nn.Module):
 
 
 class TimeDistributedConv2d(nn.Module):
-    def __init__(self, time_frame: int):
+    def __init__(self, time_step: int):
         super(TimeDistributedConv2d, self).__init__()
-        self.time_frame = time_frame
+        self.time_step = time_step
         self.conv = nn.Conv2d(
             in_channels=10,  # depth/channels
             out_channels=32,  # out_channels
@@ -150,7 +150,7 @@ class CharNet(nn.Module):
         N_echar: int,
         out_channels: int,
         channels_in: int,
-        time_frame: int,
+        time_step: int,
         max_n_past: int = 10,
         use_n_past: bool = True,
     ):
@@ -162,13 +162,13 @@ class CharNet(nn.Module):
         self.out_channels = out_channels
         self.channels_in = channels_in
         self.B = Batch  # Batch size
-        self.time_frame = time_frame  # sequence length = time frame
+        self.time_step = time_step  # sequence length = time frame
         self.hidden_size_lstm = 64  # 128 # 64
         self.max_n_past = max_n_past
         self.use_n_past = use_n_past
 
         self.conv_1 = TimeDistributedConv2d(
-            time_frame=self.time_frame
+            time_step=self.time_step
         )  # Use time frame conv2d to process different lengths of sequence
         self.res_blocks = nn.ModuleList()
 
@@ -215,7 +215,7 @@ class CharNet(nn.Module):
 
         x = torch.mean(x, [2, 3])
 
-        x = x.reshape([x.size(0), self.time_frame, self.out_channels])
+        x = x.reshape([x.size(0), self.time_step, self.out_channels])
         x = self.lstm(x)
 
         # Get trajectory-based character embedding
@@ -255,7 +255,7 @@ class PredNet(nn.Module):
         ResidualBlocks: int,
         E_char: int,
         out_channels: int,
-        time_frame: int,
+        time_step: int,
     ):
         super(PredNet, self).__init__()
         self.n = ResidualBlocks
@@ -264,7 +264,7 @@ class PredNet(nn.Module):
         self.current_state_shape = (self.B, 7, 13, 13)  # batch, channel, height, width
         self.softmax = nn.Softmax(dim=1)
         self.out_channels = out_channels
-        self.time_sequence = time_frame
+        self.time_sequence = time_step
 
         # Shared torso
         self.conv_1 = nn.Conv2d(
@@ -368,7 +368,7 @@ class ToMnet(nn.Module):
         ResidualBlocks: int,
         N_echar: int,
         out_channels: int,
-        Max_trajectory_size: int,
+        time_step: int,
         Width: int,
         Height: int,
         Depth: int,
@@ -377,7 +377,7 @@ class ToMnet(nn.Module):
     ):
         super(ToMnet, self).__init__()
 
-        self.ts = Max_trajectory_size
+        self.time_step = time_step
         self.W = Width
         self.H = Height
         self.C = Depth
@@ -394,7 +394,7 @@ class ToMnet(nn.Module):
             N_echar=self.Length_E,
             channels_in=self.C,
             out_channels=self.out_channels,
-            time_frame=self.ts,
+            time_step=self.time_step,
             max_n_past=self.max_n_past,
             use_n_past=self.use_n_past,
         )
@@ -404,7 +404,7 @@ class ToMnet(nn.Module):
             ResidualBlocks=self.resN,
             E_char=self.Length_E,
             out_channels=self.out_channels,
-            time_frame=self.ts,
+            time_step=self.time_step,
         )
 
     def SaveModel(self, destination):

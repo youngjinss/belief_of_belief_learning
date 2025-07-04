@@ -21,14 +21,12 @@ class Config:
         self.residual_blocks = 5
         self.e_char = 8
         self.out_channels = 32
-        self.time_frame = 10
+        self.time_step = 10  # Unified trajectory/time parameter
         self.depth = 10
 
         # Training settings
         self.epochs = int(os.getenv("EPOCHS", 50))
         self.lr = 1e-4
-        self.max_trajectory_size = 10
-        self.ts = 10
         self.training_proportion = 0.9
         self.device = "cuda:3"
 
@@ -50,7 +48,7 @@ class Config:
             "ResidualBlocks": self.residual_blocks,
             "N_echar": self.e_char,
             "out_channels": self.out_channels,
-            "Max_trajectory_size": self.max_trajectory_size,
+            "time_step": self.time_step,
             "Width": self.width,
             "Height": self.height,
             "Depth": self.depth,
@@ -68,7 +66,7 @@ class Config:
             "epochs": self.epochs,
             "batch_size": self.batch_size,
             "lr": self.lr,
-            "ts": self.ts,
+            "time_step": self.time_step,
             "height": self.height,
             "width": self.width,
             "depth": self.depth,

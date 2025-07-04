@@ -39,7 +39,7 @@ def train_tomnet(config=None):
     epochs = config.epochs
     batch_size = config.batch_size
     lr = config.lr
-    ts = config.ts
+    time_step = config.time_step
     height = config.height
     width = config.width
     depth = config.depth
@@ -70,7 +70,7 @@ def train_tomnet(config=None):
             data_dir=data_dir,
             output_dir=data_dir,
             use_percentage=use_percentage,
-            ts=ts,
+            time_step=time_step,
             height=height,
             width=width,
             depth=depth,
@@ -324,7 +324,7 @@ if __name__ == "__main__":
     parser.add_argument("--epochs", type=int, help="Number of training epochs")
     parser.add_argument("--batch_size", type=int, help="Training batch size")
     parser.add_argument("--lr", type=float, help="Learning rate")
-    parser.add_argument("--ts", type=int, help="Trajectory size")
+    parser.add_argument("--time_step", type=int, help="Trajectory size")
     parser.add_argument("--height", type=int, help="Map height")
     parser.add_argument("--width", type=int, help="Map width")
     parser.add_argument("--depth", type=int, help="Tensor depth")
@@ -360,8 +360,8 @@ if __name__ == "__main__":
             config.batch_size = args.batch_size
         if args.lr is not None:
             config.lr = args.lr
-        if args.ts is not None:
-            config.ts = args.ts
+        if args.time_step is not None:
+            config.time_step = args.time_step
         if args.height is not None:
             config.height = args.height
         if args.width is not None:

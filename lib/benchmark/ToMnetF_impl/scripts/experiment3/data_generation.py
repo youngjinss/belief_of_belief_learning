@@ -42,6 +42,9 @@ class DataReader:
         steps = []
         consumption_labels = None
         sr_maps = {}
+        sr_data_per_timestep = {}
+        parsing_sr_data = False
+        current_timestep = None
 
         traj = np.empty(
             (self.MAZE_DEPTH_TRAJECTORY, self.MAZE_WIDTH, self.MAZE_HEIGHT, 1)
@@ -86,21 +89,70 @@ class DataReader:
                     [float(val) for val in consumption_str.split(",")], dtype=np.float32
                 )
 
-            # Parse SR maps if present
-            if x.startswith("SR_gamma_"):
+            # Parse old SR maps format if present (for backward compatibility)
+            # Only parse old format if we're not in the new sparse data section
+            if x.startswith("SR_gamma_") and not parsing_sr_data and current_timestep is None:
                 gamma_str = x.split(":")[0].split("_")[-1]
                 sr_str = x.split(":")[1].strip()
-                sr_values = np.array(
-                    [float(val) for val in sr_str.split(",")], dtype=np.float32
+                # Check if this looks like old dense format (comma-separated floats)
+                if "," in sr_str and ";" not in sr_str:
+                    try:
+                        sr_values = np.array(
+                            [float(val) for val in sr_str.split(",")], dtype=np.float32
+                        )
+                        sr_maps[gamma_str] = sr_values.reshape(
+                            self.MAZE_WIDTH, self.MAZE_HEIGHT
+                        )
+                    except ValueError:
+                        # Skip malformed old format data
+                        pass
+
+            # Parse new sparse SR data format
+            if x.startswith("SR_Data_Per_Timestep"):
+                parsing_sr_data = True
+                current_timestep = None
+                continue
+
+            if "Timestep_" in x and x.strip().endswith(":"):
+                current_timestep = int(
+                    x.strip().replace("Timestep_", "").replace(":", "")
                 )
+<<<<<<< HEAD
                 sr_maps[gamma_str] = sr_values.reshape(
                     self.MAZE_WIDTH, self.MAZE_HEIGHT
                 )
+=======
+                if current_timestep not in sr_data_per_timestep:
+                    sr_data_per_timestep[current_timestep] = {}
+                continue
+
+            if current_timestep is not None and x.startswith("SR_gamma_"):
+                gamma_str = x.split(":")[0].split("_")[-1]
+                sparse_str = x.split(":", 1)[1].strip()
+
+                # Parse sparse format "x,y:value;x,y:value;..."
+                sparse_sr = []
+                if sparse_str:
+                    for entry in sparse_str.split(";"):
+                        if entry.strip():
+                            pos_val = entry.split(":")
+                            if len(pos_val) == 2:
+                                # Use list comprehension to avoid map shadowing issue
+                                pos_coords = [int(x) for x in pos_val[0].split(",")]
+                                pos = tuple(pos_coords)
+                                val = float(pos_val[1])
+                                sparse_sr.append((pos, val))
+
+                sr_data_per_timestep[current_timestep][gamma_str] = sparse_sr
+>>>>>>> 93addb0 (sr map step마다 찍히게 변경)
 
             if (
                 idx >= 18
                 and not x.startswith("Consumption Labels:")
                 and not x.startswith("SR_gamma_")
+                and not x.startswith("SR_Data_Per_Timestep")
+                and not x.startswith("Timestep_")
+                and not parsing_sr_data
             ):
 
                 # Parse trajectory lines: [x, y] : action : goal
@@ -184,14 +236,23 @@ class DataReader:
             traj = np.stack(steps, axis=-1)  # traj consists of many steps records
 
         # traj = torch.tensor(steps)
-        # If SR maps were loaded, convert to numpy array with 3 channels
-        if sr_maps:
-            sr_array = np.zeros(
-                (3, self.MAZE_WIDTH, self.MAZE_HEIGHT), dtype=np.float32
-            )
+        # Prioritize new sparse SR data format, fallback to old format for backward compatibility
+        if sr_data_per_timestep:
+            sr_array = sr_data_per_timestep
+        elif sr_maps:
+            # Convert old format to pseudo-sparse for backward compatibility
+            sr_array = {}
             for i, gamma in enumerate(["0.5", "0.9", "0.99"]):
                 if gamma in sr_maps:
-                    sr_array[i] = sr_maps[gamma]
+                    # Convert dense array to sparse format for timestep 0 (legacy)
+                    sparse_sr = []
+                    dense_map = sr_maps[gamma]
+                    for x in range(self.MAZE_WIDTH):
+                        for y in range(self.MAZE_HEIGHT):
+                            if dense_map[x, y] > 0:
+                                sparse_sr.append(((x, y), dense_map[x, y]))
+                    sr_array[0] = sr_array.get(0, {})
+                    sr_array[0][gamma] = sparse_sr
         else:
             sr_array = None
 
@@ -276,8 +337,12 @@ class DataReader:
         # Process Game-per-Game
         for i in range(Nfraction):
 
+            # Debug: Print trajectory length
+            print(f"Game {i}: trajectory length = {trajectories[i].shape[0]}")
+            
             # Consider only games with more than 6 moves
             if trajectories[i].shape[0] < 6:
+                print(f"Skipping game {i}: too short ({trajectories[i].shape[0]} < 6)")
                 continue
 
             # Prepare data from one game
@@ -360,18 +425,28 @@ class DataReader:
             data_actions.append(actions[i, ...])  # Next Action
             data_labels.append(labels[i, ...])  # Consumed Goal
 
-            # For consumption labels and SR maps, use the same values for all timesteps
-            # since they represent the final state of the episode
+            # For consumption labels, use the same value for all timesteps (final episode state)
             if consumption_labels is not None:
                 data_consumption_labels.append(consumption_labels)
             else:
                 # Default to zeros if not available (for backward compatibility)
                 data_consumption_labels.append(np.zeros(4, dtype=np.float32))
 
-            if sr_map is not None:
+            # For SR maps, use the appropriate data for the current timestep i
+            if sr_map is not None and isinstance(sr_map, dict) and i in sr_map:
+                # New sparse format: convert to dense representation for this timestep
+                sr_dense = np.zeros((3, self.MAZE_WIDTH, self.MAZE_HEIGHT), dtype=np.float32)
+                for gamma_idx, gamma in enumerate(["0.5", "0.9", "0.99"]):
+                    if gamma in sr_map[i]:
+                        sparse_data = sr_map[i][gamma]
+                        for (x, y), value in sparse_data:
+                            sr_dense[gamma_idx, x, y] = value
+                data_sr_maps.append(sr_dense)
+            elif sr_map is not None and not isinstance(sr_map, dict):
+                # Old dense format (for backward compatibility)
                 data_sr_maps.append(sr_map)
             else:
-                # Default to zeros if not available (for backward compatibility)
+                # Default to zeros if not available
                 data_sr_maps.append(
                     np.zeros((3, self.MAZE_WIDTH, self.MAZE_HEIGHT), dtype=np.float32)
                 )

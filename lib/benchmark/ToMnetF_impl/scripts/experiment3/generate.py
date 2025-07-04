@@ -18,40 +18,80 @@ Modified for SR and consumption prediction
 
 
 def calculate_successor_representation(
-    trajectory, positions, grid_size=13, gammas=[0.5, 0.9, 0.99]
+    positions, query_time_t, grid_size=13, gammas=[0.5, 0.9, 0.99], num_rollouts=1
 ):
     """
-    Calculate successor representation for different discount factors
+    Calculate successor representation from query time t onwards using the correct formula
+    SRγ(s) = 1/Z × Σ(from Δt=0 to T-t) γ^Δt × I(s_{t+Δt} = s)
 
     Args:
-        trajectory: List of actions taken
-        positions: List of positions visited
-        grid_size: Size of the grid
+        positions: List of positions visited in the episode
+        query_time_t: Current timestep t to calculate SR from
+        grid_size: Size of the grid (13x13)
+        gammas: List of discount factors [0.5, 0.9, 0.99]
+        num_rollouts: Number of rollouts (for stochastic agents, default 1 for A*)
+
+    Returns:
+        sr_maps_sparse: List of sparse representations [(position, value)] for each gamma
+    """
+    sr_maps_sparse = []
+
+    # Calculate SR for each discount factor
+    for gamma in gammas:
+        sr_map = np.zeros((grid_size, grid_size))
+
+        # Only consider future states from query_time_t onwards
+        if query_time_t < len(positions):
+            T_minus_t = len(positions) - query_time_t
+
+            # Count discounted future state visitations
+            for delta_t in range(T_minus_t):
+                future_timestep = query_time_t + delta_t
+                if future_timestep < len(positions):
+                    discount = gamma**delta_t
+                    future_pos = positions[future_timestep]
+                    sr_map[future_pos[0], future_pos[1]] += discount
+
+            # Normalize the SR map (Z normalization)
+            if sr_map.sum() > 0:
+                sr_map = sr_map / sr_map.sum()
+
+        # Convert to sparse format: [(position, value)] for non-zero values
+        sparse_sr = []
+        for i in range(grid_size):
+            for j in range(grid_size):
+                if sr_map[i, j] > 0:
+                    sparse_sr.append(((i, j), sr_map[i, j]))
+
+        sr_maps_sparse.append(sparse_sr)
+
+    return sr_maps_sparse
+
+
+def calculate_sr_labels_for_trajectory(
+    positions, grid_size=13, gammas=[0.5, 0.9, 0.99]
+):
+    """
+    Calculate SR labels for each timestep in the trajectory
+
+    Args:
+        positions: List of positions visited in the episode
+        grid_size: Size of the grid (13x13)
         gammas: List of discount factors
 
     Returns:
-        sr_maps: Array of shape (len(gammas), grid_size, grid_size) with normalized SR
+        sr_labels_per_timestep: List of SR labels for each timestep
     """
-    sr_maps = np.zeros((len(gammas), grid_size, grid_size))
+    sr_labels_per_timestep = []
 
-    # Calculate SR for each discount factor
-    for gamma_idx, gamma in enumerate(gammas):
-        sr_map = np.zeros((grid_size, grid_size))
+    # Calculate SR for each timestep in the trajectory
+    for t in range(len(positions)):
+        sr_sparse = calculate_successor_representation(
+            positions, query_time_t=t, grid_size=grid_size, gammas=gammas
+        )
+        sr_labels_per_timestep.append(sr_sparse)
 
-        # Count discounted future state visitations
-        for t, pos in enumerate(positions):
-            for future_t in range(t, len(positions)):
-                discount = gamma ** (future_t - t)
-                future_pos = positions[future_t]
-                sr_map[future_pos[0], future_pos[1]] += discount
-
-        # Normalize the SR map
-        if sr_map.sum() > 0:
-            sr_map = sr_map / sr_map.sum()
-
-        sr_maps[gamma_idx] = sr_map
-
-    return sr_maps
+    return sr_labels_per_timestep
 
 
 def calculate_consumption_labels(consumed_goals):
@@ -79,7 +119,12 @@ def calculate_consumption_labels(consumed_goals):
 
 
 def save_game_with_labels(
-    agent, env, sr_maps, consumption_labels, name="experiment3", base_dir="../../data"
+    agent,
+    env,
+    sr_labels_per_timestep,
+    consumption_labels,
+    name="experiment3",
+    base_dir="../../data",
 ):
     """
     Save game data with SR and consumption labels
@@ -87,7 +132,7 @@ def save_game_with_labels(
     Args:
         agent: The agent that played the game
         env: The environment
-        sr_maps: Successor representation maps
+        sr_labels_per_timestep: SR labels for each timestep (sparse format)
         consumption_labels: Consumption labels
         name: Output directory name
         base_dir: Base directory for saving
@@ -137,10 +182,19 @@ def save_game_with_labels(
             + "\n"
         )
 
-        # Save SR maps (as flattened arrays for each gamma)
-        for gamma_idx, gamma in enumerate([0.5, 0.9, 0.99]):
-            sr_flat = sr_maps[gamma_idx].flatten()
-            f.write(f"SR_gamma_{gamma}: " + ",".join(map(str, sr_flat.tolist())) + "\n")
+        # Save SR data per timestep in sparse format
+        f.write("SR_Data_Per_Timestep:\n")
+        for t, sr_data_at_t in enumerate(sr_labels_per_timestep):
+            f.write(f"Timestep_{t}:\n")
+            for gamma_idx, gamma in enumerate([0.5, 0.9, 0.99]):
+                sparse_sr = (
+                    sr_data_at_t[gamma_idx] if gamma_idx < len(sr_data_at_t) else []
+                )
+                # Convert sparse format [(position, value)] to string
+                sparse_str = ";".join(
+                    [f"{pos[0]},{pos[1]}:{val}" for pos, val in sparse_sr]
+                )
+                f.write(f"SR_gamma_{gamma}: {sparse_str}\n")
 
         # Save moves
         for i in range(len(agent.trajectory)):
@@ -229,9 +283,9 @@ def generate_trajectories(config=None):
 
             # input("Press the <Enter> key to continue...")
 
-        # Calculate SR and consumption labels
-        sr_maps = calculate_successor_representation(
-            agent.trajectory, agent.position_trajectory, grid_size=rows
+        # Calculate SR labels for each timestep and consumption labels
+        sr_labels_per_timestep = calculate_sr_labels_for_trajectory(
+            agent.position_trajectory, grid_size=rows
         )
 
         consumption_labels = calculate_consumption_labels(env.consumed_goal)
@@ -240,7 +294,7 @@ def generate_trajectories(config=None):
         save_game_with_labels(
             agent=agent,
             env=env,
-            sr_maps=sr_maps,
+            sr_labels_per_timestep=sr_labels_per_timestep,
             consumption_labels=consumption_labels,
             name="",
             base_dir=save_dir,

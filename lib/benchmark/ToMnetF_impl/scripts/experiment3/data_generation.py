@@ -337,9 +337,6 @@ class DataReader:
         # Process Game-per-Game
         for i in range(Nfraction):
 
-            # Debug: Print trajectory length
-            print(f"Game {i}: trajectory length = {trajectories[i].shape[0]}")
-
             # Consider only games with more than 6 moves
             if trajectories[i].shape[0] < 6:
                 print(f"Skipping game {i}: too short ({trajectories[i].shape[0]} < 6)")

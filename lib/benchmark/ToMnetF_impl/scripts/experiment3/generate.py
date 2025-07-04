@@ -182,7 +182,7 @@ def generate_trajectories(config=None):
     shuffle = config.shuffle
     no_walls = config.no_walls
     save_dir = config.data_dir
-    
+
     # N_past settings
     use_n_past = config.use_n_past
     n_past_min = config.n_past_min
@@ -199,7 +199,7 @@ def generate_trajectories(config=None):
     # Create output directory
     full_output_dir = save_dir
     os.makedirs(full_output_dir, exist_ok=True)
-    
+
     for i in range(n_games):
         if i % 1000 == 0:
             print(f"Generated {i}/{n_games} games")

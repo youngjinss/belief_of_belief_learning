@@ -96,7 +96,7 @@ class DataReader:
                 sr_maps[gamma_str] = sr_values.reshape(
                     self.MAZE_WIDTH, self.MAZE_HEIGHT
                 )
-            
+
             if (
                 idx >= 18
                 and not x.startswith("Consumption Labels:")
@@ -104,22 +104,21 @@ class DataReader:
             ):
 
                 # Parse trajectory lines: [x, y] : action : goal
-                pattern = r'\[(\d+),\s*(\d+)\]\s*:\s*(\d+)\s*:\s*(\w+)'
+                pattern = r"\[(\d+),\s*(\d+)\]\s*:\s*(\d+)\s*:\s*(\w+)"
                 match = re.match(pattern, x)
-                
+
                 if match:
                     pos_x = int(match.group(1))
                     pos_y = int(match.group(2))
                     temp_traj = int(match.group(3))
                     temp_pos = (pos_x, pos_y)
-                    
+
                     actions.append(temp_traj)
                 else:
                     # Skip malformed lines
                     continue
 
                 trajectory[temp_pos] = temp_traj
-
 
         map = np.array(map)  # Map
         consumed = consumed[0][19]  # Consumed goal
@@ -376,7 +375,6 @@ class DataReader:
                 data_sr_maps.append(
                     np.zeros((3, self.MAZE_WIDTH, self.MAZE_HEIGHT), dtype=np.float32)
                 )
-            
 
         return (
             data_trajectories,
@@ -603,7 +601,6 @@ def generate_input_data(
         data_sr = torch.tensor(data_sr_maps, dtype=torch.float32)
     else:
         data_sr = None
-    
 
     # Save processed data
     processed_data = {
@@ -665,7 +662,9 @@ if __name__ == "__main__":
         default=0.9,
         help="Percentage of games to use (0.0-1.0)",
     )
-    parser.add_argument("--time_step", type=int, default=10, help="Trajectory size/length")
+    parser.add_argument(
+        "--time_step", type=int, default=10, help="Trajectory size/length"
+    )
     parser.add_argument("--height", type=int, default=13, help="Map height")
     parser.add_argument("--width", type=int, default=13, help="Map width")
     parser.add_argument("--depth", type=int, default=10, help="Tensor depth (channels)")

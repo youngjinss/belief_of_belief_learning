@@ -20,52 +20,59 @@ Extended with SR and consumption visualization
 """
 
 
-def generate_past_episodes_from_batch(trajectories, goals, batch_size, n_past_min, n_past_max, max_n_past):
+def generate_past_episodes_from_batch(
+    trajectories, goals, batch_size, n_past_min, n_past_max, max_n_past
+):
     """
     Generate past episodes by randomly sampling from other trajectories in the batch
     with the same goal (Same function as in train.py but for visualization)
     """
     device = trajectories.device
     depth, height, width, time_step = trajectories.shape[1:]
-    
+
     # Initialize past episodes tensor
     past_episodes_batch = torch.zeros(
-        (batch_size, max_n_past, depth, height, width, time_step), 
-        dtype=trajectories.dtype, 
-        device=device
+        (batch_size, max_n_past, depth, height, width, time_step),
+        dtype=trajectories.dtype,
+        device=device,
     )
-    
+
     # Generate random n_past values for all samples at once
-    n_past_values = torch.randint(n_past_min, n_past_max + 1, (batch_size,), device=device)
-    
+    n_past_values = torch.randint(
+        n_past_min, n_past_max + 1, (batch_size,), device=device
+    )
+
     # Create goal similarity matrix
     goals_expanded = goals.unsqueeze(1)
-    same_goal_mask = (goals_expanded == goals.unsqueeze(0))
+    same_goal_mask = goals_expanded == goals.unsqueeze(0)
     same_goal_mask.fill_diagonal_(False)
-    
+
     # Create random sampling matrix
     rand_matrix = torch.rand(batch_size, batch_size, device=device)
     rand_matrix = rand_matrix * same_goal_mask.float()
-    
+
     # Sort to get sampling order
     sorted_vals, sorted_indices = torch.sort(rand_matrix, dim=1, descending=True)
-    
+
     # Process all samples in parallel
     for ep_idx in range(max_n_past):
         needs_episode = n_past_values > ep_idx
-        
+
         if needs_episode.any():
             source_indices = sorted_indices[needs_episode, ep_idx]
             valid_sources = sorted_vals[needs_episode, ep_idx] > 0
-            
+
             target_indices = torch.where(needs_episode)[0]
             valid_targets = target_indices[valid_sources]
             valid_sources_idx = source_indices[valid_sources]
-            
+
             if len(valid_targets) > 0:
-                past_episodes_batch[valid_targets, ep_idx] = trajectories[valid_sources_idx]
-    
+                past_episodes_batch[valid_targets, ep_idx] = trajectories[
+                    valid_sources_idx
+                ]
+
     return past_episodes_batch
+
 
 # Set style for publication-quality plots
 plt.style.use("seaborn-v0_8")
@@ -622,25 +629,37 @@ def plot_character_embeddings(
     print(f"Character embeddings plot saved to: {plot_path}")
 
 
-def create_additional_visualizations(model, val_loader, plot_dir, experiment_no, device, has_n_past):
+def create_additional_visualizations(
+    model, val_loader, plot_dir, experiment_no, device, has_n_past
+):
     """
     Create and save additional visualizations including successor representation
     Moved from train.py for better organization
     """
-    
+
     print("Creating additional visualizations...")
-    
+
     # Get a sample batch for visualization
     model.eval()
     with torch.no_grad():
         sample_batch = next(iter(val_loader))
-        
+
         # Parse data based on what's available
-        traj, curr, act, goals = sample_batch[0], sample_batch[1], sample_batch[2], sample_batch[3]
-        traj, curr, act, goals = traj.to(device), curr.to(device), act.to(device), goals.to(device)
-        
+        traj, curr, act, goals = (
+            sample_batch[0],
+            sample_batch[1],
+            sample_batch[2],
+            sample_batch[3],
+        )
+        traj, curr, act, goals = (
+            traj.to(device),
+            curr.to(device),
+            act.to(device),
+            goals.to(device),
+        )
+
         data_idx = 4  # Updated since we now have goals at index 3
-        
+
         # Handle consumption and SR labels
         if len(sample_batch) > data_idx:
             consumption_target = sample_batch[data_idx].to(device)
@@ -651,7 +670,7 @@ def create_additional_visualizations(model, val_loader, plot_dir, experiment_no,
             batch_size = act.size(0)
             consumption_target = torch.zeros(batch_size, 4).to(device)
             sr_target = torch.zeros(batch_size, 3, 13, 13).to(device)
-        
+
         # Handle N_past data - generate from batch trajectories with same goal
         model_inputs = [traj, curr]
         if has_n_past:
@@ -663,165 +682,191 @@ def create_additional_visualizations(model, val_loader, plot_dir, experiment_no,
                 batch_size=traj.size(0),
                 n_past_min=0,  # Default range
                 n_past_max=10,  # Default range
-                max_n_past=10
+                max_n_past=10,
             )
             model_inputs.append(past_episodes_batch)
-        
+
         # Get model predictions
         action_pred, consumption_pred, sr_pred = model(model_inputs)
-        
+
         # 1. Visualize Successor Representation (training version)
-        visualize_successor_representation_train(sr_pred, sr_target, plot_dir, experiment_no)
-        
+        visualize_successor_representation_train(
+            sr_pred, sr_target, plot_dir, experiment_no
+        )
+
         # 2. Visualize Consumption Predictions (training version)
-        visualize_consumption_predictions_train(consumption_pred, consumption_target, plot_dir, experiment_no)
-        
+        visualize_consumption_predictions_train(
+            consumption_pred, consumption_target, plot_dir, experiment_no
+        )
+
         # 3. Visualize Action Predictions (training version)
         visualize_action_predictions_train(action_pred, act, plot_dir, experiment_no)
-        
+
         # 4. Visualize Past Episodes if available
         if has_n_past:
             visualize_past_episodes_train(past_episodes_batch, plot_dir, experiment_no)
-    
+
     print(f"Additional visualizations saved to: {plot_dir}")
 
 
-def visualize_successor_representation_train(sr_pred, sr_target, plot_dir, experiment_no):
+def visualize_successor_representation_train(
+    sr_pred, sr_target, plot_dir, experiment_no
+):
     """Visualize successor representation predictions and targets (training version)"""
-    
+
     # Take first sample from batch for visualization
     sr_pred_sample = sr_pred[0].cpu().numpy()  # Shape: (3, 13, 13)
     sr_target_sample = sr_target[0].cpu().numpy()  # Shape: (3, 13, 13)
-    
+
     gamma_values = [0.5, 0.9, 0.99]
-    
+
     fig, axes = plt.subplots(2, 3, figsize=(15, 10))
-    fig.suptitle("Successor Representation: Predictions vs Targets (Training)", fontsize=16)
-    
+    fig.suptitle(
+        "Successor Representation: Predictions vs Targets (Training)", fontsize=16
+    )
+
     for i, gamma in enumerate(gamma_values):
         # Prediction
-        im1 = axes[0, i].imshow(sr_pred_sample[i], cmap='viridis', interpolation='nearest')
+        im1 = axes[0, i].imshow(
+            sr_pred_sample[i], cmap="viridis", interpolation="nearest"
+        )
         axes[0, i].set_title(f"Prediction γ={gamma}")
         axes[0, i].set_xlabel("X coordinate")
         axes[0, i].set_ylabel("Y coordinate")
         plt.colorbar(im1, ax=axes[0, i])
-        
+
         # Target
-        im2 = axes[1, i].imshow(sr_target_sample[i], cmap='viridis', interpolation='nearest')
+        im2 = axes[1, i].imshow(
+            sr_target_sample[i], cmap="viridis", interpolation="nearest"
+        )
         axes[1, i].set_title(f"Target γ={gamma}")
         axes[1, i].set_xlabel("X coordinate")
         axes[1, i].set_ylabel("Y coordinate")
         plt.colorbar(im2, ax=axes[1, i])
-    
+
     plt.tight_layout()
-    sr_path = os.path.join(plot_dir, f"exp{experiment_no}_successor_representation_train.png")
-    plt.savefig(sr_path, dpi=150, bbox_inches='tight')
+    sr_path = os.path.join(
+        plot_dir, f"exp{experiment_no}_successor_representation_train.png"
+    )
+    plt.savefig(sr_path, dpi=150, bbox_inches="tight")
     plt.close()
 
 
-def visualize_consumption_predictions_train(consumption_pred, consumption_target, plot_dir, experiment_no):
+def visualize_consumption_predictions_train(
+    consumption_pred, consumption_target, plot_dir, experiment_no
+):
     """Visualize consumption predictions (training version)"""
-    
+
     # Apply sigmoid to get probabilities
     consumption_prob = torch.sigmoid(consumption_pred).cpu().numpy()
     consumption_target_np = consumption_target.cpu().numpy()
-    
+
     # Take first few samples for visualization
     n_samples = min(10, consumption_pred.size(0))
-    
+
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
-    
+
     # Plot predictions
-    goals = ['A', 'B', 'C', 'D']
+    goals = ["A", "B", "C", "D"]
     x_pos = np.arange(len(goals))
-    
+
     # Average probabilities across samples
     mean_pred = np.mean(consumption_prob[:n_samples], axis=0)
     mean_target = np.mean(consumption_target_np[:n_samples], axis=0)
-    
-    ax1.bar(x_pos, mean_pred, alpha=0.7, label='Predictions')
-    ax1.set_xlabel('Goals')
-    ax1.set_ylabel('Consumption Probability')
-    ax1.set_title('Average Consumption Predictions (Training)')
+
+    ax1.bar(x_pos, mean_pred, alpha=0.7, label="Predictions")
+    ax1.set_xlabel("Goals")
+    ax1.set_ylabel("Consumption Probability")
+    ax1.set_title("Average Consumption Predictions (Training)")
     ax1.set_xticks(x_pos)
     ax1.set_xticklabels(goals)
     ax1.grid(True, alpha=0.3)
-    
-    ax2.bar(x_pos, mean_target, alpha=0.7, color='orange', label='Targets')
-    ax2.set_xlabel('Goals')
-    ax2.set_ylabel('Consumption Probability')
-    ax2.set_title('Average Consumption Targets (Training)')
+
+    ax2.bar(x_pos, mean_target, alpha=0.7, color="orange", label="Targets")
+    ax2.set_xlabel("Goals")
+    ax2.set_ylabel("Consumption Probability")
+    ax2.set_title("Average Consumption Targets (Training)")
     ax2.set_xticks(x_pos)
     ax2.set_xticklabels(goals)
     ax2.grid(True, alpha=0.3)
-    
+
     plt.tight_layout()
-    consumption_path = os.path.join(plot_dir, f"exp{experiment_no}_consumption_predictions_train.png")
-    plt.savefig(consumption_path, dpi=150, bbox_inches='tight')
+    consumption_path = os.path.join(
+        plot_dir, f"exp{experiment_no}_consumption_predictions_train.png"
+    )
+    plt.savefig(consumption_path, dpi=150, bbox_inches="tight")
     plt.close()
 
 
-def visualize_action_predictions_train(action_pred, action_target, plot_dir, experiment_no):
+def visualize_action_predictions_train(
+    action_pred, action_target, plot_dir, experiment_no
+):
     """Visualize action prediction distribution (training version)"""
-    
+
     # Apply softmax to get probabilities
     action_prob = torch.softmax(action_pred, dim=1).cpu().numpy()
     action_target_np = action_target.cpu().numpy()
-    
+
     # Action mapping
-    actions = ['UP', 'RIGHT', 'DOWN', 'LEFT']
-    
+    actions = ["UP", "RIGHT", "DOWN", "LEFT"]
+
     # Create action distribution plot
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
-    
+
     # Predicted action distribution (average across batch)
     mean_action_prob = np.mean(action_prob, axis=0)
-    ax1.bar(actions, mean_action_prob, alpha=0.7, color='skyblue')
-    ax1.set_xlabel('Actions')
-    ax1.set_ylabel('Probability')
-    ax1.set_title('Average Action Predictions (Training)')
+    ax1.bar(actions, mean_action_prob, alpha=0.7, color="skyblue")
+    ax1.set_xlabel("Actions")
+    ax1.set_ylabel("Probability")
+    ax1.set_title("Average Action Predictions (Training)")
     ax1.grid(True, alpha=0.3)
-    
+
     # Target action distribution
     action_counts = np.bincount(action_target_np.astype(int), minlength=4)
     action_dist = action_counts / action_counts.sum()
-    ax2.bar(actions, action_dist, alpha=0.7, color='lightcoral')
-    ax2.set_xlabel('Actions')
-    ax2.set_ylabel('Frequency')
-    ax2.set_title('Target Action Distribution (Training)')
+    ax2.bar(actions, action_dist, alpha=0.7, color="lightcoral")
+    ax2.set_xlabel("Actions")
+    ax2.set_ylabel("Frequency")
+    ax2.set_title("Target Action Distribution (Training)")
     ax2.grid(True, alpha=0.3)
-    
+
     plt.tight_layout()
-    action_path = os.path.join(plot_dir, f"exp{experiment_no}_action_predictions_train.png")
-    plt.savefig(action_path, dpi=150, bbox_inches='tight')
+    action_path = os.path.join(
+        plot_dir, f"exp{experiment_no}_action_predictions_train.png"
+    )
+    plt.savefig(action_path, dpi=150, bbox_inches="tight")
     plt.close()
 
 
 def visualize_past_episodes_train(past_episodes, plot_dir, experiment_no):
     """Visualize past episodes structure (training version)"""
-    
+
     # Take first sample from batch
-    past_eps_sample = past_episodes[0].cpu().numpy()  # Shape: (n_past_max, depth, height, width, time_step)
+    past_eps_sample = (
+        past_episodes[0].cpu().numpy()
+    )  # Shape: (n_past_max, depth, height, width, time_step)
     n_past_max, depth, height, width, time_step = past_eps_sample.shape
-    
+
     # Count non-zero episodes
     non_zero_episodes = []
     for ep_idx in range(n_past_max):
         episode = past_eps_sample[ep_idx]
         if np.sum(episode) > 0:
             non_zero_episodes.append(ep_idx)
-    
+
     fig, axes = plt.subplots(2, 2, figsize=(12, 10))
     fig.suptitle(f"Past Episodes Analysis (Training Sample)", fontsize=16)
-    
+
     # Plot 1: Episode usage
     episode_usage = [1 if i in non_zero_episodes else 0 for i in range(n_past_max)]
     axes[0, 0].bar(range(n_past_max), episode_usage)
-    axes[0, 0].set_xlabel('Episode Index')
-    axes[0, 0].set_ylabel('Used (1) / Unused (0)')
-    axes[0, 0].set_title(f'Episode Usage ({len(non_zero_episodes)}/{n_past_max} episodes used)')
+    axes[0, 0].set_xlabel("Episode Index")
+    axes[0, 0].set_ylabel("Used (1) / Unused (0)")
+    axes[0, 0].set_title(
+        f"Episode Usage ({len(non_zero_episodes)}/{n_past_max} episodes used)"
+    )
     axes[0, 0].grid(True, alpha=0.3)
-    
+
     # Plot 2: Episode lengths (if any episodes exist)
     if non_zero_episodes:
         episode_lengths = []
@@ -833,46 +878,67 @@ def visualize_past_episodes_train(past_episodes, plot_dir, experiment_no):
                 if np.sum(episode[:, :, :, t]) > 0:
                     length = t + 1
             episode_lengths.append(length)
-        
+
         axes[0, 1].bar(range(len(episode_lengths)), episode_lengths)
-        axes[0, 1].set_xlabel('Episode Index (used only)')
-        axes[0, 1].set_ylabel('Episode Length')
-        axes[0, 1].set_title('Trajectory Lengths of Used Episodes')
+        axes[0, 1].set_xlabel("Episode Index (used only)")
+        axes[0, 1].set_ylabel("Episode Length")
+        axes[0, 1].set_title("Trajectory Lengths of Used Episodes")
         axes[0, 1].grid(True, alpha=0.3)
     else:
-        axes[0, 1].text(0.5, 0.5, 'No episodes used', ha='center', va='center', transform=axes[0, 1].transAxes)
-        axes[0, 1].set_title('Episode Lengths')
-    
+        axes[0, 1].text(
+            0.5,
+            0.5,
+            "No episodes used",
+            ha="center",
+            va="center",
+            transform=axes[0, 1].transAxes,
+        )
+        axes[0, 1].set_title("Episode Lengths")
+
     # Plot 3: Visualize first used episode (agent positions over time)
     if non_zero_episodes:
         first_ep_idx = non_zero_episodes[0]
         episode = past_eps_sample[first_ep_idx]
-        
+
         # Extract agent positions over time (channel 1 is agent position)
         agent_positions = episode[1, :, :, :]  # Shape: (height, width, time_step)
-        
+
         # Find agent positions for each time step
         positions_over_time = []
         for t in range(time_step):
             pos = np.where(agent_positions[:, :, t] == 1)
             if len(pos[0]) > 0:
                 positions_over_time.append((pos[0][0], pos[1][0]))
-        
+
         if positions_over_time:
             x_pos, y_pos = zip(*positions_over_time)
-            axes[1, 0].plot(x_pos, y_pos, 'b-o', markersize=4, linewidth=2)
-            axes[1, 0].set_xlim(0, height-1)
-            axes[1, 0].set_ylim(0, width-1)
-            axes[1, 0].set_xlabel('X coordinate')
-            axes[1, 0].set_ylabel('Y coordinate')
-            axes[1, 0].set_title(f'Agent Trajectory (Episode {first_ep_idx})')
+            axes[1, 0].plot(x_pos, y_pos, "b-o", markersize=4, linewidth=2)
+            axes[1, 0].set_xlim(0, height - 1)
+            axes[1, 0].set_ylim(0, width - 1)
+            axes[1, 0].set_xlabel("X coordinate")
+            axes[1, 0].set_ylabel("Y coordinate")
+            axes[1, 0].set_title(f"Agent Trajectory (Episode {first_ep_idx})")
             axes[1, 0].grid(True, alpha=0.3)
             axes[1, 0].invert_yaxis()
         else:
-            axes[1, 0].text(0.5, 0.5, 'No valid positions', ha='center', va='center', transform=axes[1, 0].transAxes)
+            axes[1, 0].text(
+                0.5,
+                0.5,
+                "No valid positions",
+                ha="center",
+                va="center",
+                transform=axes[1, 0].transAxes,
+            )
     else:
-        axes[1, 0].text(0.5, 0.5, 'No episodes to display', ha='center', va='center', transform=axes[1, 0].transAxes)
-    
+        axes[1, 0].text(
+            0.5,
+            0.5,
+            "No episodes to display",
+            ha="center",
+            va="center",
+            transform=axes[1, 0].transAxes,
+        )
+
     # Plot 4: Action distribution across all past episodes
     if non_zero_episodes:
         action_counts = np.zeros(4)  # 4 actions
@@ -881,23 +947,39 @@ def visualize_past_episodes_train(past_episodes, plot_dir, experiment_no):
             # Sum across action channels (channels 6-9 are actions)
             for action_ch in range(4):
                 action_counts[action_ch] += np.sum(episode[6 + action_ch])
-        
+
         if action_counts.sum() > 0:
             action_counts = action_counts / action_counts.sum()
-            actions = ['UP', 'RIGHT', 'DOWN', 'LEFT']
+            actions = ["UP", "RIGHT", "DOWN", "LEFT"]
             axes[1, 1].bar(actions, action_counts)
-            axes[1, 1].set_xlabel('Actions')
-            axes[1, 1].set_ylabel('Frequency')
-            axes[1, 1].set_title('Action Distribution (All Past Episodes)')
+            axes[1, 1].set_xlabel("Actions")
+            axes[1, 1].set_ylabel("Frequency")
+            axes[1, 1].set_title("Action Distribution (All Past Episodes)")
             axes[1, 1].grid(True, alpha=0.3)
         else:
-            axes[1, 1].text(0.5, 0.5, 'No actions found', ha='center', va='center', transform=axes[1, 1].transAxes)
+            axes[1, 1].text(
+                0.5,
+                0.5,
+                "No actions found",
+                ha="center",
+                va="center",
+                transform=axes[1, 1].transAxes,
+            )
     else:
-        axes[1, 1].text(0.5, 0.5, 'No episodes to analyze', ha='center', va='center', transform=axes[1, 1].transAxes)
-    
+        axes[1, 1].text(
+            0.5,
+            0.5,
+            "No episodes to analyze",
+            ha="center",
+            va="center",
+            transform=axes[1, 1].transAxes,
+        )
+
     plt.tight_layout()
-    past_episodes_path = os.path.join(plot_dir, f"exp{experiment_no}_past_episodes_train.png")
-    plt.savefig(past_episodes_path, dpi=150, bbox_inches='tight')
+    past_episodes_path = os.path.join(
+        plot_dir, f"exp{experiment_no}_past_episodes_train.png"
+    )
+    plt.savefig(past_episodes_path, dpi=150, bbox_inches="tight")
     plt.close()
 
 
@@ -949,7 +1031,9 @@ def create_summary_report(
 
     # Additional visualizations from training (if model and data are provided)
     if model is not None and val_loader is not None and device is not None:
-        create_additional_visualizations(model, val_loader, plot_dir, experiment_no, device, has_n_past)
+        create_additional_visualizations(
+            model, val_loader, plot_dir, experiment_no, device, has_n_past
+        )
 
     print(f"Summary report completed. Plots saved to: {plot_dir}")
 

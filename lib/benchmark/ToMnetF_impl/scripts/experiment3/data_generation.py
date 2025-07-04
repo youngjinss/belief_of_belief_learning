@@ -143,6 +143,10 @@ class DataReader:
 
                 sr_data_per_timestep[current_timestep][gamma_str] = sparse_sr
 
+            # Check if we're past SR data and into trajectory data
+            if parsing_sr_data and x.strip() and x[0] == '[':
+                parsing_sr_data = False
+                
             if (
                 idx >= 18
                 and not x.startswith("Consumption Labels:")
@@ -163,11 +167,10 @@ class DataReader:
                     temp_pos = (pos_x, pos_y)
 
                     actions.append(temp_traj)
+                    trajectory[temp_pos] = temp_traj
                 else:
                     # Skip malformed lines
                     continue
-
-                trajectory[temp_pos] = temp_traj
 
         map = np.array(map)  # Map
         consumed = consumed[0][19]  # Consumed goal

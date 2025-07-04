@@ -281,3 +281,4 @@ If you use this implementation, please cite the original ToMnet paper and acknow
     - SR label is computed by each step.
     - N_past is not implemented in Exp2 -> have to fix it
     - Consumption label is computed by each step.
+    - Charnet에 current trajectory를 지움 -> past trajectory 만

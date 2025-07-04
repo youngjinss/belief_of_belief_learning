@@ -4,7 +4,6 @@ import re
 import matplotlib.pyplot as plt
 import torch
 import pickle
-import random
 
 """
 Agnostic data processing and loading utilities for ToMnet with N_past support

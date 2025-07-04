@@ -117,11 +117,8 @@ class DataReader:
                 current_timestep = int(
                     x.strip().replace("Timestep_", "").replace(":", "")
                 )
-<<<<<<< HEAD
                 sr_maps[gamma_str] = sr_values.reshape(
-                    self.MAZE_WIDTH, self.MAZE_HEIGHT
-                )
-=======
+                    self.MAZE_WIDTH, self.MAZE_HEIGHT                
                 if current_timestep not in sr_data_per_timestep:
                     sr_data_per_timestep[current_timestep] = {}
                 continue

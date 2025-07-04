@@ -110,12 +110,12 @@ class TimeDistributedResidualBlock(nn.Module):
 
 
 class TimeDistributedConv2d(nn.Module):
-    def __init__(self, time_step: int):
+    def __init__(self, out_channels: int, time_step: int):
         super(TimeDistributedConv2d, self).__init__()
         self.time_step = time_step
         self.conv = nn.Conv2d(
             in_channels=10,  # depth/channels
-            out_channels=32,  # out_channels
+            out_channels=out_channels,  # out_channels
             kernel_size=(3, 3),
             stride=1,
             padding=1,
@@ -168,6 +168,7 @@ class CharNet(nn.Module):
         self.use_n_past = use_n_past
 
         self.conv_1 = TimeDistributedConv2d(
+            out_channels=out_channels,
             time_step=self.time_step
         )  # Use time frame conv2d to process different lengths of sequence
         self.res_blocks = nn.ModuleList()
@@ -190,9 +191,9 @@ class CharNet(nn.Module):
             # Past episode processing network
             # Input: (position_x, position_y, action_one_hot) = 6 dimensions
             self.past_episode_encoder = nn.Sequential(
-                nn.Linear(6, 32),
+                nn.Linear(6, self.out_channels),
                 nn.ReLU(),
-                nn.Linear(32, self.N_echar),
+                nn.Linear(self.out_channels, self.N_echar),
             )
             
             # Final character embedding combines current trajectory + past episodes
@@ -310,11 +311,11 @@ class PredNet(nn.Module):
         # Output 13x13 grids for 3 different gammas
         self.conv_sr = nn.Conv2d(
             in_channels=self.out_channels,
-            out_channels=32,
+            out_channels=self.out_channels,
             kernel_size=(1, 1),
         )
         self.conv_sr_out = nn.Conv2d(
-            in_channels=32,
+            in_channels=self.out_channels,
             out_channels=3,  # 3 discount factors
             kernel_size=(1, 1),
         )
@@ -415,6 +416,7 @@ class ToMnet(nn.Module):
         input_current_state = data[1]  #  input_current
         
         # Check if past episodes data is provided
+    
         if len(data) > 2 and self.use_n_past:
             past_episodes = data[2]  # past episodes tensor
             n_past = data[3] if len(data) > 3 else None  # number of past episodes

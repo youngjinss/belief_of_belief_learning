@@ -17,7 +17,7 @@ class Config:
         self.no_walls = False
 
         # Model hyperparameters
-        self.batch_size = int(os.getenv("BATCH_SIZE", 512))
+        self.batch_size = int(os.getenv("BATCH_SIZE", 1024))
         self.residual_blocks = 5
         self.e_char = 8
         self.out_channels = 32

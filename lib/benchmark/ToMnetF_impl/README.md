@@ -276,7 +276,7 @@ If you use this implementation, please cite the original ToMnet paper and acknow
 ## Experiemnt history
 
 1. ** Exp1 **: ToMnet + A* star agent (only action prediction)
-2. ** Exp2 **: ToMnet + A* star agent (action prediction, SR, consumption)
+2. ** Exp2 **: ToMnet + A* star agent (action prediction, SR, consumption) -> 결과는 더 안정적으로 나옴
 3. ** Exp3 **: ToMnet + A* star agent (action prediction, SR, consumption)
     - SR label is computed by each step.
     - N_past is not implemented in Exp2 -> have to fix it

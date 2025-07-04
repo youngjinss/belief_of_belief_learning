@@ -151,6 +151,8 @@ class CharNet(nn.Module):
         out_channels: int,
         channels_in: int,
         time_frame: int,
+        max_n_past: int = 10,
+        use_n_past: bool = True,
     ):
         super(CharNet, self).__init__()
 
@@ -162,6 +164,8 @@ class CharNet(nn.Module):
         self.B = Batch  # Batch size
         self.time_frame = time_frame  # sequence length = time frame
         self.hidden_size_lstm = 64  # 128 # 64
+        self.max_n_past = max_n_past
+        self.use_n_past = use_n_past
 
         self.conv_1 = TimeDistributedConv2d(
             time_frame=self.time_frame
@@ -181,9 +185,29 @@ class CharNet(nn.Module):
 
         self.lstm = LSTM(self.out_channels, self.hidden_size_lstm)
 
-        self.e_char = nn.Linear(self.hidden_size_lstm, N_echar)
+        # Character embedding layers
+        if self.use_n_past:
+            # Past episode processing network
+            # Input: (position_x, position_y, action_one_hot) = 6 dimensions
+            self.past_episode_encoder = nn.Sequential(
+                nn.Linear(6, 32),
+                nn.ReLU(),
+                nn.Linear(32, self.N_echar),
+            )
+            
+            # Final character embedding combines current trajectory + past episodes
+            self.e_char = nn.Linear(self.hidden_size_lstm, N_echar)
+        else:
+            self.e_char = nn.Linear(self.hidden_size_lstm, N_echar)
 
-    def forward(self, x):
+    def forward(self, x, past_episodes=None, n_past=None):
+        """
+        Args:
+            x: Current trajectory tensor (Batch x channels x Width x Height x time_frame)
+            past_episodes: Past episodes tensor (Batch x max_n_past x 6)
+            n_past: Number of past episodes per sample (Batch,)
+        """
+        # Process current trajectory
         x = self.conv_1(x)  # (Batch x channels x Width x Height x time frame)
 
         for i in range(self.n):
@@ -194,9 +218,34 @@ class CharNet(nn.Module):
         x = x.reshape([x.size(0), self.time_frame, self.out_channels])
         x = self.lstm(x)
 
-        x = self.e_char(x)
+        # Get trajectory-based character embedding
+        e_char_traj = self.e_char(x)
 
-        return x
+        # Process past episodes if available
+        if self.use_n_past and past_episodes is not None:
+            batch_size = past_episodes.size(0)
+            
+            # Initialize character embedding from past episodes
+            e_char_past = torch.zeros(batch_size, self.N_echar).to(past_episodes.device)
+            
+            # Process each sample in the batch
+            for i in range(batch_size):
+                if n_past is not None and n_past[i] > 0:
+                    # Get past episodes for this sample
+                    sample_past_episodes = past_episodes[i, :n_past[i]]  # (n_past[i], 6)
+                    
+                    # Encode each past episode
+                    encoded_episodes = self.past_episode_encoder(sample_past_episodes)  # (n_past[i], N_echar)
+                    
+                    # Sum contributions according to paper: e_char,i = sum(e_char,ij)
+                    e_char_past[i] = torch.sum(encoded_episodes, dim=0)
+            
+            # Combine trajectory and past episode embeddings
+            e_char_combined = e_char_traj + e_char_past
+            
+            return e_char_combined
+        else:
+            return e_char_traj
 
 
 class PredNet(nn.Module):
@@ -323,6 +372,8 @@ class ToMnet(nn.Module):
         Width: int,
         Height: int,
         Depth: int,
+        max_n_past: int = 10,
+        use_n_past: bool = True,
     ):
         super(ToMnet, self).__init__()
 
@@ -334,6 +385,8 @@ class ToMnet(nn.Module):
         self.resN = ResidualBlocks
         self.Length_E = N_echar
         self.out_channels = out_channels
+        self.max_n_past = max_n_past
+        self.use_n_past = use_n_past
 
         self.char_net = CharNet(
             Batch=self.B,
@@ -342,6 +395,8 @@ class ToMnet(nn.Module):
             channels_in=self.C,
             out_channels=self.out_channels,
             time_frame=self.ts,
+            max_n_past=self.max_n_past,
+            use_n_past=self.use_n_past,
         )
 
         self.pred_net = PredNet(
@@ -358,8 +413,14 @@ class ToMnet(nn.Module):
     def forward(self, data):
         input_trajectory = data[0]  # input_traj
         input_current_state = data[1]  #  input_current
-
-        e_char = self.char_net(input_trajectory)
+        
+        # Check if past episodes data is provided
+        if len(data) > 2 and self.use_n_past:
+            past_episodes = data[2]  # past episodes tensor
+            n_past = data[3] if len(data) > 3 else None  # number of past episodes
+            e_char = self.char_net(input_trajectory, past_episodes, n_past)
+        else:
+            e_char = self.char_net(input_trajectory)
 
         e_char_new = torch.concat([e_char, e_char], dim=1)
         e_char_new = e_char_new[..., 0:13]

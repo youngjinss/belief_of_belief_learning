@@ -79,7 +79,7 @@ def calculate_consumption_labels(consumed_goals):
 
 
 def save_game_with_labels(
-    agent, env, sr_maps, consumption_labels, name="experiment2", base_dir="../../data"
+    agent, env, sr_maps, consumption_labels, past_episodes=None, name="experiment3", base_dir="../../data"
 ):
     """
     Save game data with SR and consumption labels
@@ -89,6 +89,7 @@ def save_game_with_labels(
         env: The environment
         sr_maps: Successor representation maps
         consumption_labels: Consumption labels
+        past_episodes: List of past episodes for character embedding (optional)
         name: Output directory name
         base_dir: Base directory for saving
     """
@@ -141,6 +142,15 @@ def save_game_with_labels(
         for gamma_idx, gamma in enumerate([0.5, 0.9, 0.99]):
             sr_flat = sr_maps[gamma_idx].flatten()
             f.write(f"SR_gamma_{gamma}: " + ",".join(map(str, sr_flat.tolist())) + "\n")
+        
+        # Save past episodes for N_past
+        if past_episodes is not None:
+            f.write(f"N_past: {len(past_episodes)}\n")
+            for ep_idx, episode in enumerate(past_episodes):
+                pos, action = episode
+                f.write(f"Past_episode_{ep_idx}: [{pos[0]},{pos[1]}]:{action}\n")
+        else:
+            f.write("N_past: 0\n")
 
         # Save moves
         for i in range(len(agent.trajectory)):
@@ -164,7 +174,7 @@ def save_game_with_labels(
 
 def generate_trajectories(config=None):
     """
-    Generate trajectories for Experiment 2 using A* agents with SR and consumption labels
+    Generate trajectories for Experiment 3 using A* agents with SR, consumption labels, and N_past episodes
 
     Args:
         config: Config object containing all parameters. If None, uses default values.
@@ -182,6 +192,11 @@ def generate_trajectories(config=None):
     shuffle = config.shuffle
     no_walls = config.no_walls
     save_dir = config.data_dir
+    
+    # N_past settings
+    use_n_past = config.use_n_past
+    n_past_min = config.n_past_min
+    n_past_max = config.n_past_max
 
     env = World(
         row_size=rows,
@@ -194,6 +209,9 @@ def generate_trajectories(config=None):
     # Create output directory
     full_output_dir = save_dir
     os.makedirs(full_output_dir, exist_ok=True)
+    
+    # Dictionary to store past episodes for each agent type
+    agent_past_episodes = {}
 
     for i in range(n_games):
         if i % 1000 == 0:
@@ -202,6 +220,27 @@ def generate_trajectories(config=None):
         env.reset()
         # env.render()
         agent = Agent.AgentStar(env, sight, observability=observability)
+        
+        # Sample N_past uniformly
+        n_past = np.random.randint(n_past_min, n_past_max + 1) if use_n_past else 0
+        
+        # Get agent identifier (could be based on agent parameters)
+        agent_id = f"a_star_{sight}_{observability}"
+        
+        # Initialize past episodes list for this agent if not exists
+        if agent_id not in agent_past_episodes:
+            agent_past_episodes[agent_id] = []
+        
+        # Select past episodes for this game
+        available_episodes = agent_past_episodes[agent_id]
+        if n_past > 0 and len(available_episodes) > 0:
+            # Sample min(n_past, available episodes) episodes
+            n_sample = min(n_past, len(available_episodes))
+            # Use random.sample instead of np.random.choice for list of tuples
+            import random
+            past_episodes = random.sample(available_episodes, n_sample)
+        else:
+            past_episodes = []
 
         while True:
             agent.update_world_observation()
@@ -230,6 +269,19 @@ def generate_trajectories(config=None):
         )
 
         consumption_labels = calculate_consumption_labels(env.consumed_goal)
+        
+        # Collect episodes from current trajectory (only state-action pairs)
+        # According to paper: each past episode is a single state-action pair
+        if len(agent.trajectory) > 0 and use_n_past:
+            # Randomly select one state-action pair from this episode
+            idx = np.random.randint(0, len(agent.trajectory))
+            episode = (agent.position_trajectory[idx], agent.trajectory[idx])
+            agent_past_episodes[agent_id].append(episode)
+            
+            # Limit the number of stored episodes to avoid memory issues
+            max_stored_episodes = 1000
+            if len(agent_past_episodes[agent_id]) > max_stored_episodes:
+                agent_past_episodes[agent_id] = agent_past_episodes[agent_id][-max_stored_episodes:]
 
         # Save game with additional SR and consumption data
         save_game_with_labels(
@@ -237,6 +289,7 @@ def generate_trajectories(config=None):
             env=env,
             sr_maps=sr_maps,
             consumption_labels=consumption_labels,
+            past_episodes=past_episodes,
             name="",
             base_dir=save_dir,
         )

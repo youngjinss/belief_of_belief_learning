@@ -33,15 +33,20 @@ class Config:
         self.device = "cuda:3"
 
         # Data directories
-        self.data_dir = "../../data/experiment2"
-        self.model_dir = "../../models/experiment2"
-        self.result_dir = "../../result/experiment2"
-        self.plot_dir = "../../plots/experiment2"
+        self.data_dir = "../../data/experiment3"
+        self.model_dir = "../../models/experiment3"
+        self.result_dir = "../../result/experiment3"
+        self.plot_dir = "../../plots/experiment3"
         self.log_dir = "../../log/training"
 
         # Experiment specific
-        self.experiment_no = 2
+        self.experiment_no = 3
         self.use_percentage = 0.9
+        
+        # N_past settings for character embedding
+        self.n_past_min = 0  # Minimum number of past episodes
+        self.n_past_max = 10  # Maximum number of past episodes
+        self.use_n_past = True  # Whether to use past episodes for character embedding
 
     def get_model_kwargs(self):
         """Return model parameters for ToMnet initialization"""
@@ -54,6 +59,8 @@ class Config:
             "Width": self.width,
             "Height": self.height,
             "Depth": self.depth,
+            "max_n_past": self.n_past_max,
+            "use_n_past": self.use_n_past,
         }
 
     def get_training_kwargs(self):
@@ -75,4 +82,6 @@ class Config:
             "training_proportion": self.training_proportion,
             "use_percentage": self.use_percentage,
             "device": self.device,
+            "max_n_past": self.n_past_max,
+            "use_n_past": self.use_n_past,
         }

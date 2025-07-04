@@ -88,6 +88,8 @@ def train_tomnet(config=None):
     data_labels = processed_data["data_labels"]
     data_consumption = processed_data.get("data_consumption_labels", None)
     data_sr = processed_data.get("data_sr_maps", None)
+    data_past_episodes = processed_data.get("data_past_episodes", None)
+    data_n_past = processed_data.get("data_n_past", None)
 
     print(f"Data shapes:")
     print(f"Trajectories: {data_traj.shape}")
@@ -102,42 +104,35 @@ def train_tomnet(config=None):
         print(f"SR maps: {data_sr.shape}")
     else:
         print("Warning: SR and consumption labels not found. Using dummy labels.")
-
-    # Create dataset
-    if has_new_labels:
-        dataset = TensorDataset(
-            data_traj, data_curr, data_act, data_consumption, data_sr
-        )
+    
+    # Check if N_past data is available
+    has_n_past = data_past_episodes is not None and data_n_past is not None
+    if has_n_past:
+        print(f"Past episodes: {data_past_episodes.shape}")
+        print(f"N_past: {data_n_past.shape}")
     else:
-        dataset = TensorDataset(data_traj, data_curr, data_act)
+        print("Warning: N_past data not found. Character embedding will use trajectory only.")
+
+    # Create dataset - include N_past data if available
+    dataset_components = [data_traj, data_curr, data_act]
+    if has_new_labels:
+        dataset_components.extend([data_consumption, data_sr])
+    if has_n_past:
+        dataset_components.extend([data_past_episodes, data_n_past])
+    
+    dataset = TensorDataset(*dataset_components)
 
     # Train/validation split
     total_size = len(dataset)
     train_size = int(total_size * training_proportion)
     val_size = total_size - train_size
 
-    if has_new_labels:
-        train_dataset = TensorDataset(
-            data_traj[:train_size],
-            data_curr[:train_size],
-            data_act[:train_size],
-            data_consumption[:train_size],
-            data_sr[:train_size],
-        )
-        val_dataset = TensorDataset(
-            data_traj[train_size:],
-            data_curr[train_size:],
-            data_act[train_size:],
-            data_consumption[train_size:],
-            data_sr[train_size:],
-        )
-    else:
-        train_dataset = TensorDataset(
-            data_traj[:train_size], data_curr[:train_size], data_act[:train_size]
-        )
-        val_dataset = TensorDataset(
-            data_traj[train_size:], data_curr[train_size:], data_act[train_size:]
-        )
+    # Create train and validation datasets with the same components
+    train_components = [data[:train_size] for data in dataset_components]
+    val_components = [data[train_size:] for data in dataset_components]
+    
+    train_dataset = TensorDataset(*train_components)
+    val_dataset = TensorDataset(*val_components)
 
     # Create data loaders
     train_loader = DataLoader(
@@ -202,24 +197,35 @@ def train_tomnet(config=None):
         # Training phase
         model.train()
         for idx, data in enumerate(train_loader):
-            if len(data) == 5:  # With SR and consumption labels
-                traj, curr, act, consumption_target, sr_target = data
-                traj, curr, act = traj.to(device), curr.to(device), act.to(device)
-                consumption_target = consumption_target.to(device)
-                sr_target = sr_target.to(device)
-            else:  # Without SR and consumption labels
-                traj, curr, act = data
-                traj, curr, act = traj.to(device), curr.to(device), act.to(device)
+            # Parse data based on what's available
+            traj, curr, act = data[0], data[1], data[2]
+            traj, curr, act = traj.to(device), curr.to(device), act.to(device)
+            
+            data_idx = 3
+            
+            # Handle consumption and SR labels
+            if has_new_labels and len(data) > data_idx:
+                consumption_target = data[data_idx].to(device)
+                sr_target = data[data_idx + 1].to(device)
+                data_idx += 2
+            else:
                 # Create dummy targets
                 batch_size = act.size(0)
                 consumption_target = torch.zeros(batch_size, 4).to(device)
                 sr_target = torch.zeros(batch_size, 3, 13, 13).to(device)
+            
+            # Handle N_past data
+            model_inputs = [traj, curr]
+            if has_n_past and len(data) > data_idx:
+                past_episodes = data[data_idx].to(device)
+                n_past = data[data_idx + 1].to(device)
+                model_inputs.extend([past_episodes, n_past])
 
             act = act.squeeze(-1).type(torch.long)
 
             optimizer.zero_grad()
 
-            action_pred, consumption_pred, sr_pred = model([traj, curr])
+            action_pred, consumption_pred, sr_pred = model(model_inputs)
 
             # Calculate losses
             action_loss = action_loss_fn(action_pred, act)
@@ -259,22 +265,33 @@ def train_tomnet(config=None):
         model.eval()
         with torch.no_grad():
             for idx, data in enumerate(val_loader):
-                if len(data) == 5:  # With SR and consumption labels
-                    traj, curr, act, consumption_target, sr_target = data
-                    traj, curr, act = traj.to(device), curr.to(device), act.to(device)
-                    consumption_target = consumption_target.to(device)
-                    sr_target = sr_target.to(device)
-                else:  # Without SR and consumption labels
-                    traj, curr, act = data
-                    traj, curr, act = traj.to(device), curr.to(device), act.to(device)
+                # Parse data based on what's available
+                traj, curr, act = data[0], data[1], data[2]
+                traj, curr, act = traj.to(device), curr.to(device), act.to(device)
+                
+                data_idx = 3
+                
+                # Handle consumption and SR labels
+                if has_new_labels and len(data) > data_idx:
+                    consumption_target = data[data_idx].to(device)
+                    sr_target = data[data_idx + 1].to(device)
+                    data_idx += 2
+                else:
                     # Create dummy targets
                     batch_size = act.size(0)
                     consumption_target = torch.zeros(batch_size, 4).to(device)
                     sr_target = torch.zeros(batch_size, 3, 13, 13).to(device)
+                
+                # Handle N_past data
+                model_inputs = [traj, curr]
+                if has_n_past and len(data) > data_idx:
+                    past_episodes = data[data_idx].to(device)
+                    n_past = data[data_idx + 1].to(device)
+                    model_inputs.extend([past_episodes, n_past])
 
                 act = act.squeeze(-1).type(torch.long)
 
-                action_pred, consumption_pred, sr_pred = model([traj, curr])
+                action_pred, consumption_pred, sr_pred = model(model_inputs)
 
                 # Calculate losses
                 action_loss = action_loss_fn(action_pred, act)

@@ -82,7 +82,7 @@ run_training() {
     log_step "Logging training output to: $RUN_LOG_DIR/training.log"
     
     cd "$SCRIPTS_DIR/experiment3"
-    python train.py > "$RUN_LOG_DIR/training.log" 2>&1
+    python train.py --log_dir "$RUN_LOG_DIR/training.log" > "$RUN_LOG_DIR/training.log" 2>&1
     
     log_step "Training completed"
     

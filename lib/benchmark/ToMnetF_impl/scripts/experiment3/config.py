@@ -25,7 +25,7 @@ class Config:
         self.depth = 10
 
         # Training settings
-        self.epochs = int(os.getenv("EPOCHS", 100))
+        self.epochs = int(os.getenv("EPOCHS", 200))
         self.lr = 1e-4
         self.training_proportion = 0.9
         self.device = "cuda:3"

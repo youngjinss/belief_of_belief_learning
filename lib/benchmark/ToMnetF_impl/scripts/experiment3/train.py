@@ -5,7 +5,7 @@ import os
 import json
 import pickle
 import sys
-from datetime import datetime
+import logging
 
 sys.path.append("..")
 
@@ -13,7 +13,8 @@ from tomnet import ToMnet
 from data_generation import generate_input_data
 from config import Config
 from visualize import create_additional_visualizations
-import random
+
+logger = logging.getLogger("train_logger")
 
 """
 Advanced training system for ToMnetF
@@ -135,12 +136,12 @@ def train_tomnet(config=None):
     os.makedirs(plot_dir, exist_ok=True)
 
     # Create timestamped log directory
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_path = os.path.join(log_dir, f"exp{experiment_no}_{timestamp}")
-    os.makedirs(log_path, exist_ok=True)
+    # timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    # log_path = os.path.join(log_dir, f"experiment{experiment_no}/{timestamp}")
+    os.makedirs(log_dir, exist_ok=True)
 
     print(f"Training ToMnetF for experiment {experiment_no}")
-    print(f"Log directory: {log_path}")
+    print(f"Log directory: {log_dir}")
 
     # Check if processed data exists, if not generate it
     processed_data_path = os.path.join(
@@ -448,10 +449,10 @@ def train_tomnet(config=None):
             best_model_path = os.path.join(model_dir, f"exp{experiment_no}_best.pth")
             torch.save(model.state_dict(), best_model_path)
 
-        print(
+        logger.info(
             f"Epoch: {epoch:3d} | Train Loss: {train_loss:.4f} | Train Acc: {train_acc:.4f}% | Val Acc: {val_acc:.4f}%"
         )
-        print("-" * 80)
+        logger.info("-" * 80)
 
     print("Finished Training!")
 
@@ -487,7 +488,7 @@ def train_tomnet(config=None):
         "batch_size": batch_size,
         "learning_rate": lr,
         "model_parameters": int(pytorch_total_params),
-        "timestamp": timestamp,
+        "timestamp": time_step,
         "best_model_path": best_model_path,
         "final_model_path": final_model_path,
     }

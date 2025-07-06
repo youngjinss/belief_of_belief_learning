@@ -273,7 +273,7 @@ def train_tomnet(config=None):
     start = datetime.now()
     for epoch in range(epochs):
         epoch_start = datetime.now()
-        
+
         running_loss_train = 0.0
         running_loss_val = 0.0
         running_action_loss_train = 0.0
@@ -466,6 +466,9 @@ def train_tomnet(config=None):
             val_sr_loss = 0.0
             print(f"Warning: No validation data in epoch {epoch}")
 
+        # Calculate epoch timing
+        epoch_time = (datetime.now() - epoch_start).total_seconds()
+
         # Store history
         train_history["epoch"].append(int(epoch))
         train_history["train_accuracy"].append(float(train_acc))
@@ -486,20 +489,21 @@ def train_tomnet(config=None):
             best_model_path = os.path.join(model_dir, f"exp{experiment_no}_best.pth")
             torch.save(model.state_dict(), best_model_path)
 
-        # Calculate epoch timing
-        epoch_time = (datetime.now() - epoch_start).total_seconds()
-        
         print(
             f"Epoch: {epoch:3d} | Train Loss: {train_loss:.4f} | Train Acc: {train_acc:.4f}% | Val Acc: {val_acc:.4f}% | Time: {epoch_time:.2f}s"
         )
-        print(f"  Train - Action: {train_action_loss:.4f} | Consumption: {train_consumption_loss:.4f} | SR: {train_sr_loss:.4f}")
-        print(f"  Val   - Action: {val_action_loss:.4f} | Consumption: {val_consumption_loss:.4f} | SR: {val_sr_loss:.4f}")
+        print(
+            f"  Train - Action: {train_action_loss:.4f} | Consumption: {train_consumption_loss:.4f} | SR: {train_sr_loss:.4f}"
+        )
+        print(
+            f"  Val   - Action: {val_action_loss:.4f} | Consumption: {val_consumption_loss:.4f} | SR: {val_sr_loss:.4f}"
+        )
         print("-" * 80)
-        
+
         # Force flush to ensure real-time logging
         sys.stdout.flush()
         # Also flush any file handlers if redirected
-        if hasattr(sys.stdout, 'buffer'):
+        if hasattr(sys.stdout, "buffer"):
             sys.stdout.buffer.flush()
 
     print("Finished Training!")

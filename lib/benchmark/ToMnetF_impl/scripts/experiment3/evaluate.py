@@ -31,7 +31,15 @@ def load_model(model_path, device, **model_kwargs):
     return model
 
 
-def evaluate_model_with_n_past(model, test_loader, device, n_past_values, max_n_past, save_predictions=False, output_dir=None):
+def evaluate_model_with_n_past(
+    model,
+    test_loader,
+    device,
+    n_past_values,
+    max_n_past,
+    save_predictions=False,
+    output_dir=None,
+):
     """
     Evaluate model performance with different N_past values
 
@@ -48,14 +56,14 @@ def evaluate_model_with_n_past(model, test_loader, device, n_past_values, max_n_
         dict: Evaluation metrics by N_past
     """
     from train import generate_past_episodes_from_batch
-    
+
     model.eval()
     results_by_n_past = {}
-    
+
     for n_past in n_past_values:
         all_predictions = []
         all_targets = []
-        
+
         with torch.no_grad():
             for batch_idx, batch in enumerate(test_loader):
                 if len(batch) == 3:
@@ -63,42 +71,44 @@ def evaluate_model_with_n_past(model, test_loader, device, n_past_values, max_n_
                     traj = traj.to(device)
                     curr = curr.to(device)
                     act = act.to(device)
-                    
+
                     batch_size = curr.size(0)
-                    
+
                     # Generate past episodes with fixed n_past
-                    dummy_goals = torch.zeros(batch_size, dtype=torch.long, device=device)
+                    dummy_goals = torch.zeros(
+                        batch_size, dtype=torch.long, device=device
+                    )
                     past_episodes = generate_past_episodes_from_batch(
                         traj, dummy_goals, batch_size, n_past, n_past, max_n_past
                     )
-                    
+
                     # Model forward pass
                     model_output = model([traj, curr, past_episodes])
                     action_pred = model_output[0]
-                    
+
                     # Get predictions
                     _, predicted = torch.max(action_pred, 1)
-                    
+
                     all_predictions.extend(predicted.cpu().numpy())
                     all_targets.extend(act.cpu().numpy())
-        
+
         # Calculate metrics
         accuracy = accuracy_score(all_targets, all_predictions)
         precision, recall, f1, _ = precision_recall_fscore_support(
-            all_targets, all_predictions, average='weighted'
+            all_targets, all_predictions, average="weighted"
         )
-        
+
         results_by_n_past[n_past] = {
-            'accuracy': accuracy,
-            'precision': precision,
-            'recall': recall,
-            'f1_score': f1,
-            'predictions': all_predictions,
-            'targets': all_targets
+            "accuracy": accuracy,
+            "precision": precision,
+            "recall": recall,
+            "f1_score": f1,
+            "predictions": all_predictions,
+            "targets": all_targets,
         }
-        
+
         print(f"N_past={n_past}: Accuracy={accuracy:.4f}, F1={f1:.4f}")
-    
+
     return results_by_n_past
 
 
@@ -483,7 +493,7 @@ if __name__ == "__main__":
             model_path,
             test_data_path,
             config.result_dir,
-            n_past_range=(args.n_past_min, args.n_past_max)
+            n_past_range=(args.n_past_min, args.n_past_max),
         )
         print(f"N_past evaluation completed!")
     elif args.analysis_only:
@@ -512,10 +522,12 @@ if __name__ == "__main__":
             print("Please train the model and generate data first.")
 
 
-def evaluate_n_past_experiment(model_path, test_data_path, output_dir, n_past_range=(0, 5)):
+def evaluate_n_past_experiment(
+    model_path, test_data_path, output_dir, n_past_range=(0, 5)
+):
     """
     Evaluate model performance across different N_past values
-    
+
     Args:
         model_path: Path to trained model
         test_data_path: Path to test data
@@ -526,67 +538,66 @@ def evaluate_n_past_experiment(model_path, test_data_path, output_dir, n_past_ra
     config = Config()
     device = config.device if torch.cuda.is_available() else "cpu"
     model_kwargs = config.get_model_kwargs()
-    
+
     print(f"Evaluating N_past performance from {n_past_range[0]} to {n_past_range[1]}")
     print(f"Model: {model_path}")
     print(f"Test data: {test_data_path}")
     print(f"Device: {device}")
     print("-" * 60)
-    
+
     # Load model
     model = load_model(model_path, device, **model_kwargs)
-    
+
     # Load test data
     with open(test_data_path, "rb") as f:
         test_data = pickle.load(f)
-    
+
     # Create test loader
     test_dataset = TensorDataset(
         test_data["data_trajectories"],
         test_data["data_current_state"],
         test_data["data_actions"],
     )
-    test_loader = DataLoader(
-        test_dataset, batch_size=config.batch_size, shuffle=False
-    )
-    
+    test_loader = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False)
+
     # Define N_past values to test
     n_past_values = list(range(n_past_range[0], n_past_range[1] + 1))
     max_n_past = config.max_n_past
-    
+
     # Evaluate model with different N_past values
     print("Running evaluation...")
     results_by_n_past = evaluate_model_with_n_past(
         model, test_loader, device, n_past_values, max_n_past
     )
-    
+
     # Create output directory
     os.makedirs(output_dir, exist_ok=True)
-    
+
     # Save results
     results_file = os.path.join(output_dir, "n_past_evaluation_results.json")
-    
+
     # Convert numpy arrays to lists for JSON serialization
     json_results = {}
     for n_past, metrics in results_by_n_past.items():
         json_results[str(n_past)] = {
-            'accuracy': float(metrics['accuracy']),
-            'precision': float(metrics['precision']),
-            'recall': float(metrics['recall']),
-            'f1_score': float(metrics['f1_score'])
+            "accuracy": float(metrics["accuracy"]),
+            "precision": float(metrics["precision"]),
+            "recall": float(metrics["recall"]),
+            "f1_score": float(metrics["f1_score"]),
         }
-    
-    with open(results_file, 'w') as f:
+
+    with open(results_file, "w") as f:
         json.dump(json_results, f, indent=2)
-    
+
     print(f"Results saved to: {results_file}")
-    
+
     # Create visualizations
     print("Creating visualizations...")
     from visualize import plot_accuracy_by_n_past, plot_accuracy_heatmap_by_n_past
+
     plot_accuracy_by_n_past(results_by_n_past, output_dir)
     plot_accuracy_heatmap_by_n_past(results_by_n_past, output_dir)
-    
+
     print(f"Visualizations saved to: {output_dir}")
-    
+
     return results_by_n_past

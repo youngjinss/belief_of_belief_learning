@@ -6,7 +6,7 @@ class Config:
         self.agent_type = "a_star"
         self.observability = "full"
         self.sight = 3
-        self.n_games = int(os.getenv("N_GAMES", 5000))
+        self.n_games = int(os.getenv("N_GAMES", 20000))
         self.rows = 13
         self.cols = 13
         self.width = 13

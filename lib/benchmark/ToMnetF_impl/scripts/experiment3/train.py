@@ -21,6 +21,49 @@ Advanced training system for ToMnetF
 """
 
 
+class EarlyStopping:
+    """Early stopping to stop training when validation loss doesn't improve"""
+    
+    def __init__(self, patience=10, min_delta=0.001, restore_best_weights=True):
+        """
+        Args:
+            patience: Number of epochs to wait before stopping
+            min_delta: Minimum change in validation loss to qualify as improvement
+            restore_best_weights: Whether to restore model weights from the best epoch
+        """
+        self.patience = patience
+        self.min_delta = min_delta
+        self.restore_best_weights = restore_best_weights
+        self.best_loss = float('inf')
+        self.counter = 0
+        self.best_weights = None
+        
+    def __call__(self, val_loss, model):
+        """
+        Call this method after each epoch
+        
+        Args:
+            val_loss: Current validation loss
+            model: Model to potentially store weights from
+            
+        Returns:
+            True if training should stop, False otherwise
+        """
+        if val_loss < self.best_loss - self.min_delta:
+            self.best_loss = val_loss
+            self.counter = 0
+            if self.restore_best_weights:
+                self.best_weights = model.state_dict().copy()
+        else:
+            self.counter += 1
+            
+        if self.counter >= self.patience:
+            if self.restore_best_weights and self.best_weights is not None:
+                model.load_state_dict(self.best_weights)
+            return True
+        return False
+
+
 def generate_past_episodes_from_batch(
     trajectories, goals, batch_size, n_past_min, n_past_max, max_n_past
 ):
@@ -247,6 +290,13 @@ def train_tomnet(config=None):
     action_weight = 1.0
     consumption_weight = 1.0
     sr_weight = 1.0
+    
+    # Initialize early stopping
+    early_stopping = EarlyStopping(
+        patience=config.early_stopping_patience,
+        min_delta=config.early_stopping_min_delta,
+        restore_best_weights=config.early_stopping_restore_best
+    )
 
     # Training history
     train_history = {
@@ -488,6 +538,12 @@ def train_tomnet(config=None):
             best_val_acc = val_acc
             best_model_path = os.path.join(model_dir, f"exp{experiment_no}_best.pth")
             torch.save(model.state_dict(), best_model_path)
+        
+        # Check early stopping
+        if early_stopping(val_loss, model):
+            print(f"Early stopping triggered at epoch {epoch}")
+            print(f"Best validation loss: {early_stopping.best_loss:.4f}")
+            break
 
         print(
             f"Epoch: {epoch:3d} | Train Loss: {train_loss:.4f} | Train Acc: {train_acc:.4f}% | Val Acc: {val_acc:.4f}% | Time: {epoch_time:.2f}s"
@@ -537,12 +593,15 @@ def train_tomnet(config=None):
         "final_train_accuracy": float(train_history["train_accuracy"][-1]),
         "final_val_accuracy": float(train_history["val_accuracy"][-1]),
         "epochs": epochs,
+        "actual_epochs": len(train_history["epoch"]),
         "batch_size": batch_size,
         "learning_rate": lr,
         "model_parameters": int(pytorch_total_params),
         "timestamp": (datetime.now() - start).seconds,
         "best_model_path": best_model_path,
         "final_model_path": final_model_path,
+        "early_stopping_triggered": len(train_history["epoch"]) < epochs,
+        "early_stopping_best_loss": float(early_stopping.best_loss),
     }
 
     results_path = os.path.join(result_dir, f"exp{experiment_no}_results.json")
@@ -620,6 +679,8 @@ if __name__ == "__main__":
         "--use_percentage", type=float, help="Percentage of data to use"
     )
     parser.add_argument("--device", type=str, help="CUDA device (e.g., cuda:0)")
+    parser.add_argument("--early_stopping_patience", type=int, help="Early stopping patience")
+    parser.add_argument("--early_stopping_min_delta", type=float, help="Early stopping minimum delta")
 
     args = parser.parse_args()
 
@@ -659,6 +720,10 @@ if __name__ == "__main__":
             config.use_percentage = args.use_percentage
         if args.device is not None:
             config.device = args.device
+        if args.early_stopping_patience is not None:
+            config.early_stopping_patience = args.early_stopping_patience
+        if args.early_stopping_min_delta is not None:
+            config.early_stopping_min_delta = args.early_stopping_min_delta
 
     # Train model using config parameters
     model, history, results = train_tomnet(config)

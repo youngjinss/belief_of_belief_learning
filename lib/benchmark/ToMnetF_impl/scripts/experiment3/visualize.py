@@ -20,6 +20,139 @@ Extended with SR and consumption visualization
 """
 
 
+def plot_accuracy_by_n_past(results_by_n_past, output_dir=None, show_confidence=True):
+    """
+    Plot action accuracy as a function of N_past values
+    
+    Args:
+        results_by_n_past: Dictionary with N_past values as keys and metrics as values
+        output_dir: Directory to save plots
+        show_confidence: Whether to show confidence intervals
+    """
+    plt.style.use("seaborn-v0_8")
+    
+    # Extract data
+    n_past_values = sorted(results_by_n_past.keys())
+    accuracies = [results_by_n_past[n]['accuracy'] for n in n_past_values]
+    f1_scores = [results_by_n_past[n]['f1_score'] for n in n_past_values]
+    
+    # Create the plot
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+    
+    # Plot accuracy
+    ax1.plot(n_past_values, accuracies, 'o-', linewidth=2, markersize=8, 
+             color='steelblue', label='Action Accuracy')
+    ax1.set_xlabel('Number of Past Episodes (N_past)', fontsize=12)
+    ax1.set_ylabel('Accuracy', fontsize=12)
+    ax1.set_title('Action Accuracy vs N_past', fontsize=14, fontweight='bold')
+    ax1.grid(True, alpha=0.3)
+    ax1.set_xlim(-0.5, max(n_past_values) + 0.5)
+    ax1.set_ylim(0, 1.0)
+    
+    # Add value labels on points
+    for i, (n, acc) in enumerate(zip(n_past_values, accuracies)):
+        ax1.annotate(f'{acc:.3f}', (n, acc), textcoords="offset points", 
+                    xytext=(0,10), ha='center', fontsize=10)
+    
+    # Plot F1 score
+    ax2.plot(n_past_values, f1_scores, 'o-', linewidth=2, markersize=8, 
+             color='darkgreen', label='F1 Score')
+    ax2.set_xlabel('Number of Past Episodes (N_past)', fontsize=12)
+    ax2.set_ylabel('F1 Score', fontsize=12)
+    ax2.set_title('F1 Score vs N_past', fontsize=14, fontweight='bold')
+    ax2.grid(True, alpha=0.3)
+    ax2.set_xlim(-0.5, max(n_past_values) + 0.5)
+    ax2.set_ylim(0, 1.0)
+    
+    # Add value labels on points
+    for i, (n, f1) in enumerate(zip(n_past_values, f1_scores)):
+        ax2.annotate(f'{f1:.3f}', (n, f1), textcoords="offset points", 
+                    xytext=(0,10), ha='center', fontsize=10)
+    
+    plt.tight_layout()
+    
+    # Save plot
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+        plt.savefig(os.path.join(output_dir, 'accuracy_by_n_past.png'), 
+                   dpi=300, bbox_inches='tight')
+        plt.savefig(os.path.join(output_dir, 'accuracy_by_n_past.pdf'), 
+                   dpi=300, bbox_inches='tight')
+    
+    plt.show()
+    
+    # Print summary statistics
+    print("\nAccuracy by N_past Summary:")
+    print("-" * 40)
+    for n in n_past_values:
+        print(f"N_past={n:2d}: Accuracy={accuracies[n_past_values.index(n)]:.4f}, "
+              f"F1={f1_scores[n_past_values.index(n)]:.4f}")
+    
+    best_n_past = n_past_values[np.argmax(accuracies)]
+    print(f"\nBest N_past: {best_n_past} (Accuracy: {max(accuracies):.4f})")
+
+
+def plot_accuracy_heatmap_by_n_past(results_by_n_past, output_dir=None):
+    """
+    Create a heatmap showing per-action accuracy by N_past values
+    
+    Args:
+        results_by_n_past: Dictionary with N_past values as keys and metrics as values
+        output_dir: Directory to save plots
+    """
+    plt.style.use("seaborn-v0_8")
+    
+    # Extract data and calculate per-action accuracy
+    n_past_values = sorted(results_by_n_past.keys())
+    action_names = ['Up', 'Down', 'Left', 'Right']  # Assuming 4 actions
+    
+    accuracy_matrix = []
+    
+    for n_past in n_past_values:
+        predictions = results_by_n_past[n_past]['predictions']
+        targets = results_by_n_past[n_past]['targets']
+        
+        # Calculate per-action accuracy
+        action_accuracies = []
+        for action in range(4):
+            action_mask = np.array(targets) == action
+            if np.sum(action_mask) > 0:
+                action_acc = np.mean(np.array(predictions)[action_mask] == action)
+                action_accuracies.append(action_acc)
+            else:
+                action_accuracies.append(0.0)
+        
+        accuracy_matrix.append(action_accuracies)
+    
+    accuracy_matrix = np.array(accuracy_matrix)
+    
+    # Create heatmap
+    fig, ax = plt.subplots(figsize=(10, 6))
+    
+    sns.heatmap(accuracy_matrix, 
+                xticklabels=action_names,
+                yticklabels=[f'N_past={n}' for n in n_past_values],
+                annot=True, fmt='.3f', cmap='YlOrRd',
+                cbar_kws={'label': 'Accuracy'},
+                ax=ax)
+    
+    ax.set_title('Per-Action Accuracy by N_past', fontsize=14, fontweight='bold')
+    ax.set_xlabel('Action Type', fontsize=12)
+    ax.set_ylabel('Number of Past Episodes', fontsize=12)
+    
+    plt.tight_layout()
+    
+    # Save plot
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+        plt.savefig(os.path.join(output_dir, 'accuracy_heatmap_by_n_past.png'), 
+                   dpi=300, bbox_inches='tight')
+        plt.savefig(os.path.join(output_dir, 'accuracy_heatmap_by_n_past.pdf'), 
+                   dpi=300, bbox_inches='tight')
+    
+    plt.show()
+
+
 def generate_past_episodes_from_batch(
     trajectories, goals, batch_size, n_past_min, n_past_max, max_n_past
 ):
@@ -240,7 +373,7 @@ def visualize_maze_trajectory_with_sr(
 
 def plot_training_curves(history_path, output_dir, experiment_no):
     """
-    Plot training and validation curves
+    Plot training and validation curves including component losses
 
     Args:
         history_path: Path to training history JSON
@@ -251,7 +384,18 @@ def plot_training_curves(history_path, output_dir, experiment_no):
     with open(history_path, "r") as f:
         history = json.load(f)
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 5))
+    # Check if component losses are available
+    has_component_losses = "train_action_loss" in history
+
+    if has_component_losses:
+        # Create 3x2 subplot grid for comprehensive visualization
+        fig, axes = plt.subplots(3, 2, figsize=(15, 15))
+        ax1, ax2 = axes[0]
+        ax3, ax4 = axes[1]
+        ax5, ax6 = axes[2]
+    else:
+        # Original 1x2 layout
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 5))
 
     epochs = history["epoch"]
 
@@ -279,7 +423,7 @@ def plot_training_curves(history_path, output_dir, experiment_no):
     ax1.grid(True, alpha=0.3)
     ax1.set_xlim(0, max(epochs))
 
-    # Loss plot
+    # Total Loss plot
     ax2.plot(
         epochs,
         history["train_loss"],
@@ -298,10 +442,117 @@ def plot_training_curves(history_path, output_dir, experiment_no):
     )
     ax2.set_xlabel("Epoch", fontsize=12)
     ax2.set_ylabel("Loss", fontsize=12)
-    ax2.set_title("Model Loss", fontsize=14, fontweight="bold")
+    ax2.set_title("Total Loss", fontsize=14, fontweight="bold")
     ax2.legend(fontsize=11)
     ax2.grid(True, alpha=0.3)
     ax2.set_xlim(0, max(epochs))
+
+    if has_component_losses:
+        # Action Loss plot
+        ax3.plot(
+            epochs,
+            history["train_action_loss"],
+            label="Training",
+            linewidth=2,
+            marker="o",
+            markersize=4,
+            color="green",
+        )
+        ax3.plot(
+            epochs,
+            history["val_action_loss"],
+            label="Validation",
+            linewidth=2,
+            marker="s",
+            markersize=4,
+            color="lightgreen",
+        )
+        ax3.set_xlabel("Epoch", fontsize=12)
+        ax3.set_ylabel("Loss", fontsize=12)
+        ax3.set_title("Action Loss", fontsize=14, fontweight="bold")
+        ax3.legend(fontsize=11)
+        ax3.grid(True, alpha=0.3)
+        ax3.set_xlim(0, max(epochs))
+
+        # Consumption Loss plot
+        ax4.plot(
+            epochs,
+            history["train_consumption_loss"],
+            label="Training",
+            linewidth=2,
+            marker="o",
+            markersize=4,
+            color="red",
+        )
+        ax4.plot(
+            epochs,
+            history["val_consumption_loss"],
+            label="Validation",
+            linewidth=2,
+            marker="s",
+            markersize=4,
+            color="salmon",
+        )
+        ax4.set_xlabel("Epoch", fontsize=12)
+        ax4.set_ylabel("Loss", fontsize=12)
+        ax4.set_title("Consumption Loss", fontsize=14, fontweight="bold")
+        ax4.legend(fontsize=11)
+        ax4.grid(True, alpha=0.3)
+        ax4.set_xlim(0, max(epochs))
+
+        # SR Loss plot
+        ax5.plot(
+            epochs,
+            history["train_sr_loss"],
+            label="Training",
+            linewidth=2,
+            marker="o",
+            markersize=4,
+            color="purple",
+        )
+        ax5.plot(
+            epochs,
+            history["val_sr_loss"],
+            label="Validation",
+            linewidth=2,
+            marker="s",
+            markersize=4,
+            color="plum",
+        )
+        ax5.set_xlabel("Epoch", fontsize=12)
+        ax5.set_ylabel("Loss", fontsize=12)
+        ax5.set_title("Successor Representation Loss", fontsize=14, fontweight="bold")
+        ax5.legend(fontsize=11)
+        ax5.grid(True, alpha=0.3)
+        ax5.set_xlim(0, max(epochs))
+
+        # Epoch Time plot
+        if "epoch_time" in history:
+            ax6.plot(
+                epochs,
+                history["epoch_time"],
+                label="Time per epoch",
+                linewidth=2,
+                marker="o",
+                markersize=4,
+                color="orange",
+            )
+            ax6.set_xlabel("Epoch", fontsize=12)
+            ax6.set_ylabel("Time (seconds)", fontsize=12)
+            ax6.set_title("Training Time per Epoch", fontsize=14, fontweight="bold")
+            ax6.legend(fontsize=11)
+            ax6.grid(True, alpha=0.3)
+            ax6.set_xlim(0, max(epochs))
+            
+            # Add average time annotation
+            avg_time = sum(history["epoch_time"]) / len(history["epoch_time"])
+            ax6.axhline(y=avg_time, color='red', linestyle='--', alpha=0.7)
+            ax6.text(max(epochs) * 0.02, avg_time * 1.05, f'Avg: {avg_time:.2f}s', 
+                     color='red', fontsize=10, fontweight='bold')
+        else:
+            ax6.text(0.5, 0.5, "Epoch time data not available", 
+                     ha='center', va='center', transform=ax6.transAxes)
+            ax6.set_visible(False)
 
     plt.tight_layout()
 

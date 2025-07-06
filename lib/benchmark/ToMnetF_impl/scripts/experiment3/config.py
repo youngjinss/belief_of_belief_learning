@@ -43,8 +43,8 @@ class Config:
 
         # N_past settings for character embedding
         self.n_past_min = 0  # Minimum number of past episodes
-        self.n_past_max = 5  # Maximum number of past episodes
-        self.n_past_infer = 5  # Maximum number for inference
+        self.n_past_max = 3  # Maximum number of past episodes
+        self.n_past_infer = 3  # Maximum number for inference
         self.use_n_past = True  # Whether to use past episodes for character embedding
 
     def get_model_kwargs(self):

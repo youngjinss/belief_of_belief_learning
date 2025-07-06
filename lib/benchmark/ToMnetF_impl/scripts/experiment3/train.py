@@ -5,7 +5,6 @@ import os
 import json
 import pickle
 import sys
-import logging
 from datetime import datetime
 
 sys.path.append("..")
@@ -15,7 +14,6 @@ from data_generation import generate_input_data
 from config import Config
 from visualize import create_additional_visualizations
 
-logger = logging.getLogger("train_logger")
 
 """
 Advanced training system for ToMnetF
@@ -254,9 +252,16 @@ def train_tomnet(config=None):
     train_history = {
         "train_accuracy": [],
         "train_loss": [],
+        "train_action_loss": [],
+        "train_consumption_loss": [],
+        "train_sr_loss": [],
         "val_accuracy": [],
         "val_loss": [],
+        "val_action_loss": [],
+        "val_consumption_loss": [],
+        "val_sr_loss": [],
         "epoch": [],
+        "epoch_time": [],
     }
 
     best_val_acc = 0.0
@@ -267,8 +272,16 @@ def train_tomnet(config=None):
     # Training loop
     start = datetime.now()
     for epoch in range(epochs):
+        epoch_start = datetime.now()
+        
         running_loss_train = 0.0
         running_loss_val = 0.0
+        running_action_loss_train = 0.0
+        running_consumption_loss_train = 0.0
+        running_sr_loss_train = 0.0
+        running_action_loss_val = 0.0
+        running_consumption_loss_val = 0.0
+        running_sr_loss_val = 0.0
 
         all_pred_train = 0
         all_pred_val = 0
@@ -351,9 +364,15 @@ def train_tomnet(config=None):
             correct_pred_train += (y_hat == act).sum().item()
             all_pred_train += act.size(0)
             running_loss_train += loss.item()
+            running_action_loss_train += action_loss.item()
+            running_consumption_loss_train += consumption_loss.item()
+            running_sr_loss_train += sr_loss.item()
 
         train_acc = 100 * correct_pred_train / all_pred_train
         train_loss = running_loss_train / len(train_loader)
+        train_action_loss = running_action_loss_train / len(train_loader)
+        train_consumption_loss = running_consumption_loss_train / len(train_loader)
+        train_sr_loss = running_sr_loss_train / len(train_loader)
 
         # Validation phase
         model.eval()
@@ -428,22 +447,38 @@ def train_tomnet(config=None):
                 correct_pred_val += (y_hat == act).sum().item()
                 all_pred_val += act.size(0)
                 running_loss_val += loss.item()
+                running_action_loss_val += action_loss.item()
+                running_consumption_loss_val += consumption_loss.item()
+                running_sr_loss_val += sr_loss.item()
 
         # Handle case where validation set is empty
         if all_pred_val > 0:
             val_acc = 100 * correct_pred_val / all_pred_val
             val_loss = running_loss_val / len(val_loader)
+            val_action_loss = running_action_loss_val / len(val_loader)
+            val_consumption_loss = running_consumption_loss_val / len(val_loader)
+            val_sr_loss = running_sr_loss_val / len(val_loader)
         else:
             val_acc = 0.0
             val_loss = 0.0
+            val_action_loss = 0.0
+            val_consumption_loss = 0.0
+            val_sr_loss = 0.0
             print(f"Warning: No validation data in epoch {epoch}")
 
         # Store history
         train_history["epoch"].append(int(epoch))
         train_history["train_accuracy"].append(float(train_acc))
         train_history["train_loss"].append(float(train_loss))
+        train_history["train_action_loss"].append(float(train_action_loss))
+        train_history["train_consumption_loss"].append(float(train_consumption_loss))
+        train_history["train_sr_loss"].append(float(train_sr_loss))
         train_history["val_accuracy"].append(float(val_acc))
         train_history["val_loss"].append(float(val_loss))
+        train_history["val_action_loss"].append(float(val_action_loss))
+        train_history["val_consumption_loss"].append(float(val_consumption_loss))
+        train_history["val_sr_loss"].append(float(val_sr_loss))
+        train_history["epoch_time"].append(float(epoch_time))
 
         # Save best model if validation accuracy improved
         if val_acc > best_val_acc:
@@ -451,10 +486,21 @@ def train_tomnet(config=None):
             best_model_path = os.path.join(model_dir, f"exp{experiment_no}_best.pth")
             torch.save(model.state_dict(), best_model_path)
 
-        logger.info(
-            f"Epoch: {epoch:3d} | Train Loss: {train_loss:.4f} | Train Acc: {train_acc:.4f}% | Val Acc: {val_acc:.4f}%"
+        # Calculate epoch timing
+        epoch_time = (datetime.now() - epoch_start).total_seconds()
+        
+        print(
+            f"Epoch: {epoch:3d} | Train Loss: {train_loss:.4f} | Train Acc: {train_acc:.4f}% | Val Acc: {val_acc:.4f}% | Time: {epoch_time:.2f}s"
         )
-        logger.info("-" * 80)
+        print(f"  Train - Action: {train_action_loss:.4f} | Consumption: {train_consumption_loss:.4f} | SR: {train_sr_loss:.4f}")
+        print(f"  Val   - Action: {val_action_loss:.4f} | Consumption: {val_consumption_loss:.4f} | SR: {val_sr_loss:.4f}")
+        print("-" * 80)
+        
+        # Force flush to ensure real-time logging
+        sys.stdout.flush()
+        # Also flush any file handlers if redirected
+        if hasattr(sys.stdout, 'buffer'):
+            sys.stdout.buffer.flush()
 
     print("Finished Training!")
 

@@ -282,3 +282,51 @@ If you use this implementation, please cite the original ToMnet paper and acknow
     - N_past is not implemented in Exp2 -> have to fix it
     - Consumption label is computed by each step.
     - Charnet에 current trajectory를 지움 -> past trajectory 만
+
+
+## Computation time analysis
+Primary Bottlenecks Identified:
+
+  1. PredNet Forward Pass (tomnet.py:332-371) - 99.8% of model computation
+
+  Most expensive operations:
+  - Lines 336-337: ResidualBlock processing in loop - multiple 3x3 convolutions
+  - Line 346: Global pooling torch.mean(x, [2, 3]) on 13x13x16 feature maps
+  - Lines 361-363: SR prediction convolutions on spatial features
+  - Lines 367-369: Softmax operations on reshaped tensors
+
+  2. Backward Pass (52% of training time)
+
+  - Gradient computation through ResidualBlocks is the main bottleneck
+  - Lines 336-337 in PredNet: Multiple residual blocks create deep computation graphs
+
+  3. Data Loading Bottlenecks (data_generation.py)
+
+  - Line 261 LoadAllGames(): Processing 7381 files takes significant time
+  - Line 402 generateDataFromGame(): Per-game tensor creation and augmentation
+  - Line 486 zeroPadding(): Zero-padding operations on large tensors
+  - Data memory usage: 189.5 MB for processed data
+
+  4. Memory Intensive Operations:
+
+  - Tensor concatenation (tomnet.py:450): torch.cat((input_current_state, e_char_spatial))
+  - Data preprocessing: Loading and processing 2939 samples uses 189.5 MB
+  - Batch processing: 8x10x13x13x10 input tensors
+
+  Specific Line-by-Line Analysis:
+
+  Highest computational cost functions:
+  1. PredNet.forward() (tomnet.py:332) - 0.0034s per batch
+  2. ResidualBlock processing (tomnet.py:336-337) - Multiple 3x3 convolutions
+  3. Data loading (data_generation.py:261) - 0.0479s for pickle loading
+  4. Backward pass - 0.0056s per batch (gradient computation)
+
+  Optimization recommendations:
+  - Reduce ResidualBlocks (currently 2, consider 1)
+  - Optimize SR prediction convolutions (lines 361-363)
+  - Implement gradient checkpointing for memory efficiency
+  - Use smaller batch sizes if memory constrained
+  - Cache processed data to avoid repeated file loading
+
+  The PredNet architecture dominates computation, particularly the residual block processing and spatial feature operations for SR
+  prediction.

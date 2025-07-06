@@ -538,6 +538,7 @@ def evaluate_n_past_experiment(
     config = Config()
     device = config.device if torch.cuda.is_available() else "cpu"
     model_kwargs = config.get_model_kwargs()
+    n_past_range = (config.n_past_min, config.n_past_max)
 
     print(f"Evaluating N_past performance from {n_past_range[0]} to {n_past_range[1]}")
     print(f"Model: {model_path}")

@@ -441,15 +441,16 @@ class ToMnet(nn.Module):
         # Reshape character embedding to spatial format
         # e_char: (batch, N_echar) -> (batch, N_echar, 13, 13)
         batch_size = e_char.size(0)
+        actual_N_echar = e_char.size(1)  # Get actual character embedding dimension
         e_char_spatial = e_char.unsqueeze(-1).unsqueeze(-1)  # (batch, N_echar, 1, 1)
         e_char_spatial = e_char_spatial.expand(
-            batch_size, self.Length_E, 13, 13
+            batch_size, actual_N_echar, 13, 13
         )  # (batch, N_echar, 13, 13)
 
         # Concatenate current state with character embedding
         mixed_data = torch.cat(
             (input_current_state, e_char_spatial), dim=1
-        )  # (batch, 6+N_echar, 13, 13)
+        )  # (batch, 6+actual_N_echar, 13, 13)
 
         action_pred, consumption_pred, sr_pred = self.pred_net(mixed_data)
 

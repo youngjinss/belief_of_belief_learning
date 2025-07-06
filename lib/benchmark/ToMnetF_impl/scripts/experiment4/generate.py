@@ -9,11 +9,11 @@ import numpy as np
 from config import Config
 
 """
-Experiment-specific trajectory generation for Experiment 2
+Experiment-specific trajectory generation for Experiment 4
 Original code from https://github.com/Nik-Kras/ToMnet-N
 @Author Nikita Krasnytskyi
 @Modified by Filip Borowiak
-Modified for SR and consumption prediction
+Modified for random positions and goal rewards
 """
 
 
@@ -123,7 +123,7 @@ def save_game_with_labels(
     env,
     sr_labels_per_timestep,
     consumption_labels,
-    name="experiment3",
+    name="experiment4",
     base_dir="../../data",
 ):
     """
@@ -220,7 +220,7 @@ def save_game_with_labels(
 
 def generate_trajectories(config=None):
     """
-    Generate trajectories for Experiment 3 using A* agents with SR, consumption labels, and N_past episodes
+    Generate trajectories for Experiment 4 using A* agents with random positions, goal rewards, and N_past episodes
 
     Args:
         config: Config object containing all parameters. If None, uses default values.
@@ -313,7 +313,7 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Generate trajectories for Experiment 2 using A* agents with SR and consumption labels"
+        description="Generate trajectories for Experiment 4 using A* agents with random positions and goal rewards"
     )
     parser.add_argument(
         "--config_override",

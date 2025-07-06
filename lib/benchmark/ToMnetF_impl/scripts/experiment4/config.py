@@ -39,13 +39,13 @@ class Config:
 
         # Data directories
         self.data_dir = "../../data/experiment4"
-        self.model_dir = "../../models/experiment3"
-        self.result_dir = "../../result/experiment3"
-        self.plot_dir = "../../plots/experiment3"
+        self.model_dir = "../../models/experiment4"
+        self.result_dir = "../../result/experiment4"
+        self.plot_dir = "../../plots/experiment4"
         self.log_dir = "../../log/training"
 
         # Experiment specific
-        self.experiment_no = 3
+        self.experiment_no = 4
         self.use_percentage = 0.9
 
         # N_past settings for character embedding

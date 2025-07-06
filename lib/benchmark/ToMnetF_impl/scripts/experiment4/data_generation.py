@@ -10,7 +10,7 @@ Agnostic data processing and loading utilities for ToMnet with N_past support
 Combined from FDataLoader.py and FDataProcessor.py
 @author: Chuang, Yun-Shiuan; Edwinn
 @modified by: Filip Borowiak
-Modified for experiment3 with N_past episodes support
+Modified for experiment4 with random positions and goal rewards support
 """
 
 
@@ -612,14 +612,14 @@ class DataProcessor:
 
 
 def generate_input_data(
-    data_dir="../data/experiment3",
-    output_dir="../data/experiment3",
+    data_dir="../data/experiment4",
+    output_dir="../data/experiment4",
     use_percentage=0.9,
     time_step=10,
     height=13,
     width=13,
     depth=10,
-    experiment_no=3,
+    experiment_no=4,
     max_n_past=10,
 ):
     """
@@ -721,13 +721,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--data_dir",
         type=str,
-        default="../data/experiment3",
+        default="../data/experiment4",
         help="Directory containing game txt files",
     )
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="../data/experiment3",
+        default="../data/experiment4",
         help="Directory to save processed data",
     )
     parser.add_argument(
@@ -743,7 +743,7 @@ if __name__ == "__main__":
     parser.add_argument("--width", type=int, default=13, help="Map width")
     parser.add_argument("--depth", type=int, default=10, help="Tensor depth (channels)")
     parser.add_argument(
-        "--experiment_no", type=int, default=3, help="Experiment number"
+        "--experiment_no", type=int, default=4, help="Experiment number"
     )
     parser.add_argument(
         "--max_n_past", type=int, default=10, help="Maximum number of past episodes"

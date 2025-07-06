@@ -14,8 +14,8 @@ from torch.utils.data import DataLoader
 import random
 
 """
-Publication-quality visualization for ToMnetF (Experiment 3)
-Extended with SR and consumption visualization
+Publication-quality visualization for ToMnetF (Experiment 4)
+Extended with random positions and goal rewards visualization
 @Author Filip Borowiak
 """
 
@@ -1292,8 +1292,8 @@ def visualize_past_episodes_train(past_episodes, plot_dir, experiment_no):
 
 def create_summary_report(
     experiment_no,
-    result_dir="../../result/experiment3",
-    plot_dir="../../plots/experiment3",
+    result_dir="../../result/experiment4",
+    plot_dir="../../plots/experiment4",
     model=None,
     val_loader=None,
     device=None,
@@ -1357,13 +1357,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--result_dir",
         type=str,
-        default="../../result/experiment3",
+        default="../../result/experiment4",
         help="Results directory",
     )
     parser.add_argument(
         "--plot_dir",
         type=str,
-        default="../../plots/experiment3",
+        default="../../plots/experiment4",
         help="Plots directory",
     )
     parser.add_argument(

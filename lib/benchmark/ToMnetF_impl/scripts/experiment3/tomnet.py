@@ -188,9 +188,9 @@ class CharNet(nn.Module):
 
             self.past_lstm = LSTM(self.out_channels, self.hidden_size_lstm)
             self.past_e_char = nn.Linear(self.hidden_size_lstm, N_echar)
-        else:
-            # If not using past episodes, create a simple embedding layer
-            self.default_embedding = nn.Parameter(torch.zeros(N_echar))
+        
+        # Always create default_embedding as a fallback
+        self.default_embedding = nn.Parameter(torch.zeros(N_echar))
 
     def forward(self, past_episodes=None):
         """

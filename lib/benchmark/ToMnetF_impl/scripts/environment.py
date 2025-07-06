@@ -195,6 +195,8 @@ class World:
         consume_goals=1,
         shuffle=True,
         no_walls=False,
+        random_positions=False,
+        random_goal_rewards=False,
     ):
 
         self.width = row_size
@@ -208,6 +210,10 @@ class World:
         self.consumed_goal = ""
         self.init_map = [" "] * self.width
         self.players_position = [0, 0]
+
+        # Random generation flags
+        self.random_positions = random_positions
+        self.random_goal_rewards = random_goal_rewards
 
         if goal_rewards is None:
             goal_rewards = [2, 4, 8, 16]
@@ -266,6 +272,54 @@ class World:
         self.WallLayerIdx = 1
         self.GoalLayerIdx = 2
 
+    def generate_random_goal_rewards(self, total_reward=30):
+        """
+        Generate random goal rewards that sum to total_reward (default 30)
+        
+        Returns:
+            list: Four goal rewards that sum to total_reward
+        """
+        import random
+        
+        # Generate 3 random split points between 0 and total_reward
+        splits = sorted([random.randint(1, total_reward-1) for _ in range(3)])
+        
+        # Calculate the four reward values
+        rewards = [
+            splits[0],
+            splits[1] - splits[0],
+            splits[2] - splits[1],
+            total_reward - splits[2]
+        ]
+        
+        # Ensure no reward is 0 (minimum 1)
+        while 0 in rewards:
+            splits = sorted([random.randint(1, total_reward-1) for _ in range(3)])
+            rewards = [
+                splits[0],
+                splits[1] - splits[0],
+                splits[2] - splits[1],
+                total_reward - splits[2]
+            ]
+        
+        return rewards
+
+    def generate_random_position(self):
+        """
+        Generate random player position within grid boundaries
+        
+        Returns:
+            list: [row, col] position within valid grid bounds
+        """
+        import random
+        
+        # Generate position within valid bounds (avoiding walls at edges)
+        # Assuming walls are at borders, so valid positions are [1, width-2] and [1, height-2]
+        row = random.randint(1, self.width - 2)
+        col = random.randint(1, self.height - 2)
+        
+        return [row, col]
+
     # Shows specification on states data
     def states(self):
         # dict(type='int', shape=(self.world_row,self.world_col,), num_values=11)
@@ -288,6 +342,17 @@ class World:
         """Return initial_time_step."""
 
         # print("The RESET was called")
+
+        # Generate random goal rewards if enabled
+        if self.random_goal_rewards:
+            self.goal_rewards = self.generate_random_goal_rewards()
+            # Update the GoalValue mapping
+            self.GoalValue = {
+                self.objectsEnum["Goal A"]: self.goal_rewards[0],
+                self.objectsEnum["Goal B"]: self.goal_rewards[1],
+                self.objectsEnum["Goal C"]: self.goal_rewards[2],
+                self.objectsEnum["Goal D"]: self.goal_rewards[3],
+            }
 
         # Clear the Map
         empty_map = np.zeros((3, self.width, self.height))
@@ -316,6 +381,26 @@ class World:
 
         x, y = np.where(self.state_matrix[self.PlayerLayerIdx] == 1)
         self.players_position = [x[0], y[0]]
+
+        # Override with random position if enabled
+        if self.random_positions:
+            # Clear the old position
+            self.state_matrix[self.PlayerLayerIdx][self.players_position[0], self.players_position[1]] = 0
+            
+            # Generate new random position
+            new_position = self.generate_random_position()
+            
+            # Make sure the new position is not on a wall or goal
+            attempts = 0
+            while (attempts < 100 and 
+                   (self.state_matrix[self.WallLayerIdx][new_position[0], new_position[1]] == 0 or
+                    self.state_matrix[self.GoalLayerIdx][new_position[0], new_position[1]] != 0)):
+                new_position = self.generate_random_position()
+                attempts += 1
+            
+            # Set the new position
+            self.players_position = new_position
+            self.state_matrix[self.PlayerLayerIdx][self.players_position[0], self.players_position[1]] = 1
 
         # Clear step counter in the game
         self.step_count = 0

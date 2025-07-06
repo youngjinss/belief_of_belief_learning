@@ -6,6 +6,7 @@ import json
 import pickle
 import sys
 import logging
+from datetime import datetime
 
 sys.path.append("..")
 
@@ -264,6 +265,7 @@ def train_tomnet(config=None):
     print("-" * 80)
 
     # Training loop
+    start = datetime.now()
     for epoch in range(epochs):
         running_loss_train = 0.0
         running_loss_val = 0.0
@@ -488,7 +490,7 @@ def train_tomnet(config=None):
         "batch_size": batch_size,
         "learning_rate": lr,
         "model_parameters": int(pytorch_total_params),
-        "timestamp": time_step,
+        "timestamp": (datetime.now() - start).seconds,
         "best_model_path": best_model_path,
         "final_model_path": final_model_path,
     }

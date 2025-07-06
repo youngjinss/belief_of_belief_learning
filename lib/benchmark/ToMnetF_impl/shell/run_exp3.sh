@@ -27,23 +27,19 @@ mkdir -p "$DATA_DIR" "$MODELS_DIR" "$RESULTS_DIR" "$PLOTS_DIR" "$LOG_DIR" "$RUN_
 COMMAND=${1:-all}
 
 print_usage() {
-    echo "Usage: $0 [data_generation|train|evaluate|visualize|n_past_eval|all|test]"
+    echo "Usage: $0 [data_generation|train|evaluate|visualize|all]"
     echo ""
     echo "Commands:"
     echo "  data_generation  Generate trajectory data with SR, consumption labels, and N_past episodes"
     echo "  train           Train ToMnet model for experiment 3 with N_past character embedding"
     echo "  evaluate        Evaluate trained model"
     echo "  visualize       Create plots and visualizations including SR maps and N_past analysis"
-    echo "  n_past_eval     Evaluate model performance across different N_past values (0-10)"
     echo "  all             Run complete pipeline"
-    echo "  test            Run small test to verify modifications"
     echo ""
     echo "Experiment 3 Features:"
     echo "  - N_past episodes for character embedding (N_past ~ U{0, 10})"
     echo "  - Character embedding: e_char,i = sum(e_char,ij) for j=1..N_past"
     echo "  - Each past episode is a single state-action pair"
-    echo "  - Enhanced logging: real-time output, component losses, epoch timing"
-    echo "  - Enhanced visualization: component loss plots, N_past analysis"
     echo ""
 }
 
@@ -135,32 +131,6 @@ run_visualization() {
     log_step "Visualization completed"
 }
 
-run_n_past_evaluation() {
-    # Check if N_past evaluation already completed
-    if [ -f "$RESULTS_DIR/n_past_evaluation_results.json" ]; then
-        log_step "N_past evaluation skipped - n_past_evaluation_results.json already exists"
-        return 0
-    fi
-    
-    log_step "Starting N_past evaluation for experiment $EXPERIMENT_NO"
-    log_step "Evaluating model performance across different N_past values (0-10)"
-    log_step "Logging N_past evaluation output to: $RUN_LOG_DIR/n_past_evaluation.log"
-    
-    cd "$SCRIPTS_DIR/experiment3"
-    python evaluate.py --n_past_eval \
-        --model_paths "$MODELS_DIR/exp3_best.pth" \
-        --test_data_paths "$DATA_DIR/processed_data_exp3.pkl" \
-        --n_past_min 0 --n_past_max 10 > "$RUN_LOG_DIR/n_past_evaluation.log" 2>&1
-    
-    log_step "N_past evaluation completed"
-    
-    # Log N_past evaluation summary if available
-    if [ -f "$RUN_LOG_DIR/n_past_evaluation.log" ]; then
-        log_step "N_past evaluation summary:"
-        grep -i "accuracy\|n_past.*performance" "$RUN_LOG_DIR/n_past_evaluation.log" | tail -5 || true
-    fi
-}
-
 # Additional function to check N_past implementation
 check_n_past_implementation() {
     log_step "Checking N_past implementation..."
@@ -206,9 +176,6 @@ case $COMMAND in
     visualize)
         run_visualization
         ;;
-    n_past_eval)
-        run_n_past_evaluation
-        ;;
     all)
         log_step "Running complete ToMnetF pipeline for experiment $EXPERIMENT_NO with N_past functionality"
         log_step "All logs will be saved to: $RUN_LOG_DIR/"
@@ -217,12 +184,7 @@ case $COMMAND in
         run_training
         run_evaluation
         run_visualization
-        run_n_past_evaluation
         log_step "Complete pipeline finished successfully"
-        ;;
-    test)
-        log_step "Running small test to verify modifications"
-        bash shell/test_exp3_modifications.sh
         ;;
     check)
         check_n_past_implementation

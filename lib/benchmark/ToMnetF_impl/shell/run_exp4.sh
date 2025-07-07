@@ -220,7 +220,6 @@ case $COMMAND in
         run_evaluation
         ;;
     visualize)
-        run_evaluation
         run_visualization
         ;;
     all)

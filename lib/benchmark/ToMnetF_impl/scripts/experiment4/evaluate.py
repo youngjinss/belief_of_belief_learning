@@ -701,7 +701,7 @@ if __name__ == "__main__":
         if args.result_dir is not None:
             config.result_dir = args.result_dir
         if args.experiment_no is not None:
-            config.experiment_no = args.experiment_no
+            config.experiment_no = "test"
         if args.batch_size is not None:
             config.batch_size = args.batch_size
         if args.device is not None:
@@ -805,7 +805,6 @@ if __name__ == "__main__":
     stats = analyze_action_likelihood(
         model=model,
         test_loader=test_loader,
-        device=device,
         n_samples=args.n_samples,
         config=config,
     )

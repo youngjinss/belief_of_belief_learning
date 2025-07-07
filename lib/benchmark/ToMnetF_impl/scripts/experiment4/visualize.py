@@ -834,10 +834,16 @@ def plot_character_embeddings(
 
     sample_count = 0
     with torch.no_grad():
-        for traj, curr, act in data_loader:
+        for batch in data_loader:
             if sample_count >= n_samples:
                 break
 
+            # Handle both 3-element and 4-element batches
+            if len(batch) == 4:
+                traj, curr, act, goals = batch
+            else:
+                traj, curr, act = batch
+                
             traj, curr = traj.to(device), curr.to(device)
             act = act.squeeze(-1).type(torch.long)
 
@@ -1449,6 +1455,7 @@ if __name__ == "__main__":
                 test_data["data_trajectories"],
                 test_data["data_current_state"],
                 test_data["data_actions"],
+                test_data["data_labels"],  # Include goals
             )
             test_loader = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False)
             

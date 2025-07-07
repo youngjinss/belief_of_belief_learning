@@ -66,23 +66,21 @@ def evaluate_model_with_n_past(
 
         with torch.no_grad():
             for batch_idx, batch in enumerate(test_loader):
-                if len(batch) == 3:
-                    traj, curr, act = batch
+                if len(batch) == 4:  # Now includes goals
+                    traj, curr, act, goals = batch
                     traj = traj.to(device)
                     curr = curr.to(device)
                     act = act.to(device)
+                    goals = goals.to(device)
 
                     batch_size = curr.size(0)
 
-                    # Generate past episodes with fixed n_past
-                    dummy_goals = torch.zeros(
-                        batch_size, dtype=torch.long, device=device
-                    )
+                    # Generate past episodes with fixed n_past using actual goals
                     past_episodes = generate_past_episodes_from_batch(
-                        traj, dummy_goals, batch_size, n_past, n_past, n_past_max
+                        traj, goals, batch_size, n_past, n_past, n_past_max
                     )
 
-                    # Model forward pass
+                    # Model forward pass with correct order: [trajectory, current_state, past_episodes]
                     model_output = model([traj, curr, past_episodes])
                     action_pred = model_output[0]
 
@@ -265,6 +263,7 @@ def cross_species_evaluation(config=None, model_paths=None, test_data_paths=None
                 test_data["data_trajectories"],
                 test_data["data_current_state"],
                 test_data["data_actions"],
+                test_data["data_labels"],  # Include goals
             )
             test_loader = DataLoader(
                 test_dataset, batch_size=config.batch_size, shuffle=False
@@ -449,6 +448,7 @@ def evaluate_n_past_experiment(
         test_data["data_trajectories"],
         test_data["data_current_state"],
         test_data["data_actions"],
+        test_data["data_labels"],  # Include goals for proper past episode selection
     )
     test_loader = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False)
 
@@ -615,6 +615,7 @@ if __name__ == "__main__":
             test_data["data_trajectories"],
             test_data["data_current_state"],
             test_data["data_actions"],
+            test_data["data_labels"],  # Include goals
         )
         test_loader = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False)
         

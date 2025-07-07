@@ -19,11 +19,11 @@ class Config:
         self.random_goal_rewards = True  # Enable random goal rewards
 
         # Model hyperparameters
-        self.batch_size = int(os.getenv("BATCH_SIZE", 256))
+        self.batch_size = int(os.getenv("BATCH_SIZE", 512))
         self.residual_blocks = 5
         self.e_char = 8
         self.out_channels = 32
-        self.time_step = 50  # slicing time step = same with max_moves
+        self.time_step = 20  # slicing time step = same with max_moves
         self.depth = 10
 
         # Training settings

@@ -340,7 +340,7 @@ def train_tomnet(config=None):
 
         # Training phase
         model.train()
-        for idx, data in enumerate(train_loader):
+        for _, data in enumerate(train_loader):
             # Parse data based on what's available
             traj, curr, act, goals = data[0], data[1], data[2], data[3]
             traj, curr, act, goals = (
@@ -361,7 +361,7 @@ def train_tomnet(config=None):
                 # Create dummy targets
                 batch_size = act.size(0)
                 consumption_target = torch.zeros(batch_size, 4).to(device)
-                sr_target = torch.zeros(batch_size, 3, 13, 13).to(device)
+                sr_target = torch.zeros(batch_size, 3, height, width).to(device)
 
             # Generate N_past data by randomly sampling from batch trajectories with same goal
             model_inputs = [traj, curr]
@@ -389,9 +389,10 @@ def train_tomnet(config=None):
 
             # For SR loss, we need to reshape and apply cross-entropy per channel
             sr_loss = 0
+            batch_size_local = traj.size(0)
             for i in range(3):  # 3 discount factors
-                sr_pred_i = sr_pred[:, i, :, :].contiguous().view(batch_size, -1)
-                sr_target_i = sr_target[:, i, :, :].contiguous().view(batch_size, -1)
+                sr_pred_i = sr_pred[:, i, :, :].contiguous().view(batch_size_local, -1)
+                sr_target_i = sr_target[:, i, :, :].contiguous().view(batch_size_local, -1)
                 # Convert target to class indices (for now using argmax of dummy data)
                 sr_target_indices = torch.argmax(sr_target_i, dim=1)
                 sr_loss += sr_loss_fn(sr_pred_i, sr_target_indices)
@@ -475,10 +476,11 @@ def train_tomnet(config=None):
 
                 # For SR loss
                 sr_loss = 0
+                batch_size_local = traj.size(0)
                 for i in range(3):  # 3 discount factors
-                    sr_pred_i = sr_pred[:, i, :, :].contiguous().view(batch_size, -1)
+                    sr_pred_i = sr_pred[:, i, :, :].contiguous().view(batch_size_local, -1)
                     sr_target_i = (
-                        sr_target[:, i, :, :].contiguous().view(batch_size, -1)
+                        sr_target[:, i, :, :].contiguous().view(batch_size_local, -1)
                     )
                     sr_target_indices = torch.argmax(sr_target_i, dim=1)
                     sr_loss += sr_loss_fn(sr_pred_i, sr_target_indices)

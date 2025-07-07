@@ -16,7 +16,6 @@ class ResidualBlock(nn.Module):
         stride: int,
         kernel_size: int,
         padding: int,
-        downsample=None,
     ):
         super(ResidualBlock, self).__init__()
 
@@ -89,22 +88,22 @@ class TimeDistributedResidualBlock(nn.Module):
         )
 
     def forward(self, x):
-        # x shape: (batch, channels, height, width, time)
-        batch_size, channels, height, width, time_steps = x.size()
+        # x shape: (batch, time, height, width, channels)
+        batch_size, time_steps, height, width, channels = x.size()
 
-        # Reshape to (batch * time, channels, height, width)
-        x_reshaped = x.permute(0, 4, 1, 2, 3).contiguous()
+        # Reshape to (batch * time, channels, height, width) for Conv2d
+        x_reshaped = x.permute(0, 1, 4, 2, 3).contiguous()  # (batch, time, channels, height, width)
         x_reshaped = x_reshaped.view(batch_size * time_steps, channels, height, width)
 
         # Apply residual block
         x_processed = self.res_block(x_reshaped)
 
-        # Reshape back to (batch, channels, height, width, time)
+        # Reshape back to (batch, time, height, width, channels)
         _, out_channels, out_height, out_width = x_processed.size()
         x_output = x_processed.view(
             batch_size, time_steps, out_channels, out_height, out_width
         )
-        x_output = x_output.permute(0, 2, 3, 4, 1).contiguous()
+        x_output = x_output.permute(0, 1, 3, 4, 2).contiguous()  # (batch, time, height, width, channels)
 
         return x_output
 
@@ -122,22 +121,22 @@ class TimeDistributedConv2d(nn.Module):
         )
 
     def forward(self, x):
-        # x shape: (batch, channels, height, width, time)
-        batch_size, channels, height, width, time_steps = x.size()
+        # x shape: (batch, time, height, width, channels)
+        batch_size, time_steps, height, width, channels = x.size()
 
-        # Reshape to (batch * time, channels, height, width)
-        x_reshaped = x.permute(0, 4, 1, 2, 3).contiguous()
+        # Reshape to (batch * time, channels, height, width) for Conv2d
+        x_reshaped = x.permute(0, 1, 4, 2, 3).contiguous()  # (batch, time, channels, height, width)
         x_reshaped = x_reshaped.view(batch_size * time_steps, channels, height, width)
 
         # Apply convolution
         x_processed = self.conv(x_reshaped)
 
-        # Reshape back to (batch, channels, height, width, time)
+        # Reshape back to (batch, time, height, width, channels)
         _, out_channels, out_height, out_width = x_processed.size()
         x_output = x_processed.view(
             batch_size, time_steps, out_channels, out_height, out_width
         )
-        x_output = x_output.permute(0, 2, 3, 4, 1).contiguous()
+        x_output = x_output.permute(0, 1, 3, 4, 2).contiguous()  # (batch, time, height, width, channels)
 
         return x_output
 
@@ -197,7 +196,7 @@ class CharNet(nn.Module):
         CharNet only processes past episodes for character embedding.
 
         Args:
-            past_episodes: Past episodes tensor (Batch x max_n_past x channels x Width x Height x time_step)
+            past_episodes: Past episodes tensor (Batch x max_n_past x time_step x Height x Width x channels)
 
         Returns:
             e_char: Character embedding tensor (Batch x N_echar)
@@ -213,7 +212,7 @@ class CharNet(nn.Module):
                 # Get episode ep_idx for all samples in batch
                 episode_batch = past_episodes[
                     :, ep_idx
-                ]  # (batch, channels, height, width, time_step)
+                ]  # (batch, time_step, height, width, channels)
 
                 # Check if episode is non-zero (not masked)
                 episode_mask = (
@@ -227,8 +226,10 @@ class CharNet(nn.Module):
                     for i in range(self.n):
                         ep_x = self.past_res_blocks[i](ep_x)
 
-                    ep_x = torch.mean(ep_x, [2, 3])
-                    ep_x = ep_x.reshape([batch_size, self.time_step, self.out_channels])
+                    # ep_x shape: (batch, time_step, height, width, out_channels)
+                    # Average over spatial dimensions
+                    ep_x = torch.mean(ep_x, [2, 3])  # (batch, time_step, out_channels)
+                    # No need to reshape as it's already in the correct shape
                     ep_x = self.past_lstm(ep_x)
 
                     # Get character embedding for this episode
@@ -259,14 +260,14 @@ class PredNet(nn.Module):
         self.n = ResidualBlocks
         self.B = Batch
         self.e_char_shape = E_char  # 8
-        # PredNet only processes current state: (batch, channels + e_char, height, width)
+        # PredNet only processes current state: (batch, height, width, channels + e_char)
         # Input will be concatenated current state + character embedding
         self.current_state_shape = (
             self.B,
+            13,
+            13,
             6 + E_char,
-            13,
-            13,
-        )  # batch, channel, height, width
+        )  # batch, height, width, channels
         self.softmax = nn.Softmax(dim=1)
         self.out_channels = out_channels
         self.time_sequence = time_step
@@ -281,7 +282,7 @@ class PredNet(nn.Module):
         )
         self.res_blocks = nn.ModuleList()
 
-        for i in range(self.n):
+        for _ in range(self.n):
             self.res_blocks.append(
                 ResidualBlock(
                     in_channels=self.out_channels,
@@ -422,13 +423,13 @@ class ToMnet(nn.Module):
 
         input_current_state = data[
             1
-        ]  # Current state only (6 channels: walls + player + 4 goals)
+        ]  # Current state only (height, width, 6 channels: walls + player + 4 goals)
 
         # Get character embedding from past episodes only
         if len(data) > 2 and self.use_n_past:
             past_episodes = data[
                 2
-            ]  # past episodes tensor (batch, n_past_max, channels, height, width, time_step)
+            ]  # past episodes tensor (batch, n_past_max, time_step, height, width, channels)
             e_char = self.char_net(past_episodes)
         else:
             # Pass current state to get correct batch size
@@ -441,18 +442,23 @@ class ToMnet(nn.Module):
             )
 
         # Reshape character embedding to spatial format
-        # e_char: (batch, N_echar) -> (batch, N_echar, 13, 13)
+        # e_char: (batch, N_echar) -> (batch, 13, 13, N_echar)
         batch_size = e_char.size(0)
         actual_N_echar = e_char.size(1)  # Get actual character embedding dimension
-        e_char_spatial = e_char.unsqueeze(-1).unsqueeze(-1)  # (batch, N_echar, 1, 1)
+        e_char_spatial = e_char.unsqueeze(1).unsqueeze(1)  # (batch, 1, 1, N_echar)
         e_char_spatial = e_char_spatial.expand(
-            batch_size, actual_N_echar, 13, 13
-        )  # (batch, N_echar, 13, 13)
+            batch_size, self.W, self.H, actual_N_echar
+        )  # (batch, 13, 13, N_echar)
 
         # Concatenate current state with character embedding
+        # input_current_state: (batch, height, width, 6)
+        # e_char_spatial: (batch, height, width, N_echar)
         mixed_data = torch.cat(
-            (input_current_state, e_char_spatial), dim=1
-        )  # (batch, 6+actual_N_echar, 13, 13)
+            (input_current_state, e_char_spatial), dim=3
+        )  # (batch, height, width, 6+actual_N_echar)
+        
+        # Convert to (batch, channels, height, width) for PredNet
+        mixed_data = mixed_data.permute(0, 3, 1, 2).contiguous()
 
         action_pred, consumption_pred, sr_pred = self.pred_net(mixed_data)
 

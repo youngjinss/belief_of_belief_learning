@@ -1171,8 +1171,8 @@ def visualize_past_episodes_train(past_episodes, plot_dir, experiment_no):
     # Take first sample from batch
     past_eps_sample = (
         past_episodes[0].cpu().numpy()
-    )  # Shape: (n_past_max, depth, height, width, time_step)
-    n_past_max, depth, height, width, time_step = past_eps_sample.shape
+    )  # Shape: (n_past_max, time_step, height, width, depth)
+    n_past_max, time_step, height, width, depth = past_eps_sample.shape
 
     # Count non-zero episodes
     non_zero_episodes = []
@@ -1202,7 +1202,7 @@ def visualize_past_episodes_train(past_episodes, plot_dir, experiment_no):
             # Count time steps with non-zero values
             length = 0
             for t in range(time_step):
-                if np.sum(episode[:, :, :, t]) > 0:
+                if np.sum(episode[t, :, :, :]) > 0:
                     length = t + 1
             episode_lengths.append(length)
 
@@ -1228,12 +1228,12 @@ def visualize_past_episodes_train(past_episodes, plot_dir, experiment_no):
         episode = past_eps_sample[first_ep_idx]
 
         # Extract agent positions over time (channel 1 is agent position)
-        agent_positions = episode[1, :, :, :]  # Shape: (height, width, time_step)
+        agent_positions = episode[:, :, :, 1]  # Shape: (time_step, height, width)
 
         # Find agent positions for each time step
         positions_over_time = []
         for t in range(time_step):
-            pos = np.where(agent_positions[:, :, t] == 1)
+            pos = np.where(agent_positions[t, :, :] == 1)
             if len(pos[0]) > 0:
                 positions_over_time.append((pos[0][0], pos[1][0]))
 
@@ -1273,7 +1273,7 @@ def visualize_past_episodes_train(past_episodes, plot_dir, experiment_no):
             episode = past_eps_sample[ep_idx]
             # Sum across action channels (channels 6-9 are actions)
             for action_ch in range(4):
-                action_counts[action_ch] += np.sum(episode[6 + action_ch])
+                action_counts[action_ch] += np.sum(episode[:, :, :, 6 + action_ch])
 
         if action_counts.sum() > 0:
             action_counts = action_counts / action_counts.sum()

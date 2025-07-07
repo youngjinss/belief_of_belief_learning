@@ -42,7 +42,7 @@ class DataReader:
         sr_maps = {}
 
         traj = np.empty(
-            (self.MAZE_DEPTH_TRAJECTORY, self.MAZE_WIDTH, self.MAZE_HEIGHT, 1)
+            (1, self.MAZE_HEIGHT, self.MAZE_WIDTH, self.MAZE_DEPTH_TRAJECTORY)
         )
 
         act = np.empty(1, dtype=np.int8)
@@ -84,21 +84,34 @@ class DataReader:
                     [float(val) for val in consumption_str.split(",")], dtype=np.float32
                 )
 
-            # Parse SR maps if present
+            # Parse SR maps if present (new sparse format)
             if x.startswith("SR_gamma_"):
                 gamma_str = x.split(":")[0].split("_")[-1]
                 sr_str = x.split(":")[1].strip()
-                sr_values = np.array(
-                    [float(val) for val in sr_str.split(",")], dtype=np.float32
-                )
-                sr_maps[gamma_str] = sr_values.reshape(
-                    self.MAZE_WIDTH, self.MAZE_HEIGHT
-                )
+                
+                # Initialize empty SR map
+                sr_map = np.zeros((self.MAZE_WIDTH, self.MAZE_HEIGHT), dtype=np.float32)
+                
+                # Parse sparse format: "x,y:value;x2,y2:value2;..."
+                if sr_str.strip():  # Only if not empty
+                    pairs = sr_str.split(";")
+                    for pair in pairs:
+                        if ":" in pair:
+                            pos_str, val_str = pair.split(":")
+                            if "," in pos_str:
+                                x, y = map(int, pos_str.split(","))
+                                value = float(val_str)
+                                if 0 <= x < self.MAZE_WIDTH and 0 <= y < self.MAZE_HEIGHT:
+                                    sr_map[x, y] = value
+                
+                sr_maps[gamma_str] = sr_map
 
             if (
                 idx >= 18
                 and not x.startswith("Consumption Labels:")
                 and not x.startswith("SR_gamma_")
+                and not x.startswith("SR_Data_Per_Timestep:")
+                and not x.startswith("Timestep_")
             ):
 
                 # Parse trajectory lines: [x, y] : action : goal
@@ -179,9 +192,15 @@ class DataReader:
             tensor = np.concatenate(
                 (np_obstacles1, np_agent1, np_targets, np_actions)
             )  # (1walls + 1player + 4goals + 4actions)
+            
+            # Reshape from (depth, height, width) to (height, width, depth)
+            tensor = np.transpose(tensor, (1, 2, 0))  # (height, width, depth)
 
             steps.append(tensor)  # each step (record) is one decision data
-            traj = np.stack(steps, axis=-1)  # traj consists of many steps records
+            
+        # Stack steps along time dimension
+        if steps:
+            traj = np.stack(steps, axis=0)  # (time_steps, height, width, depth)
 
         # traj = torch.tensor(steps)
         # If SR maps were loaded, convert to numpy array with 3 channels
@@ -355,13 +374,13 @@ class DataReader:
         data_sr_maps = []
 
         MIN_ACTIONS = 6
-        for i in range(MIN_ACTIONS, trajectories.shape[-1]):
+        for i in range(MIN_ACTIONS, trajectories.shape[0]):
             data_trajectories.append(
-                trajectories[:, :, :, 0:i]
-            )  # Trajectory to the state
+                trajectories[0:i, :, :, :]
+            )  # Trajectory to the state (time_steps, height, width, depth)
             data_current_state.append(
-                trajectories[0:6, :, :, i]
-            )  # Current state # (1walls + 1player + 4goals)
+                trajectories[i, :, :, 0:6]
+            )  # Current state # (height, width, 6channels: 1walls + 1player + 4goals)
             data_actions.append(actions[i, ...])  # Next Action
             data_labels.append(labels[i, ...])  # Consumed Goal
 
@@ -424,10 +443,10 @@ class DataProcessor:
         # }
         uniform_shape = (
             1,
-            self.MAZE_DEPTH,
-            self.MAZE_WIDTH,
-            self.MAZE_HEIGHT,
             max_elements,
+            self.MAZE_HEIGHT,
+            self.MAZE_WIDTH,
+            self.MAZE_DEPTH,
         )
 
         zero_padded_trajectories = []  # ndarray, not list
@@ -484,16 +503,16 @@ class DataProcessor:
                 ### Trajectory
                 zero_pad_trajectory = np.zeros(shape=uniform_shape)
                 Nt = current_trajectory.shape[
-                    -1
+                    0
                 ]  # Number of real steps in the trajectory
 
-                # Save game in a bigger array so the rest is fiiled with zeros
+                # Save game in a bigger array so the rest is filled with zeros
                 if Nt > max_elements:
                     zero_pad_trajectory[0, ...] = current_trajectory[
-                        :, :, :, -max_elements:
+                        -max_elements:, :, :, :
                     ]
                 else:
-                    zero_pad_trajectory[0, :, :, :, 0:Nt] = current_trajectory
+                    zero_pad_trajectory[0, 0:Nt, :, :, :] = current_trajectory
 
                 zero_padded_trajectories.append(zero_pad_trajectory[0, ...])
 

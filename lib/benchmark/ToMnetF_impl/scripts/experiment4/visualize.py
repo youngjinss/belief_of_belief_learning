@@ -14,91 +14,13 @@ from torch.utils.data import DataLoader
 import random
 from config import Config
 
+from train import generate_past_episodes_from_batch
+
 """
 Publication-quality visualization for ToMnetF (Experiment 4)
 Extended with random positions and goal rewards visualization
 @Author Filip Borowiak
 """
-
-
-def generate_past_episodes_from_batch(
-    trajectories, goals, batch_size, n_past_min, n_past_max, max_n_past
-):
-    """
-    Generate past episodes by randomly sampling from other trajectories in the batch
-    with the same goal, using fully vectorized operations for efficiency
-
-    Args:
-        trajectories: Batch of trajectories [batch_size, depth, height, width, time_step]
-        goals: Batch of goal labels [batch_size]
-        batch_size: Size of current batch
-        n_past_min: Minimum number of past episodes to sample
-        n_past_max: Maximum number of past episodes to sample
-        max_n_past: Maximum number of past episodes for consistent tensor shape
-
-    Returns:
-        past_episodes_batch: [batch_size, max_n_past, depth, height, width, time_step]
-    """
-    device = trajectories.device
-    depth, height, width, time_step = trajectories.shape[1:]
-
-    # Initialize past episodes tensor
-    past_episodes_batch = torch.zeros(
-        (batch_size, max_n_past, depth, height, width, time_step),
-        dtype=trajectories.dtype,
-        device=device,
-    )
-
-    # Generate random n_past values for all samples at once
-    n_past_values = torch.randint(
-        n_past_min, n_past_max + 1, (batch_size,), device=device
-    )
-
-    # Create goal similarity matrix (batch_size x batch_size)
-    # same_goal_mask[i, j] = True if sample i and j have the same goal
-    goals_expanded = goals.unsqueeze(1)  # [batch_size, 1]
-    same_goal_mask = goals_expanded == goals.unsqueeze(0)  # [batch_size, batch_size]
-
-    # Exclude self-matches by setting diagonal to False
-    same_goal_mask.fill_diagonal_(False)
-
-    # Create random sampling matrix for all samples at once
-    # For each sample, we create random indices for selecting past episodes
-    rand_matrix = torch.rand(batch_size, batch_size, device=device)
-
-    # Mask out invalid sources (different goals or self)
-    rand_matrix = rand_matrix * same_goal_mask.float()
-
-    # For each sample, sort the random values to get sampling order
-    sorted_vals, sorted_indices = torch.sort(rand_matrix, dim=1, descending=True)
-
-    # Process all samples in parallel
-    for ep_idx in range(max_n_past):
-        # Create mask for samples that need this episode
-        needs_episode = n_past_values > ep_idx
-
-        if needs_episode.any():
-            # Make sure we don't exceed batch dimension
-            effective_ep_idx = min(ep_idx, batch_size - 1)
-
-            # Get the source indices for this episode position
-            source_indices = sorted_indices[needs_episode, effective_ep_idx]
-
-            # Check if source is valid (non-zero in sorted_vals means same goal)
-            valid_sources = sorted_vals[needs_episode, effective_ep_idx] > 0
-
-            # Create indices for assignment
-            target_indices = torch.where(needs_episode)[0]
-            valid_targets = target_indices[valid_sources]
-            valid_sources_idx = source_indices[valid_sources]
-
-            # Vectorized copy of trajectories
-            if len(valid_targets) > 0:
-                past_episodes_batch[valid_targets, ep_idx] = trajectories[
-                    valid_sources_idx
-                ]
-
-    return past_episodes_batch
 
 
 def plot_accuracy_by_n_past(results_by_n_past, output_dir=None, show_confidence=True):

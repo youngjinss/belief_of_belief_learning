@@ -7,9 +7,12 @@ set -e  # Exit on error
 
 # Configuration
 EXPERIMENT_NO=4
+VALIDATION_GAMES=2000
+TEST_RANDOM_SEED=123
 BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SCRIPTS_DIR="$BASE_DIR/scripts"
 DATA_DIR="$BASE_DIR/data/experiment4"
+TEST_DATA_DIR="$BASE_DIR/data/test"
 MODELS_DIR="$BASE_DIR/models/experiment4"
 RESULTS_DIR="$BASE_DIR/result/experiment4"
 PLOTS_DIR="$BASE_DIR/plots/experiment4"
@@ -27,19 +30,21 @@ mkdir -p "$DATA_DIR" "$MODELS_DIR" "$RESULTS_DIR" "$PLOTS_DIR" "$LOG_DIR" "$RUN_
 COMMAND=${1:-all}
 
 print_usage() {
-    echo "Usage: $0 [data_generation|train|evaluate|visualize|all]"
+    echo "Usage: $0 [data_generation|test_data_generation|train|evaluate|visualize|all]"
     echo ""
     echo "Commands:"
-    echo "  data_generation  Generate trajectory data with random positions and goal rewards"
-    echo "  train           Train ToMnet model for experiment 4"
-    echo "  evaluate        Evaluate trained model"
-    echo "  visualize       Create plots and visualizations including position and reward analysis"
-    echo "  all             Run complete pipeline"
+    echo "  data_generation       Generate trajectory data with random positions and goal rewards"
+    echo "  test_data_generation  Generate test data (2000 games with seed 123) for evaluation"
+    echo "  train                Train ToMnet model for experiment 4"
+    echo "  evaluate             Evaluate trained model"
+    echo "  visualize            Create plots and visualizations including position and reward analysis"
+    echo "  all                  Run complete pipeline including test data generation"
     echo ""
     echo "Experiment 4 Features:"
     echo "  - Random player positions (random_positions = True)"
     echo "  - Random goal rewards (random_goal_rewards = True)"
     echo "  - Extended environment variability for robust training"
+    echo "  - Test data generation matches validation set size (2000 games)"
     echo ""
 }
 
@@ -115,6 +120,38 @@ run_evaluation() {
     fi
 }
 
+run_test_data_generation() {
+    # Calculate number of test games needed (same as validation data: 10% of training data)
+    # From config.py: n_games=20000, training_proportion=0.9, so validation=2000 games
+    
+    # Check if test data already exists and has correct number of files
+    if [ -d "$TEST_DATA_DIR" ]; then
+        EXISTING_TEST_FILES=$(find "$TEST_DATA_DIR" -name "test*.txt" | wc -l)
+        if [ "$EXISTING_TEST_FILES" -eq "$VALIDATION_GAMES" ]; then
+            log_step "Test data generation skipped - $VALIDATION_GAMES test files already exist in $TEST_DATA_DIR"
+            return 0
+        fi
+    fi
+    
+    log_step "Starting test data generation for experiment $EXPERIMENT_NO"
+    log_step "Generating $VALIDATION_GAMES test games with random seed 123"
+    log_step "Logging test data generation output to: $RUN_LOG_DIR/test_data_generation.log"
+    
+    # Create test data directory
+    mkdir -p "$TEST_DATA_DIR"
+    
+    cd "$SCRIPTS_DIR/experiment4"
+    python generate.py --config_override --n_games "$VALIDATION_GAMES" --random_seed "$TEST_RANDOM_SEED" --save_dir "$TEST_DATA_DIR" > "$RUN_LOG_DIR/test_data_generation.log" 2>&1
+    
+    # Verify test data was generated correctly
+    GENERATED_TEST_FILES=$(find "$TEST_DATA_DIR" -name "test*.txt" | wc -l)
+    if [ "$GENERATED_TEST_FILES" -eq "$VALIDATION_GAMES" ]; then
+        log_step "Test data generation completed successfully - $GENERATED_TEST_FILES files generated"
+    else
+        log_step "Warning: Expected $VALIDATION_GAMES test files, but found $GENERATED_TEST_FILES"
+    fi
+}
+
 run_visualization() {
     # Check if visualization already completed
     if [ -f "$PLOTS_DIR/training_curves_exp4.png" ] && [ -f "$PLOTS_DIR/confusion_matrix_exp4.png" ]; then
@@ -173,6 +210,9 @@ case $COMMAND in
         check_random_implementation
         run_data_generation
         ;;
+    test_data_generation)
+        run_test_data_generation
+        ;;
     train)
         run_training
         ;;
@@ -188,6 +228,7 @@ case $COMMAND in
         log_step "All logs will be saved to: $RUN_LOG_DIR/"
         check_random_implementation
         run_data_generation
+        run_test_data_generation
         run_training
         run_evaluation
         run_visualization
@@ -214,6 +255,9 @@ echo "Log files created:"
 echo "  - $RUN_LOG_DIR/execution.log (main script execution log)"
 if [ -f "$RUN_LOG_DIR/data_generation.log" ]; then
     echo "  - $RUN_LOG_DIR/data_generation.log"
+fi
+if [ -f "$RUN_LOG_DIR/test_data_generation.log" ]; then
+    echo "  - $RUN_LOG_DIR/test_data_generation.log"
 fi
 if [ -f "$RUN_LOG_DIR/training.log" ]; then
     echo "  - $RUN_LOG_DIR/training.log"

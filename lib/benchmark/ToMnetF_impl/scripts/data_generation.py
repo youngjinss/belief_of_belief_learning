@@ -88,10 +88,10 @@ class DataReader:
             if x.startswith("SR_gamma_"):
                 gamma_str = x.split(":")[0].split("_")[-1]
                 sr_str = x.split(":")[1].strip()
-                
+
                 # Initialize empty SR map
                 sr_map = np.zeros((self.MAZE_WIDTH, self.MAZE_HEIGHT), dtype=np.float32)
-                
+
                 # Parse sparse format: "x,y:value;x2,y2:value2;..."
                 if sr_str.strip():  # Only if not empty
                     pairs = sr_str.split(";")
@@ -101,9 +101,12 @@ class DataReader:
                             if "," in pos_str:
                                 x, y = map(int, pos_str.split(","))
                                 value = float(val_str)
-                                if 0 <= x < self.MAZE_WIDTH and 0 <= y < self.MAZE_HEIGHT:
+                                if (
+                                    0 <= x < self.MAZE_WIDTH
+                                    and 0 <= y < self.MAZE_HEIGHT
+                                ):
                                     sr_map[x, y] = value
-                
+
                 sr_maps[gamma_str] = sr_map
 
             if (
@@ -192,12 +195,12 @@ class DataReader:
             tensor = np.concatenate(
                 (np_obstacles1, np_agent1, np_targets, np_actions)
             )  # (1walls + 1player + 4goals + 4actions)
-            
+
             # Reshape from (depth, height, width) to (height, width, depth)
             tensor = np.transpose(tensor, (1, 2, 0))  # (height, width, depth)
 
             steps.append(tensor)  # each step (record) is one decision data
-            
+
         # Stack steps along time dimension
         if steps:
             traj = np.stack(steps, axis=0)  # (time_steps, height, width, depth)

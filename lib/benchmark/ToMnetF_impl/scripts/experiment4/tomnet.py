@@ -73,10 +73,6 @@ class LSTM(nn.Module):
         return out[:, -1, :]  # out shape -> (seq_len, batch_size, hidden_size)
 
 
-
-
-
-
 class CharNet(nn.Module):
     def __init__(
         self,
@@ -155,38 +151,44 @@ class CharNet(nn.Module):
                 episode_batch = past_episodes[
                     :, ep_idx
                 ]  # (batch, depth, height, width, time)
-                
+
                 # Directly reshape to (batch * time, depth, height, width) for more efficient Conv2d processing
                 batch_size_local, depth, height, width, time = episode_batch.shape
-                episode_batch = episode_batch.permute(0, 4, 1, 2, 3)  # (batch, time, depth, height, width)
-                episode_batch = episode_batch.contiguous().view(batch_size_local * time, depth, height, width)
+                episode_batch = episode_batch.permute(
+                    0, 4, 1, 2, 3
+                )  # (batch, time, depth, height, width)
+                episode_batch = episode_batch.contiguous().view(
+                    batch_size_local * time, depth, height, width
+                )
 
                 # Check if episode is non-zero (not masked) - need to reshape for checking
                 episode_check = episode_batch.view(batch_size_local, time, -1)
-                episode_mask = (
-                    torch.sum(episode_check, dim=[1, 2]) > 0
-                )  # (batch,)
+                episode_mask = torch.sum(episode_check, dim=[1, 2]) > 0  # (batch,)
 
                 if episode_mask.any():
                     # Process through conv layers directly (more efficient than TimeDistributed)
                     ep_x = episode_batch  # (batch * time, depth, height, width)
-                    
+
                     # Apply first conv layer
                     ep_x = self.past_conv_1(ep_x)  # Direct Conv2d
-                    
+
                     # Apply residual blocks
                     for i in range(self.n):
                         # Direct ResidualBlock
                         ep_x = self.past_res_blocks[i](ep_x)
-                    
+
                     # Reshape back to (batch, time, height, width, out_channels)
                     _, out_channels, out_height, out_width = ep_x.shape
-                    ep_x = ep_x.view(batch_size_local, time, out_channels, out_height, out_width)
-                    ep_x = ep_x.permute(0, 1, 3, 4, 2)  # (batch, time, height, width, out_channels)
-                    
+                    ep_x = ep_x.view(
+                        batch_size_local, time, out_channels, out_height, out_width
+                    )
+                    ep_x = ep_x.permute(
+                        0, 1, 3, 4, 2
+                    )  # (batch, time, height, width, out_channels)
+
                     # Average over spatial dimensions
                     ep_x = torch.mean(ep_x, [2, 3])  # (batch, time, out_channels)
-                    
+
                     # Apply LSTM
                     ep_x = self.past_lstm(ep_x)
 
@@ -200,9 +202,11 @@ class CharNet(nn.Module):
 
             # Average the character embeddings over valid episodes
             # Avoid division by zero by using maximum of counts and 1
-            valid_episode_counts = torch.maximum(valid_episode_counts, torch.ones_like(valid_episode_counts))
+            valid_episode_counts = torch.maximum(
+                valid_episode_counts, torch.ones_like(valid_episode_counts)
+            )
             e_char_past = e_char_past / valid_episode_counts.unsqueeze(-1)
-            
+
             return e_char_past
         else:
             # Return default embedding if not using past episodes

@@ -21,7 +21,10 @@ Extended with random positions and goal rewards visualization
 """
 
 
-def plot_accuracy_by_n_past(results_by_n_past, output_dir=None,):
+def plot_accuracy_by_n_past(
+    results_by_n_past,
+    output_dir=None,
+):
     """
     Plot action accuracy as a function of N_past values
 

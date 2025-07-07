@@ -187,12 +187,12 @@ class DataReader:
             # For new format, use goal rank to determine the consumed goal
             # Find which goal has the highest rank (rank 1)
             highest_rank_idx = goal_rank.index(1)  # Find index of rank 1 (highest)
-            goal_symbols = ['A', 'B', 'C', 'D']
+            goal_symbols = ["A", "B", "C", "D"]
             consumed = goal_symbols[highest_rank_idx]
         elif consumed:
             consumed = consumed[0][19]  # Consumed goal (old format)
         else:
-            consumed = 'A'  # Default fallback
+            consumed = "A"  # Default fallback
 
         # Plane for obstacles - static
         np_obstacles = np.where(map == 0, 1, 0).astype(np.int8)  # if wall then 1 else 0
@@ -322,8 +322,8 @@ class DataReader:
         for i, file in enumerate(files):
 
             # Read one game
-            traj, act, goal, directions, consumption_labels, sr_map, goal_rank = self.ReadOneGame(
-                filename=os.path.join(directory, file)
+            traj, act, goal, directions, consumption_labels, sr_map, goal_rank = (
+                self.ReadOneGame(filename=os.path.join(directory, file))
             )
 
             directions_total["Action:0"] += directions["Action:0"]

@@ -104,7 +104,7 @@ run_evaluation() {
     log_step "Logging evaluation output to: $RUN_LOG_DIR/evaluation.log"
     
     cd "$SCRIPTS_DIR/experiment4"
-    python evaluate.py --config_override --n_past_eval --analysis_only > "$RUN_LOG_DIR/evaluation.log" 2>&1
+    python evaluate.py --config_override --n_past_eval --analysis_only --embeddings > "$RUN_LOG_DIR/evaluation.log" 2>&1
     
     log_step "Evaluation completed"
     

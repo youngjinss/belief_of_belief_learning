@@ -1338,6 +1338,12 @@ def create_summary_report(
         create_additional_visualizations(
             model, val_loader, plot_dir, experiment_no, device, has_n_past, config
         )
+        
+        # Generate character embeddings visualization
+        print("Creating character embeddings visualization...")
+        plot_character_embeddings(
+            model, val_loader, device, plot_dir, experiment_no, n_samples=1000
+        )
 
     print(f"Summary report completed. Plots saved to: {plot_dir}")
 
@@ -1404,18 +1410,51 @@ if __name__ == "__main__":
             result_dir=args.result_dir,
             plot_dir=args.plot_dir,
         )
-    elif args.plot_type == "training" and args.history_path:
+    if args.plot_type in ["all", "training"] and args.history_path:
         plot_training_curves(args.history_path, args.plot_dir, args.experiment_no)
-    elif args.plot_type == "confusion" and args.predictions_path:
+    if args.plot_type in ["all", "confusion"] and args.predictions_path:
         plot_confusion_matrix(args.predictions_path, args.plot_dir, args.experiment_no)
-    elif args.plot_type == "likelihood" and args.predictions_path:
+    if args.plot_type in ["all", "likelihood"] and args.predictions_path:
         plot_action_likelihood(args.predictions_path, args.plot_dir, args.experiment_no)
-    elif args.plot_type == "cross_species" and args.cross_species_path:
+    if args.plot_type in ["all", "cross_species"] and args.cross_species_path:
         plot_cross_species_results(
             args.cross_species_path, args.plot_dir, args.experiment_no
         )
-    else:
-        print(f"Invalid combination of plot_type and required paths")
-        print(f"For {args.plot_type}, required paths were not provided or don't exist")
-
+    if args.plot_type in ["all", "embeddings"]:
+        # Need to load model and data for embeddings visualization
+        print("Creating character embeddings visualization...")
+        from config import Config
+        from torch.utils.data import TensorDataset
+        config = Config()
+        
+        # Load model
+        model_path = os.path.join(config.model_dir, f"exp{args.experiment_no}_best.pth")
+        if os.path.exists(model_path):
+            import sys
+            sys.path.append("..")
+            from tomnet import ToMnet
+            
+            device = config.device if torch.cuda.is_available() else "cpu"
+            model_kwargs = config.get_model_kwargs()
+            model = ToMnet(**model_kwargs)
+            model.load_state_dict(torch.load(model_path, map_location=device))
+            model.to(device)
+            model.eval()
+            
+            # Load test data
+            test_data_path = os.path.join(config.data_dir, f"processed_data_exp{args.experiment_no}.pkl")
+            with open(test_data_path, "rb") as f:
+                test_data = pickle.load(f)
+            test_dataset = TensorDataset(
+                test_data["data_trajectories"],
+                test_data["data_current_state"],
+                test_data["data_actions"],
+            )
+            test_loader = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False)
+            
+            # Create visualization
+            plot_character_embeddings(
+                model, test_loader, device, args.plot_dir, args.experiment_no, n_samples=1000
+            )
+    
     print(f"Visualization completed for experiment {args.experiment_no}")

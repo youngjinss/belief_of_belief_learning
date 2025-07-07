@@ -105,11 +105,6 @@ def plot_accuracy_by_n_past(results_by_n_past, output_dir=None, show_confidence=
             dpi=300,
             bbox_inches="tight",
         )
-        plt.savefig(
-            os.path.join(output_dir, "accuracy_by_n_past.pdf"),
-            dpi=300,
-            bbox_inches="tight",
-        )
 
     plt.show()
 
@@ -185,11 +180,6 @@ def plot_accuracy_heatmap_by_n_past(results_by_n_past, output_dir=None):
         os.makedirs(output_dir, exist_ok=True)
         plt.savefig(
             os.path.join(output_dir, "accuracy_heatmap_by_n_past.png"),
-            dpi=300,
-            bbox_inches="tight",
-        )
-        plt.savefig(
-            os.path.join(output_dir, "accuracy_heatmap_by_n_past.pdf"),
             dpi=300,
             bbox_inches="tight",
         )
@@ -1359,7 +1349,7 @@ if __name__ == "__main__":
         description="Create publication-quality visualizations for ToMnetF"
     )
     parser.add_argument(
-        "--experiment_no", type=int, default=1, help="Experiment number"
+        "--experiment_no", type=int, default=4, help="Experiment number"
     )
     parser.add_argument(
         "--result_dir",

@@ -891,7 +891,9 @@ def plot_character_embeddings(
                 embeddings_pca[mask, 0],
                 embeddings_pca[mask, 1],
                 c=colors[int(goal % len(colors))],
-                label=goal_names[int(goal)] if goal < len(goal_names) else f"Goal {goal}",
+                label=(
+                    goal_names[int(goal)] if goal < len(goal_names) else f"Goal {goal}"
+                ),
                 alpha=0.6,
                 s=20,
             )
@@ -910,7 +912,9 @@ def plot_character_embeddings(
                 embeddings_tsne[mask, 0],
                 embeddings_tsne[mask, 1],
                 c=colors[int(goal % len(colors))],
-                label=goal_names[int(goal)] if goal < len(goal_names) else f"Goal {goal}",
+                label=(
+                    goal_names[int(goal)] if goal < len(goal_names) else f"Goal {goal}"
+                ),
                 alpha=0.6,
                 s=20,
             )

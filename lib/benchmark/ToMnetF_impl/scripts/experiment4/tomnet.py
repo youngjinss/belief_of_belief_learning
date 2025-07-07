@@ -175,7 +175,7 @@ class CharNet(nn.Module):
             )
             self.past_res_blocks = nn.ModuleList()
 
-            for i in range(self.n):
+            for _ in range(self.n):
                 self.past_res_blocks.append(
                     TimeDistributedResidualBlock(
                         in_channels=self.out_channels,

@@ -235,20 +235,14 @@ def generate_trajectories(config=None, random_seed=42):
     sight = config.sight
     max_moves = config.max_moves
     observability = config.observability
-    output_dir = config.output_dir
     shuffle = config.shuffle
     no_walls = config.no_walls
     save_dir = config.data_dir
     random_positions = config.random_positions
     random_goal_rewards = config.random_goal_rewards
 
-    # N_past settings
-    use_n_past = config.use_n_past
-    n_past_min = config.n_past_min
-    n_past_max = config.n_past_max
-
     print(f"Generating trajectories with random seed: {random_seed}")
-    print(f"  Training seed: 42, Testing seed: 123 (recommended)")
+    print("  Training seed: 42, Testing seed: 123 (recommended)")
 
     env = World(
         row_size=rows,
@@ -280,7 +274,7 @@ def generate_trajectories(config=None, random_seed=42):
             action = agent.chose_action(observability=observability)
             # print(action)
 
-            observe, terminate, goal_picked, reward = env.execute(action)
+            _, terminate, goal_picked, reward = env.execute(action)
 
             if goal_picked:
                 # print("You have picked a goal, reward = {}".format(reward))

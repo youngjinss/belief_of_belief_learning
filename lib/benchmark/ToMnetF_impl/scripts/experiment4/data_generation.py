@@ -1,9 +1,9 @@
 import os
-import numpy as np
 import re
+import pickle
 import matplotlib.pyplot as plt
 import torch
-import pickle
+import numpy as np
 
 """
 Agnostic data processing and loading utilities for ToMnet with N_past support
@@ -198,7 +198,7 @@ class DataReader:
         for idx, (key, val) in enumerate(trajectory.items()):
             posX = key[0]
             posY = key[1]
-            temp_trajectory = val
+
             if idx == 0:  # first values are init numpy values - replace
                 goal[0] = self.goal_sym_to_num(consumed)
                 act[0] = val
@@ -533,7 +533,7 @@ class DataProcessor:
 
             for j in range(N_traj):
 
-                ### Init single piece of data from a game -> j = one game
+                # Init single piece of data from a game -> j = one game
                 current_trajectory = traj[j]
                 current_state = cur[j]
                 current_action = act[j]
@@ -551,7 +551,7 @@ class DataProcessor:
                     )
                 )
 
-                ### Trajectory
+                # Trajectory
                 zero_pad_trajectory = np.zeros(shape=uniform_shape)
                 Nt = current_trajectory.shape[
                     -1
@@ -567,19 +567,19 @@ class DataProcessor:
 
                 zero_padded_trajectories.append(zero_pad_trajectory[0, ...])
 
-                ### Current state
+                # Current state
                 unfolded_current_states.append(current_state)
 
-                ### Action
+                # Action
                 unfolded_action_history.append(current_action)
 
-                ### Goal
+                # Goal
                 unfolded_goal_history.append(current_goal)
 
-                ### Consumption labels
+                # Consumption labels
                 unfolded_consumption_labels.append(current_consumption)
 
-                ### SR maps
+                # SR maps
                 unfolded_sr_maps.append(current_sr_map)
 
             # Keep track on progress
@@ -651,7 +651,6 @@ def generate_input_data(
     all_games = dp.zeroPadding(time_step, all_games)
 
     # Extract processed data
-    data_trajectories = all_games["traj_history"]
     data_trajectories_zp = all_games["traj_history_zp"]
     data_current_state = all_games["current_state_history"]
     data_actions = all_games["actions_history"]

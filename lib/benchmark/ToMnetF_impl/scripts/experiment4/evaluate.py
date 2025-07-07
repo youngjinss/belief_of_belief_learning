@@ -1,29 +1,22 @@
-import torch
 import sys
-
-sys.path.append("..")
-import torch.nn.functional as F
-import numpy as np
 import json
 import os
 import pickle
+
 from sklearn.metrics import (
     accuracy_score,
     precision_recall_fscore_support,
     confusion_matrix,
 )
-from tomnet import ToMnet
+import numpy as np
+import torch
+import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
+
+sys.path.append("..")
+from tomnet import ToMnet
 from config import Config
 from data_generation import generate_input_data
-from environment import World
-import agents as Agent
-from generate import (
-    calculate_sr_labels_for_trajectory,
-    calculate_consumption_labels,
-    save_game_with_labels,
-    generate_trajectories,
-)
 
 """
 Cross-species evaluation and metrics for ToMnetF
@@ -46,8 +39,6 @@ def evaluate_model_with_n_past(
     device,
     n_past_values,
     n_past_max,
-    save_predictions=False,
-    output_dir=None,
 ):
     """
     Evaluate model performance with different N_past values
@@ -60,8 +51,6 @@ def evaluate_model_with_n_past(
         device: Computing device
         n_past_values: List of N_past values to test
         n_past_max: Maximum number of past episodes
-        save_predictions: Whether to save predictions
-        output_dir: Directory to save predictions
 
     Returns:
         dict: Evaluation metrics by N_past
@@ -76,7 +65,7 @@ def evaluate_model_with_n_past(
         all_targets = []
 
         with torch.no_grad():
-            for batch_idx, batch in enumerate(test_loader):
+            for _, batch in enumerate(test_loader):
                 if len(batch) == 4:  # Now includes goals
                     traj, curr, act, goals = batch
                     traj = traj.to(device)
@@ -293,7 +282,7 @@ def cross_species_evaluation(
     # If preloaded model and test_loader are provided, use them for optimization
     if preloaded_model is not None and preloaded_test_loader is not None:
         model_name = "preloaded_model"
-        print(f"Using preloaded model and test data for faster evaluation")
+        print("Using preloaded model and test data for faster evaluation")
 
         # Evaluate the preloaded model on preloaded test data
         metrics = evaluate_model(preloaded_model, preloaded_test_loader, device)
@@ -808,7 +797,7 @@ if __name__ == "__main__":
         n_samples=args.n_samples,
         config=config,
     )
-    print(f"Action likelihood analysis completed!")
+    print("Action likelihood analysis completed!")
     for action, action_stats in stats.items():
         print(
             f"{action}: mean={action_stats['mean']:.4f}, std={action_stats['std']:.4f}"
@@ -823,7 +812,7 @@ if __name__ == "__main__":
             preloaded_model=model,
             preloaded_test_loader=test_loader,
         )
-        print(f"Evaluation completed successfully!")
+        print("Evaluation completed successfully!")
     else:
         missing_files = [
             path for path in model_paths + test_data_paths if not os.path.exists(path)

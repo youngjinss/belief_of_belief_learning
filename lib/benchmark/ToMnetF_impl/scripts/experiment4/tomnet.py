@@ -243,11 +243,6 @@ class CharNet(nn.Module):
         else:
             # Return default embedding if not using past episodes
             batch_size = past_episodes.size(0) if past_episodes is not None else self.B
-            device = (
-                past_episodes.device
-                if past_episodes is not None
-                else next(self.parameters()).device
-            )
             return self.default_embedding.unsqueeze(0).expand(batch_size, -1)
 
 

@@ -1,17 +1,15 @@
-import matplotlib.pyplot as plt
-import seaborn as sns
-import numpy as np
-import pandas as pd
+import os
 import json
 import pickle
-import os
+import matplotlib.pyplot as plt
+
+import numpy as np
+import seaborn as sns
 from sklearn.metrics import confusion_matrix
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 import torch
-import torch.nn.functional as F
-from torch.utils.data import DataLoader
-import random
+
 from config import Config
 
 # Import will be done locally to avoid circular imports
@@ -23,14 +21,13 @@ Extended with random positions and goal rewards visualization
 """
 
 
-def plot_accuracy_by_n_past(results_by_n_past, output_dir=None, show_confidence=True):
+def plot_accuracy_by_n_past(results_by_n_past, output_dir=None,):
     """
     Plot action accuracy as a function of N_past values
 
     Args:
         results_by_n_past: Dictionary with N_past values as keys and metrics as values
         output_dir: Directory to save plots
-        show_confidence: Whether to show confidence intervals
     """
     plt.style.use("seaborn-v0_8")
 
@@ -259,7 +256,7 @@ def visualize_consumption_predictions(consumption_pred, consumption_true, output
     """
     goals = ["Goal A", "Goal B", "Goal C", "Goal D"]
 
-    fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+    _, axes = plt.subplots(2, 2, figsize=(12, 10))
     axes = axes.flatten()
 
     for i, (ax, goal) in enumerate(zip(axes, goals)):
@@ -301,13 +298,11 @@ def visualize_maze_trajectory_with_sr(
         sr_map: SR map to overlay
         output_path: Path to save visualization
     """
-    fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+    _, axes = plt.subplots(1, 3, figsize=(18, 6))
 
     gammas = [0.5, 0.9, 0.99]
 
     for i, (ax, gamma) in enumerate(zip(axes, gammas)):
-        # Start with maze layout
-        display_map = maze_map.copy().astype(float)
 
         # Overlay SR values
         if len(sr_map.shape) == 3:
@@ -583,7 +578,7 @@ def plot_confusion_matrix(predictions_path, output_dir, experiment_no):
     # Action labels
     action_labels = ["UP", "RIGHT", "DOWN", "LEFT"]
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
+    _, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
 
     # Raw counts
     sns.heatmap(
@@ -645,13 +640,11 @@ def plot_action_likelihood(predictions_path, output_dir, experiment_no):
 
     # Get likelihood for correct predictions
     correct_mask = predictions == targets
-    correct_likelihoods = probabilities[correct_mask, targets[correct_mask]]
-    incorrect_likelihoods = probabilities[~correct_mask, targets[~correct_mask]]
 
     # Action-wise likelihood distributions
     action_labels = ["UP", "RIGHT", "DOWN", "LEFT"]
 
-    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 12))
+    _, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 12))
     axes = [ax1, ax2, ax3, ax4]
 
     for action in range(4):
@@ -940,7 +933,7 @@ def plot_character_embeddings(
     print(f"Character embeddings by goal plot saved to: {plot_path}")
 
     # Print goal distribution for debugging
-    print(f"Goal distribution in samples:")
+    print("Goal distribution in samples:")
     for goal in unique_goals:
         count = np.sum(goal_labels == goal)
         goal_name = goal_names[int(goal)] if goal < len(goal_names) else f"Goal {goal}"
@@ -1189,7 +1182,7 @@ def visualize_past_episodes_train(past_episodes, plot_dir, experiment_no):
             non_zero_episodes.append(ep_idx)
 
     fig, axes = plt.subplots(2, 2, figsize=(12, 10))
-    fig.suptitle(f"Past Episodes Analysis (Training Sample)", fontsize=16)
+    fig.suptitle("Past Episodes Analysis (Training Sample)", fontsize=16)
 
     # Plot 1: Episode usage
     episode_usage = [1 if i in non_zero_episodes else 0 for i in range(n_past_max)]

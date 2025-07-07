@@ -860,7 +860,7 @@ def plot_character_embeddings(
 
     model.eval()
     embeddings = []
-    actions = []
+    goal_labels = []
 
     sample_count = 0
     with torch.no_grad():
@@ -901,11 +901,11 @@ def plot_character_embeddings(
                     break
 
                 embeddings.append(char_embedding[i])
-                actions.append(act[i].item())
+                goal_labels.append(goals[i].item())
                 sample_count += 1
 
     embeddings = np.array(embeddings)
-    actions = np.array(actions)
+    goal_labels = np.array(goal_labels)
 
     # Dimensionality reduction
     if embeddings.shape[1] > 2:
@@ -920,45 +920,48 @@ def plot_character_embeddings(
         embeddings_pca = embeddings
         embeddings_tsne = embeddings
 
-    # Action labels and colors
-    action_labels = ["UP", "RIGHT", "DOWN", "LEFT"]
+    # Goal labels and colors (A, B, C, D)
+    goal_names = ["Goal A", "Goal B", "Goal C", "Goal D"]
     colors = ["red", "blue", "green", "orange"]
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
 
+    # Get unique goals present in the data
+    unique_goals = np.unique(goal_labels)
+    
     # PCA plot
-    for action in range(4):
-        mask = actions == action
+    for goal in unique_goals:
+        mask = goal_labels == goal
         if np.sum(mask) > 0:
             ax1.scatter(
                 embeddings_pca[mask, 0],
                 embeddings_pca[mask, 1],
-                c=colors[action],
-                label=action_labels[action],
+                c=colors[goal % len(colors)],
+                label=goal_names[goal] if goal < len(goal_names) else f"Goal {goal}",
                 alpha=0.6,
                 s=20,
             )
 
-    ax1.set_title("Character Embeddings (PCA)", fontsize=14, fontweight="bold")
+    ax1.set_title("Character Embeddings by Goal (PCA)", fontsize=14, fontweight="bold")
     ax1.set_xlabel(f"PC1 (var: {pca.explained_variance_ratio_[0]:.3f})", fontsize=12)
     ax1.set_ylabel(f"PC2 (var: {pca.explained_variance_ratio_[1]:.3f})", fontsize=12)
     ax1.legend()
     ax1.grid(True, alpha=0.3)
 
     # t-SNE plot
-    for action in range(4):
-        mask = actions == action
+    for goal in unique_goals:
+        mask = goal_labels == goal
         if np.sum(mask) > 0:
             ax2.scatter(
                 embeddings_tsne[mask, 0],
                 embeddings_tsne[mask, 1],
-                c=colors[action],
-                label=action_labels[action],
+                c=colors[goal % len(colors)],
+                label=goal_names[goal] if goal < len(goal_names) else f"Goal {goal}",
                 alpha=0.6,
                 s=20,
             )
 
-    ax2.set_title("Character Embeddings (t-SNE)", fontsize=14, fontweight="bold")
+    ax2.set_title("Character Embeddings by Goal (t-SNE)", fontsize=14, fontweight="bold")
     ax2.set_xlabel("t-SNE 1", fontsize=12)
     ax2.set_ylabel("t-SNE 2", fontsize=12)
     ax2.legend()
@@ -968,11 +971,18 @@ def plot_character_embeddings(
 
     # Save plot
     os.makedirs(output_dir, exist_ok=True)
-    plot_path = os.path.join(output_dir, f"character_embeddings_exp{experiment_no}.png")
+    plot_path = os.path.join(output_dir, f"character_embeddings_by_goal_exp{experiment_no}.png")
     plt.savefig(plot_path, dpi=300, bbox_inches="tight")
     plt.close()
 
-    print(f"Character embeddings plot saved to: {plot_path}")
+    print(f"Character embeddings by goal plot saved to: {plot_path}")
+    
+    # Print goal distribution for debugging
+    print(f"Goal distribution in samples:")
+    for goal in unique_goals:
+        count = np.sum(goal_labels == goal)
+        goal_name = goal_names[goal] if goal < len(goal_names) else f"Goal {goal}"
+        print(f"  {goal_name}: {count} samples ({count/len(goal_labels)*100:.1f}%)")
 
 
 def create_additional_visualizations(

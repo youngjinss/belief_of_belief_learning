@@ -33,7 +33,7 @@ class Config:
         self.device = "cuda:3"
         
         # Early stopping settings
-        self.early_stopping_patience = int(os.getenv("EARLY_STOPPING_PATIENCE", 20))
+        self.early_stopping_patience = int(os.getenv("EARLY_STOPPING_PATIENCE", 50))
         self.early_stopping_min_delta = float(os.getenv("EARLY_STOPPING_MIN_DELTA", 0.001))
         self.early_stopping_restore_best = True
 

@@ -237,7 +237,13 @@ def evaluate_model(model, test_loader, device, save_predictions=False, output_di
     return metrics
 
 
-def cross_species_evaluation(config=None, model_paths=None, test_data_paths=None):
+def cross_species_evaluation(
+    config=None,
+    model_paths=None,
+    test_data_paths=None,
+    preloaded_model=None,
+    preloaded_test_loader=None,
+):
     """
     Perform cross-species evaluation across different model types
 
@@ -245,6 +251,8 @@ def cross_species_evaluation(config=None, model_paths=None, test_data_paths=None
         config: Config object containing all evaluation parameters
         model_paths: Optional list of paths to trained models (overrides config)
         test_data_paths: Optional list of paths to test datasets (overrides config)
+        preloaded_model: Optional preloaded model to use (for optimization)
+        preloaded_test_loader: Optional preloaded test loader to use (for optimization)
     """
     if config is None:
         config = Config()
@@ -273,6 +281,32 @@ def cross_species_evaluation(config=None, model_paths=None, test_data_paths=None
     print(f"Performing cross-species evaluation for experiment {experiment_no}")
     print("-" * 60)
 
+    # If preloaded model and test_loader are provided, use them for optimization
+    if preloaded_model is not None and preloaded_test_loader is not None:
+        model_name = "preloaded_model"
+        print(f"Using preloaded model and test data for faster evaluation")
+
+        # Evaluate the preloaded model on preloaded test data
+        metrics = evaluate_model(preloaded_model, preloaded_test_loader, device)
+
+        results["cross_species_results"][model_name] = {"preloaded_dataset": metrics}
+
+        print(f"    Accuracy: {metrics['accuracy']:.4f}")
+        print(f"    F1 Score: {metrics['f1_score']:.4f}")
+
+        # Character embeddings will be generated in main function to avoid duplication
+
+        # Save results and return early for optimization case
+        results_path = os.path.join(
+            result_dir, f"cross_species_evaluation_exp{experiment_no}.json"
+        )
+        with open(results_path, "w") as f:
+            json.dump(results, f, indent=2)
+
+        print(f"Cross-species evaluation results saved to: {results_path}")
+        return results
+
+    # Original logic for when preloaded data is not available
     for model_idx, model_path in enumerate(model_paths):
         model_name = os.path.basename(model_path).replace(".pth", "")
         print(f"Evaluating model: {model_name}")
@@ -314,20 +348,7 @@ def cross_species_evaluation(config=None, model_paths=None, test_data_paths=None
             print(f"    Accuracy: {metrics['accuracy']:.4f}")
             print(f"    F1 Score: {metrics['f1_score']:.4f}")
 
-            # Generate character embeddings visualization for the first dataset
-            if data_idx == 0:
-                print(f"  Creating character embeddings visualization...")
-                from visualize import plot_character_embeddings
-
-                embeddings_dir = os.path.join(result_dir, f"{model_name}_embeddings")
-                plot_character_embeddings(
-                    model,
-                    test_loader,
-                    device,
-                    embeddings_dir,
-                    experiment_no,
-                    n_samples=1000,
-                )
+            # Character embeddings will be generated in main function to avoid duplication
 
         results["cross_species_results"][model_name] = model_results
         print()
@@ -479,44 +500,28 @@ def analyze_action_likelihood(
 
 
 def evaluate_n_past_experiment(
-    model_path, test_data_path, output_dir, n_past_range=(0, 5)
+    model, test_loader, output_dir, n_past_range=(0, 5), config=None
 ):
     """
     Evaluate model performance across different N_past values
 
     Args:
-        model_path: Path to trained model
-        test_data_path: Path to test data
+        model: Loaded ToMnet model
+        test_loader: DataLoader for test data
         output_dir: Directory to save results
         n_past_range: Tuple of (min, max) N_past values to test
+        config: Config object containing parameters
     """
-    # Load configuration
-    config = Config()
+    # Load configuration if not provided
+    if config is None:
+        config = Config()
+
     device = config.device if torch.cuda.is_available() else "cpu"
-    model_kwargs = config.get_model_kwargs()
     n_past_range = (config.n_past_min, config.n_past_max)
 
     print(f"Evaluating N_past performance from {n_past_range[0]} to {n_past_range[1]}")
-    print(f"Model: {model_path}")
-    print(f"Test data: {test_data_path}")
     print(f"Device: {device}")
     print("-" * 60)
-
-    # Load model
-    model = load_model(model_path, device, **model_kwargs)
-
-    # Load test data
-    with open(test_data_path, "rb") as f:
-        test_data = pickle.load(f)
-
-    # Create test loader
-    test_dataset = TensorDataset(
-        test_data["data_trajectories"],
-        test_data["data_current_state"],
-        test_data["data_actions"],
-        test_data["data_labels"],  # Include goals for proper past episode selection
-    )
-    test_loader = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False)
 
     # Define N_past values to test
     n_past_values = list(range(n_past_range[0], n_past_range[1] + 1))
@@ -554,17 +559,12 @@ def evaluate_n_past_experiment(
     from visualize import (
         plot_accuracy_by_n_past,
         plot_accuracy_heatmap_by_n_past,
-        plot_character_embeddings,
     )
 
     plot_accuracy_by_n_past(results_by_n_past, output_dir)
     plot_accuracy_heatmap_by_n_past(results_by_n_past, output_dir)
 
-    # Add character embeddings visualization
-    print("Creating character embeddings visualization...")
-    plot_character_embeddings(
-        model, test_loader, device, output_dir, config.experiment_no, n_samples=1000
-    )
+    # Character embeddings will be generated in main function to avoid duplication
 
     print(f"Visualizations saved to: {output_dir}")
 
@@ -642,15 +642,40 @@ if __name__ == "__main__":
             )
         ]
 
-    # Run N_past evaluation
-    print("Running N_past evaluation...")
+    # Load model and test data ONCE at the beginning
+    print("Loading model and test data...")
     model_path = model_paths[0]  # Use first model
     test_data_path = test_data_paths[0]  # Use first test data
+
+    # Load model
+    model_kwargs = config.get_model_kwargs()
+    device = config.device if torch.cuda.is_available() else "cpu"
+    model = load_model(model_path, device, **model_kwargs)
+
+    # Load test data
+    with open(test_data_path, "rb") as f:
+        test_data = pickle.load(f)
+    test_dataset = TensorDataset(
+        test_data["data_trajectories"],
+        test_data["data_current_state"],
+        test_data["data_actions"],
+        test_data["data_labels"],  # Include goals
+    )
+    test_loader = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False)
+    print(f"Model loaded: {model_path}")
+    print(f"Test data loaded: {test_data_path}")
+    print(f"Test dataset size: {len(test_dataset)}")
+    print(f"Device: {device}")
+    print("-" * 60)
+
+    # Run N_past evaluation
+    print("Running N_past evaluation...")
     results = evaluate_n_past_experiment(
-        model_path,
-        test_data_path,
+        model,
+        test_loader,
         config.result_dir,
         n_past_range=(args.n_past_min, args.n_past_max),
+        config=config,
     )
     print("N_past evaluation completed!")
 
@@ -661,27 +686,7 @@ if __name__ == "__main__":
         create_additional_visualizations,
     )
 
-    # Load model
-    model_path = model_paths[0]
-    model_kwargs = config.get_model_kwargs()
-    device = config.device if torch.cuda.is_available() else "cpu"
-    model = load_model(model_path, device, **model_kwargs)
-
-    # Load test data
-    test_data_path = test_data_paths[0]
-    with open(test_data_path, "rb") as f:
-        test_data = pickle.load(f)
-    test_dataset = TensorDataset(
-        test_data["data_trajectories"],
-        test_data["data_current_state"],
-        test_data["data_actions"],
-        test_data["data_labels"],  # Include goals
-    )
-    test_loader = DataLoader(
-        test_dataset, batch_size=config.batch_size, shuffle=False
-    )
-
-    # Create visualization
+    # Create visualization (reusing model and test_loader)
     plot_character_embeddings(
         model,
         test_loader,
@@ -703,9 +708,15 @@ if __name__ == "__main__":
 
     print("Character embeddings visualization completed!")
 
-    # Run action likelihood analysis only
+    # Run action likelihood analysis (reusing model and test_loader)
     print("Running action likelihood analysis...")
-    stats = analyze_action_likelihood(config=config, n_samples=args.n_samples)
+    stats = analyze_action_likelihood(
+        model=model,
+        test_loader=test_loader,
+        device=device,
+        n_samples=args.n_samples,
+        config=config,
+    )
     print(f"Action likelihood analysis completed!")
     for action, action_stats in stats.items():
         print(
@@ -715,7 +726,11 @@ if __name__ == "__main__":
     # Run full cross-species evaluation
     if all(os.path.exists(path) for path in model_paths + test_data_paths):
         results = cross_species_evaluation(
-            config=config, model_paths=model_paths, test_data_paths=test_data_paths
+            config=config,
+            model_paths=model_paths,
+            test_data_paths=test_data_paths,
+            preloaded_model=model,
+            preloaded_test_loader=test_loader,
         )
         print(f"Evaluation completed successfully!")
     else:

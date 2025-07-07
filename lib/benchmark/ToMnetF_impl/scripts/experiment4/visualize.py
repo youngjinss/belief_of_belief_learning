@@ -14,7 +14,7 @@ from torch.utils.data import DataLoader
 import random
 from config import Config
 
-from train import generate_past_episodes_from_batch
+# Import will be done locally to avoid circular imports
 
 """
 Publication-quality visualization for ToMnetF (Experiment 4)
@@ -793,8 +793,37 @@ def plot_character_embeddings(
             # Handle both 3-element and 4-element batches
             if len(batch) == 4:
                 traj, curr, act, goals = batch
+                # Ensure all are tensors
+                traj = (
+                    torch.as_tensor(traj)
+                    if not isinstance(traj, torch.Tensor)
+                    else traj
+                )
+                curr = (
+                    torch.as_tensor(curr)
+                    if not isinstance(curr, torch.Tensor)
+                    else curr
+                )
+                act = torch.as_tensor(act) if not isinstance(act, torch.Tensor) else act
+                goals = (
+                    torch.as_tensor(goals)
+                    if not isinstance(goals, torch.Tensor)
+                    else goals
+                )
             else:
                 traj, curr, act = batch
+                # Ensure all are tensors
+                traj = (
+                    torch.as_tensor(traj)
+                    if not isinstance(traj, torch.Tensor)
+                    else traj
+                )
+                curr = (
+                    torch.as_tensor(curr)
+                    if not isinstance(curr, torch.Tensor)
+                    else curr
+                )
+                act = torch.as_tensor(act) if not isinstance(act, torch.Tensor) else act
                 # Create dummy goals if not available
                 goals = torch.zeros(traj.size(0), dtype=torch.long, device=device)
 
@@ -803,6 +832,9 @@ def plot_character_embeddings(
             act = act.squeeze(-1).type(torch.long)
 
             # Generate past episodes from batch trajectories with same goal
+            # Import locally to avoid circular imports
+            from train import generate_past_episodes_from_batch
+
             past_episodes_batch = generate_past_episodes_from_batch(
                 trajectories=traj,
                 goals=goals,
@@ -850,7 +882,7 @@ def plot_character_embeddings(
 
     # Get unique goals present in the data
     unique_goals = np.unique(goal_labels)
-    
+
     # PCA plot
     for goal in unique_goals:
         mask = goal_labels == goal
@@ -883,7 +915,9 @@ def plot_character_embeddings(
                 s=20,
             )
 
-    ax2.set_title("Character Embeddings by Goal (t-SNE)", fontsize=14, fontweight="bold")
+    ax2.set_title(
+        "Character Embeddings by Goal (t-SNE)", fontsize=14, fontweight="bold"
+    )
     ax2.set_xlabel("t-SNE 1", fontsize=12)
     ax2.set_ylabel("t-SNE 2", fontsize=12)
     ax2.legend()
@@ -893,12 +927,14 @@ def plot_character_embeddings(
 
     # Save plot
     os.makedirs(output_dir, exist_ok=True)
-    plot_path = os.path.join(output_dir, f"character_embeddings_by_goal_exp{experiment_no}.png")
+    plot_path = os.path.join(
+        output_dir, f"character_embeddings_by_goal_exp{experiment_no}.png"
+    )
     plt.savefig(plot_path, dpi=300, bbox_inches="tight")
     plt.close()
 
     print(f"Character embeddings by goal plot saved to: {plot_path}")
-    
+
     # Print goal distribution for debugging
     print(f"Goal distribution in samples:")
     for goal in unique_goals:
@@ -935,6 +971,13 @@ def create_additional_visualizations(
             sample_batch[2],
             sample_batch[3],
         )
+
+        # Ensure all are tensors before moving to device
+        traj = torch.as_tensor(traj) if not isinstance(traj, torch.Tensor) else traj
+        curr = torch.as_tensor(curr) if not isinstance(curr, torch.Tensor) else curr
+        act = torch.as_tensor(act) if not isinstance(act, torch.Tensor) else act
+        goals = torch.as_tensor(goals) if not isinstance(goals, torch.Tensor) else goals
+
         traj, curr, act, goals = (
             traj.to(device),
             curr.to(device),
@@ -958,6 +1001,9 @@ def create_additional_visualizations(
         # Handle N_past data - generate from batch trajectories with same goal
         model_inputs = [traj, curr]
         if has_n_past:
+            # Import locally to avoid circular imports
+            from train import generate_past_episodes_from_batch
+
             # Generate past episodes from other trajectories in the batch with same goal
             # Use config values instead of hardcoded defaults
             past_episodes_batch = generate_past_episodes_from_batch(
@@ -1367,7 +1413,6 @@ if __name__ == "__main__":
             "confusion",
             "likelihood",
             "cross_species",
-            "embeddings",
         ],
         help="Type of plot to generate",
     )
@@ -1390,53 +1435,5 @@ if __name__ == "__main__":
         plot_cross_species_results(
             args.cross_species_path, args.plot_dir, args.experiment_no
         )
-    if args.plot_type in ["all", "embeddings"]:
-        # Need to load model and data for embeddings visualization
-        print("Creating character embeddings visualization...")
-        from config import Config
-        from torch.utils.data import TensorDataset
-
-        config = Config()
-
-        # Load model
-        model_path = os.path.join(config.model_dir, f"exp{args.experiment_no}_best.pth")
-        if os.path.exists(model_path):
-            import sys
-
-            sys.path.append("..")
-            from tomnet import ToMnet
-
-            device = config.device if torch.cuda.is_available() else "cpu"
-            model_kwargs = config.get_model_kwargs()
-            model = ToMnet(**model_kwargs)
-            model.load_state_dict(torch.load(model_path, map_location=device))
-            model.to(device)
-            model.eval()
-
-            # Load test data
-            test_data_path = os.path.join(
-                config.data_dir, f"processed_data_exp{args.experiment_no}.pkl"
-            )
-            with open(test_data_path, "rb") as f:
-                test_data = pickle.load(f)
-            test_dataset = TensorDataset(
-                test_data["data_trajectories"],
-                test_data["data_current_state"],
-                test_data["data_actions"],
-                test_data["data_labels"],  # Include goals
-            )
-            test_loader = DataLoader(
-                test_dataset, batch_size=config.batch_size, shuffle=False
-            )
-
-            # Create visualization
-            plot_character_embeddings(
-                model,
-                test_loader,
-                device,
-                args.plot_dir,
-                args.experiment_no,
-                n_samples=1000,
-            )
 
     print(f"Visualization completed for experiment {args.experiment_no}")

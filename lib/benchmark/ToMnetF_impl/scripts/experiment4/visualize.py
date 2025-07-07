@@ -1383,18 +1383,6 @@ def create_summary_report(
     if os.path.exists(cross_species_path):
         plot_cross_species_results(cross_species_path, plot_dir, experiment_no)
 
-    # Additional visualizations from training (if model and data are provided)
-    if model is not None and val_loader is not None and device is not None:
-        create_additional_visualizations(
-            model, val_loader, plot_dir, experiment_no, device, has_n_past, config
-        )
-
-        # Generate character embeddings visualization
-        print("Creating character embeddings visualization...")
-        plot_character_embeddings(
-            model, val_loader, device, plot_dir, experiment_no, n_samples=1000
-        )
-
     print(f"Summary report completed. Plots saved to: {plot_dir}")
 
 

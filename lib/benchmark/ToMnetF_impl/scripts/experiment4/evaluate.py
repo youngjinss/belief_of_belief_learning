@@ -599,26 +599,13 @@ if __name__ == "__main__":
         "--test_data_paths", type=str, nargs="+", help="Paths to test datasets"
     )
     parser.add_argument(
-        "--analysis_only",
-        action="store_true",
-        help="Run action likelihood analysis only",
-    )
-    parser.add_argument(
         "--n_samples", type=int, default=1000, help="Number of samples for analysis"
-    )
-    parser.add_argument(
-        "--n_past_eval", action="store_true", help="Run N_past evaluation"
     )
     parser.add_argument(
         "--n_past_min", type=int, default=0, help="Minimum N_past value"
     )
     parser.add_argument(
         "--n_past_max", type=int, default=5, help="Maximum N_past value"
-    )
-    parser.add_argument(
-        "--embeddings",
-        action="store_true",
-        help="Generate character embeddings visualization",
     )
 
     args = parser.parse_args()
@@ -655,76 +642,85 @@ if __name__ == "__main__":
             )
         ]
 
-    if args.n_past_eval:
-        # Run N_past evaluation
-        print("Running N_past evaluation...")
-        model_path = model_paths[0]  # Use first model
-        test_data_path = test_data_paths[0]  # Use first test data
-        results = evaluate_n_past_experiment(
-            model_path,
-            test_data_path,
-            config.result_dir,
-            n_past_range=(args.n_past_min, args.n_past_max),
+    # Run N_past evaluation
+    print("Running N_past evaluation...")
+    model_path = model_paths[0]  # Use first model
+    test_data_path = test_data_paths[0]  # Use first test data
+    results = evaluate_n_past_experiment(
+        model_path,
+        test_data_path,
+        config.result_dir,
+        n_past_range=(args.n_past_min, args.n_past_max),
+    )
+    print("N_past evaluation completed!")
+
+    # Run character embeddings visualization
+    print("Running character embeddings visualization...")
+    from visualize import (
+        plot_character_embeddings,
+        create_additional_visualizations,
+    )
+
+    # Load model
+    model_path = model_paths[0]
+    model_kwargs = config.get_model_kwargs()
+    device = config.device if torch.cuda.is_available() else "cpu"
+    model = load_model(model_path, device, **model_kwargs)
+
+    # Load test data
+    test_data_path = test_data_paths[0]
+    with open(test_data_path, "rb") as f:
+        test_data = pickle.load(f)
+    test_dataset = TensorDataset(
+        test_data["data_trajectories"],
+        test_data["data_current_state"],
+        test_data["data_actions"],
+        test_data["data_labels"],  # Include goals
+    )
+    test_loader = DataLoader(
+        test_dataset, batch_size=config.batch_size, shuffle=False
+    )
+
+    # Create visualization
+    plot_character_embeddings(
+        model,
+        test_loader,
+        device,
+        config.result_dir,
+        config.experiment_no,
+        n_samples=args.n_samples,
+    )
+
+    create_additional_visualizations(
+        model,
+        test_loader,
+        config.result_dir,
+        config.experiment_no,
+        device,
+        True,
+        config,
+    )
+
+    print("Character embeddings visualization completed!")
+
+    # Run action likelihood analysis only
+    print("Running action likelihood analysis...")
+    stats = analyze_action_likelihood(config=config, n_samples=args.n_samples)
+    print(f"Action likelihood analysis completed!")
+    for action, action_stats in stats.items():
+        print(
+            f"{action}: mean={action_stats['mean']:.4f}, std={action_stats['std']:.4f}"
         )
-        print("N_past evaluation completed!")
 
-    elif args.embeddings:
-        # Run character embeddings visualization
-        print("Running character embeddings visualization...")
-        from visualize import plot_character_embeddings
-
-        # Load model
-        model_path = model_paths[0]
-        model_kwargs = config.get_model_kwargs()
-        device = config.device if torch.cuda.is_available() else "cpu"
-        model = load_model(model_path, device, **model_kwargs)
-
-        # Load test data
-        test_data_path = test_data_paths[0]
-        with open(test_data_path, "rb") as f:
-            test_data = pickle.load(f)
-        test_dataset = TensorDataset(
-            test_data["data_trajectories"],
-            test_data["data_current_state"],
-            test_data["data_actions"],
-            test_data["data_labels"],  # Include goals
+    # Run full cross-species evaluation
+    if all(os.path.exists(path) for path in model_paths + test_data_paths):
+        results = cross_species_evaluation(
+            config=config, model_paths=model_paths, test_data_paths=test_data_paths
         )
-        test_loader = DataLoader(
-            test_dataset, batch_size=config.batch_size, shuffle=False
-        )
-
-        # Create visualization
-        plot_character_embeddings(
-            model,
-            test_loader,
-            device,
-            config.result_dir,
-            config.experiment_no,
-            n_samples=args.n_samples,
-        )
-        print("Character embeddings visualization completed!")
-
-    elif args.analysis_only:
-        # Run action likelihood analysis only
-        print("Running action likelihood analysis...")
-        stats = analyze_action_likelihood(config=config, n_samples=args.n_samples)
-        print(f"Action likelihood analysis completed!")
-        for action, action_stats in stats.items():
-            print(
-                f"{action}: mean={action_stats['mean']:.4f}, std={action_stats['std']:.4f}"
-            )
+        print(f"Evaluation completed successfully!")
     else:
-        # Run full cross-species evaluation
-        if all(os.path.exists(path) for path in model_paths + test_data_paths):
-            results = cross_species_evaluation(
-                config=config, model_paths=model_paths, test_data_paths=test_data_paths
-            )
-            print(f"Evaluation completed successfully!")
-        else:
-            missing_files = [
-                path
-                for path in model_paths + test_data_paths
-                if not os.path.exists(path)
-            ]
-            print(f"Missing files: {missing_files}")
-            print("Please train the model and generate data first.")
+        missing_files = [
+            path for path in model_paths + test_data_paths if not os.path.exists(path)
+        ]
+        print(f"Missing files: {missing_files}")
+        print("Please train the model and generate data first.")

@@ -42,10 +42,12 @@ def evaluate_model_with_n_past(
 ):
     """
     Evaluate model performance with different N_past values
+    
+    Note: Model input order is [trajectory, current_state, past_episodes]
 
     Args:
         model: Trained ToMnet model
-        test_loader: Test data loader
+        test_loader: Test data loader (must include goals as 4th element)
         device: Computing device
         n_past_values: List of N_past values to test
         n_past_max: Maximum number of past episodes
@@ -113,10 +115,12 @@ def evaluate_model_with_n_past(
 def evaluate_model(model, test_loader, device, save_predictions=False, output_dir=None):
     """
     Evaluate model performance
+    
+    Note: Model input order is [trajectory, current_state, past_episodes]
 
     Args:
         model: Trained ToMnet model
-        test_loader: Test data loader
+        test_loader: Test data loader (should include goals as 4th element for proper n_past handling)
         device: Computing device
         save_predictions: Whether to save predictions
         output_dir: Directory to save predictions
@@ -124,6 +128,10 @@ def evaluate_model(model, test_loader, device, save_predictions=False, output_di
     Returns:
         dict: Evaluation metrics
     """
+    from train import generate_past_episodes_from_batch
+    from config import Config
+    
+    config = Config()
 
     model.eval()
     all_predictions = []
@@ -131,12 +139,31 @@ def evaluate_model(model, test_loader, device, save_predictions=False, output_di
     all_probabilities = []
 
     with torch.no_grad():
-        for batch_idx, (traj, curr, act) in enumerate(test_loader):
-            traj, curr, act = traj.to(device), curr.to(device), act.to(device)
+        for batch_idx, batch in enumerate(test_loader):
+            # Handle both 3-element and 4-element batches
+            if len(batch) == 4:
+                traj, curr, act, goals = batch
+                traj, curr, act, goals = traj.to(device), curr.to(device), act.to(device), goals.to(device)
+                
+                # Generate past episodes for proper evaluation
+                past_episodes = generate_past_episodes_from_batch(
+                    trajectories=traj,
+                    goals=goals,
+                    batch_size=traj.size(0),
+                    n_past_min=config.n_past_min,
+                    n_past_max=config.n_past_max,
+                    max_n_past=config.n_past_max,
+                )
+                model_inputs = [traj, curr, past_episodes]
+            else:
+                traj, curr, act = batch
+                traj, curr, act = traj.to(device), curr.to(device), act.to(device)
+                model_inputs = [traj, curr]
+                
             act = act.squeeze(-1).type(torch.long)
 
-            # Get model predictions - experiment2 model returns 3 outputs
-            model_output = model([traj, curr])
+            # Get model predictions - experiment4 model returns 3 outputs
+            model_output = model(model_inputs)
             if isinstance(model_output, tuple) and len(model_output) == 3:
                 action_pred, consumption_pred, sr_pred = model_output
                 output = action_pred  # Use action predictions for evaluation
@@ -353,25 +380,47 @@ def analyze_action_likelihood(
             test_data["data_trajectories"],
             test_data["data_current_state"],
             test_data["data_actions"],
+            test_data["data_labels"],  # Include goals
         )
         test_loader = DataLoader(
             test_dataset, batch_size=config.batch_size, shuffle=False
         )
 
+    from train import generate_past_episodes_from_batch
+    
     model.eval()
     action_likelihoods = {i: [] for i in range(4)}
 
     sample_count = 0
     with torch.no_grad():
-        for traj, curr, act in test_loader:
+        for batch in test_loader:
             if sample_count >= n_samples:
                 break
 
-            traj, curr, act = traj.to(device), curr.to(device), act.to(device)
+            # Handle both 3-element and 4-element batches
+            if len(batch) == 4:
+                traj, curr, act, goals = batch
+                traj, curr, act, goals = traj.to(device), curr.to(device), act.to(device), goals.to(device)
+                
+                # Generate past episodes for proper evaluation
+                past_episodes = generate_past_episodes_from_batch(
+                    trajectories=traj,
+                    goals=goals,
+                    batch_size=traj.size(0),
+                    n_past_min=config.n_past_min,
+                    n_past_max=config.n_past_max,
+                    max_n_past=config.n_past_max,
+                )
+                model_inputs = [traj, curr, past_episodes]
+            else:
+                traj, curr, act = batch
+                traj, curr, act = traj.to(device), curr.to(device), act.to(device)
+                model_inputs = [traj, curr]
+                
             act = act.squeeze(-1).type(torch.long)
 
-            # Get model predictions - experiment2 model returns 3 outputs
-            model_output = model([traj, curr])
+            # Get model predictions - experiment4 model returns 3 outputs
+            model_output = model(model_inputs)
             if isinstance(model_output, tuple) and len(model_output) == 3:
                 action_pred, consumption_pred, sr_pred = model_output
                 output = action_pred  # Use action predictions for evaluation

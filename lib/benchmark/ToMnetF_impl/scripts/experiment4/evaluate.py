@@ -15,6 +15,15 @@ from sklearn.metrics import (
 from tomnet import ToMnet
 from torch.utils.data import DataLoader, TensorDataset
 from config import Config
+from data_generation import generate_input_data
+from environment import World
+import agents as Agent
+from generate import (
+    calculate_sr_labels_for_trajectory,
+    calculate_consumption_labels,
+    save_game_with_labels,
+    generate_trajectories,
+)
 
 """
 Cross-species evaluation and metrics for ToMnetF
@@ -569,6 +578,73 @@ def evaluate_n_past_experiment(
     print(f"Visualizations saved to: {output_dir}")
 
     return results_by_n_past
+
+
+def make_test_loader(config=None, test_data_dir="./data/test"):
+    """
+    Create a DataLoader from existing test data
+    
+    Note: For test data generation, use the generate_trajectories function from generate.py
+    with a different random seed (e.g., 123 instead of 42 for training)
+    
+    Args:
+        config: Config object containing parameters. If None, uses default values.
+        test_data_dir: Directory containing test data (default: "./data/test")
+    
+    Returns:
+        test_loader: DataLoader with test data
+        test_data_path: Path to the processed test data
+    """
+    if config is None:
+        config = Config()
+    
+    # Check if processed test data exists
+    processed_test_path = os.path.join(test_data_dir, f"processed_test_data_exp{config.experiment_no}.pkl")
+    
+    if not os.path.exists(processed_test_path):
+        # Check if raw test data exists for processing
+        raw_test_dir = os.path.join(test_data_dir, "raw_games")
+        if os.path.exists(raw_test_dir):
+            print("Raw test data found. Processing into training format...")
+            
+            # Process raw test data into training format
+            test_data = generate_input_data(
+                data_dir=raw_test_dir,
+                output_dir=test_data_dir,
+                use_percentage=1.0,  # Use all test data
+                time_step=config.time_step,
+                height=config.height,
+                width=config.width,
+                depth=config.depth,
+                experiment_no=config.experiment_no,
+                max_n_past=config.n_past_max,
+            )
+            print(f"Test data processed and saved to: {processed_test_path}")
+        else:
+            raise FileNotFoundError(
+                f"No test data found at {processed_test_path} or {raw_test_dir}. "
+                f"Please generate test data first using generate_trajectories function "
+                f"from generate.py with a test-specific random seed (e.g., random_seed=123)."
+            )
+    else:
+        print(f"Loading existing processed test data from: {processed_test_path}")
+        
+        # Load existing test data
+        with open(processed_test_path, "rb") as f:
+            test_data = pickle.load(f)
+    
+    # Create test dataset and loader
+    test_dataset = TensorDataset(
+        test_data["data_trajectories"],
+        test_data["data_current_state"],
+        test_data["data_actions"],
+        test_data["data_labels"],  # Include goals
+    )
+    test_loader = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False)
+    
+    print(f"Test loader created with {len(test_dataset)} samples")
+    
+    return test_loader, processed_test_path
 
 
 if __name__ == "__main__":

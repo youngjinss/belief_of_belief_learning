@@ -218,12 +218,13 @@ def save_game_with_labels(
             f.write(msg + "\n")
 
 
-def generate_trajectories(config=None):
+def generate_trajectories(config=None, random_seed=42):
     """
     Generate trajectories for Experiment 4 using A* agents with random positions, goal rewards, and N_past episodes
 
     Args:
         config: Config object containing all parameters. If None, uses default values.
+        random_seed: Random seed for environment generation (default: 42 for training, use 123 for testing)
     """
     if config is None:
         config = Config()
@@ -246,6 +247,9 @@ def generate_trajectories(config=None):
     n_past_min = config.n_past_min
     n_past_max = config.n_past_max
 
+    print(f"Generating trajectories with random seed: {random_seed}")
+    print(f"  Training seed: 42, Testing seed: 123 (recommended)")
+    
     env = World(
         row_size=rows,
         col_size=cols,
@@ -254,6 +258,7 @@ def generate_trajectories(config=None):
         no_walls=no_walls,
         random_positions=random_positions,
         random_goal_rewards=random_goal_rewards,
+        random_seed=random_seed,
     )
 
     # Create output directory
@@ -357,6 +362,12 @@ if __name__ == "__main__":
         action="store_true",
         help="Whether to use random goal rewards",
     )
+    parser.add_argument(
+        "--random_seed",
+        type=int,
+        default=42,
+        help="Random seed for environment generation (42 for training, 123 for testing)",
+    )
 
     args = parser.parse_args()
 
@@ -389,4 +400,4 @@ if __name__ == "__main__":
         if args.random_goal_rewards:
             config.random_goal_rewards = args.random_goal_rewards
 
-    generate_trajectories(config)
+    generate_trajectories(config, random_seed=args.random_seed)

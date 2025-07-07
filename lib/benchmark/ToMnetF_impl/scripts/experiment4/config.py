@@ -14,7 +14,7 @@ class Config:
         self.max_moves = 50
         self.output_dir = "data"
         self.shuffle = False
-        self.no_walls = False
+        self.no_walls = True
         self.random_positions = True  # Enable random player positions
         self.random_goal_rewards = True  # Enable random goal rewards
 

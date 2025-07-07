@@ -65,7 +65,13 @@ class EarlyStopping:
 
 
 def generate_past_episodes_from_batch(
-    trajectories, goals, batch_size, n_past_min, n_past_max, max_n_past
+    trajectories,
+    goals,
+    batch_size,
+    n_past_min,
+    n_past_max,
+    max_n_past,
+    rank_threshold=1,
 ):
     """
     Generate past episodes by randomly sampling from other trajectories in the batch
@@ -73,11 +79,12 @@ def generate_past_episodes_from_batch(
 
     Args:
         trajectories: Batch of trajectories [batch_size, depth, height, width, time_step]
-        goals: Batch of goal labels [batch_size]
+        goals: Batch of goal labels [batch_size] or goal ranks [batch_size, 4]
         batch_size: Size of current batch
         n_past_min: Minimum number of past episodes to sample
         n_past_max: Maximum number of past episodes to sample
         max_n_past: Maximum number of past episodes for consistent tensor shape
+        rank_threshold: How many top ranks to consider for matching (1=only highest, 2=top 2, etc.)
 
     Returns:
         past_episodes_batch: [batch_size, max_n_past, depth, height, width, time_step]
@@ -98,18 +105,38 @@ def generate_past_episodes_from_batch(
     )
 
     # Create goal similarity matrix (batch_size x batch_size)
-    # same_goal_mask[i, j] = True if sample i and j have the same goal/rank
+    # same_goal_mask[i, j] = True if sample i and j have the same goal/rank (within threshold)
     if goals.dim() > 1:  # Handle goal_ranks (multi-dimensional)
-        # For goal ranks, compare entire rank vectors
+        # For goal ranks, use rank_threshold to limit comparison
         # goals shape: [batch_size, 4] for goal ranks
-        same_goal_mask = torch.zeros(batch_size, batch_size, dtype=torch.bool, device=device)
-        for i in range(batch_size):
-            for j in range(batch_size):
-                # Check if rank vectors are the same
-                same_goal_mask[i, j] = torch.equal(goals[i], goals[j])
+
+        if rank_threshold < 4:
+            # Create vectorized comparison using only top ranks for efficiency
+            # Find which goals have ranks <= rank_threshold for all samples
+            top_goals_mask = goals <= rank_threshold  # [batch_size, 4]
+
+            # Vectorized comparison: check if same goals are in top ranks
+            # Expand dimensions for broadcasting: [batch_size, 1, 4] and [1, batch_size, 4]
+            top_goals_i = top_goals_mask.unsqueeze(1)  # [batch_size, 1, 4]
+            top_goals_j = top_goals_mask.unsqueeze(0)  # [1, batch_size, 4]
+
+            # Check if all 4 positions match (same top goals)
+            same_goal_mask = torch.all(
+                top_goals_i == top_goals_j, dim=2
+            )  # [batch_size, batch_size]
+        else:
+            # Use full rank comparison (rank_threshold >= 4)
+            # Vectorized comparison of full rank vectors
+            goals_i = goals.unsqueeze(1)  # [batch_size, 1, 4]
+            goals_j = goals.unsqueeze(0)  # [1, batch_size, 4]
+            same_goal_mask = torch.all(
+                goals_i == goals_j, dim=2
+            )  # [batch_size, batch_size]
     else:  # Handle single goal values
         goals_expanded = goals.unsqueeze(1)  # [batch_size, 1]
-        same_goal_mask = goals_expanded == goals.unsqueeze(0)  # [batch_size, batch_size]
+        same_goal_mask = goals_expanded == goals.unsqueeze(
+            0
+        )  # [batch_size, batch_size]
 
     # Exclude self-matches by setting diagonal to False
     same_goal_mask.fill_diagonal_(False)
@@ -363,9 +390,11 @@ def train_tomnet(config=None):
             )
 
             data_idx = 4  # Updated since we now have goals at index 3
-            
+
             # Check if goal_ranks are available for better past episode matching
-            if data_goal_ranks is not None and len(data) > 6:  # 6 = traj, curr, act, goals, consumption, sr, goal_ranks
+            if (
+                data_goal_ranks is not None and len(data) > 6
+            ):  # 6 = traj, curr, act, goals, consumption, sr, goal_ranks
                 goal_ranks_batch = data[6].to(device)  # Use goal_ranks for matching
                 matching_criteria = goal_ranks_batch
             else:
@@ -393,6 +422,7 @@ def train_tomnet(config=None):
                 n_past_min=config.n_past_min,
                 n_past_max=config.n_past_max,
                 max_n_past=config.n_past_max,
+                rank_threshold=config.rank_threshold,
             )
             model_inputs.append(past_episodes_batch)
 
@@ -411,7 +441,9 @@ def train_tomnet(config=None):
             batch_size_local = traj.size(0)
             for i in range(3):  # 3 discount factors
                 sr_pred_i = sr_pred[:, i, :, :].contiguous().view(batch_size_local, -1)
-                sr_target_i = sr_target[:, i, :, :].contiguous().view(batch_size_local, -1)
+                sr_target_i = (
+                    sr_target[:, i, :, :].contiguous().view(batch_size_local, -1)
+                )
                 # Convert target to class indices (for now using argmax of dummy data)
                 sr_target_indices = torch.argmax(sr_target_i, dim=1)
                 sr_loss += sr_loss_fn(sr_pred_i, sr_target_indices)
@@ -457,9 +489,11 @@ def train_tomnet(config=None):
                 )
 
                 data_idx = 4  # Updated since we now have goals at index 3
-                
+
                 # Check if goal_ranks are available for better past episode matching
-                if data_goal_ranks is not None and len(data) > 6:  # 6 = traj, curr, act, goals, consumption, sr, goal_ranks
+                if (
+                    data_goal_ranks is not None and len(data) > 6
+                ):  # 6 = traj, curr, act, goals, consumption, sr, goal_ranks
                     goal_ranks_batch = data[6].to(device)  # Use goal_ranks for matching
                     matching_criteria = goal_ranks_batch
                 else:
@@ -487,6 +521,7 @@ def train_tomnet(config=None):
                     n_past_min=config.n_past_min,
                     n_past_max=config.n_past_max,
                     max_n_past=config.n_past_max,
+                    rank_threshold=config.rank_threshold,
                 )
                 model_inputs.append(past_episodes_batch)
 
@@ -504,7 +539,9 @@ def train_tomnet(config=None):
                 sr_loss = 0
                 batch_size_local = traj.size(0)
                 for i in range(3):  # 3 discount factors
-                    sr_pred_i = sr_pred[:, i, :, :].contiguous().view(batch_size_local, -1)
+                    sr_pred_i = (
+                        sr_pred[:, i, :, :].contiguous().view(batch_size_local, -1)
+                    )
                     sr_target_i = (
                         sr_target[:, i, :, :].contiguous().view(batch_size_local, -1)
                     )

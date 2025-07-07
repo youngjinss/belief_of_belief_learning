@@ -57,6 +57,15 @@ class Config:
         self.n_past_infer = 4  # Maximum number for inference
         self.use_n_past = True  # Whether to use past episodes for character embedding
 
+        # Goal rank matching settings
+        self.rank_threshold = int(
+            os.getenv("RANK_THRESHOLD", 4)
+        )  # How many top ranks to consider for matching
+        # 1 = only rank 1 (highest reward goal)
+        # 2 = rank 1 and 2 (top 2 goals)
+        # 3 = rank 1, 2, and 3 (top 3 goals)
+        # 4 = all ranks (full matching)
+
     def get_model_kwargs(self):
         """Return model parameters for ToMnet initialization"""
         return {
@@ -93,4 +102,5 @@ class Config:
             "device": self.device,
             "max_n_past": self.n_past_max,
             "use_n_past": self.use_n_past,
+            "rank_threshold": self.rank_threshold,
         }

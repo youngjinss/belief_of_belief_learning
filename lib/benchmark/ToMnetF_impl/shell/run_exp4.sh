@@ -126,7 +126,7 @@ run_visualization() {
     log_step "Logging visualization output to: $RUN_LOG_DIR/visualization.log"
     
     cd "$SCRIPTS_DIR/experiment4"
-    python visualize.py > "$RUN_LOG_DIR/visualization.log" 2>&1
+    python visualize.py --plot_type > "$RUN_LOG_DIR/visualization.log" 2>&1
     
     log_step "Visualization completed"
 }

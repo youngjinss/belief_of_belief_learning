@@ -247,7 +247,6 @@ def train_tomnet(config=None):
     # Train/validation split
     total_size = len(dataset)
     train_size = int(total_size * training_proportion)
-    val_size = total_size - train_size
 
     # Create train and validation datasets with the same components
     train_components = [data[:train_size] for data in dataset_components]

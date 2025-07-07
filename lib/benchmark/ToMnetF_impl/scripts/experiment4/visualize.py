@@ -937,7 +937,7 @@ def plot_character_embeddings(
 
 
 def create_additional_visualizations(
-    model, val_loader, plot_dir, experiment_no, device, has_n_past
+    model, val_loader, plot_dir, experiment_no, device, has_n_past, config=None
 ):
     """
     Create and save additional visualizations including successor representation
@@ -945,6 +945,11 @@ def create_additional_visualizations(
     """
 
     print("Creating additional visualizations...")
+    
+    # Import Config if not provided
+    if config is None:
+        from config import Config
+        config = Config()
 
     # Get a sample batch for visualization
     model.eval()
@@ -982,14 +987,14 @@ def create_additional_visualizations(
         model_inputs = [traj, curr]
         if has_n_past:
             # Generate past episodes from other trajectories in the batch with same goal
-            # Use default values for visualization
+            # Use config values instead of hardcoded defaults
             past_episodes_batch = generate_past_episodes_from_batch(
                 trajectories=traj,
                 goals=goals,
                 batch_size=traj.size(0),
-                n_past_min=0,  # Default range
-                n_past_max=10,  # Default range
-                max_n_past=10,
+                n_past_min=config.n_past_min,  # From config
+                n_past_max=config.n_past_max,  # From config
+                max_n_past=config.n_past_max,  # From config
             )
             model_inputs.append(past_episodes_batch)
 
@@ -1298,6 +1303,7 @@ def create_summary_report(
     val_loader=None,
     device=None,
     has_n_past=False,
+    config=None,
 ):
     """
     Create a summary report with all visualizations
@@ -1310,6 +1316,7 @@ def create_summary_report(
         val_loader: Validation data loader (optional)
         device: Computing device (optional)
         has_n_past: Whether N_past data is available (optional)
+        config: Config object (optional)
     """
 
     print(f"Creating summary report for experiment {experiment_no}")
@@ -1339,7 +1346,7 @@ def create_summary_report(
     # Additional visualizations from training (if model and data are provided)
     if model is not None and val_loader is not None and device is not None:
         create_additional_visualizations(
-            model, val_loader, plot_dir, experiment_no, device, has_n_past
+            model, val_loader, plot_dir, experiment_no, device, has_n_past, config
         )
 
     print(f"Summary report completed. Plots saved to: {plot_dir}")

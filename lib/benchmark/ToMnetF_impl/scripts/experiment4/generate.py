@@ -94,6 +94,32 @@ def calculate_sr_labels_for_trajectory(
     return sr_labels_per_timestep
 
 
+def calculate_goal_rank(goal_rewards):
+    """
+    Calculate the rank of goal rewards for goals A, B, C, D
+    
+    Args:
+        goal_rewards: List of 4 goal rewards [A, B, C, D]
+    
+    Returns:
+        goal_rank: List of ranks [rank_A, rank_B, rank_C, rank_D]
+                  where 1 is the highest reward, 4 is the lowest
+    """
+    if not goal_rewards or len(goal_rewards) != 4:
+        return [1, 2, 3, 4]  # Default ranking if no rewards
+    
+    # Create pairs of (reward, index) and sort by reward in descending order
+    reward_pairs = [(goal_rewards[i], i) for i in range(4)]
+    reward_pairs.sort(key=lambda x: x[0], reverse=True)
+    
+    # Create rank array
+    goal_rank = [0] * 4
+    for rank, (reward, idx) in enumerate(reward_pairs):
+        goal_rank[idx] = rank + 1  # Rank starts from 1
+    
+    return goal_rank
+
+
 def calculate_consumption_labels(consumed_goals):
     """
     Calculate consumption labels for goals A, B, C, D
@@ -173,8 +199,9 @@ def save_game_with_labels(
         for i in range(env.width):
             f.write(env.init_map[i] + "\n")
         f.write(wall_line + "\n")
-        for i, goal in enumerate(env.consumed_goal):
-            f.write("Goal Consumed #" + str(i + 1) + " : " + goal + "\n")
+        # Calculate goal rank from goal_rewards
+        goal_rank = calculate_goal_rank(env.goal_rewards)
+        f.write("Goal Consumed Rank : " + str(goal_rank) + "\n")
         f.write("Trajectory length: " + str(len(agent.trajectory)) + "\n")
 
         # Save consumption labels

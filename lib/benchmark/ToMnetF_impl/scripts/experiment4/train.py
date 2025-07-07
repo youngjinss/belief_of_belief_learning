@@ -98,9 +98,18 @@ def generate_past_episodes_from_batch(
     )
 
     # Create goal similarity matrix (batch_size x batch_size)
-    # same_goal_mask[i, j] = True if sample i and j have the same goal
-    goals_expanded = goals.unsqueeze(1)  # [batch_size, 1]
-    same_goal_mask = goals_expanded == goals.unsqueeze(0)  # [batch_size, batch_size]
+    # same_goal_mask[i, j] = True if sample i and j have the same goal/rank
+    if goals.dim() > 1:  # Handle goal_ranks (multi-dimensional)
+        # For goal ranks, compare entire rank vectors
+        # goals shape: [batch_size, 4] for goal ranks
+        same_goal_mask = torch.zeros(batch_size, batch_size, dtype=torch.bool, device=device)
+        for i in range(batch_size):
+            for j in range(batch_size):
+                # Check if rank vectors are the same
+                same_goal_mask[i, j] = torch.equal(goals[i], goals[j])
+    else:  # Handle single goal values
+        goals_expanded = goals.unsqueeze(1)  # [batch_size, 1]
+        same_goal_mask = goals_expanded == goals.unsqueeze(0)  # [batch_size, batch_size]
 
     # Exclude self-matches by setting diagonal to False
     same_goal_mask.fill_diagonal_(False)
@@ -213,6 +222,7 @@ def train_tomnet(config=None):
     data_labels = processed_data["data_labels"]
     data_consumption = processed_data.get("data_consumption_labels", None)
     data_sr = processed_data.get("data_sr_maps", None)
+    data_goal_ranks = processed_data.get("data_goal_ranks", None)
 
     print(f"Data shapes:")
     print(f"Trajectories: {data_traj.shape}")
@@ -241,6 +251,8 @@ def train_tomnet(config=None):
     dataset_components = [data_traj, data_curr, data_act, data_labels]
     if has_new_labels:
         dataset_components.extend([data_consumption, data_sr])
+    if data_goal_ranks is not None:
+        dataset_components.append(data_goal_ranks)
 
     dataset = TensorDataset(*dataset_components)
 
@@ -351,6 +363,13 @@ def train_tomnet(config=None):
             )
 
             data_idx = 4  # Updated since we now have goals at index 3
+            
+            # Check if goal_ranks are available for better past episode matching
+            if data_goal_ranks is not None and len(data) > 6:  # 6 = traj, curr, act, goals, consumption, sr, goal_ranks
+                goal_ranks_batch = data[6].to(device)  # Use goal_ranks for matching
+                matching_criteria = goal_ranks_batch
+            else:
+                matching_criteria = goals  # Fallback to goals
 
             # Handle consumption and SR labels
             if has_new_labels and len(data) > data_idx:
@@ -366,10 +385,10 @@ def train_tomnet(config=None):
             # Generate N_past data by randomly sampling from batch trajectories with same goal
             model_inputs = [traj, curr]
 
-            # Generate past episodes from other trajectories in the batch with same goal
+            # Generate past episodes from other trajectories in the batch with same matching criteria
             past_episodes_batch = generate_past_episodes_from_batch(
                 trajectories=traj,
-                goals=goals,
+                goals=matching_criteria,
                 batch_size=traj.size(0),
                 n_past_min=config.n_past_min,
                 n_past_max=config.n_past_max,
@@ -438,6 +457,13 @@ def train_tomnet(config=None):
                 )
 
                 data_idx = 4  # Updated since we now have goals at index 3
+                
+                # Check if goal_ranks are available for better past episode matching
+                if data_goal_ranks is not None and len(data) > 6:  # 6 = traj, curr, act, goals, consumption, sr, goal_ranks
+                    goal_ranks_batch = data[6].to(device)  # Use goal_ranks for matching
+                    matching_criteria = goal_ranks_batch
+                else:
+                    matching_criteria = goals  # Fallback to goals
 
                 # Handle consumption and SR labels
                 if has_new_labels and len(data) > data_idx:
@@ -453,10 +479,10 @@ def train_tomnet(config=None):
                 # Generate N_past data by randomly sampling from batch trajectories with same goal
                 model_inputs = [traj, curr]
 
-                # Generate past episodes from other trajectories in the batch with same goal
+                # Generate past episodes from other trajectories in the batch with same matching criteria
                 past_episodes_batch = generate_past_episodes_from_batch(
                     trajectories=traj,
-                    goals=goals,
+                    goals=matching_criteria,
                     batch_size=traj.size(0),
                     n_past_min=config.n_past_min,
                     n_past_max=config.n_past_max,

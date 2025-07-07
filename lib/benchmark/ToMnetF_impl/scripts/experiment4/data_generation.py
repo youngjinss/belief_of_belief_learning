@@ -35,6 +35,7 @@ class DataReader:
         # lines 1: 15 - map
         map = []
         consumed = []
+        goal_rank = None
         trajectory_length = []
         trajectory = {}
         actions = []
@@ -77,7 +78,15 @@ class DataReader:
                 map.append(temp_row)
 
             if idx == 16:
-                consumed.append(x)
+                # Parse the new Goal Consumed Rank format
+                if x.startswith("Goal Consumed Rank"):
+                    rank_str = x.split(":")[1].strip()
+                    # Parse the rank array [1, 3, 2, 4]
+                    rank_str = rank_str.strip("[]")
+                    goal_rank = [int(r.strip()) for r in rank_str.split(",")]
+                else:
+                    # Handle old format for backward compatibility
+                    consumed.append(x)
             if idx == 17:
                 trajectory_length.append(x)
 
@@ -173,7 +182,17 @@ class DataReader:
                     continue
 
         map = np.array(map)  # Map
-        consumed = consumed[0][19]  # Consumed goal
+        # Handle goal data for backward compatibility
+        if goal_rank is not None:
+            # For new format, use goal rank to determine the consumed goal
+            # Find which goal has the highest rank (rank 1)
+            highest_rank_idx = goal_rank.index(1)  # Find index of rank 1 (highest)
+            goal_symbols = ['A', 'B', 'C', 'D']
+            consumed = goal_symbols[highest_rank_idx]
+        elif consumed:
+            consumed = consumed[0][19]  # Consumed goal (old format)
+        else:
+            consumed = 'A'  # Default fallback
 
         # Plane for obstacles - static
         np_obstacles = np.where(map == 0, 1, 0).astype(np.int8)  # if wall then 1 else 0
@@ -256,7 +275,7 @@ class DataReader:
         else:
             sr_array = None
 
-        return traj, act, goal, directions, consumption_labels, sr_array
+        return traj, act, goal, directions, consumption_labels, sr_array, goal_rank
 
     def LoadAllGames(self, use_percentage, directory):
         # Get names of games
@@ -280,6 +299,7 @@ class DataReader:
         labels = []  # np.empty(1)
         consumption_labels_list = []
         sr_maps_list = []
+        goal_ranks_list = []
         """
             How to read Actions:
             0 - UP
@@ -302,7 +322,7 @@ class DataReader:
         for i, file in enumerate(files):
 
             # Read one game
-            traj, act, goal, directions, consumption_labels, sr_map = self.ReadOneGame(
+            traj, act, goal, directions, consumption_labels, sr_map, goal_rank = self.ReadOneGame(
                 filename=os.path.join(directory, file)
             )
 
@@ -317,6 +337,7 @@ class DataReader:
             labels.append(goal)
             consumption_labels_list.append(consumption_labels)
             sr_maps_list.append(sr_map)
+            goal_ranks_list.append(goal_rank)
 
             # Keep track on progress
             if i >= int(np.ceil(j * Nfraction / 100)) - 1:
@@ -332,6 +353,7 @@ class DataReader:
         data_labels = []
         data_consumption_labels = []
         data_sr_maps = []
+        data_goal_ranks = []
         j = 0  # for tracking progress (%)
 
         # Process Game-per-Game
@@ -366,6 +388,9 @@ class DataReader:
             data_labels.append(data_labels1)
             data_consumption_labels.append(consumption_labels1)
             data_sr_maps.append(sr_maps1)
+            # Replicate goal_rank for each training sample from this game
+            game_goal_rank = goal_ranks_list[i]
+            data_goal_ranks.extend([game_goal_rank] * len(data_trajectories1))
 
             # Keep track on progress
             if i >= int(np.ceil(j * Nfraction / 100)) - 1:
@@ -382,6 +407,7 @@ class DataReader:
             "labels_history": data_labels,
             "consumption_labels_history": data_consumption_labels,
             "sr_maps_history": data_sr_maps,
+            "goal_ranks_history": data_goal_ranks,
         }
 
         print(f"Directions count: {directions_total}")
@@ -657,6 +683,7 @@ def generate_input_data(
     data_labels = all_games["labels_history"]
     data_consumption_labels = all_games.get("consumption_labels_history", None)
     data_sr_maps = all_games.get("sr_maps_history", None)
+    data_goal_ranks = all_games.get("goal_ranks_history", None)
 
     # Convert to tensors
     data_traj = torch.tensor(data_trajectories_zp, dtype=torch.float32)
@@ -675,6 +702,11 @@ def generate_input_data(
     else:
         data_sr = None
 
+    if data_goal_ranks is not None:
+        data_goal_ranks_tensor = torch.tensor(data_goal_ranks, dtype=torch.float32)
+    else:
+        data_goal_ranks_tensor = None
+
     # Save processed data
     processed_data = {
         "data_trajectories": data_traj,
@@ -683,6 +715,7 @@ def generate_input_data(
         "data_labels": data_labels,
         "data_consumption_labels": data_consumption,
         "data_sr_maps": data_sr,
+        "data_goal_ranks": data_goal_ranks_tensor,
         "metadata": {
             "time_step": time_step,
             "height": height,

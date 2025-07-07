@@ -49,7 +49,7 @@ class MazeGenerator:
             self.maze = labmaze.RandomMaze(
                 height=self.world_col,
                 width=self.world_row,
-                random_seed=42,
+                random_seed=self.random_seed,
                 objects_per_room=1,
                 max_rooms=max_rooms,
             )
@@ -197,6 +197,7 @@ class World:
         no_walls=False,
         random_positions=False,
         random_goal_rewards=False,
+        random_seed=42,
     ):
 
         self.width = row_size
@@ -232,8 +233,13 @@ class World:
         # Max number of moves after which player
         self.max_moves = max_moves_per_episode
         self.reward_punish = -20  # Previously was -1
+        self.random_seed = random_seed
         self.Generator = MazeGenerator(
-            self.width, self.height, random_seed=42, max_rooms=15, no_walls=no_walls
+            self.width,
+            self.height,
+            random_seed=self.random_seed,
+            max_rooms=15,
+            no_walls=no_walls,
         )
         self.state_matrix = [
             np.zeros((self.width, self.height), dtype=np.float16),

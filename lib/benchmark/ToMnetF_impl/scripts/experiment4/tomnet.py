@@ -109,11 +109,11 @@ class TimeDistributedResidualBlock(nn.Module):
 
 
 class TimeDistributedConv2d(nn.Module):
-    def __init__(self, out_channels: int, time_step: int):
+    def __init__(self, out_channels: int, time_step: int, in_channels: int = 10):
         super(TimeDistributedConv2d, self).__init__()
         self.time_step = time_step
         self.conv = nn.Conv2d(
-            in_channels=10,  # depth/channels
+            in_channels=in_channels,  # depth/channels (default 10)
             out_channels=out_channels,  # out_channels
             kernel_size=(3, 3),
             stride=1,
@@ -170,7 +170,8 @@ class CharNet(nn.Module):
         if self.use_n_past:
             # Past episode processing architecture
             self.past_conv_1 = TimeDistributedConv2d(
-                out_channels=out_channels, time_step=self.time_step
+                out_channels=out_channels, 
+                time_step=self.time_step
             )
             self.past_res_blocks = nn.ModuleList()
 
@@ -212,11 +213,14 @@ class CharNet(nn.Module):
                 # Get episode ep_idx for all samples in batch
                 episode_batch = past_episodes[
                     :, ep_idx
-                ]  # (batch, time_step, height, width, channels)
+                ]  # (batch, depth, height, width, time)
+                
+                # Transpose to expected format: (batch, time, height, width, channels)
+                episode_batch = episode_batch.permute(0, 4, 2, 3, 1)  # (batch, time, height, width, depth)
 
                 # Check if episode is non-zero (not masked)
                 episode_mask = (
-                    torch.sum(episode_batch.view(batch_size, -1), dim=1) > 0
+                    torch.sum(episode_batch.reshape(batch_size, -1), dim=1) > 0
                 )  # (batch,)
 
                 if episode_mask.any():
@@ -450,6 +454,10 @@ class ToMnet(nn.Module):
             batch_size, self.W, self.H, actual_N_echar
         )  # (batch, 13, 13, N_echar)
 
+        # Convert current state from channels-first to channels-last format
+        # input_current_state: (batch, 6, height, width) -> (batch, height, width, 6)
+        input_current_state = input_current_state.permute(0, 2, 3, 1)
+        
         # Concatenate current state with character embedding
         # input_current_state: (batch, height, width, 6)
         # e_char_spatial: (batch, height, width, N_echar)

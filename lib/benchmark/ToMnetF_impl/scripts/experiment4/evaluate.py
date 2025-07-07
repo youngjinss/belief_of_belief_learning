@@ -42,7 +42,7 @@ def evaluate_model_with_n_past(
 ):
     """
     Evaluate model performance with different N_past values
-    
+
     Note: Model input order is [trajectory, current_state, past_episodes]
 
     Args:
@@ -115,7 +115,7 @@ def evaluate_model_with_n_past(
 def evaluate_model(model, test_loader, device, save_predictions=False, output_dir=None):
     """
     Evaluate model performance
-    
+
     Note: Model input order is [trajectory, current_state, past_episodes]
 
     Args:
@@ -130,7 +130,7 @@ def evaluate_model(model, test_loader, device, save_predictions=False, output_di
     """
     from train import generate_past_episodes_from_batch
     from config import Config
-    
+
     config = Config()
 
     model.eval()
@@ -143,8 +143,13 @@ def evaluate_model(model, test_loader, device, save_predictions=False, output_di
             # Handle both 3-element and 4-element batches
             if len(batch) == 4:
                 traj, curr, act, goals = batch
-                traj, curr, act, goals = traj.to(device), curr.to(device), act.to(device), goals.to(device)
-                
+                traj, curr, act, goals = (
+                    traj.to(device),
+                    curr.to(device),
+                    act.to(device),
+                    goals.to(device),
+                )
+
                 # Generate past episodes for proper evaluation
                 past_episodes = generate_past_episodes_from_batch(
                     trajectories=traj,
@@ -159,7 +164,7 @@ def evaluate_model(model, test_loader, device, save_predictions=False, output_di
                 traj, curr, act = batch
                 traj, curr, act = traj.to(device), curr.to(device), act.to(device)
                 model_inputs = [traj, curr]
-                
+
             act = act.squeeze(-1).type(torch.long)
 
             # Get model predictions - experiment4 model returns 3 outputs
@@ -308,14 +313,20 @@ def cross_species_evaluation(config=None, model_paths=None, test_data_paths=None
             model_results[data_name] = metrics
             print(f"    Accuracy: {metrics['accuracy']:.4f}")
             print(f"    F1 Score: {metrics['f1_score']:.4f}")
-            
+
             # Generate character embeddings visualization for the first dataset
             if data_idx == 0:
                 print(f"  Creating character embeddings visualization...")
                 from visualize import plot_character_embeddings
+
                 embeddings_dir = os.path.join(result_dir, f"{model_name}_embeddings")
                 plot_character_embeddings(
-                    model, test_loader, device, embeddings_dir, experiment_no, n_samples=1000
+                    model,
+                    test_loader,
+                    device,
+                    embeddings_dir,
+                    experiment_no,
+                    n_samples=1000,
                 )
 
         results["cross_species_results"][model_name] = model_results
@@ -387,7 +398,7 @@ def analyze_action_likelihood(
         )
 
     from train import generate_past_episodes_from_batch
-    
+
     model.eval()
     action_likelihoods = {i: [] for i in range(4)}
 
@@ -400,8 +411,13 @@ def analyze_action_likelihood(
             # Handle both 3-element and 4-element batches
             if len(batch) == 4:
                 traj, curr, act, goals = batch
-                traj, curr, act, goals = traj.to(device), curr.to(device), act.to(device), goals.to(device)
-                
+                traj, curr, act, goals = (
+                    traj.to(device),
+                    curr.to(device),
+                    act.to(device),
+                    goals.to(device),
+                )
+
                 # Generate past episodes for proper evaluation
                 past_episodes = generate_past_episodes_from_batch(
                     trajectories=traj,
@@ -416,7 +432,7 @@ def analyze_action_likelihood(
                 traj, curr, act = batch
                 traj, curr, act = traj.to(device), curr.to(device), act.to(device)
                 model_inputs = [traj, curr]
-                
+
             act = act.squeeze(-1).type(torch.long)
 
             # Get model predictions - experiment4 model returns 3 outputs
@@ -460,6 +476,7 @@ def analyze_action_likelihood(
 
     print(f"Action likelihood analysis saved to: {output_dir}")
     return stats
+
 
 def evaluate_n_past_experiment(
     model_path, test_data_path, output_dir, n_past_range=(0, 5)
@@ -534,14 +551,20 @@ def evaluate_n_past_experiment(
 
     # Create visualizations
     print("Creating visualizations...")
-    from visualize import plot_accuracy_by_n_past, plot_accuracy_heatmap_by_n_past, plot_character_embeddings
+    from visualize import (
+        plot_accuracy_by_n_past,
+        plot_accuracy_heatmap_by_n_past,
+        plot_character_embeddings,
+    )
 
     plot_accuracy_by_n_past(results_by_n_past, output_dir)
     plot_accuracy_heatmap_by_n_past(results_by_n_past, output_dir)
-    
+
     # Add character embeddings visualization
     print("Creating character embeddings visualization...")
-    plot_character_embeddings(model, test_loader, device, output_dir, config.experiment_no, n_samples=1000)
+    plot_character_embeddings(
+        model, test_loader, device, output_dir, config.experiment_no, n_samples=1000
+    )
 
     print(f"Visualizations saved to: {output_dir}")
 
@@ -644,18 +667,18 @@ if __name__ == "__main__":
             n_past_range=(args.n_past_min, args.n_past_max),
         )
         print("N_past evaluation completed!")
-        
+
     elif args.embeddings:
         # Run character embeddings visualization
         print("Running character embeddings visualization...")
         from visualize import plot_character_embeddings
-        
+
         # Load model
         model_path = model_paths[0]
         model_kwargs = config.get_model_kwargs()
         device = config.device if torch.cuda.is_available() else "cpu"
         model = load_model(model_path, device, **model_kwargs)
-        
+
         # Load test data
         test_data_path = test_data_paths[0]
         with open(test_data_path, "rb") as f:
@@ -666,14 +689,21 @@ if __name__ == "__main__":
             test_data["data_actions"],
             test_data["data_labels"],  # Include goals
         )
-        test_loader = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False)
-        
+        test_loader = DataLoader(
+            test_dataset, batch_size=config.batch_size, shuffle=False
+        )
+
         # Create visualization
         plot_character_embeddings(
-            model, test_loader, device, config.result_dir, config.experiment_no, n_samples=args.n_samples
+            model,
+            test_loader,
+            device,
+            config.result_dir,
+            config.experiment_no,
+            n_samples=args.n_samples,
         )
         print("Character embeddings visualization completed!")
-        
+
     elif args.analysis_only:
         # Run action likelihood analysis only
         print("Running action likelihood analysis...")
@@ -698,4 +728,3 @@ if __name__ == "__main__":
             ]
             print(f"Missing files: {missing_files}")
             print("Please train the model and generate data first.")
-

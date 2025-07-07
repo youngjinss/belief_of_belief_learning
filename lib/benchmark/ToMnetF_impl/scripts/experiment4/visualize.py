@@ -857,7 +857,7 @@ def plot_character_embeddings(
 
     # Initialize config for past episodes generation
     config = Config()
-    
+
     model.eval()
     embeddings = []
     actions = []
@@ -875,7 +875,7 @@ def plot_character_embeddings(
                 traj, curr, act = batch
                 # Create dummy goals if not available
                 goals = torch.zeros(traj.size(0), dtype=torch.long, device=device)
-                
+
             traj, curr = traj.to(device), curr.to(device)
             goals = goals.to(device)
             act = act.squeeze(-1).type(torch.long)
@@ -984,10 +984,11 @@ def create_additional_visualizations(
     """
 
     print("Creating additional visualizations...")
-    
+
     # Import Config if not provided
     if config is None:
         from config import Config
+
         config = Config()
 
     # Get a sample batch for visualization
@@ -1387,7 +1388,7 @@ def create_summary_report(
         create_additional_visualizations(
             model, val_loader, plot_dir, experiment_no, device, has_n_past, config
         )
-        
+
         # Generate character embeddings visualization
         print("Creating character embeddings visualization...")
         plot_character_embeddings(
@@ -1474,24 +1475,28 @@ if __name__ == "__main__":
         print("Creating character embeddings visualization...")
         from config import Config
         from torch.utils.data import TensorDataset
+
         config = Config()
-        
+
         # Load model
         model_path = os.path.join(config.model_dir, f"exp{args.experiment_no}_best.pth")
         if os.path.exists(model_path):
             import sys
+
             sys.path.append("..")
             from tomnet import ToMnet
-            
+
             device = config.device if torch.cuda.is_available() else "cpu"
             model_kwargs = config.get_model_kwargs()
             model = ToMnet(**model_kwargs)
             model.load_state_dict(torch.load(model_path, map_location=device))
             model.to(device)
             model.eval()
-            
+
             # Load test data
-            test_data_path = os.path.join(config.data_dir, f"processed_data_exp{args.experiment_no}.pkl")
+            test_data_path = os.path.join(
+                config.data_dir, f"processed_data_exp{args.experiment_no}.pkl"
+            )
             with open(test_data_path, "rb") as f:
                 test_data = pickle.load(f)
             test_dataset = TensorDataset(
@@ -1500,11 +1505,18 @@ if __name__ == "__main__":
                 test_data["data_actions"],
                 test_data["data_labels"],  # Include goals
             )
-            test_loader = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False)
-            
+            test_loader = DataLoader(
+                test_dataset, batch_size=config.batch_size, shuffle=False
+            )
+
             # Create visualization
             plot_character_embeddings(
-                model, test_loader, device, args.plot_dir, args.experiment_no, n_samples=1000
+                model,
+                test_loader,
+                device,
+                args.plot_dir,
+                args.experiment_no,
+                n_samples=1000,
             )
-    
+
     print(f"Visualization completed for experiment {args.experiment_no}")

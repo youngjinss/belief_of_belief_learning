@@ -23,7 +23,7 @@ Advanced training system for ToMnetF
 
 class EarlyStopping:
     """Early stopping to stop training when validation loss doesn't improve"""
-    
+
     def __init__(self, patience=10, min_delta=0.001, restore_best_weights=True):
         """
         Args:
@@ -34,18 +34,18 @@ class EarlyStopping:
         self.patience = patience
         self.min_delta = min_delta
         self.restore_best_weights = restore_best_weights
-        self.best_loss = float('inf')
+        self.best_loss = float("inf")
         self.counter = 0
         self.best_weights = None
-        
+
     def __call__(self, val_loss, model):
         """
         Call this method after each epoch
-        
+
         Args:
             val_loss: Current validation loss
             model: Model to potentially store weights from
-            
+
         Returns:
             True if training should stop, False otherwise
         """
@@ -56,7 +56,7 @@ class EarlyStopping:
                 self.best_weights = model.state_dict().copy()
         else:
             self.counter += 1
-            
+
         if self.counter >= self.patience:
             if self.restore_best_weights and self.best_weights is not None:
                 model.load_state_dict(self.best_weights)
@@ -289,12 +289,12 @@ def train_tomnet(config=None):
     action_weight = 1.0
     consumption_weight = 1.0
     sr_weight = 1.0
-    
+
     # Initialize early stopping
     early_stopping = EarlyStopping(
         patience=config.early_stopping_patience,
         min_delta=config.early_stopping_min_delta,
-        restore_best_weights=config.early_stopping_restore_best
+        restore_best_weights=config.early_stopping_restore_best,
     )
 
     # Training history
@@ -537,7 +537,7 @@ def train_tomnet(config=None):
             best_val_acc = val_acc
             best_model_path = os.path.join(model_dir, f"exp{experiment_no}_best.pth")
             torch.save(model.state_dict(), best_model_path)
-        
+
         # Check early stopping
         if early_stopping(val_loss, model):
             print(f"Early stopping triggered at epoch {epoch}")
@@ -678,8 +678,12 @@ if __name__ == "__main__":
         "--use_percentage", type=float, help="Percentage of data to use"
     )
     parser.add_argument("--device", type=str, help="CUDA device (e.g., cuda:0)")
-    parser.add_argument("--early_stopping_patience", type=int, help="Early stopping patience")
-    parser.add_argument("--early_stopping_min_delta", type=float, help="Early stopping minimum delta")
+    parser.add_argument(
+        "--early_stopping_patience", type=int, help="Early stopping patience"
+    )
+    parser.add_argument(
+        "--early_stopping_min_delta", type=float, help="Early stopping minimum delta"
+    )
 
     args = parser.parse_args()
 

@@ -149,7 +149,7 @@ def save_game_with_labels(
 
     files = os.listdir(gf)
     r = re.compile(r"test(\d+)\.txt")
-    
+
     # Choose the number for the new name
     max_number = 0
     for file in files:

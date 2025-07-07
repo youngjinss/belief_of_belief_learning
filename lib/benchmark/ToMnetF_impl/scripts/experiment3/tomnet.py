@@ -439,7 +439,11 @@ class ToMnet(nn.Module):
             # Pass current state to get correct batch size
             batch_size = input_current_state.size(0)
             device = input_current_state.device
-            e_char = self.char_net.default_embedding.unsqueeze(0).expand(batch_size, -1).to(device)
+            e_char = (
+                self.char_net.default_embedding.unsqueeze(0)
+                .expand(batch_size, -1)
+                .to(device)
+            )
 
         # Reshape character embedding to spatial format
         # e_char: (batch, N_echar) -> (batch, N_echar, 13, 13)

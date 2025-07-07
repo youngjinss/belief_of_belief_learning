@@ -25,6 +25,24 @@ RUN_LOG_DIR="$LOG_DIR/experiment4/$TIMESTAMP"
 # Create directories
 mkdir -p "$DATA_DIR" "$MODELS_DIR" "$RESULTS_DIR" "$PLOTS_DIR" "$LOG_DIR" "$RUN_LOG_DIR"
 
+# Function to pre-create all log files
+create_log_files() {
+    local log_files=(
+        "execution.log"
+        "train_data_generation.log"
+        "test_data_generation.log"
+        "training.log"
+        "evaluation.log"
+        "visualization.log"
+    )
+    
+    log_step "Pre-creating log files..."
+    for log_file in "${log_files[@]}"; do
+        touch "$RUN_LOG_DIR/$log_file"
+        log_step "Created: $RUN_LOG_DIR/$log_file"
+    done
+    log_step "All log files pre-created successfully"
+}
 
 # Parse command line arguments
 COMMAND=${1:-all}
@@ -54,6 +72,9 @@ log_step() {
     echo "$message" >> "$RUN_LOG_DIR/execution.log"
 }
 
+# Pre-create all log files after log_step function is defined
+create_log_files
+
 run_data_generation() {
     # Check if data already exists
     if [ -f "$DATA_DIR/processed_data_exp4.pkl" ]; then
@@ -62,17 +83,17 @@ run_data_generation() {
     fi
     
     log_step "Starting data generation for experiment $EXPERIMENT_NO with random positions and goal rewards"
-    log_step "Logging data generation output to: $RUN_LOG_DIR/data_generation.log"
+    log_step "Logging data generation output to: $RUN_LOG_DIR/train_data_generation.log"
     
     cd "$SCRIPTS_DIR/experiment4"
-    python generate.py > "$RUN_LOG_DIR/data_generation.log" 2>&1
+    python generate.py > "$RUN_LOG_DIR/train_data_generation.log" 2>&1
     
     log_step "Data generation completed"
     
     # Log random positioning/reward statistics if available
-    if [ -f "$RUN_LOG_DIR/data_generation.log" ]; then
+    if [ -f "$RUN_LOG_DIR/train_data_generation.log" ]; then
         log_step "Random positioning and reward generation summary:"
-        grep -i "random\|position\|reward\|goal" "$RUN_LOG_DIR/data_generation.log" | tail -5 || true
+        grep -i "random\|position\|reward\|goal" "$RUN_LOG_DIR/train_data_generation.log" | tail -5 || true
     fi
 }
 
@@ -252,21 +273,17 @@ log_step "Log files saved to: $RUN_LOG_DIR/"
 echo ""
 echo "Log files created:"
 echo "  - $RUN_LOG_DIR/execution.log (main script execution log)"
-if [ -f "$RUN_LOG_DIR/data_generation.log" ]; then
-    echo "  - $RUN_LOG_DIR/data_generation.log"
-fi
-if [ -f "$RUN_LOG_DIR/test_data_generation.log" ]; then
-    echo "  - $RUN_LOG_DIR/test_data_generation.log"
-fi
-if [ -f "$RUN_LOG_DIR/training.log" ]; then
-    echo "  - $RUN_LOG_DIR/training.log"
-fi
-if [ -f "$RUN_LOG_DIR/evaluation.log" ]; then
-    echo "  - $RUN_LOG_DIR/evaluation.log"
-fi
-if [ -f "$RUN_LOG_DIR/visualization.log" ]; then
-    echo "  - $RUN_LOG_DIR/visualization.log"
-fi
+
+# List all log files with sizes
+for log_file in "$RUN_LOG_DIR"/*.log; do
+    if [ -f "$log_file" ]; then
+        filename=$(basename "$log_file")
+        if [ "$filename" != "execution.log" ]; then
+            size=$(ls -lh "$log_file" | awk '{print $5}')
+            echo "  - $log_file (size: $size)"
+        fi
+    fi
+done
 
 echo ""
 echo "Experiment 4 Random Features:"

@@ -249,7 +249,7 @@ def generate_trajectories(config=None, random_seed=42):
 
     print(f"Generating trajectories with random seed: {random_seed}")
     print(f"  Training seed: 42, Testing seed: 123 (recommended)")
-    
+
     env = World(
         row_size=rows,
         col_size=cols,

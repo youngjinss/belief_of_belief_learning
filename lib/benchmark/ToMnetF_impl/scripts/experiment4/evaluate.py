@@ -274,7 +274,7 @@ def cross_species_evaluation(
     if test_data_paths is None:
         test_data_paths = [
             os.path.join(
-                config.data_dir, f"processed_data_exp{config.experiment_no}.pkl"
+                config.test_data_dir, f"processed_data_exp{config.experiment_no}.pkl"
             )
         ]
 
@@ -413,7 +413,7 @@ def analyze_action_likelihood(
 
     if test_loader is None:
         test_data_path = os.path.join(
-            config.data_dir, f"processed_data_exp{config.experiment_no}.pkl"
+            config.test_data_dir, f"processed_data_exp{config.experiment_no}.pkl"
         )
         with open(test_data_path, "rb") as f:
             test_data = pickle.load(f)
@@ -583,33 +583,35 @@ def evaluate_n_past_experiment(
 def make_test_loader(config=None, test_data_dir="./data/test"):
     """
     Create a DataLoader from existing test data
-    
+
     Note: For test data generation, use the generate_trajectories function from generate.py
     with a different random seed (e.g., 123 instead of 42 for training)
-    
+
     Args:
         config: Config object containing parameters. If None, uses default values.
         test_data_dir: Directory containing test data (default: "./data/test")
-    
+
     Returns:
         test_loader: DataLoader with test data
         test_data_path: Path to the processed test data
     """
     if config is None:
         config = Config()
-    
+
     # Check if processed test data exists
-    processed_test_path = os.path.join(test_data_dir, f"processed_test_data_exp{config.experiment_no}.pkl")
-    
+    processed_test_path = os.path.join(
+        test_data_dir, f"processed_test_data_exp{config.experiment_no}.pkl"
+    )
+
     if not os.path.exists(processed_test_path):
         # Check if raw test data exists for processing
         raw_test_dir = os.path.join(test_data_dir, "raw_games")
         if os.path.exists(raw_test_dir):
             print("Raw test data found. Processing into training format...")
-            
+
             # Process raw test data into training format
             test_data = generate_input_data(
-                data_dir=raw_test_dir,
+                test_data_dir=raw_test_dir,
                 output_dir=test_data_dir,
                 use_percentage=1.0,  # Use all test data
                 time_step=config.time_step,
@@ -628,11 +630,11 @@ def make_test_loader(config=None, test_data_dir="./data/test"):
             )
     else:
         print(f"Loading existing processed test data from: {processed_test_path}")
-        
+
         # Load existing test data
         with open(processed_test_path, "rb") as f:
             test_data = pickle.load(f)
-    
+
     # Create test dataset and loader
     test_dataset = TensorDataset(
         test_data["data_trajectories"],
@@ -641,9 +643,9 @@ def make_test_loader(config=None, test_data_dir="./data/test"):
         test_data["data_labels"],  # Include goals
     )
     test_loader = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False)
-    
+
     print(f"Test loader created with {len(test_dataset)} samples")
-    
+
     return test_loader, processed_test_path
 
 
@@ -658,7 +660,9 @@ if __name__ == "__main__":
         action="store_true",
         help="Override config with command line arguments",
     )
-    parser.add_argument("--data_dir", type=str, help="Directory containing test data")
+    parser.add_argument(
+        "--test_data_dir", type=str, help="Directory containing test data"
+    )
     parser.add_argument(
         "--model_dir", type=str, help="Directory containing trained models"
     )
@@ -690,8 +694,8 @@ if __name__ == "__main__":
 
     # Override config with command line arguments if specified
     if args.config_override:
-        if args.data_dir is not None:
-            config.data_dir = args.data_dir
+        if args.test_data_dir is not None:
+            config.test_data_dir = args.test_data_dir
         if args.model_dir is not None:
             config.model_dir = args.model_dir
         if args.result_dir is not None:
@@ -712,16 +716,30 @@ if __name__ == "__main__":
             os.path.join(config.model_dir, f"exp{config.experiment_no}_best.pth")
         ]
     if test_data_paths is None:
-        test_data_paths = [
-            os.path.join(
-                config.data_dir, f"processed_data_exp{config.experiment_no}.pkl"
-            )
-        ]
+        test_data_paths = os.path.join(
+            config.test_data_dir, f"processed_data_exp{config.experiment_no}.pkl"
+        )
+
+    if not os.path.exists(test_data_paths):
+        print("Processed data not found. Generating...")
+        test_data = generate_input_data(
+            data_dir=config.test_data_dir,
+            output_dir=config.test_data_dir,
+            use_percentage=1,
+            time_step=config.time_step,
+            height=config.rows,
+            width=config.cols,
+            depth=config.depth,
+            experiment_no=args.experiment_no,
+        )
+    else:
+        print("Loading existing processed data...")
+        with open(test_data_paths, "rb") as f:
+            test_data = pickle.load(f)
 
     # Load model and test data ONCE at the beginning
     print("Loading model and test data...")
     model_path = model_paths[0]  # Use first model
-    test_data_path = test_data_paths[0]  # Use first test data
 
     # Load model
     model_kwargs = config.get_model_kwargs()
@@ -729,8 +747,6 @@ if __name__ == "__main__":
     model = load_model(model_path, device, **model_kwargs)
 
     # Load test data
-    with open(test_data_path, "rb") as f:
-        test_data = pickle.load(f)
     test_dataset = TensorDataset(
         test_data["data_trajectories"],
         test_data["data_current_state"],
@@ -739,7 +755,7 @@ if __name__ == "__main__":
     )
     test_loader = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False)
     print(f"Model loaded: {model_path}")
-    print(f"Test data loaded: {test_data_path}")
+    print(f"Test data loaded: {test_data_paths}")
     print(f"Test dataset size: {len(test_dataset)}")
     print(f"Device: {device}")
     print("-" * 60)

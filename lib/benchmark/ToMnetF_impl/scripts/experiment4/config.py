@@ -41,6 +41,7 @@ class Config:
 
         # Data directories
         self.data_dir = "../../data/experiment4"
+        self.test_data_dir = "../../data/test"
         self.model_dir = "../../models/experiment4"
         self.result_dir = "../../result/experiment4"
         self.plot_dir = "../../plots/experiment4"

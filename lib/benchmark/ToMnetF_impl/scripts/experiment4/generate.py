@@ -172,7 +172,6 @@ def save_game_with_labels(
     # Get the path to folder
     gf = base_dir if name == "" else os.path.join(base_dir, name)
     os.makedirs(gf, exist_ok=True)
-    print(gf)
 
     files = os.listdir(gf)
     r = re.compile(r"test(\d+)\.txt")

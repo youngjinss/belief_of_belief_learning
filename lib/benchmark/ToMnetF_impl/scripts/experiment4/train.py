@@ -21,6 +21,50 @@ Advanced training system for ToMnetF
 """
 
 
+def calculate_sr_loss_kl_divergence(sr_pred, sr_target):
+    """
+    Calculate SR loss using KL divergence for probability distributions
+    Vectorized version for efficiency
+    
+    Args:
+        sr_pred: Predicted SR maps (batch_size, 3, height, width)
+        sr_target: Target SR maps (batch_size, 3, height, width)
+    
+    Returns:
+        sr_loss: KL divergence loss averaged over discount factors
+    """
+    batch_size, n_gammas, height, width = sr_pred.shape
+    
+    # Vectorized reshape: (batch_size, 3, height*width)
+    sr_pred_flat = sr_pred.view(batch_size, n_gammas, -1)
+    sr_target_flat = sr_target.view(batch_size, n_gammas, -1)
+    
+    # Ensure predictions are probability distributions (softmax already applied in model)
+    # sr_pred_flat should already be softmax from model output
+    
+    # Ensure targets are probability distributions and handle edge cases
+    # Normalize along spatial dimension (dim=2)
+    sr_target_flat = sr_target_flat / (sr_target_flat.sum(dim=2, keepdim=True) + 1e-8)
+    
+    # Add small epsilon to avoid log(0)
+    sr_pred_flat_safe = sr_pred_flat + 1e-8
+    sr_target_flat_safe = sr_target_flat + 1e-8
+    
+    # Vectorized KL divergence computation for all gammas at once
+    # KL(target || pred) = sum(target * log(target/pred))
+    kl_loss = torch.nn.functional.kl_div(
+        sr_pred_flat_safe.log(), 
+        sr_target_flat_safe, 
+        reduction='none'  # Keep batch and gamma dimensions
+    )
+    
+    # Sum over spatial dimension, then average over batch and gamma
+    kl_loss = kl_loss.sum(dim=2)  # (batch_size, n_gammas)
+    kl_loss = kl_loss.mean()  # Average over batch and gamma dimensions
+    
+    return kl_loss
+
+
 class EarlyStopping:
     """Early stopping to stop training when validation loss doesn't improve"""
 
@@ -321,7 +365,8 @@ def train_tomnet(config=None):
     # For consumption: Use BCEWithLogitsLoss for numerical stability
     # This combines sigmoid + BCE loss and matches the negative log-likelihood formulation
     consumption_loss_fn = torch.nn.BCEWithLogitsLoss()
-    sr_loss_fn = torch.nn.CrossEntropyLoss()  # Cross-entropy for SR distributions
+    # SR loss: Use KL divergence for probability distributions (FIXED)
+    # sr_loss_fn = torch.nn.CrossEntropyLoss()  # OLD: Wrong for distributions
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=0.001)
 
     # Loss weights
@@ -436,18 +481,8 @@ def train_tomnet(config=None):
             action_loss = action_loss_fn(action_pred, act)
             consumption_loss = consumption_loss_fn(consumption_pred, consumption_target)
 
-            # For SR loss, we need to reshape and apply cross-entropy per channel
-            sr_loss = 0
-            batch_size_local = traj.size(0)
-            for i in range(3):  # 3 discount factors
-                sr_pred_i = sr_pred[:, i, :, :].contiguous().view(batch_size_local, -1)
-                sr_target_i = (
-                    sr_target[:, i, :, :].contiguous().view(batch_size_local, -1)
-                )
-                # Convert target to class indices (for now using argmax of dummy data)
-                sr_target_indices = torch.argmax(sr_target_i, dim=1)
-                sr_loss += sr_loss_fn(sr_pred_i, sr_target_indices)
-            sr_loss = sr_loss / 3  # Average over discount factors
+            # FIXED: SR loss using KL divergence for probability distributions
+            sr_loss = calculate_sr_loss_kl_divergence(sr_pred, sr_target)
 
             # Combined loss
             loss = (
@@ -535,19 +570,8 @@ def train_tomnet(config=None):
                     consumption_pred, consumption_target
                 )
 
-                # For SR loss
-                sr_loss = 0
-                batch_size_local = traj.size(0)
-                for i in range(3):  # 3 discount factors
-                    sr_pred_i = (
-                        sr_pred[:, i, :, :].contiguous().view(batch_size_local, -1)
-                    )
-                    sr_target_i = (
-                        sr_target[:, i, :, :].contiguous().view(batch_size_local, -1)
-                    )
-                    sr_target_indices = torch.argmax(sr_target_i, dim=1)
-                    sr_loss += sr_loss_fn(sr_pred_i, sr_target_indices)
-                sr_loss = sr_loss / 3
+                # FIXED: SR loss using KL divergence for probability distributions
+                sr_loss = calculate_sr_loss_kl_divergence(sr_pred, sr_target)
 
                 # Combined loss
                 loss = (

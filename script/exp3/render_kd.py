@@ -29,7 +29,7 @@ except Exception as e:
 
 # Import our modules
 from config import Config
-from agents import AStarAgent, RandomAgent
+from agents import AStarAgent, RandomAgent, ValueAgent
 
 
 def create_agent(agent_type, env, config):
@@ -38,6 +38,16 @@ def create_agent(agent_type, env, config):
         return AStarAgent(env, observability=config.observability)
     elif agent_type == "random":
         return RandomAgent(env.action_space, movement_prob=config.movement_prob)
+    elif agent_type == "value":
+        agent_config = config.agent_configs.get("value", {})
+        return ValueAgent(
+            env,
+            observability=agent_config.get("observability", "full"),
+            movement_cost=agent_config.get("movement_cost", 0.01),
+            wall_penalty=agent_config.get("wall_penalty", 2.0),
+            gamma=agent_config.get("gamma", 0.99),
+            temperature=agent_config.get("temperature", 0.1)
+        )
     else:
         raise ValueError(f"Unknown agent type: {agent_type}")
 
@@ -170,7 +180,7 @@ def main():
     # Parse arguments
     parser = argparse.ArgumentParser(description="Render agent solving MiniGrid-KeyDoor environment")
     parser.add_argument("--agent_type", type=str, default="astar", 
-                        choices=["astar", "random"],
+                        choices=["astar", "random", "value"],
                         help="agent type to use (default: astar)")
     parser.add_argument("--seed", type=int, default=42,
                         help="random seed (default: 42)")

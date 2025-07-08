@@ -10,7 +10,7 @@ class Config:
         self.seed = 42
         
         # Agent settings
-        self.agent_type = "astar"  # Options: "astar", "random"
+        self.agent_type = "astar"  # Options: "astar", "random", "value"
         self.observability = "full"  # Options: "full", "partial"
         self.movement_prob = 0.8  # For random agent
         
@@ -47,6 +47,13 @@ class Config:
             "random": {
                 "movement_prob": 0.8,
                 "exploration_bias": 0.1
+            },
+            "value": {
+                "observability": "full",
+                "movement_cost": 0.01,
+                "wall_penalty": 2.0,
+                "gamma": 0.99,
+                "temperature": 0.1
             }
         }
     
@@ -119,7 +126,7 @@ class Config:
     
     def validate(self):
         """Validate configuration"""
-        if self.agent_type not in ["astar", "random"]:
+        if self.agent_type not in ["astar", "random", "value"]:
             raise ValueError(f"Invalid agent_type: {self.agent_type}")
         
         if self.env_size not in ["3x3", "5x5", "9x9", "11x11"]:

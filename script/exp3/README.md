@@ -16,6 +16,11 @@ This directory contains experiments for the KeyDoor environment with A* and rand
 python render_kd.py --agent_type astar --episodes 3 --pause 0.5 --debug
 ```
 
+### Value Agent
+```bash
+python render_kd.py --agent_type value --episodes 3 --pause 0.3 --debug
+```
+
 ### Random Agent
 ```bash
 python render_kd.py --agent_type random --episodes 3 --pause 0.3
@@ -23,7 +28,7 @@ python render_kd.py --agent_type random --episodes 3 --pause 0.3
 
 ### Available Arguments
 
-- `--agent_type {astar,random}` - Agent type to use
+- `--agent_type {astar,random,value}` - Agent type to use
 - `--seed SEED` - Random seed (default: 42)
 - `--episodes EPISODES` - Number of episodes (default: 3)
 - `--pause PAUSE` - Pause between actions in seconds (default: 0.5)
@@ -52,7 +57,7 @@ Success is achieved when the agent reaches the opened door position.
 ## Code Structure
 
 This code follows the ToMnetF pattern with:
-- **agents.py**: Contains all agent implementations (AStarAgent, RandomAgent)
+- **agents.py**: Contains all agent implementations (AStarAgent, ValueAgent, RandomAgent)
 - **config.py**: Configuration class with environment and agent parameters
 - **render_kd.py**: Main script that handles rendering and episode running
 
@@ -63,6 +68,14 @@ This code follows the ToMnetF pattern with:
 - Two-phase strategy: collect key, then open door
 - Handles MiniGrid's turn-based movement system (turn left/right, then forward)
 - Automatic key collection and door opening when stepping on objects
+
+### ValueAgent
+- Uses value iteration algorithm for strategic navigation
+- Computes optimal policy based on rewards and penalties
+- Stochastic action selection with configurable temperature
+- Two-phase strategy: collect key, then open door
+- Handles MiniGrid's turn-based movement system
+- Configurable parameters: movement_cost, wall_penalty, gamma, temperature
 
 ### RandomAgent
 - Performs random actions with bias towards movement

@@ -377,6 +377,298 @@ class AStarAgent:
         self.strategy_phase = "collect_key"
 
 
+class ValueAgent:
+    """
+    Value-based agent with stochastic action selection using value iteration
+    Adapted for KeyDoor environment
+    """
+    
+    def __init__(
+        self,
+        env,
+        observability="full",
+        movement_cost=0.01,
+        wall_penalty=2.0,
+        gamma=0.99,
+        temperature=0.1,
+    ):
+        self.env = env
+        self.observability = observability
+        self.agent_pos = None
+        self.grid = None
+        self.current_target = None
+        self.path = []
+        
+        # Track agent's collected keys
+        self.collected_keys = set()
+        
+        # Strategy: first collect target key, then go to target door
+        self.strategy_phase = "collect_key"  # "collect_key" or "open_door"
+        
+        # Value iteration parameters
+        self.movement_cost = movement_cost
+        self.wall_penalty = wall_penalty
+        self.gamma = gamma
+        self.temperature = temperature
+        
+        # Value function and policy
+        self.value_function = None
+        self.policy = None
+        self.converged = False
+        
+        # Action mapping for MiniGrid: 0=turn_left, 1=turn_right, 2=forward
+        # We'll use a simplified 4-action space for value iteration: 0=up, 1=right, 2=down, 3=left
+        self.actions = [(-1, 0), (0, 1), (1, 0), (0, -1)]  # up, right, down, left
+        
+        # Direction vectors for MiniGrid agent directions
+        self.direction_vectors = [
+            (1, 0),   # 0: right
+            (0, 1),   # 1: down
+            (-1, 0),  # 2: left
+            (0, -1),  # 3: up
+        ]
+    
+    def update_observation(self, obs):
+        """Update agent's understanding of the environment"""
+        # Get current agent position from environment
+        new_pos = tuple(self.env.agent_pos)
+        if new_pos != self.agent_pos:
+            self.agent_pos = new_pos
+        
+        # Get the grid from environment
+        self.grid = self.env.grid
+        
+        # Update collected keys based on agent's inventory
+        self.collected_keys = set(self.env.agent_keys)
+    
+    def get_action(self, obs):
+        """
+        Get the next action for the agent using value iteration
+        """
+        self.update_observation(obs)
+        
+        # Determine strategy based on current state
+        target_key_color = self.env.target_door_color
+        
+        if self.strategy_phase == "collect_key":
+            # Check if we already have the target key
+            if target_key_color in self.collected_keys:
+                self.strategy_phase = "open_door"
+            else:
+                # Find and collect the target key
+                return self._collect_target_key(target_key_color)
+        
+        elif self.strategy_phase == "open_door":
+            # Go to target door and open it
+            return self._open_target_door(target_key_color)
+        
+        return 4  # Stay if no action determined
+    
+    def _collect_target_key(self, target_key_color):
+        """Strategy to collect the target key using value iteration"""
+        # Find target key position
+        target_key_pos = self._find_object_position(Key, target_key_color)
+        if target_key_pos is None:
+            return 4  # Stay if key not found
+        
+        # Use value iteration to navigate to key
+        return self._navigate_with_value_iteration(target_key_pos)
+    
+    def _open_target_door(self, target_door_color):
+        """Strategy to open the target door using value iteration"""
+        # Find target door position
+        target_door_pos = self._find_object_position(Door, target_door_color)
+        if target_door_pos is None:
+            return 4  # Stay if door not found
+        
+        # Use value iteration to navigate to door
+        return self._navigate_with_value_iteration(target_door_pos)
+    
+    def _find_object_position(self, obj_type, color):
+        """Find position of specific object type and color"""
+        for i in range(self.grid.width):
+            for j in range(self.grid.height):
+                obj = self.grid.get(i, j)
+                if isinstance(obj, obj_type) and obj.color == color:
+                    return (i, j)
+        return None
+    
+    def _navigate_with_value_iteration(self, target_pos):
+        """Navigate using value iteration and convert to MiniGrid actions"""
+        # Run value iteration to get optimal action
+        optimal_action = self._plan_value_iteration(target_pos)
+        
+        if optimal_action is None:
+            return 4  # Stay if no action found
+        
+        # Convert value iteration action to MiniGrid action
+        return self._convert_to_minigrid_action(optimal_action)
+    
+    def _plan_value_iteration(self, target_pos, max_iterations=100, convergence_threshold=0.01):
+        """
+        Run value iteration to compute optimal action for reaching target
+        """
+        width, height = self.grid.width, self.grid.height
+        n_actions = 4
+        
+        # Initialize value function
+        value_function = np.zeros((width, height))
+        
+        # Set high reward for target position
+        value_function[target_pos[0], target_pos[1]] = 10.0
+        
+        # Run value iteration
+        for iteration in range(max_iterations):
+            old_values = value_function.copy()
+            
+            # Value iteration update
+            for i in range(width):
+                for j in range(height):
+                    if (i, j) == target_pos:
+                        continue  # Keep target value high
+                    
+                    if not self._is_walkable((i, j)):
+                        value_function[i, j] = -self.wall_penalty
+                        continue
+                    
+                    # Compute Q-values for each action
+                    q_values = []
+                    for action in range(n_actions):
+                        q_val = self._evaluate_action((i, j), action, old_values, target_pos)
+                        q_values.append(q_val)
+                    
+                    # Update value function
+                    value_function[i, j] = max(q_values)
+            
+            # Check convergence
+            if np.max(np.abs(value_function - old_values)) < convergence_threshold:
+                break
+        
+        # Get optimal action for current position
+        if not self._is_walkable(self.agent_pos):
+            return None
+        
+        current_pos = self.agent_pos
+        q_values = []
+        for action in range(n_actions):
+            q_val = self._evaluate_action(current_pos, action, value_function, target_pos)
+            q_values.append(q_val)
+        
+        # Choose action with softmax policy
+        if self.temperature > 0:
+            q_values = np.array(q_values)
+            q_values_clipped = np.clip(q_values, -100, 100)
+            exp_q = np.exp(q_values_clipped / self.temperature)
+            action_probs = exp_q / np.sum(exp_q)
+            
+            # Sample action stochastically
+            action = np.random.choice(n_actions, p=action_probs)
+        else:
+            # Deterministic policy
+            action = np.argmax(q_values)
+        
+        return action
+    
+    def _evaluate_action(self, pos, action, value_function, target_pos):
+        """Evaluate expected value of taking action from position"""
+        i, j = pos
+        delta = self.actions[action]
+        new_pos = (i + delta[0], j + delta[1])
+        
+        # Base movement cost
+        reward = -self.movement_cost
+        
+        # Check bounds
+        if (new_pos[0] < 0 or new_pos[0] >= self.grid.width or
+            new_pos[1] < 0 or new_pos[1] >= self.grid.height):
+            reward -= self.wall_penalty
+            next_value = self.gamma * value_function[i, j]
+        else:
+            # Check if position is walkable
+            if not self._is_walkable(new_pos):
+                reward -= self.wall_penalty
+                next_value = self.gamma * value_function[i, j]
+            else:
+                # Bonus for reaching target
+                if new_pos == target_pos:
+                    reward += 10.0
+                
+                next_value = self.gamma * value_function[new_pos[0], new_pos[1]]
+        
+        return reward + next_value
+    
+    def _convert_to_minigrid_action(self, value_action):
+        """Convert value iteration action to MiniGrid turn-based action"""
+        if value_action is None:
+            return 4  # Stay
+        
+        # Get movement direction from value action
+        move_dir = self.actions[value_action]
+        
+        # Get current agent direction from environment
+        agent_dir = self.env.agent_dir
+        current_dir_vec = self.direction_vectors[agent_dir]
+        
+        # Check if we're already facing the right direction
+        if move_dir == current_dir_vec:
+            return 2  # Forward
+        else:
+            # We need to turn first
+            # Find which direction we need to face
+            target_dir = None
+            for i, dir_vec in enumerate(self.direction_vectors):
+                if dir_vec == move_dir:
+                    target_dir = i
+                    break
+            
+            if target_dir is not None:
+                # Calculate turn direction (left or right)
+                turn_diff = (target_dir - agent_dir) % 4
+                if turn_diff == 1:  # Turn right
+                    return 1
+                elif turn_diff == 3:  # Turn left
+                    return 0
+                elif turn_diff == 2:  # Turn around (choose right)
+                    return 1
+        
+        return 4  # Stay as fallback
+    
+    def _is_walkable(self, pos):
+        """Check if position is walkable"""
+        obj = self.grid.get(*pos)
+        
+        # Empty cells are walkable
+        if obj is None:
+            return True
+        
+        # Keys are walkable (can step on them)
+        if isinstance(obj, Key):
+            return True
+        
+        # Doors are walkable if they're open or we have the key
+        if isinstance(obj, Door):
+            if obj.is_open:
+                return True
+            # Check if we have the key for locked doors
+            if obj.is_locked and obj.color in self.collected_keys:
+                return True
+        
+        # Walls and other objects are not walkable
+        return False
+    
+    def reset(self):
+        """Reset agent state for new episode"""
+        self.agent_pos = None
+        self.grid = None
+        self.current_target = None
+        self.path = []
+        self.collected_keys = set()
+        self.strategy_phase = "collect_key"
+        self.value_function = None
+        self.policy = None
+        self.converged = False
+
+
 class RandomAgent:
     """A random agent that explores the KeyDoor environment."""
     

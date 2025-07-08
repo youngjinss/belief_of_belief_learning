@@ -117,7 +117,7 @@ def main():
                 action = agent.get_action(obs)
                 
                 # Action names for display
-                action_names = ['up', 'down', 'left', 'right', 'stay', 'pickup']
+                action_names = ['turn_left', 'turn_right', 'forward', 'pickup', 'drop', 'toggle']
                 action_name = action_names[action] if action < len(action_names) else f'action_{action}'
                 
                 # Take step
@@ -133,11 +133,10 @@ def main():
                 step_count += 1
                 
                 # Print step information
-                if reward != 0 or action == 5:  # Show pickup attempts and rewards
+                if reward != 0:  # Show rewards (automatic pickup/door opening)
                     print(f"Step {step_count}: {action_name} -> reward: {reward:.2f}")
-                    if action == 5:  # Pickup action
-                        print(f"  Agent keys: {list(agent.collected_keys)}")
-                        print(f"  Agent phase: {agent.strategy_phase}")
+                    print(f"  Agent keys: {list(agent.collected_keys)}")
+                    print(f"  Agent phase: {agent.strategy_phase}")
                 
                 # Show agent position and strategy
                 if step_count % 10 == 0:  # Print every 10 steps

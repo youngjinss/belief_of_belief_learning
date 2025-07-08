@@ -31,24 +31,20 @@ except Exception as e:
 class RandomAgent:
     """A random agent that explores the KeyDoor environment."""
     
-    def __init__(self, action_space, pickup_prob=0.3, movement_prob=0.6):
+    def __init__(self, action_space, movement_prob=0.8):
         self.action_space = action_space
-        self.pickup_prob = pickup_prob
         self.movement_prob = movement_prob
     
     def get_action(self, obs):
-        """Return a random action with bias towards movement and pickup."""
+        """Return a random action with bias towards movement."""
         rand = np.random.random()
         
-        if rand < self.pickup_prob:
-            # Try pickup action
-            return 5  # pickup
-        elif rand < self.pickup_prob + self.movement_prob:
-            # Focus on movement actions: up, down, left, right
-            return np.random.choice([0, 1, 2, 3])
+        if rand < self.movement_prob:
+            # Focus on movement actions: turn_left, turn_right, forward
+            return np.random.choice([0, 1, 2])  # 0=turn_left, 1=turn_right, 2=forward
         else:
-            # Stay action
-            return 4  # stay
+            # Toggle action (for opening doors)
+            return 5  # toggle
     
     def analyze_feedback(self, reward, done):
         """Random agent doesn't learn from feedback."""
@@ -133,7 +129,7 @@ def main():
                 action = agent.get_action(obs)
                 
                 # Action names for display
-                action_names = ['up', 'down', 'left', 'right', 'stay', 'pickup']
+                action_names = ['turn_left', 'turn_right', 'forward', 'pickup', 'drop', 'toggle']
                 action_name = action_names[action] if action < len(action_names) else f'action_{action}'
                 
                 # Take step
@@ -149,7 +145,7 @@ def main():
                 step_count += 1
                 
                 # Print step information
-                if reward != 0 or action == 5:  # Show pickup attempts and rewards
+                if reward != 0 or action == 5:  # Show toggle attempts and rewards
                     print(f"Step {step_count}: {action_name} -> reward: {reward:.2f}")
                 
                 # Render environment

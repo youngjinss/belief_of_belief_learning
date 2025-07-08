@@ -9,7 +9,7 @@ class KeyDoorEnv(MiniGridEnv):
     Agent has preferences and costs for different colored doors.
     """
 
-    def __init__(self, size=9, max_keys=4, preference=None, cost=None):
+    def __init__(self, size=9, max_keys=4, preference=None, cost=None, max_steps=None):
         self.size = size
         self.max_keys = max_keys
 
@@ -29,9 +29,13 @@ class KeyDoorEnv(MiniGridEnv):
         self.agent_keys = []
         self.target_door_color = None
 
+        # Allow custom max_steps
+        if max_steps is None:
+            max_steps = 4 * size**2
+
         super().__init__(
             grid_size=size,
-            max_steps=4 * size**2,
+            max_steps=max_steps,
             see_through_walls=True,  # Full observability
             agent_view_size=size,  # Agent can see entire grid
         )
@@ -76,26 +80,23 @@ class KeyDoorEnv(MiniGridEnv):
         self.mission = f"collect {self.target_door_color} key and open {self.target_door_color} door"
 
     def _place_door_on_wall(self, color, existing_positions):
-        """Place door on one of the walls"""
+        """Place door at the center of a wall (similar to GoToDoor-5x5-v0)"""
         width, height = self.grid.width, self.grid.height
 
-        # Possible wall positions (excluding corners)
-        wall_positions = []
-        # Top wall
-        wall_positions.extend([(x, 0) for x in range(1, width - 1)])
-        # Bottom wall
-        wall_positions.extend([(x, height - 1) for x in range(1, width - 1)])
-        # Left wall
-        wall_positions.extend([(0, y) for y in range(1, height - 1)])
-        # Right wall
-        wall_positions.extend([(width - 1, y) for y in range(1, height - 1)])
+        # Calculate center positions for each wall
+        center_positions = [
+            (width // 2, 0),           # Top wall center
+            (width // 2, height - 1),  # Bottom wall center
+            (0, height // 2),          # Left wall center
+            (width - 1, height // 2),  # Right wall center
+        ]
 
         # Filter out existing positions
         available_positions = [
-            pos for pos in wall_positions if pos not in existing_positions
+            pos for pos in center_positions if pos not in existing_positions
         ]
 
-        # Choose random position
+        # Choose random position from available centers
         door_pos = self._rand_elem(available_positions)
 
         # Place door
@@ -112,7 +113,11 @@ class KeyDoorEnv(MiniGridEnv):
             return obs, pickup_reward, False, False, {}
 
         # Handle regular movement actions
-        obs, reward, terminated, truncated, info = super().step(action)
+        obs, reward, done, stuck, info = super().step(action)
+        
+        # Convert old API format to new Gymnasium format
+        terminated = done
+        truncated = False  # Don't terminate early due to stuck condition
 
         # Check if agent opened target door
         door_positions = self._get_door_positions()
@@ -171,35 +176,29 @@ class KeyDoorEnv(MiniGridEnv):
         )
 
     def render(self, mode="human"):
-        """Custom render to show agent's keys"""
+        """Custom render"""
         img = super().render(mode)
-
-        if mode == "human":
-            print(f"Agent keys: {self.agent_keys}")
-            print(f"Target door: {self.target_door_color}")
-            print(f"Keys capacity: {len(self.agent_keys)}/{self.max_keys}")
-
         return img
 
 
 class KeyDoor3x3Env(KeyDoorEnv):
-    def __init__(self, max_keys=4, preference=None, cost=None):
-        super().__init__(size=3, max_keys=max_keys, preference=preference, cost=cost)
+    def __init__(self, max_keys=4, preference=None, cost=None, max_steps=None):
+        super().__init__(size=3, max_keys=max_keys, preference=preference, cost=cost, max_steps=max_steps)
 
 
 class KeyDoor5x5Env(KeyDoorEnv):
-    def __init__(self, max_keys=4, preference=None, cost=None):
-        super().__init__(size=5, max_keys=max_keys, preference=preference, cost=cost)
+    def __init__(self, max_keys=4, preference=None, cost=None, max_steps=None):
+        super().__init__(size=5, max_keys=max_keys, preference=preference, cost=cost, max_steps=max_steps)
 
 
 class KeyDoor9x9Env(KeyDoorEnv):
-    def __init__(self, max_keys=4, preference=None, cost=None):
-        super().__init__(size=9, max_keys=max_keys, preference=preference, cost=cost)
+    def __init__(self, max_keys=4, preference=None, cost=None, max_steps=None):
+        super().__init__(size=9, max_keys=max_keys, preference=preference, cost=cost, max_steps=max_steps)
 
 
 class KeyDoor11x11Env(KeyDoorEnv):
-    def __init__(self, max_keys=4, preference=None, cost=None):
-        super().__init__(size=11, max_keys=max_keys, preference=preference, cost=cost)
+    def __init__(self, max_keys=4, preference=None, cost=None, max_steps=None):
+        super().__init__(size=11, max_keys=max_keys, preference=preference, cost=cost, max_steps=max_steps)
 
 
 # Register environments

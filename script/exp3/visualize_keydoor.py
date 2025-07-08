@@ -12,18 +12,8 @@ sys.path.insert(0, lib_path)
 env_path = os.path.join(lib_path, 'env')
 sys.path.insert(0, env_path)
 
-# Add the rl-starter-files utils to the path
-rl_utils_path = os.path.join(env_path, 'rl-starter-files')
-sys.path.insert(0, rl_utils_path)
-
 import gymnasium as gym
-
-# Import utils from rl-starter-files
-try:
-    import utils
-except ImportError:
-    print("Warning: Could not import utils from rl-starter-files")
-    utils = None
+from gymnasium.wrappers import TransformObservation
 
 # Add gym_minigrid to Python path
 gym_minigrid_path = os.path.join(os.path.dirname(__file__), '../../lib/env')
@@ -92,10 +82,9 @@ def main():
     print(f"Creating environment: {env_name}")
     
     try:
-        if utils:
-            env = utils.make_env(env_name, args.seed)
-        else:
-            env = gym.make(env_name)
+        env = gym.make(env_name, max_steps=args.max_steps)
+        # Disable gym wrappers that cause issues
+        env = env.unwrapped if hasattr(env, 'unwrapped') else env
         print(f"✓ Environment {env_name} created successfully")
     except Exception as e:
         print(f"✗ Failed to create environment {env_name}: {e}")
@@ -113,12 +102,17 @@ def main():
             print(f"\n=== Episode {episode + 1}/{args.episodes} ===")
             
             # Reset environment
-            reset_result = env.reset(seed=args.seed + episode)
+            env.seed(args.seed + episode)
+            reset_result = env.reset()
             if isinstance(reset_result, tuple):
                 obs, info = reset_result
             else:
                 obs = reset_result
                 info = {}
+            
+            # Handle observation if it's a dict
+            if isinstance(obs, dict):
+                obs = obs.get('image', obs)
             
             episode_reward = 0
             step_count = 0
@@ -126,9 +120,6 @@ def main():
             # Print episode information
             print(f"Mission: {env.mission}")
             print(f"Target door: {env.target_door_color}")
-            print(f"Preference: {env.preference}")
-            print(f"Cost: {env.cost}")
-            print(f"Max keys: {env.max_keys}")
             
             # Display initial state
             try:
@@ -149,15 +140,17 @@ def main():
                 obs, reward, terminated, truncated, info = env.step(action)
                 done = terminated or truncated
                 
+                # Handle observation if it's a dict
+                if isinstance(obs, dict):
+                    obs = obs.get('image', obs)
+                
                 # Update counters
                 episode_reward += reward
                 step_count += 1
                 
                 # Print step information
                 if reward != 0 or action == 5:  # Show pickup attempts and rewards
-                    print(f"Step {step_count}: {action_name} -> reward: {reward:.2f}, keys: {len(env.agent_keys)}/{env.max_keys}")
-                    if len(env.agent_keys) > 0:
-                        print(f"  Agent keys: {env.agent_keys}")
+                    print(f"Step {step_count}: {action_name} -> reward: {reward:.2f}")
                 
                 # Render environment
                 try:
@@ -187,7 +180,6 @@ def main():
             print(f"Episode {episode + 1} summary:")
             print(f"  Steps: {step_count}")
             print(f"  Reward: {episode_reward:.2f}")
-            print(f"  Keys collected: {len(env.agent_keys)}")
             print(f"  Success: {'Yes' if episode_reward > 0 else 'No'}")
     
     except KeyboardInterrupt:

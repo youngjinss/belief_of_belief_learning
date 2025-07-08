@@ -245,12 +245,12 @@ def save_game_with_labels(
 def run_single_game(game_id, config_dict, save_dir):
     """
     Run a single game simulation
-    
+
     Args:
         game_id: Unique identifier for this game
         config_dict: Dictionary containing config parameters
         save_dir: Directory to save game data
-        
+
     Returns:
         game_id: For tracking completion
     """
@@ -258,10 +258,10 @@ def run_single_game(game_id, config_dict, save_dir):
     config = Config()
     for key, value in config_dict.items():
         setattr(config, key, value)
-    
+
     # Set unique random seed for this game
-    np.random.seed(config_dict['base_random_seed'] + game_id)
-    
+    np.random.seed(config_dict["base_random_seed"] + game_id)
+
     # Extract parameters
     rows = config.rows
     cols = config.cols
@@ -272,7 +272,7 @@ def run_single_game(game_id, config_dict, save_dir):
     no_walls = config.no_walls
     random_positions = config.random_positions
     random_goal_rewards = config.random_goal_rewards
-    
+
     # Create environment for this game
     env = World(
         rows,
@@ -282,11 +282,11 @@ def run_single_game(game_id, config_dict, save_dir):
         no_walls=no_walls,
         random_positions=random_positions,
         random_goal_rewards=random_goal_rewards,
-        random_seed=config_dict['base_random_seed'] + game_id,
+        random_seed=config_dict["base_random_seed"] + game_id,
     )
-    
+
     env.reset()
-    
+
     # Create agent based on config
     if config.agent_type == "a_star":
         agent = Agent.AgentStar(env, sight, observability=observability)
@@ -326,7 +326,7 @@ def run_single_game(game_id, config_dict, save_dir):
         base_dir=save_dir,
         game_id=game_id,
     )
-    
+
     return game_id
 
 
@@ -361,38 +361,40 @@ def generate_trajectories(config=None, random_seed=42, n_processes=None):
     # Set number of processes (default to CPU count - 1, min 1)
     if n_processes is None:
         n_processes = max(1, mp.cpu_count() - 1)
-    
+
     print(f"Using {n_processes} processes for parallel game generation")
 
     # Convert config to dictionary for multiprocessing
     config_dict = {
-        'rows': rows,
-        'cols': cols,
-        'sight': sight,
-        'max_moves': max_moves,
-        'observability': observability,
-        'shuffle': shuffle,
-        'no_walls': no_walls,
-        'random_positions': random_positions,
-        'random_goal_rewards': random_goal_rewards,
-        'agent_type': config.agent_type,
-        'base_random_seed': random_seed
+        "rows": rows,
+        "cols": cols,
+        "sight": sight,
+        "max_moves": max_moves,
+        "observability": observability,
+        "shuffle": shuffle,
+        "no_walls": no_walls,
+        "random_positions": random_positions,
+        "random_goal_rewards": random_goal_rewards,
+        "agent_type": config.agent_type,
+        "base_random_seed": random_seed,
     }
 
     # Create partial function with fixed arguments
-    game_func = partial(run_single_game, config_dict=config_dict, save_dir=config.save_dir)
+    game_func = partial(
+        run_single_game, config_dict=config_dict, save_dir=config.save_dir
+    )
 
     # Run games in parallel
     with mp.Pool(processes=n_processes) as pool:
         # Use imap for progress tracking
         game_ids = range(n_games)
         results = []
-        
+
         for i, result in enumerate(pool.imap(game_func, game_ids)):
             results.append(result)
             if (i + 1) % 1000 == 0:
                 print(f"Generated {i + 1}/{n_games} games")
-        
+
         # Wait for all processes to complete
         pool.close()
         pool.join()
@@ -403,10 +405,10 @@ def generate_trajectories(config=None, random_seed=42, n_processes=None):
 if __name__ == "__main__":
     # Set multiprocessing start method to avoid issues (if not already set)
     try:
-        mp.set_start_method('spawn')
+        mp.set_start_method("spawn")
     except RuntimeError:
         pass  # Already set
-    
+
     import argparse
 
     parser = argparse.ArgumentParser(
@@ -503,4 +505,6 @@ if __name__ == "__main__":
         if args.agent_type is not None:
             config.agent_type = args.agent_type
 
-    generate_trajectories(config, random_seed=args.random_seed, n_processes=args.n_processes)
+    generate_trajectories(
+        config, random_seed=args.random_seed, n_processes=args.n_processes
+    )

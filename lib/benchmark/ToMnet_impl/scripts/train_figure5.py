@@ -131,16 +131,18 @@ class Figure5ToMnetTrainer:
             if "successor_representation" in predictions and "true_sr" in batch:
                 # Cross-entropy between predicted and empirical successor representation
                 # L_SR = Σ_τ Σ_s -SR_τ(s) log ŜR_τ(s)
-                pred_sr = predictions["successor_representation"]  # (batch, 3, grid_size, grid_size)
+                pred_sr = predictions[
+                    "successor_representation"
+                ]  # (batch, 3, grid_size, grid_size)
                 true_sr = batch["true_sr"]  # (batch, 3*grid_size^2)
-                
+
                 # Reshape predictions to match target format: (batch, 3*grid_size^2)
                 batch_size = pred_sr.shape[0]
                 pred_sr_flat = pred_sr.view(batch_size, -1)  # (batch, 3*grid_size^2)
-                
+
                 # Convert true_sr to class indices for CrossEntropyLoss
                 true_sr_indices = torch.argmax(true_sr, dim=1)  # (batch,)
-                
+
                 sr_loss = nn.CrossEntropyLoss()(pred_sr_flat, true_sr_indices)
                 losses["sr_loss"] = sr_loss
 
@@ -182,12 +184,20 @@ class Figure5ToMnetTrainer:
 
                 if "successor_representation" in predictions:
                     # Reshape predictions to match target format
-                    pred_sr = predictions["successor_representation"]  # (batch, 3, grid_size, grid_size)
+                    pred_sr = predictions[
+                        "successor_representation"
+                    ]  # (batch, 3, grid_size, grid_size)
                     batch_size = pred_sr.shape[0]
-                    pred_sr_flat = pred_sr.view(batch_size, 3, -1)  # (batch, 3, grid_size^2)
-                    sr_probs = torch.softmax(pred_sr_flat, dim=2).cpu().numpy()  # Apply softmax over spatial dim
-                    sr_preds = sr_probs.reshape(batch_size, -1)  # (batch, 3*grid_size^2)
-                    
+                    pred_sr_flat = pred_sr.view(
+                        batch_size, 3, -1
+                    )  # (batch, 3, grid_size^2)
+                    sr_probs = (
+                        torch.softmax(pred_sr_flat, dim=2).cpu().numpy()
+                    )  # Apply softmax over spatial dim
+                    sr_preds = sr_probs.reshape(
+                        batch_size, -1
+                    )  # (batch, 3*grid_size^2)
+
                     sr_targets = batch["true_sr"].cpu().numpy()
                     all_predictions["sr"].extend(sr_preds)
                     all_targets["sr"].extend(sr_targets)
@@ -281,16 +291,20 @@ class Figure5ToMnetTrainer:
                 if "successor_representation" in predictions and "true_sr" in batch:
                     # Cross-entropy between predicted and empirical successor representation
                     # L_SR = Σ_τ Σ_s -SR_τ(s) log ŜR_τ(s)
-                    pred_sr = predictions["successor_representation"]  # (batch, 3, grid_size, grid_size)
+                    pred_sr = predictions[
+                        "successor_representation"
+                    ]  # (batch, 3, grid_size, grid_size)
                     true_sr = batch["true_sr"]  # (batch, 3*grid_size^2)
-                    
+
                     # Reshape predictions to match target format: (batch, 3*grid_size^2)
                     batch_size = pred_sr.shape[0]
-                    pred_sr_flat = pred_sr.view(batch_size, -1)  # (batch, 3*grid_size^2)
-                    
+                    pred_sr_flat = pred_sr.view(
+                        batch_size, -1
+                    )  # (batch, 3*grid_size^2)
+
                     # Convert true_sr to class indices for CrossEntropyLoss
                     true_sr_indices = torch.argmax(true_sr, dim=1)  # (batch,)
-                    
+
                     sr_loss = nn.CrossEntropyLoss()(pred_sr_flat, true_sr_indices)
                     losses["sr_loss"] = sr_loss
 
@@ -326,12 +340,20 @@ class Figure5ToMnetTrainer:
 
                 if "successor_representation" in predictions:
                     # Reshape predictions to match target format
-                    pred_sr = predictions["successor_representation"]  # (batch, 3, grid_size, grid_size)
+                    pred_sr = predictions[
+                        "successor_representation"
+                    ]  # (batch, 3, grid_size, grid_size)
                     batch_size = pred_sr.shape[0]
-                    pred_sr_flat = pred_sr.view(batch_size, 3, -1)  # (batch, 3, grid_size^2)
-                    sr_probs = torch.softmax(pred_sr_flat, dim=2).cpu().numpy()  # Apply softmax over spatial dim
-                    sr_preds = sr_probs.reshape(batch_size, -1)  # (batch, 3*grid_size^2)
-                    
+                    pred_sr_flat = pred_sr.view(
+                        batch_size, 3, -1
+                    )  # (batch, 3, grid_size^2)
+                    sr_probs = (
+                        torch.softmax(pred_sr_flat, dim=2).cpu().numpy()
+                    )  # Apply softmax over spatial dim
+                    sr_preds = sr_probs.reshape(
+                        batch_size, -1
+                    )  # (batch, 3*grid_size^2)
+
                     sr_targets = batch["true_sr"].cpu().numpy()
                     all_predictions["sr"].extend(sr_preds)
                     all_targets["sr"].extend(sr_targets)

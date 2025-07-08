@@ -354,6 +354,7 @@ class AgentStar:
         else:
             # Fallback to unique timestamp-based naming
             import uuid
+
             unique_id = str(uuid.uuid4())[:8]
             timestamp = int(np.random.rand() * 1e9)
             new_file_path = os.path.join(gf, f"test_{timestamp}_{unique_id}.txt")
@@ -400,8 +401,17 @@ class ValueAgent:
     Based on GoalDirectedAgent but adapted for ToMnetF environment
     """
 
-    def __init__(self, env, sight, observability="partial", consume_goals=1,
-                 movement_cost=0.01, wall_penalty=2.0, gamma=0.99, temperature=0.1):
+    def __init__(
+        self,
+        env,
+        sight,
+        observability="partial",
+        consume_goals=1,
+        movement_cost=0.01,
+        wall_penalty=2.0,
+        gamma=0.99,
+        temperature=0.1,
+    ):
         self.env = env
         self.consume_goals = consume_goals
         self.observability = observability
@@ -417,21 +427,21 @@ class ValueAgent:
         self.picked_list = []
         self.goal_found = None
         self.picked_goal = False
-        
+
         # Value iteration parameters
         self.movement_cost = movement_cost
         self.wall_penalty = wall_penalty
         self.gamma = gamma
         self.temperature = temperature
-        
+
         # Get reward preferences from environment
         self.rewards = np.array(env.goal_rewards, dtype=np.float32)
-        
+
         # Value function and policy
         self.value_function = None
         self.policy = None
         self.converged = False
-        
+
         # Action mapping: 0=UP, 1=RIGHT, 2=DOWN, 3=LEFT
         self.actions = [(-1, 0), (0, 1), (1, 0), (0, -1)]
 
@@ -464,35 +474,40 @@ class ValueAgent:
         """
         width, height = self.env.width, self.env.height
         n_actions = 4
-        
+
         # Initialize value function and policy
         self.value_function = np.zeros((width, height))
         self.policy = np.ones((width, height, n_actions)) / n_actions
-        
+
         # Create valid state mask from memory
         valid_states = np.zeros((width, height), dtype=bool)
         for i in range(width):
             for j in range(height):
-                if self.memory[i, j] is not None and self.memory[i, j] != self.env.objectsEnum["Wall"]:
+                if (
+                    self.memory[i, j] is not None
+                    and self.memory[i, j] != self.env.objectsEnum["Wall"]
+                ):
                     valid_states[i, j] = True
-        
+
         for _ in range(max_iterations):
             old_values = self.value_function.copy()
-            
+
             # Value iteration update
             for i in range(width):
                 for j in range(height):
                     if not valid_states[i, j]:
                         continue
-                    
+
                     # Compute Q-values for each action
                     q_values = np.zeros(n_actions)
                     for action in range(n_actions):
-                        q_values[action] = self._evaluate_action_from_memory((i, j), action)
-                    
+                        q_values[action] = self._evaluate_action_from_memory(
+                            (i, j), action
+                        )
+
                     # Update value function
                     self.value_function[i, j] = np.max(q_values)
-                    
+
                     # Update policy with softmax
                     if self.temperature > 0:
                         q_values_clipped = np.clip(q_values, -100, 100)
@@ -503,33 +518,39 @@ class ValueAgent:
                         self.policy[i, j] = 0
                         best_action = np.argmax(q_values)
                         self.policy[i, j, best_action] = 1.0
-            
+
             # Check convergence
             if np.max(np.abs(self.value_function - old_values)) < convergence_threshold:
                 self.converged = True
                 break
-        
+
         if not self.converged:
-            print(f"Warning: Value iteration did not converge after {max_iterations} iterations")
+            print(
+                f"Warning: Value iteration did not converge after {max_iterations} iterations"
+            )
 
     def _evaluate_action_from_memory(self, pos, action):
         """Evaluate expected value of taking action from position using memory"""
         i, j = pos
         delta = self.actions[action]
         new_pos = (i + delta[0], j + delta[1])
-        
+
         # Base movement cost
         reward = -self.movement_cost
-        
+
         # Check bounds - strongly discourage boundary hitting
-        if (new_pos[0] < 0 or new_pos[0] >= self.env.width or 
-            new_pos[1] < 0 or new_pos[1] >= self.env.height):
+        if (
+            new_pos[0] < 0
+            or new_pos[0] >= self.env.width
+            or new_pos[1] < 0
+            or new_pos[1] >= self.env.height
+        ):
             reward -= self.wall_penalty
             # Stay in same position with additional penalty
             next_value = self.gamma * self.value_function[i, j] - self.wall_penalty
         else:
             memory_value = self.memory[new_pos[0], new_pos[1]]
-            
+
             # Check if it's a wall - strongly discourage wall hitting
             if memory_value == self.env.objectsEnum["Wall"]:
                 reward -= self.wall_penalty
@@ -542,45 +563,49 @@ class ValueAgent:
                     reward += goal_reward
                     next_value = 0  # Terminal state
                 else:
-                    next_value = self.gamma * self.value_function[new_pos[0], new_pos[1]]
-        
+                    next_value = (
+                        self.gamma * self.value_function[new_pos[0], new_pos[1]]
+                    )
+
         return reward + next_value
 
     def chose_action(self, observability="partial"):
         """Choose action using stochastic policy from value iteration"""
-        
+
         # Update memory and plan if needed
         self.update_world_observation()
-        
+
         # Plan policy based on current memory
         self.plan_value_iteration()
-        
+
         # Get current position
         current_pos = self.position
-        
+
         # Get action probabilities from policy
-        if (self.policy is not None and 
-            0 <= current_pos[0] < self.env.width and 
-            0 <= current_pos[1] < self.env.height):
-            
+        if (
+            self.policy is not None
+            and 0 <= current_pos[0] < self.env.width
+            and 0 <= current_pos[1] < self.env.height
+        ):
+
             action_probs = self.policy[current_pos[0], current_pos[1]].copy()
-            
+
             # Ensure valid probability distribution
             if np.any(np.isnan(action_probs)) or np.sum(action_probs) == 0:
                 action_probs = np.ones(4) / 4
             else:
                 action_probs = action_probs / np.sum(action_probs)
-            
+
             # Sample action stochastically
             action = np.random.choice(4, p=action_probs)
         else:
             # Fallback to random action
             action = np.random.choice(4)
-        
+
         # Record trajectory
         self.position_trajectory.append(self.position.copy())
         self.trajectory.append(action)
-        
+
         return action
 
     def update_world_observation(self):
@@ -615,7 +640,7 @@ class ValueAgent:
         # Use the same save format as AgentStar
         import re
         import os
-        
+
         # REMOVED: Duplicate call - already handled in on_pickup()
         # if self.env.goal_picked != 0:
         #     self.step_picked_goal.append(len(self.trajectory) - 1)
@@ -630,6 +655,7 @@ class ValueAgent:
         else:
             # Fallback to unique timestamp-based naming
             import uuid
+
             unique_id = str(uuid.uuid4())[:8]
             timestamp = int(np.random.rand() * 1e9)
             new_file_path = os.path.join(gf, f"test_{timestamp}_{unique_id}.txt")

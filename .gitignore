@@ -38,9 +38,11 @@ lib/env/multi-agent-framework/
 lib/env/abides-jpmc-public/
 lib/env/pymarketsim/
 lib/env/maxe/
+lib/env/rl-starter-files/
 
 # claude 무시
 CLAUDE.md
+*claude*
 
 # 데이터 폴더 무시
 data/

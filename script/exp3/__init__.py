@@ -18,6 +18,6 @@ Usage:
 """
 
 from .config import Config
-from .astar_agent import MiniGridAStarAgent
+from .agent import MiniGridAStarAgent
 
 __all__ = ["Config", "MiniGridAStarAgent"]

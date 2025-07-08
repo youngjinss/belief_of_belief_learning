@@ -12,7 +12,7 @@ from functools import partial
 
 # Add the current directory to path to import our agent
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from astar_agent import MiniGridAStarAgent
+from script.exp3.agent import MiniGridAStarAgent
 
 """
 Data generation script for MiniGrid-LockedRoom-v0 environment with A* agent

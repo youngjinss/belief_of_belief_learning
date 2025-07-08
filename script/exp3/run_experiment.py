@@ -14,7 +14,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from config import Config
 from generate_data import generate_dataset, analyze_dataset, load_dataset
-from astar_agent import MiniGridAStarAgent
+from script.exp3.agent import MiniGridAStarAgent
 
 
 def run_single_test(config):

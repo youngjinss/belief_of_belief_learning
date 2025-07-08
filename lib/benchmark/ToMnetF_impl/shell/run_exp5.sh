@@ -131,7 +131,7 @@ run_evaluation() {
     log_step "Logging evaluation output to: $RUN_LOG_DIR/evaluation.log"
     
     cd "$SCRIPTS_DIR/experiment5"
-    python evaluate.py --config_override --test_data_paths "$TEST_DATA_DIR" > "$RUN_LOG_DIR/evaluation.log" 2>&1
+    python evaluate.py --config_override > "$RUN_LOG_DIR/evaluation.log" 2>&1
     
     log_step "Evaluation completed"
     

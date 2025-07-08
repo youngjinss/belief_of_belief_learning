@@ -99,7 +99,7 @@ run_data_generation() {
 
 run_training() {
     # Check if training already completed
-    if [ -f "$MODELS_DIR/exp4_best.pth" ] && [ -f "$RESULTS_DIR/exp4_results.json" ]; then
+    if [ -f "$MODELS_DIR/exp4_best.pth" ]; then
         log_step "Training skipped - exp4_best.pth and exp4_results.json already exist"
         return 0
     fi

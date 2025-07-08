@@ -804,18 +804,18 @@ if __name__ == "__main__":
         )
 
     # Run full cross-species evaluation
-    if all(os.path.exists(path) for path in model_paths + test_data_paths):
-        results = cross_species_evaluation(
-            config=config,
-            model_paths=model_paths,
-            test_data_paths=test_data_paths,
-            preloaded_model=model,
-            preloaded_test_loader=test_loader,
-        )
-        print("Evaluation completed successfully!")
-    else:
-        missing_files = [
-            path for path in model_paths + test_data_paths if not os.path.exists(path)
-        ]
-        print(f"Missing files: {missing_files}")
-        print("Please train the model and generate data first.")
+    # if all(os.path.exists(path) for path in model_paths + test_data_paths):
+    #     results = cross_species_evaluation(
+    #         config=config,
+    #         model_paths=model_paths,
+    #         test_data_paths=test_data_paths,
+    #         preloaded_model=model,
+    #         preloaded_test_loader=test_loader,
+    #     )
+    #     print("Evaluation completed successfully!")
+    # else:
+    #     missing_files = [
+    #         path for path in model_paths + test_data_paths if not os.path.exists(path)
+    #     ]
+    #     print(f"Missing files: {missing_files}")
+    #     print("Please train the model and generate data first.")

@@ -1,5 +1,7 @@
 import os
 import sys
+import multiprocessing as mp
+from functools import partial
 
 sys.path.append("..")
 
@@ -245,7 +247,94 @@ def save_game_with_labels(
             f.write(msg + "\n")
 
 
-def generate_trajectories(config=None, random_seed=42):
+def run_single_game(game_id, config_dict, save_dir):
+    """
+    Run a single game simulation
+    
+    Args:
+        game_id: Unique identifier for this game
+        config_dict: Dictionary containing config parameters
+        save_dir: Directory to save game data
+        
+    Returns:
+        game_id: For tracking completion
+    """
+    # Recreate config object from dict
+    config = Config()
+    for key, value in config_dict.items():
+        setattr(config, key, value)
+    
+    # Set unique random seed for this game
+    np.random.seed(config_dict['base_random_seed'] + game_id)
+    
+    # Extract parameters
+    rows = config.rows
+    cols = config.cols
+    sight = config.sight
+    max_moves = config.max_moves
+    observability = config.observability
+    shuffle = config.shuffle
+    no_walls = config.no_walls
+    random_positions = config.random_positions
+    random_goal_rewards = config.random_goal_rewards
+    
+    # Create environment for this game
+    env = World(
+        rows,
+        cols,
+        max_moves_per_episode=max_moves,
+        shuffle=shuffle,
+        no_walls=no_walls,
+        random_positions=random_positions,
+        random_goal_rewards=random_goal_rewards,
+        random_seed=config_dict['base_random_seed'] + game_id,
+    )
+    
+    env.reset()
+    
+    # Create agent based on config
+    if config.agent_type == "a_star":
+        agent = Agent.AgentStar(env, sight, observability=observability)
+    elif config.agent_type == "value":
+        agent = Agent.ValueAgent(env, sight, observability=observability)
+    elif config.agent_type == "random":
+        agent = Agent.RandomAgent(env, sight, observability=observability)
+    else:
+        raise ValueError(f"Unknown agent type: {config.agent_type}")
+
+    # Run game simulation
+    while True:
+        agent.update_world_observation()
+        action = agent.chose_action(observability=observability)
+        _, terminate, goal_picked, reward = env.execute(action)
+
+        if goal_picked:
+            agent.on_pickup(reward)
+
+        if terminate:
+            break
+
+    # Calculate SR labels for each timestep and consumption labels
+    sr_labels_per_timestep = calculate_sr_labels_for_trajectory(
+        agent.position_trajectory, grid_size=rows
+    )
+
+    consumption_labels = calculate_consumption_labels(env.consumed_goal)
+
+    # Save game with additional SR and consumption data
+    save_game_with_labels(
+        agent=agent,
+        env=env,
+        sr_labels_per_timestep=sr_labels_per_timestep,
+        consumption_labels=consumption_labels,
+        name="",
+        base_dir=save_dir,
+    )
+    
+    return game_id
+
+
+def generate_trajectories(config=None, random_seed=42, n_processes=None):
     """
     Generate trajectories for Experiment 5 using A* agents with random positions, goal rewards, and N_past episodes
 
@@ -271,80 +360,59 @@ def generate_trajectories(config=None, random_seed=42):
     print(f"Generating trajectories with random seed: {random_seed}")
     print("  Training seed: 42, Testing seed: 123 (recommended)")
 
-    env = World(
-        row_size=rows,
-        col_size=cols,
-        max_moves_per_episode=max_moves,
-        shuffle=shuffle,
-        no_walls=no_walls,
-        random_positions=random_positions,
-        random_goal_rewards=random_goal_rewards,
-        random_seed=random_seed,
-    )
-
     # Create output directory
     full_output_dir = save_dir
     os.makedirs(full_output_dir, exist_ok=True)
 
-    for i in range(n_games):
-        if i % 1000 == 0:
-            print(f"Generated {i}/{n_games} games")
+    # Set number of processes (default to CPU count - 1, min 1)
+    if n_processes is None:
+        n_processes = max(1, mp.cpu_count() - 1)
+    
+    print(f"Using {n_processes} processes for parallel game generation")
 
-        env.reset()
-        # env.render()
+    # Convert config to dictionary for multiprocessing
+    config_dict = {
+        'rows': rows,
+        'cols': cols,
+        'sight': sight,
+        'max_moves': max_moves,
+        'observability': observability,
+        'shuffle': shuffle,
+        'no_walls': no_walls,
+        'random_positions': random_positions,
+        'random_goal_rewards': random_goal_rewards,
+        'agent_type': config.agent_type,
+        'base_random_seed': random_seed
+    }
+
+    # Create partial function with fixed arguments
+    game_func = partial(run_single_game, config_dict=config_dict, save_dir=save_dir)
+
+    # Run games in parallel
+    with mp.Pool(processes=n_processes) as pool:
+        # Use imap for progress tracking
+        game_ids = range(n_games)
+        results = []
         
-        # Create agent based on config
-        if config.agent_type == "a_star":
-            agent = Agent.AgentStar(env, sight, observability=observability)
-        elif config.agent_type == "value":
-            agent = Agent.ValueAgent(env, sight, observability=observability)
-        elif config.agent_type == "random":
-            agent = Agent.RandomAgent(env, sight, observability=observability)
-        else:
-            raise ValueError(f"Unknown agent type: {config.agent_type}")
+        for i, result in enumerate(pool.imap(game_func, game_ids)):
+            results.append(result)
+            if (i + 1) % 1000 == 0:
+                print(f"Generated {i + 1}/{n_games} games")
+        
+        # Wait for all processes to complete
+        pool.close()
+        pool.join()
 
-        while True:
-            agent.update_world_observation()
-            # agent.render()
-
-            action = agent.chose_action(observability=observability)
-            # print(action)
-
-            _, terminate, goal_picked, reward = env.execute(action)
-
-            if goal_picked:
-                # print("You have picked a goal, reward = {}".format(reward))
-                agent.on_pickup(reward)
-                # added to terminate after picking one goal
-                # terminate = True
-
-            if terminate:
-                # print("Game result: ", reward)
-                break
-
-            # input("Press the <Enter> key to continue...")
-
-        # Calculate SR labels for each timestep and consumption labels
-        sr_labels_per_timestep = calculate_sr_labels_for_trajectory(
-            agent.position_trajectory, grid_size=rows
-        )
-
-        consumption_labels = calculate_consumption_labels(env.consumed_goal)
-
-        # Save game with additional SR and consumption data
-        save_game_with_labels(
-            agent=agent,
-            env=env,
-            sr_labels_per_timestep=sr_labels_per_timestep,
-            consumption_labels=consumption_labels,
-            name="",
-            base_dir=save_dir,
-        )
-
-    print(f"Generated {n_games} games successfully!")
+    print(f"Generated {n_games} games successfully using {n_processes} processes!")
 
 
 if __name__ == "__main__":
+    # Set multiprocessing start method to avoid issues (if not already set)
+    try:
+        mp.set_start_method('spawn')
+    except RuntimeError:
+        pass  # Already set
+    
     import argparse
 
     parser = argparse.ArgumentParser(
@@ -404,6 +472,12 @@ if __name__ == "__main__":
         choices=["a_star", "value", "random"],
         help="Type of agent to use: a_star, value, or random",
     )
+    parser.add_argument(
+        "--n_processes",
+        type=int,
+        default=None,
+        help="Number of parallel processes (default: CPU count - 1)",
+    )
 
     args = parser.parse_args()
 
@@ -438,4 +512,4 @@ if __name__ == "__main__":
         if args.agent_type is not None:
             config.agent_type = args.agent_type
 
-    generate_trajectories(config, random_seed=args.random_seed)
+    generate_trajectories(config, random_seed=args.random_seed, n_processes=args.n_processes)

@@ -264,7 +264,6 @@ def generate_trajectories(config=None, random_seed=42):
     observability = config.observability
     shuffle = config.shuffle
     no_walls = config.no_walls
-    save_dir = config.data_dir
     random_positions = config.random_positions
     random_goal_rewards = config.random_goal_rewards
 
@@ -283,8 +282,7 @@ def generate_trajectories(config=None, random_seed=42):
     )
 
     # Create output directory
-    full_output_dir = save_dir
-    os.makedirs(full_output_dir, exist_ok=True)
+    os.makedirs(config.save_dir, exist_ok=True)
 
     for i in range(n_games):
         if i % 1000 == 0:
@@ -338,7 +336,7 @@ def generate_trajectories(config=None, random_seed=42):
             sr_labels_per_timestep=sr_labels_per_timestep,
             consumption_labels=consumption_labels,
             name="",
-            base_dir=save_dir,
+            base_dir=config.save_dir,
         )
 
     print(f"Generated {n_games} games successfully!")
@@ -422,6 +420,8 @@ if __name__ == "__main__":
             config.max_moves = args.max_moves
         if args.observability is not None:
             config.observability = args.observability
+        if args.save_dir is not None:
+            config.save_dir = args.save_dir
         if args.shuffle:
             config.shuffle = args.shuffle
         if args.no_walls:

@@ -21,11 +21,15 @@ class Config:
         self.debug = True
         
         # Output settings
-        self.output_dir = "results"
+        self.output_dir = "script/exp3/results"
         self.gif_output = None  # Filename for saving gif (without .gif extension)
         
+        # Data generation settings
+        self.n_games = 5  # Number of games to generate for ToMnet data
+        self.save_dir = "script/exp3/data"  # Directory to save generated data
+        
         # Experiment settings
-        self.experiment_name = "keydoor_exp"
+        self.experiment_name = "exp3"
         self.log_actions = True
         self.log_rewards = True
         self.log_debug = True
@@ -54,6 +58,20 @@ class Config:
                 "wall_penalty": 2.0,
                 "gamma": 0.99,
                 "temperature": 0.1
+            },
+            "value_deterministic": {
+                "observability": "full",
+                "movement_cost": 0.01,
+                "wall_penalty": 2.0,
+                "gamma": 0.99,
+                "temperature": 0.0
+            },
+            "value_stochastic": {
+                "observability": "full",
+                "movement_cost": 0.01,
+                "wall_penalty": 2.0,
+                "gamma": 0.99,
+                "temperature": 0.5
             }
         }
     

@@ -282,6 +282,15 @@ If you use this implementation, please cite the original ToMnet paper and acknow
     - N_past is not implemented in Exp2 -> have to fix it
     - Consumption label is computed by each step.
     - Charnet에 current trajectory를 지움 -> past trajectory 만
+4. ** Exp4 **: ToMnet + A* star agent (action prediction, SR, consumption) -> 테스트 중
+    - no_wall, random position, random reward 추가
+    - SR 수정 (loss가 argmax만 계산하는 문제)
+    - char embedding 결과
+    - n_past 소용이 없음 (batch별로 past epsiode 추출 구현 (goal-reward의 ranking에 따라))
+    - 코드 최적화 (vectorize 연산, ToMnet 구조 최적화)
+5. ** Exp5 **: ToMnet + value agent (+ Exp4) -> 구현 중
+    - 좀 더 stochastic agent를 사용해서 ToMnet의 성능 확인
+
 
 
 ## Computation time analysis

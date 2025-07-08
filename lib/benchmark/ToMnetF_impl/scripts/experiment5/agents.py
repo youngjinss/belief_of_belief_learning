@@ -338,7 +338,7 @@ class AgentStar:
         Consumed Goal, Length of trajectory and each trajectory step to .txt file
     """
 
-    def save_game(self, name="experiment1", base_dir="../../data"):
+    def save_game(self, name="experiment1", base_dir="../../data", game_id=None):
 
         # REMOVED: Duplicate call - already handled in on_pickup()
         # if self.env.goal_picked != 0:
@@ -348,22 +348,15 @@ class AgentStar:
         gf = os.path.join(base_dir, name)  # path to games folder
         os.makedirs(gf, exist_ok=True)
 
-        files = os.listdir(gf)
-        r = re.compile(".*.txt")
-        files = list(filter(r.match, files))
-
-        # Chose the number for the new name
-        # print("There are files in the folder: ", files)
-        max_number = 0
-        for file in files:
-            if max_number < int(file[4:-4]):
-                max_number = int(file[4:-4])
-
-        # print("The max current number is: ", max_number)
-        new_name_number = max_number + 1
-
-        # Save the Game line by line
-        new_file_path = os.path.join(gf, "test" + str(new_name_number) + ".txt")
+        # Use game_id if provided, otherwise generate a unique filename
+        if game_id is not None:
+            new_file_path = os.path.join(gf, f"test{game_id}.txt")
+        else:
+            # Fallback to unique timestamp-based naming
+            import uuid
+            unique_id = str(uuid.uuid4())[:8]
+            timestamp = int(np.random.rand() * 1e9)
+            new_file_path = os.path.join(gf, f"test_{timestamp}_{unique_id}.txt")
         # realmap = self.render()
 
         with open(new_file_path, "w") as f:
@@ -618,7 +611,7 @@ class ValueAgent:
         self.picked_goal = True
         self.step_picked_goal.append(len(self.trajectory) - 1)
 
-    def save_game(self, name="experiment5", base_dir="../../data"):
+    def save_game(self, name="experiment5", base_dir="../../data", game_id=None):
         # Use the same save format as AgentStar
         import re
         import os
@@ -631,20 +624,15 @@ class ValueAgent:
         gf = os.path.join(base_dir, name)
         os.makedirs(gf, exist_ok=True)
 
-        files = os.listdir(gf)
-        r = re.compile(".*.txt")
-        files = list(filter(r.match, files))
-
-        # Choose the number for the new name
-        max_number = 0
-        for file in files:
-            if max_number < int(file[4:-4]):
-                max_number = int(file[4:-4])
-
-        new_name_number = max_number + 1
-
-        # Save the Game line by line
-        new_file_path = os.path.join(gf, "test" + str(new_name_number) + ".txt")
+        # Use game_id if provided, otherwise generate a unique filename
+        if game_id is not None:
+            new_file_path = os.path.join(gf, f"test{game_id}.txt")
+        else:
+            # Fallback to unique timestamp-based naming
+            import uuid
+            unique_id = str(uuid.uuid4())[:8]
+            timestamp = int(np.random.rand() * 1e9)
+            new_file_path = os.path.join(gf, f"test_{timestamp}_{unique_id}.txt")
 
         with open(new_file_path, "w") as f:
             f.write("Maze:\n")
@@ -708,6 +696,6 @@ class RandomAgent:
     def on_pickup(self, reward):
         self.step_picked_goal.append(len(self.trajectory) - 1)
 
-    def save_game(self, name="experiment1", base_dir="../../data"):
+    def save_game(self, name="experiment1", base_dir="../../data", game_id=None):
         # Similar to AgentStar but simplified
         pass

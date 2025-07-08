@@ -888,7 +888,9 @@ def plot_character_embeddings(
                 embeddings_pca[mask, 1],
                 c=colors[int(goal % len(colors))],
                 label=(
-                    goal_names[int(goal)] if goal < len(goal_names) else f"Goal {goal}"
+                    goal_names[int(goal) - 1]
+                    if goal <= len(goal_names)
+                    else f"Goal {goal}"
                 ),
                 alpha=0.6,
                 s=20,
@@ -909,7 +911,9 @@ def plot_character_embeddings(
                 embeddings_tsne[mask, 1],
                 c=colors[int(goal % len(colors))],
                 label=(
-                    goal_names[int(goal)] if goal < len(goal_names) else f"Goal {goal}"
+                    goal_names[int(goal) - 1]
+                    if goal <= len(goal_names)
+                    else f"Goal {goal}"
                 ),
                 alpha=0.6,
                 s=20,
@@ -939,7 +943,9 @@ def plot_character_embeddings(
     print("Goal distribution in samples:")
     for goal in unique_goals:
         count = np.sum(goal_labels == goal)
-        goal_name = goal_names[int(goal)] if goal < len(goal_names) else f"Goal {goal}"
+        goal_name = (
+            goal_names[int(goal) - 1] if goal <= len(goal_names) else f"Goal {goal}"
+        )
         print(f"  {goal_name}: {count} samples ({count/len(goal_labels)*100:.1f}%)")
 
 

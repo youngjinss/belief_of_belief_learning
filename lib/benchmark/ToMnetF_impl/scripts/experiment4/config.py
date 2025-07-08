@@ -15,7 +15,7 @@ class Config:
         self.output_dir = "data"
         self.shuffle = False
         self.no_walls = True
-        self.random_positions = True  # Enable random player positions
+        self.random_positions = False  # Enable random player positions
         self.random_goal_rewards = True  # Enable random goal rewards
 
         # Model hyperparameters

@@ -11,8 +11,8 @@ VALIDATION_GAMES=2000
 TEST_RANDOM_SEED=123
 BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SCRIPTS_DIR="$BASE_DIR/scripts"
-DATA_DIR="$BASE_DIR/data/experiment4"
-TEST_DATA_DIR="$BASE_DIR/data/test"
+TRAIN_DATA_DIR="$BASE_DIR/data/experiment4"
+TEST_DATA_DIR="$BASE_DIR/data/experiment4/test"
 MODELS_DIR="$BASE_DIR/models/experiment4"
 RESULTS_DIR="$BASE_DIR/result/experiment4"
 PLOTS_DIR="$BASE_DIR/plots/experiment4"
@@ -23,7 +23,7 @@ TIMESTAMP=$(date '+%Y%m%d_%H%M%S')
 RUN_LOG_DIR="$LOG_DIR/experiment4/$TIMESTAMP"
 
 # Create directories
-mkdir -p "$DATA_DIR" "$MODELS_DIR" "$RESULTS_DIR" "$PLOTS_DIR" "$LOG_DIR" "$RUN_LOG_DIR"
+mkdir -p "$TRAIN_DATA_DIR" "$TEST_DATA_DIR" "$MODELS_DIR" "$RESULTS_DIR" "$PLOTS_DIR" "$LOG_DIR" "$RUN_LOG_DIR"
 
 # Function to pre-create all log files
 create_log_files() {
@@ -77,7 +77,7 @@ create_log_files
 
 run_data_generation() {
     # Check if data already exists
-    if [ -f "$DATA_DIR/processed_data_exp4.pkl" ]; then
+    if [ -f "$TRAIN_DATA_DIR/processed_data_exp4.pkl" ]; then
         log_step "Data generation skipped - processed_data_exp4.pkl already exists"
         return 0
     fi
@@ -86,7 +86,7 @@ run_data_generation() {
     log_step "Logging data generation output to: $RUN_LOG_DIR/train_data_generation.log"
     
     cd "$SCRIPTS_DIR/experiment4"
-    python generate.py > "$RUN_LOG_DIR/train_data_generation.log" 2>&1
+    python generate.py --config_override --save_dir "$TRAIN_DATA_DIR" > "$RUN_LOG_DIR/train_data_generation.log" 2>&1
     
     log_step "Data generation completed"
     

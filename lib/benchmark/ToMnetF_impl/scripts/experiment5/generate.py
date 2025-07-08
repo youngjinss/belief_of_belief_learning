@@ -353,7 +353,6 @@ def generate_trajectories(config=None, random_seed=42, n_processes=None):
     observability = config.observability
     shuffle = config.shuffle
     no_walls = config.no_walls
-    save_dir = config.data_dir
     random_positions = config.random_positions
     random_goal_rewards = config.random_goal_rewards
 
@@ -361,8 +360,7 @@ def generate_trajectories(config=None, random_seed=42, n_processes=None):
     print("  Training seed: 42, Testing seed: 123 (recommended)")
 
     # Create output directory
-    full_output_dir = save_dir
-    os.makedirs(full_output_dir, exist_ok=True)
+    os.makedirs(config.save_dir, exist_ok=True)
 
     # Set number of processes (default to CPU count - 1, min 1)
     if n_processes is None:
@@ -386,7 +384,7 @@ def generate_trajectories(config=None, random_seed=42, n_processes=None):
     }
 
     # Create partial function with fixed arguments
-    game_func = partial(run_single_game, config_dict=config_dict, save_dir=save_dir)
+    game_func = partial(run_single_game, config_dict=config_dict, save_dir=config.save_dir)
 
     # Run games in parallel
     with mp.Pool(processes=n_processes) as pool:
@@ -434,7 +432,6 @@ if __name__ == "__main__":
         choices=["full", "partial"],
         help="Observability type: full or partial",
     )
-    parser.add_argument("--output_dir", type=str, help="Directory to save games")
     parser.add_argument(
         "--shuffle",
         action="store_true",
@@ -497,14 +494,12 @@ if __name__ == "__main__":
             config.max_moves = args.max_moves
         if args.observability is not None:
             config.observability = args.observability
-        if args.output_dir is not None:
-            config.output_dir = args.output_dir
+        if args.save_dir is not None:
+            config.save_dir = args.save_dir
         if args.shuffle:
             config.shuffle = args.shuffle
         if args.no_walls:
             config.no_walls = args.no_walls
-        if args.save_dir is not None:
-            config.data_dir = args.save_dir
         if args.random_positions:
             config.random_positions = args.random_positions
         if args.random_goal_rewards:

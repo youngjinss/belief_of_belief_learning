@@ -4,8 +4,12 @@ from functools import reduce
 
 import numpy as np
 
-import gym
-from gym import error, spaces, utils
+try:
+    import gymnasium as gym
+    from gymnasium import error, spaces, utils
+except ImportError:
+    import gym
+    from gym import error, spaces, utils
 
 
 class ActionBonus(gym.core.Wrapper):

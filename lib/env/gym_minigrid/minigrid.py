@@ -1,9 +1,15 @@
 import math
-import gym
+
+try:
+    import gymnasium as gym
+    from gymnasium import error, spaces, utils
+    from gymnasium.utils import seeding
+except ImportError:
+    import gym
+    from gym import error, spaces, utils
+    from gym.utils import seeding
 from enum import IntEnum
 import numpy as np
-from gym import error, spaces, utils
-from gym.utils import seeding
 
 # Size in pixels of a cell in the full-scale human view
 CELL_PIXELS = 32
@@ -831,8 +837,11 @@ class MiniGridEnv(gym.Env):
         """
         Generate random integer in [low,high[
         """
-
-        return self.np_random.randint(low, high)
+        # Handle both old and new numpy API
+        if hasattr(self.np_random, "integers"):
+            return self.np_random.integers(low, high)
+        else:
+            return self.np_random.randint(low, high)
 
     def _rand_float(self, low, high):
         """

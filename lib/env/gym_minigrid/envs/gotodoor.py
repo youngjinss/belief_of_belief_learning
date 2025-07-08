@@ -61,7 +61,13 @@ class GoToDoorEnv(MiniGridEnv):
         self.mission = "go to the %s door" % self.target_color
 
     def step(self, action):
-        obs, reward, done, info = super().step(action)
+        # Handle both old (4 values) and new (5 values) return styles
+        result = super().step(action)
+        if len(result) == 5:
+            obs, reward, done, truncated, info = result
+        else:
+            obs, reward, done, info = result
+            truncated = False
 
         ax, ay = self.agent_pos
         tx, ty = self.target_pos
@@ -76,7 +82,8 @@ class GoToDoorEnv(MiniGridEnv):
                 reward = self._reward()
             done = True
 
-        return obs, reward, done, info
+        # Return 5 values for gymnasium compatibility
+        return obs, reward, done, truncated, info
 
 
 class GoToDoor8x8Env(GoToDoorEnv):

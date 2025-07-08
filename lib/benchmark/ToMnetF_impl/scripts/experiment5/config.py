@@ -53,9 +53,9 @@ class Config:
         self.use_percentage = 0.9
 
         # N_past settings for character embedding
-        self.n_past_min = 0  # Minimum number of past episodes
-        self.n_past_max = 4  # Maximum number of past episodes
-        self.n_past_infer = 4  # Maximum number for inference
+        self.n_past_min = 1  # Minimum number of past episodes
+        self.n_past_max = 1  # Maximum number of past episodes
+        self.n_past_infer = 1  # Maximum number for inference
         self.use_n_past = True  # Whether to use past episodes for character embedding
 
         # Goal rank matching settings

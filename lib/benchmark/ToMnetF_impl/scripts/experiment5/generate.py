@@ -153,6 +153,7 @@ def save_game_with_labels(
     consumption_labels,
     name="experiment5",
     base_dir="../../data",
+    game_id=None,
 ):
     """
     Save game data with SR and consumption labels
@@ -164,8 +165,10 @@ def save_game_with_labels(
         consumption_labels: Consumption labels
         name: Output directory name
         base_dir: Base directory for saving
+        game_id: Unique game ID for file naming (to avoid race conditions)
     """
     import re
+    import uuid
 
     # REMOVED: Duplicate call - already handled in on_pickup()
     # if env.goal_picked != 0:
@@ -175,22 +178,14 @@ def save_game_with_labels(
     gf = base_dir if name == "" else os.path.join(base_dir, name)
     os.makedirs(gf, exist_ok=True)
 
-    files = os.listdir(gf)
-    r = re.compile(r"test(\d+)\.txt")
-
-    # Choose the number for the new name
-    max_number = 0
-    for file in files:
-        match = r.match(file)
-        if match:
-            number = int(match.group(1))
-            if max_number < number:
-                max_number = number
-
-    new_name_number = max_number + 1
-
-    # Save the Game line by line
-    new_file_path = os.path.join(gf, "test" + str(new_name_number) + ".txt")
+    # Use game_id if provided, otherwise generate a unique filename
+    if game_id is not None:
+        new_file_path = os.path.join(gf, f"test{game_id}.txt")
+    else:
+        # Fallback to unique timestamp-based naming
+        unique_id = str(uuid.uuid4())[:8]
+        timestamp = int(np.random.rand() * 1e9)
+        new_file_path = os.path.join(gf, f"test_{timestamp}_{unique_id}.txt")
 
     with open(new_file_path, "w") as f:
         f.write("Maze:\n")
@@ -329,6 +324,7 @@ def run_single_game(game_id, config_dict, save_dir):
         consumption_labels=consumption_labels,
         name="",
         base_dir=save_dir,
+        game_id=game_id,
     )
     
     return game_id

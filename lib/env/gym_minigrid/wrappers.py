@@ -4,8 +4,13 @@ from functools import reduce
 
 import numpy as np
 
-import gym
-from gym import error, spaces, utils
+try:
+    import gymnasium as gym
+    from gymnasium import error, spaces, utils
+except ImportError:
+    import gym
+    from gym import error, spaces, utils
+
 
 class ActionBonus(gym.core.Wrapper):
     """
@@ -42,6 +47,7 @@ class ActionBonus(gym.core.Wrapper):
     def reset(self, **kwargs):
         return self.env.reset(**kwargs)
 
+
 class StateBonus(gym.core.Wrapper):
     """
     Adds an exploration bonus based on which positions
@@ -59,7 +65,7 @@ class StateBonus(gym.core.Wrapper):
         # Tuple based on which we index the counts
         # We use the position after an update
         env = self.unwrapped
-        tup = (tuple(env.agent_pos))
+        tup = tuple(env.agent_pos)
 
         # Get the count for this key
         pre_count = 0
@@ -78,6 +84,7 @@ class StateBonus(gym.core.Wrapper):
     def reset(self, **kwargs):
         return self.env.reset(**kwargs)
 
+
 class ImgObsWrapper(gym.core.ObservationWrapper):
     """
     Use the image as the only observation output, no language/mission.
@@ -87,10 +94,11 @@ class ImgObsWrapper(gym.core.ObservationWrapper):
         self.__dict__.update(vars(env))  # Pass values to super wrapper
         super().__init__(env)
 
-        self.observation_space = env.observation_space.spaces['image']
+        self.observation_space = env.observation_space.spaces["image"]
 
     def observation(self, obs):
-        return obs['image']
+        return obs["image"]
+
 
 class FullyObsWrapper(gym.core.ObservationWrapper):
     """
@@ -105,14 +113,17 @@ class FullyObsWrapper(gym.core.ObservationWrapper):
             low=0,
             high=255,
             shape=(self.env.width, self.env.height, 3),  # number of cells
-            dtype='uint8'
+            dtype="uint8",
         )
 
     def observation(self, obs):
         env = self.unwrapped
         full_grid = env.grid.encode()
-        full_grid[env.agent_pos[0]][env.agent_pos[1]] = np.array([255, env.agent_dir, 0])
+        full_grid[env.agent_pos[0]][env.agent_pos[1]] = np.array(
+            [255, env.agent_dir, 0]
+        )
         return full_grid
+
 
 class FlatObsWrapper(gym.core.ObservationWrapper):
     """
@@ -127,36 +138,40 @@ class FlatObsWrapper(gym.core.ObservationWrapper):
         self.maxStrLen = maxStrLen
         self.numCharCodes = 27
 
-        imgSpace = env.observation_space.spaces['image']
+        imgSpace = env.observation_space.spaces["image"]
         imgSize = reduce(operator.mul, imgSpace.shape, 1)
 
         self.observation_space = spaces.Box(
             low=0,
             high=255,
             shape=(1, imgSize + self.numCharCodes * self.maxStrLen),
-            dtype='uint8'
+            dtype="uint8",
         )
 
         self.cachedStr = None
         self.cachedArray = None
 
     def observation(self, obs):
-        image = obs['image']
-        mission = obs['mission']
+        image = obs["image"]
+        mission = obs["mission"]
 
         # Cache the last-encoded mission string
         if mission != self.cachedStr:
-            assert len(mission) <= self.maxStrLen, 'mission string too long ({} chars)'.format(len(mission))
+            assert (
+                len(mission) <= self.maxStrLen
+            ), "mission string too long ({} chars)".format(len(mission))
             mission = mission.lower()
 
-            strArray = np.zeros(shape=(self.maxStrLen, self.numCharCodes), dtype='float32')
+            strArray = np.zeros(
+                shape=(self.maxStrLen, self.numCharCodes), dtype="float32"
+            )
 
             for idx, ch in enumerate(mission):
-                if ch >= 'a' and ch <= 'z':
-                    chNo = ord(ch) - ord('a')
-                elif ch == ' ':
-                    chNo = ord('z') - ord('a') + 1
-                assert chNo < self.numCharCodes, '%s : %d' % (ch, chNo)
+                if ch >= "a" and ch <= "z":
+                    chNo = ord(ch) - ord("a")
+                elif ch == " ":
+                    chNo = ord("z") - ord("a") + 1
+                assert chNo < self.numCharCodes, "%s : %d" % (ch, chNo)
                 strArray[idx, chNo] = 1
 
             self.cachedStr = mission
@@ -165,6 +180,7 @@ class FlatObsWrapper(gym.core.ObservationWrapper):
         obs = np.concatenate((image.flatten(), self.cachedArray.flatten()))
 
         return obs
+
 
 class AgentViewWrapper(gym.core.Wrapper):
     """
@@ -180,16 +196,11 @@ class AgentViewWrapper(gym.core.Wrapper):
 
         # Compute observation space with specified view size
         observation_space = gym.spaces.Box(
-            low=0,
-            high=255,
-            shape=(agent_view_size, agent_view_size, 3),
-            dtype='uint8'
+            low=0, high=255, shape=(agent_view_size, agent_view_size, 3), dtype="uint8"
         )
 
         # Override the environment's observation space
-        self.observation_space = spaces.Dict({
-            'image': observation_space
-        })
+        self.observation_space = spaces.Dict({"image": observation_space})
 
     def reset(self, **kwargs):
         return self.env.reset(**kwargs)

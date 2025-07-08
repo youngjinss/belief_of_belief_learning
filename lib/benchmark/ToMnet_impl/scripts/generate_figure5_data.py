@@ -38,8 +38,11 @@ def main():
         "--n_workers", type=int, default=None, help="Number of parallel workers"
     )
     parser.add_argument(
-        "--gamma_values", type=float, nargs='+', default=[0.5, 0.9, 0.99], 
-        help="Discount factors for successor representation (default: 0.5 0.9 0.99)"
+        "--gamma_values",
+        type=float,
+        nargs="+",
+        default=[0.5, 0.9, 0.99],
+        help="Discount factors for successor representation (default: 0.5 0.9 0.99)",
     )
 
     # Output parameters

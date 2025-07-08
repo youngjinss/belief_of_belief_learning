@@ -5,6 +5,7 @@ from PyQt5.QtCore import QPoint, QSize, QRect
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QTextEdit
 from PyQt5.QtWidgets import QHBoxLayout, QVBoxLayout, QLabel, QFrame
 
+
 class Window(QMainWindow):
     """
     Simple application window to render the environment into
@@ -13,7 +14,7 @@ class Window(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        self.setWindowTitle('MiniGrid Gym Environment')
+        self.setWindowTitle("MiniGrid Gym Environment")
 
         # Image label to display the rendering
         self.imgLabel = QLabel()
@@ -67,33 +68,34 @@ class Window(QMainWindow):
 
         keyName = None
         if e.key() == Qt.Key_Left:
-            keyName = 'LEFT'
+            keyName = "LEFT"
         elif e.key() == Qt.Key_Right:
-            keyName = 'RIGHT'
+            keyName = "RIGHT"
         elif e.key() == Qt.Key_Up:
-            keyName = 'UP'
+            keyName = "UP"
         elif e.key() == Qt.Key_Down:
-            keyName = 'DOWN'
+            keyName = "DOWN"
         elif e.key() == Qt.Key_Space:
-            keyName = 'SPACE'
+            keyName = "SPACE"
         elif e.key() == Qt.Key_Return:
-            keyName = 'RETURN'
+            keyName = "RETURN"
         elif e.key() == Qt.Key_Alt:
-            keyName = 'ALT'
+            keyName = "ALT"
         elif e.key() == Qt.Key_Control:
-            keyName = 'CTRL'
+            keyName = "CTRL"
         elif e.key() == Qt.Key_PageUp:
-            keyName = 'PAGE_UP'
+            keyName = "PAGE_UP"
         elif e.key() == Qt.Key_PageDown:
-            keyName = 'PAGE_DOWN'
+            keyName = "PAGE_DOWN"
         elif e.key() == Qt.Key_Backspace:
-            keyName = 'BACKSPACE'
+            keyName = "BACKSPACE"
         elif e.key() == Qt.Key_Escape:
-            keyName = 'ESCAPE'
+            keyName = "ESCAPE"
 
         if keyName == None:
             return
         self.keyDownCb(keyName)
+
 
 class Renderer:
     def __init__(self, width, height, ownWindow=False):
@@ -147,7 +149,7 @@ class Renderer:
 
         numBytes = self.width * self.height * 3
         buf = self.img.bits().asstring(numBytes)
-        output = np.frombuffer(buf, dtype='uint8')
+        output = np.frombuffer(buf, dtype="uint8")
         output = output.reshape(shape)
 
         return output

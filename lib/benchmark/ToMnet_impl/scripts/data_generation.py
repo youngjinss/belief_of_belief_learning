@@ -104,11 +104,11 @@ def create_training_samples_for_agent(args):
         grid_size,
         max_walls,
         max_steps,
-        gamma_values
+        gamma_values,
     ) = args
-    
+
     agent_samples = []
-    
+
     # Create training samples for this agent
     for query_episode_id in range(n_episodes_per_agent):
         # Sample number of past episodes
@@ -130,16 +130,14 @@ def create_training_samples_for_agent(args):
 
         # Create samples for each step in query trajectory
         # Limit steps to avoid excessive computation
-        max_steps_per_episode = min(
-            len(query_trajectory.actions), MAX_STEPS
-        )
-        
+        max_steps_per_episode = min(len(query_trajectory.actions), MAX_STEPS)
+
         # Reconstruct environment once per episode (cache for reuse)
         env_copy = GridWorld(grid_size, max_walls, max_steps)
         env_copy.walls = query_trajectory.env_state["walls"]
         env_copy.objects = query_trajectory.env_state["objects"]
         env_copy.agent_pos = query_trajectory.env_state["initial_agent_pos"]
-        
+
         # Pre-compute successor representations for all steps in batch with discount factors
         sr_cache = {}
         for step_idx in range(max_steps_per_episode):
@@ -153,16 +151,16 @@ def create_training_samples_for_agent(args):
                     sr_all_gammas.append(sr)
                 # Stack along first dimension: (3, grid_size, grid_size)
                 sr_cache[step_idx] = np.stack(sr_all_gammas, axis=0)
-        
+
         # Object consumption (compute once per episode)
         consumed_objects = np.zeros(4)  # One-hot encoding
         if "consumed_object" in query_trajectory.__dict__:
             for obj in query_trajectory.consumed_object:
                 consumed_objects[obj - 1] = 1.0
-        
+
         # Build trajectories incrementally to avoid redundant copying
         current_trajectory = TrajectoryData()
-        
+
         for step_idx in range(max_steps_per_episode):
             # Get true labels
             current_state = query_trajectory.states[step_idx]
@@ -182,7 +180,7 @@ def create_training_samples_for_agent(args):
                 "n_past": len(past_trajectories),
                 "step_idx": step_idx,
             }
-            
+
             # Copy current trajectory data up to this step
             for i in range(step_idx):
                 sample["current_trajectory"].add_step(
@@ -190,9 +188,9 @@ def create_training_samples_for_agent(args):
                     query_trajectory.actions[i],
                     query_trajectory.rewards[i],
                 )
-            
+
             agent_samples.append(sample)
-    
+
     return agent_samples
 
 
@@ -393,36 +391,44 @@ class DataGenerator:
 
         # Create training samples in parallel
         print(f"\nCreating training samples from {n_agents} agents...")
-        
+
         # Prepare arguments for parallel processing of training samples
         sample_creation_args = []
         for agent_id in range(n_agents):
-            sample_creation_args.append((
-                agent_id,
-                agents[agent_id],
-                all_agent_trajectories[agent_id],
-                n_episodes_per_agent,
-                min_past,
-                max_past,
-                self.grid_size,
-                self.max_walls,
-                self.max_steps,
-                gamma_values
-            ))
-        
+            sample_creation_args.append(
+                (
+                    agent_id,
+                    agents[agent_id],
+                    all_agent_trajectories[agent_id],
+                    n_episodes_per_agent,
+                    min_past,
+                    max_past,
+                    self.grid_size,
+                    self.max_walls,
+                    self.max_steps,
+                    gamma_values,
+                )
+            )
+
         # Process training samples in parallel with chunk size optimization
         all_data = []
-        chunk_size = max(1, n_agents // (n_workers * 4))  # Optimize chunk size for better load balancing
-        
+        chunk_size = max(
+            1, n_agents // (n_workers * 4)
+        )  # Optimize chunk size for better load balancing
+
         with Pool(n_workers) as pool:
             results = list(
                 tqdm(
-                    pool.imap(create_training_samples_for_agent, sample_creation_args, chunksize=chunk_size),
+                    pool.imap(
+                        create_training_samples_for_agent,
+                        sample_creation_args,
+                        chunksize=chunk_size,
+                    ),
                     total=n_agents,
-                    desc="Processing agents"
+                    desc="Processing agents",
                 )
             )
-            
+
             for agent_samples in results:
                 all_data.extend(agent_samples)
 

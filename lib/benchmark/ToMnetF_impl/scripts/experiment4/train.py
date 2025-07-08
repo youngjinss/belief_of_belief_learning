@@ -25,43 +25,43 @@ def calculate_sr_loss_kl_divergence(sr_pred, sr_target):
     """
     Calculate SR loss using KL divergence for probability distributions
     Vectorized version for efficiency
-    
+
     Args:
         sr_pred: Predicted SR maps (batch_size, 3, height, width)
         sr_target: Target SR maps (batch_size, 3, height, width)
-    
+
     Returns:
         sr_loss: KL divergence loss averaged over discount factors
     """
     batch_size, n_gammas, height, width = sr_pred.shape
-    
+
     # Vectorized reshape: (batch_size, 3, height*width)
     sr_pred_flat = sr_pred.view(batch_size, n_gammas, -1)
     sr_target_flat = sr_target.view(batch_size, n_gammas, -1)
-    
+
     # Ensure predictions are probability distributions (softmax already applied in model)
     # sr_pred_flat should already be softmax from model output
-    
+
     # Ensure targets are probability distributions and handle edge cases
     # Normalize along spatial dimension (dim=2)
     sr_target_flat = sr_target_flat / (sr_target_flat.sum(dim=2, keepdim=True) + 1e-8)
-    
+
     # Add small epsilon to avoid log(0)
     sr_pred_flat_safe = sr_pred_flat + 1e-8
     sr_target_flat_safe = sr_target_flat + 1e-8
-    
+
     # Vectorized KL divergence computation for all gammas at once
     # KL(target || pred) = sum(target * log(target/pred))
     kl_loss = torch.nn.functional.kl_div(
-        sr_pred_flat_safe.log(), 
-        sr_target_flat_safe, 
-        reduction='none'  # Keep batch and gamma dimensions
+        sr_pred_flat_safe.log(),
+        sr_target_flat_safe,
+        reduction="none",  # Keep batch and gamma dimensions
     )
-    
+
     # Sum over spatial dimension, then average over batch and gamma
     kl_loss = kl_loss.sum(dim=2)  # (batch_size, n_gammas)
     kl_loss = kl_loss.mean()  # Average over batch and gamma dimensions
-    
+
     return kl_loss
 
 

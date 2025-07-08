@@ -1,49 +1,48 @@
 import math
-import gym
+
+try:
+    import gymnasium as gym
+    from gymnasium import error, spaces, utils
+    from gymnasium.utils import seeding
+except ImportError:
+    import gym
+    from gym import error, spaces, utils
+    from gym.utils import seeding
 from enum import IntEnum
 import numpy as np
-from gym import error, spaces, utils
-from gym.utils import seeding
 
 # Size in pixels of a cell in the full-scale human view
 CELL_PIXELS = 32
 
 # Map of color names to RGB values
 COLORS = {
-    'red'   : np.array([255, 0, 0]),
-    'green' : np.array([0, 255, 0]),
-    'blue'  : np.array([0, 0, 255]),
-    'purple': np.array([112, 39, 195]),
-    'yellow': np.array([255, 255, 0]),
-    'grey'  : np.array([100, 100, 100])
+    "red": np.array([255, 0, 0]),
+    "green": np.array([0, 255, 0]),
+    "blue": np.array([0, 0, 255]),
+    "purple": np.array([112, 39, 195]),
+    "yellow": np.array([255, 255, 0]),
+    "grey": np.array([100, 100, 100]),
 }
 
 COLOR_NAMES = sorted(list(COLORS.keys()))
 
 # Used to map colors to integers
-COLOR_TO_IDX = {
-    'red'   : 0,
-    'green' : 1,
-    'blue'  : 2,
-    'purple': 3,
-    'yellow': 4,
-    'grey'  : 5
-}
+COLOR_TO_IDX = {"red": 0, "green": 1, "blue": 2, "purple": 3, "yellow": 4, "grey": 5}
 
 IDX_TO_COLOR = dict(zip(COLOR_TO_IDX.values(), COLOR_TO_IDX.keys()))
 
 # Map of object type to integers
 OBJECT_TO_IDX = {
-    'unseen'        : 0,
-    'empty'         : 1,
-    'wall'          : 2,
-    'floor'         : 3,
-    'door'          : 4,
-    'key'           : 5,
-    'ball'          : 6,
-    'box'           : 7,
-    'goal'          : 8,
-    'lava'          : 9
+    "unseen": 0,
+    "empty": 1,
+    "wall": 2,
+    "floor": 3,
+    "door": 4,
+    "key": 5,
+    "ball": 6,
+    "box": 7,
+    "goal": 8,
+    "lava": 9,
 }
 
 IDX_TO_OBJECT = dict(zip(OBJECT_TO_IDX.values(), OBJECT_TO_IDX.keys()))
@@ -59,6 +58,7 @@ DIR_TO_VEC = [
     # Up (negative Y)
     np.array((0, -1)),
 ]
+
 
 class WorldObj:
     """
@@ -97,7 +97,7 @@ class WorldObj:
 
     @init_pos.setter
     def init_pos(self, new_pos):
-        assert(isinstance(new_pos, np.ndarray))
+        assert isinstance(new_pos, np.ndarray)
         self._init_pos = new_pos.copy()
 
     def can_overlap(self):
@@ -130,29 +130,28 @@ class WorldObj:
         r.setLineColor(c[0], c[1], c[2])
         r.setColor(c[0], c[1], c[2])
 
+
 class Goal(WorldObj):
     def __init__(self):
-        super().__init__('goal', 'green')
+        super().__init__("goal", "green")
 
     def can_overlap(self):
         return True
 
     def render(self, r):
         self._set_color(r)
-        r.drawPolygon([
-            (0          , CELL_PIXELS),
-            (CELL_PIXELS, CELL_PIXELS),
-            (CELL_PIXELS,           0),
-            (0          ,           0)
-        ])
+        r.drawPolygon(
+            [(0, CELL_PIXELS), (CELL_PIXELS, CELL_PIXELS), (CELL_PIXELS, 0), (0, 0)]
+        )
+
 
 class Floor(WorldObj):
     """
     Colored floor tile the agent can walk over
     """
 
-    def __init__(self, color='blue'):
-        super().__init__('floor', color)
+    def __init__(self, color="blue"):
+        super().__init__("floor", color)
 
     def can_overlap(self):
         return True
@@ -161,17 +160,15 @@ class Floor(WorldObj):
         # Give the floor a pale color
         c = COLORS[self.color]
         r.setLineColor(100, 100, 100, 0)
-        r.setColor(*c/2)
-        r.drawPolygon([
-            (1          , CELL_PIXELS),
-            (CELL_PIXELS, CELL_PIXELS),
-            (CELL_PIXELS,           1),
-            (1          ,           1)
-        ])
+        r.setColor(*c / 2)
+        r.drawPolygon(
+            [(1, CELL_PIXELS), (CELL_PIXELS, CELL_PIXELS), (CELL_PIXELS, 1), (1, 1)]
+        )
+
 
 class Lava(WorldObj):
     def __init__(self):
-        super().__init__('lava', 'red')
+        super().__init__("lava", "red")
 
     def can_overlap(self):
         return True
@@ -180,59 +177,61 @@ class Lava(WorldObj):
         orange = 255, 128, 0
         r.setLineColor(*orange)
         r.setColor(*orange)
-        r.drawPolygon([
-            (0          , CELL_PIXELS),
-            (CELL_PIXELS, CELL_PIXELS),
-            (CELL_PIXELS, 0),
-            (0          , 0)
-        ])
+        r.drawPolygon(
+            [(0, CELL_PIXELS), (CELL_PIXELS, CELL_PIXELS), (CELL_PIXELS, 0), (0, 0)]
+        )
 
         # drawing the waves
         r.setLineColor(0, 0, 0)
 
-        r.drawPolyline([
-            (.1 * CELL_PIXELS, .3 * CELL_PIXELS),
-            (.3 * CELL_PIXELS, .4 * CELL_PIXELS),
-            (.5 * CELL_PIXELS, .3 * CELL_PIXELS),
-            (.7 * CELL_PIXELS, .4 * CELL_PIXELS),
-            (.9 * CELL_PIXELS, .3 * CELL_PIXELS),
-        ])
+        r.drawPolyline(
+            [
+                (0.1 * CELL_PIXELS, 0.3 * CELL_PIXELS),
+                (0.3 * CELL_PIXELS, 0.4 * CELL_PIXELS),
+                (0.5 * CELL_PIXELS, 0.3 * CELL_PIXELS),
+                (0.7 * CELL_PIXELS, 0.4 * CELL_PIXELS),
+                (0.9 * CELL_PIXELS, 0.3 * CELL_PIXELS),
+            ]
+        )
 
-        r.drawPolyline([
-            (.1 * CELL_PIXELS, .5 * CELL_PIXELS),
-            (.3 * CELL_PIXELS, .6 * CELL_PIXELS),
-            (.5 * CELL_PIXELS, .5 * CELL_PIXELS),
-            (.7 * CELL_PIXELS, .6 * CELL_PIXELS),
-            (.9 * CELL_PIXELS, .5 * CELL_PIXELS),
-        ])
+        r.drawPolyline(
+            [
+                (0.1 * CELL_PIXELS, 0.5 * CELL_PIXELS),
+                (0.3 * CELL_PIXELS, 0.6 * CELL_PIXELS),
+                (0.5 * CELL_PIXELS, 0.5 * CELL_PIXELS),
+                (0.7 * CELL_PIXELS, 0.6 * CELL_PIXELS),
+                (0.9 * CELL_PIXELS, 0.5 * CELL_PIXELS),
+            ]
+        )
 
-        r.drawPolyline([
-            (.1 * CELL_PIXELS, .7 * CELL_PIXELS),
-            (.3 * CELL_PIXELS, .8 * CELL_PIXELS),
-            (.5 * CELL_PIXELS, .7 * CELL_PIXELS),
-            (.7 * CELL_PIXELS, .8 * CELL_PIXELS),
-            (.9 * CELL_PIXELS, .7 * CELL_PIXELS),
-        ])
+        r.drawPolyline(
+            [
+                (0.1 * CELL_PIXELS, 0.7 * CELL_PIXELS),
+                (0.3 * CELL_PIXELS, 0.8 * CELL_PIXELS),
+                (0.5 * CELL_PIXELS, 0.7 * CELL_PIXELS),
+                (0.7 * CELL_PIXELS, 0.8 * CELL_PIXELS),
+                (0.9 * CELL_PIXELS, 0.7 * CELL_PIXELS),
+            ]
+        )
+
 
 class Wall(WorldObj):
-    def __init__(self, color='grey'):
-        super().__init__('wall', color)
+    def __init__(self, color="grey"):
+        super().__init__("wall", color)
 
     def see_behind(self):
         return False
 
     def render(self, r):
         self._set_color(r)
-        r.drawPolygon([
-            (0          , CELL_PIXELS),
-            (CELL_PIXELS, CELL_PIXELS),
-            (CELL_PIXELS,           0),
-            (0          ,           0)
-        ])
+        r.drawPolygon(
+            [(0, CELL_PIXELS), (CELL_PIXELS, CELL_PIXELS), (CELL_PIXELS, 0), (0, 0)]
+        )
+
 
 class Door(WorldObj):
     def __init__(self, color, is_open=False, is_locked=False):
-        super().__init__('door', color)
+        super().__init__("door", color)
         self.is_open = is_open
         self.is_locked = is_locked
 
@@ -266,26 +265,27 @@ class Door(WorldObj):
         r.setColor(c[0], c[1], c[2], 50 if self.is_locked else 0)
 
         if self.is_open:
-            r.drawPolygon([
-                (CELL_PIXELS-2, CELL_PIXELS),
-                (CELL_PIXELS  , CELL_PIXELS),
-                (CELL_PIXELS  ,           0),
-                (CELL_PIXELS-2,           0)
-            ])
+            r.drawPolygon(
+                [
+                    (CELL_PIXELS - 2, CELL_PIXELS),
+                    (CELL_PIXELS, CELL_PIXELS),
+                    (CELL_PIXELS, 0),
+                    (CELL_PIXELS - 2, 0),
+                ]
+            )
             return
 
-        r.drawPolygon([
-            (0          , CELL_PIXELS),
-            (CELL_PIXELS, CELL_PIXELS),
-            (CELL_PIXELS,           0),
-            (0          ,           0)
-        ])
-        r.drawPolygon([
-            (2            , CELL_PIXELS-2),
-            (CELL_PIXELS-2, CELL_PIXELS-2),
-            (CELL_PIXELS-2,           2),
-            (2            ,           2)
-        ])
+        r.drawPolygon(
+            [(0, CELL_PIXELS), (CELL_PIXELS, CELL_PIXELS), (CELL_PIXELS, 0), (0, 0)]
+        )
+        r.drawPolygon(
+            [
+                (2, CELL_PIXELS - 2),
+                (CELL_PIXELS - 2, CELL_PIXELS - 2),
+                (CELL_PIXELS - 2, 2),
+                (2, 2),
+            ]
+        )
 
         if self.is_locked:
             # Draw key slot
@@ -293,15 +293,16 @@ class Door(WorldObj):
                 CELL_PIXELS * 0.55,
                 CELL_PIXELS * 0.5,
                 CELL_PIXELS * 0.75,
-                CELL_PIXELS * 0.5
+                CELL_PIXELS * 0.5,
             )
         else:
             # Draw door handle
             r.drawCircle(CELL_PIXELS * 0.75, CELL_PIXELS * 0.5, 2)
 
+
 class Key(WorldObj):
-    def __init__(self, color='blue'):
-        super(Key, self).__init__('key', color)
+    def __init__(self, color="blue"):
+        super(Key, self).__init__("key", color)
 
     def can_pickup(self):
         return True
@@ -310,35 +311,21 @@ class Key(WorldObj):
         self._set_color(r)
 
         # Vertical quad
-        r.drawPolygon([
-            (16, 10),
-            (20, 10),
-            (20, 28),
-            (16, 28)
-        ])
+        r.drawPolygon([(16, 10), (20, 10), (20, 28), (16, 28)])
 
         # Teeth
-        r.drawPolygon([
-            (12, 19),
-            (16, 19),
-            (16, 21),
-            (12, 21)
-        ])
-        r.drawPolygon([
-            (12, 26),
-            (16, 26),
-            (16, 28),
-            (12, 28)
-        ])
+        r.drawPolygon([(12, 19), (16, 19), (16, 21), (12, 21)])
+        r.drawPolygon([(12, 26), (16, 26), (16, 28), (12, 28)])
 
         r.drawCircle(18, 9, 6)
         r.setLineColor(0, 0, 0)
         r.setColor(0, 0, 0)
         r.drawCircle(18, 9, 2)
 
+
 class Ball(WorldObj):
-    def __init__(self, color='blue'):
-        super(Ball, self).__init__('ball', color)
+    def __init__(self, color="blue"):
+        super(Ball, self).__init__("ball", color)
 
     def can_pickup(self):
         return True
@@ -347,9 +334,10 @@ class Ball(WorldObj):
         self._set_color(r)
         r.drawCircle(CELL_PIXELS * 0.5, CELL_PIXELS * 0.5, 10)
 
+
 class Box(WorldObj):
     def __init__(self, color, contains=None):
-        super(Box, self).__init__('box', color)
+        super(Box, self).__init__("box", color)
         self.contains = contains
 
     def can_pickup(self):
@@ -361,19 +349,16 @@ class Box(WorldObj):
         r.setColor(0, 0, 0)
         r.setLineWidth(2)
 
-        r.drawPolygon([
-            (4            , CELL_PIXELS-4),
-            (CELL_PIXELS-4, CELL_PIXELS-4),
-            (CELL_PIXELS-4,             4),
-            (4            ,             4)
-        ])
-
-        r.drawLine(
-            4,
-            CELL_PIXELS / 2,
-            CELL_PIXELS - 4,
-            CELL_PIXELS / 2
+        r.drawPolygon(
+            [
+                (4, CELL_PIXELS - 4),
+                (CELL_PIXELS - 4, CELL_PIXELS - 4),
+                (CELL_PIXELS - 4, 4),
+                (4, 4),
+            ]
         )
+
+        r.drawLine(4, CELL_PIXELS / 2, CELL_PIXELS - 4, CELL_PIXELS / 2)
 
         r.setLineWidth(1)
 
@@ -381,6 +366,7 @@ class Box(WorldObj):
         # Replace the box by its contents
         env.grid.set(*pos, self.contains)
         return True
+
 
 class Grid:
     """
@@ -421,6 +407,7 @@ class Grid:
 
     def copy(self):
         from copy import deepcopy
+
         return deepcopy(self)
 
     def set(self, i, j, v):
@@ -450,9 +437,9 @@ class Grid:
 
     def wall_rect(self, x, y, w, h):
         self.horz_wall(x, y, w)
-        self.horz_wall(x, y+h-1, w)
+        self.horz_wall(x, y + h - 1, w)
         self.vert_wall(x, y, h)
-        self.vert_wall(x+w-1, y, h)
+        self.vert_wall(x + w - 1, y, h)
 
     def rotate_left(self):
         """
@@ -480,8 +467,7 @@ class Grid:
                 x = topX + i
                 y = topY + j
 
-                if x >= 0 and x < self.width and \
-                   y >= 0 and y < self.height:
+                if x >= 0 and x < self.width and y >= 0 and y < self.height:
                     v = self.get(x, y)
                 else:
                     v = Wall()
@@ -511,13 +497,7 @@ class Grid:
         r.scale(tile_size / CELL_PIXELS, tile_size / CELL_PIXELS)
 
         # Draw the background of the in-world cells black
-        r.fillRect(
-            0,
-            0,
-            widthPx,
-            heightPx,
-            0, 0, 0
-        )
+        r.fillRect(0, 0, widthPx, heightPx, 0, 0, 0)
 
         # Draw grid lines
         r.setLineColor(100, 100, 100)
@@ -549,22 +529,22 @@ class Grid:
         if vis_mask is None:
             vis_mask = np.ones((self.width, self.height), dtype=bool)
 
-        array = np.zeros((self.width, self.height, 3), dtype='uint8')
+        array = np.zeros((self.width, self.height, 3), dtype="uint8")
         for i in range(self.width):
             for j in range(self.height):
                 if vis_mask[i, j]:
                     v = self.get(i, j)
 
                     if v is None:
-                        array[i, j, 0] = OBJECT_TO_IDX['empty']
+                        array[i, j, 0] = OBJECT_TO_IDX["empty"]
                         array[i, j, 1] = 0
                         array[i, j, 2] = 0
                     else:
                         # State, 0: open, 1: closed, 2: locked
                         state = 0
-                        if hasattr(v, 'is_open') and not v.is_open:
+                        if hasattr(v, "is_open") and not v.is_open:
                             state = 1
-                        if hasattr(v, 'is_locked') and v.is_locked:
+                        if hasattr(v, "is_locked") and v.is_locked:
                             state = 2
 
                         array[i, j, 0] = OBJECT_TO_IDX[v.type]
@@ -587,8 +567,10 @@ class Grid:
             for j in range(height):
                 typeIdx, colorIdx, state = array[i, j]
 
-                if typeIdx == OBJECT_TO_IDX['unseen'] or \
-                        typeIdx == OBJECT_TO_IDX['empty']:
+                if (
+                    typeIdx == OBJECT_TO_IDX["unseen"]
+                    or typeIdx == OBJECT_TO_IDX["empty"]
+                ):
                     continue
 
                 objType = IDX_TO_OBJECT[typeIdx]
@@ -597,21 +579,21 @@ class Grid:
                 is_open = state == 0
                 is_locked = state == 2
 
-                if objType == 'wall':
+                if objType == "wall":
                     v = Wall(color)
-                elif objType == 'floor':
+                elif objType == "floor":
                     v = Floor(color)
-                elif objType == 'ball':
+                elif objType == "ball":
                     v = Ball(color)
-                elif objType == 'key':
+                elif objType == "key":
                     v = Key(color)
-                elif objType == 'box':
+                elif objType == "box":
                     v = Box(color)
-                elif objType == 'door':
+                elif objType == "door":
                     v = Door(color, is_open, is_locked)
-                elif objType == 'goal':
+                elif objType == "goal":
                     v = Goal()
-                elif objType == 'lava':
+                elif objType == "lava":
                     v = Lava()
                 else:
                     assert False, "unknown obj type in decode '%s'" % objType
@@ -626,7 +608,7 @@ class Grid:
         mask[agent_pos[0], agent_pos[1]] = True
 
         for j in reversed(range(0, grid.height)):
-            for i in range(0, grid.width-1):
+            for i in range(0, grid.width - 1):
                 if not mask[i, j]:
                     continue
 
@@ -634,10 +616,10 @@ class Grid:
                 if cell and not cell.see_behind():
                     continue
 
-                mask[i+1, j] = True
+                mask[i + 1, j] = True
                 if j > 0:
-                    mask[i+1, j-1] = True
-                    mask[i, j-1] = True
+                    mask[i + 1, j - 1] = True
+                    mask[i, j - 1] = True
 
             for i in reversed(range(1, grid.width)):
                 if not mask[i, j]:
@@ -647,10 +629,10 @@ class Grid:
                 if cell and not cell.see_behind():
                     continue
 
-                mask[i-1, j] = True
+                mask[i - 1, j] = True
                 if j > 0:
-                    mask[i-1, j-1] = True
-                    mask[i, j-1] = True
+                    mask[i - 1, j - 1] = True
+                    mask[i, j - 1] = True
 
         for j in range(0, grid.height):
             for i in range(0, grid.width):
@@ -659,14 +641,15 @@ class Grid:
 
         return mask
 
+
 class MiniGridEnv(gym.Env):
     """
     2D grid world game environment
     """
 
     metadata = {
-        'render.modes': ['human', 'rgb_array', 'pixmap'],
-        'video.frames_per_second' : 10
+        "render.modes": ["human", "rgb_array", "pixmap"],
+        "video.frames_per_second": 10,
     }
 
     # Enumeration of possible actions
@@ -694,7 +677,7 @@ class MiniGridEnv(gym.Env):
         max_steps=100,
         see_through_walls=False,
         seed=1337,
-        agent_view_size=7
+        agent_view_size=7,
     ):
         # Can't set both grid_size and width/height
         if grid_size:
@@ -717,11 +700,9 @@ class MiniGridEnv(gym.Env):
             low=0,
             high=255,
             shape=(self.agent_view_size, self.agent_view_size, 3),
-            dtype='uint8'
+            dtype="uint8",
         )
-        self.observation_space = spaces.Dict({
-            'image': self.observation_space
-        })
+        self.observation_space = spaces.Dict({"image": self.observation_space})
 
         # Range of possible rewards
         self.reward_range = (0, 1)
@@ -795,28 +776,23 @@ class MiniGridEnv(gym.Env):
 
         # Map of object types to short string
         OBJECT_TO_STR = {
-            'wall'          : 'W',
-            'floor'         : 'F',
-            'door'          : 'D',
-            'key'           : 'K',
-            'ball'          : 'A',
-            'box'           : 'B',
-            'goal'          : 'G',
-            'lava'          : 'V',
+            "wall": "W",
+            "floor": "F",
+            "door": "D",
+            "key": "K",
+            "ball": "A",
+            "box": "B",
+            "goal": "G",
+            "lava": "V",
         }
 
         # Short string for opened door
-        OPENDED_DOOR_IDS = '_'
+        OPENDED_DOOR_IDS = "_"
 
         # Map agent's direction to short string
-        AGENT_DIR_TO_STR = {
-            0: '>',
-            1: 'V',
-            2: '<',
-            3: '^'
-        }
+        AGENT_DIR_TO_STR = {0: ">", 1: "V", 2: "<", 3: "^"}
 
-        str = ''
+        str = ""
 
         for j in range(self.grid.height):
 
@@ -828,22 +804,22 @@ class MiniGridEnv(gym.Env):
                 c = self.grid.get(i, j)
 
                 if c == None:
-                    str += '  '
+                    str += "  "
                     continue
 
-                if c.type == 'door':
+                if c.type == "door":
                     if c.is_open:
-                        str += '__'
+                        str += "__"
                     elif c.is_locked:
-                        str += 'L' + c.color[0].upper()
+                        str += "L" + c.color[0].upper()
                     else:
-                        str += 'D' + c.color[0].upper()
+                        str += "D" + c.color[0].upper()
                     continue
 
                 str += OBJECT_TO_STR[c.type] + c.color[0].upper()
 
             if j < self.grid.height - 1:
-                str += '\n'
+                str += "\n"
 
         return str
 
@@ -861,8 +837,11 @@ class MiniGridEnv(gym.Env):
         """
         Generate random integer in [low,high[
         """
-
-        return self.np_random.randint(low, high)
+        # Handle both old and new numpy API
+        if hasattr(self.np_random, "integers"):
+            return self.np_random.integers(low, high)
+        else:
+            return self.np_random.randint(low, high)
 
     def _rand_float(self, low, high):
         """
@@ -876,7 +855,7 @@ class MiniGridEnv(gym.Env):
         Generate random boolean value
         """
 
-        return (self.np_random.randint(0, 2) == 0)
+        return self.np_random.randint(0, 2) == 0
 
     def _rand_elem(self, iterable):
         """
@@ -918,16 +897,10 @@ class MiniGridEnv(gym.Env):
 
         return (
             self.np_random.randint(xLow, xHigh),
-            self.np_random.randint(yLow, yHigh)
+            self.np_random.randint(yLow, yHigh),
         )
 
-    def place_obj(self,
-        obj,
-        top=None,
-        size=None,
-        reject_fn=None,
-        max_tries=math.inf
-    ):
+    def place_obj(self, obj, top=None, size=None, reject_fn=None, max_tries=math.inf):
         """
         Place an object at an empty position in the grid
 
@@ -948,14 +921,16 @@ class MiniGridEnv(gym.Env):
             # This is to handle with rare cases where rejection sampling
             # gets stuck in an infinite loop
             if num_tries > max_tries:
-                raise RecursionError('rejection sampling failed in place_obj')
+                raise RecursionError("rejection sampling failed in place_obj")
 
             num_tries += 1
 
-            pos = np.array((
-                self._rand_int(top[0], top[0] + size[0]),
-                self._rand_int(top[1], top[1] + size[1])
-            ))
+            pos = np.array(
+                (
+                    self._rand_int(top[0], top[0] + size[0]),
+                    self._rand_int(top[1], top[1] + size[1]),
+                )
+            )
 
             # Don't place the object on top of another object
             if self.grid.get(*pos) != None:
@@ -979,13 +954,7 @@ class MiniGridEnv(gym.Env):
 
         return pos
 
-    def place_agent(
-        self,
-        top=None,
-        size=None,
-        rand_dir=True,
-        max_tries=math.inf
-    ):
+    def place_agent(self, top=None, size=None, rand_dir=True, max_tries=math.inf):
         """
         Set the agent's starting point at an empty position in the grid
         """
@@ -1040,16 +1009,16 @@ class MiniGridEnv(gym.Env):
         # Compute the absolute coordinates of the top-left view corner
         sz = self.agent_view_size
         hs = self.agent_view_size // 2
-        tx = ax + (dx * (sz-1)) - (rx * hs)
-        ty = ay + (dy * (sz-1)) - (ry * hs)
+        tx = ax + (dx * (sz - 1)) - (rx * hs)
+        ty = ay + (dy * (sz - 1)) - (ry * hs)
 
         lx = i - tx
         ly = j - ty
 
         # Project the coordinates of the object relative to the top-left
         # corner onto the agent's own coordinate system
-        vx = (rx*lx + ry*ly)
-        vy = -(dx*lx + dy*ly)
+        vx = rx * lx + ry * ly
+        vy = -(dx * lx + dy * ly)
 
         return vx, vy
 
@@ -1113,7 +1082,7 @@ class MiniGridEnv(gym.Env):
         vx, vy = coordinates
 
         obs = self.gen_obs()
-        obs_grid = Grid.decode(obs['image'])
+        obs_grid = Grid.decode(obs["image"])
         obs_cell = obs_grid.get(vx, vy)
         world_cell = self.grid.get(x, y)
 
@@ -1147,13 +1116,12 @@ class MiniGridEnv(gym.Env):
             if fwd_cell == None or fwd_cell.can_overlap():
                 self.agent_pos = fwd_pos
             else:
-                if fwd_cell != None and fwd_cell.type == 'goal':
+                if fwd_cell != None and fwd_cell.type == "goal":
                     done = True
                     reward = self._reward()
-                if fwd_cell != None and fwd_cell.type == 'lava':
+                if fwd_cell != None and fwd_cell.type == "lava":
                     done = True
                 stuck = True
-
 
         # Pick up an object
         elif action == self.actions.pickup:
@@ -1212,7 +1180,9 @@ class MiniGridEnv(gym.Env):
         # Process occluders and visibility
         # Note that this incurs some performance cost
         if not self.see_through_walls:
-            vis_mask = grid.process_vis(agent_pos=(self.agent_view_size // 2 , self.agent_view_size - 1))
+            vis_mask = grid.process_vis(
+                agent_pos=(self.agent_view_size // 2, self.agent_view_size - 1)
+            )
         else:
             vis_mask = np.ones(shape=(grid.width, grid.height), dtype=np.bool)
 
@@ -1237,30 +1207,28 @@ class MiniGridEnv(gym.Env):
         # Encode the partially observable view into a numpy array
         image = grid.encode(vis_mask)
 
-        assert hasattr(self, 'mission'), "environments must define a textual mission string"
+        assert hasattr(
+            self, "mission"
+        ), "environments must define a textual mission string"
 
         # Observations are dictionaries containing:
         # - an image (partially observable view of the environment)
         # - the agent's direction/orientation (acting as a compass)
         # - a textual mission string (instructions for the agent)
-        obs = {
-            'image': image,
-            'direction': self.agent_dir,
-            'mission': self.mission
-        }
+        obs = {"image": image, "direction": self.agent_dir, "mission": self.mission}
 
         return obs
 
-    def get_obs_render(self, obs, tile_pixels=CELL_PIXELS//2):
+    def get_obs_render(self, obs, tile_pixels=CELL_PIXELS // 2):
         """
         Render an agent observation for visualization
         """
 
         if self.obs_render == None:
             from gym_minigrid.rendering import Renderer
+
             self.obs_render = Renderer(
-                self.agent_view_size * tile_pixels,
-                self.agent_view_size * tile_pixels
+                self.agent_view_size * tile_pixels, self.agent_view_size * tile_pixels
             )
 
         r = self.obs_render
@@ -1278,23 +1246,19 @@ class MiniGridEnv(gym.Env):
         r.scale(ratio, ratio)
         r.translate(
             CELL_PIXELS * (0.5 + self.agent_view_size // 2),
-            CELL_PIXELS * (self.agent_view_size - 0.5)
+            CELL_PIXELS * (self.agent_view_size - 0.5),
         )
         r.rotate(3 * 90)
         r.setLineColor(255, 0, 0)
         r.setColor(255, 0, 0)
-        r.drawPolygon([
-            (-12, 10),
-            ( 12,  0),
-            (-12, -10)
-        ])
+        r.drawPolygon([(-12, 10), (12, 0), (-12, -10)])
         r.pop()
 
         r.endFrame()
 
         return r.getPixmap()
 
-    def render(self, mode='human', close=False):
+    def render(self, mode="human", close=False):
         """
         Render the whole-grid human view
         """
@@ -1306,10 +1270,11 @@ class MiniGridEnv(gym.Env):
 
         if self.grid_render is None:
             from gym_minigrid.rendering import Renderer
+
             self.grid_render = Renderer(
                 self.width * CELL_PIXELS,
                 self.height * CELL_PIXELS,
-                True if mode == 'human' else False
+                True if mode == "human" else False,
             )
 
         r = self.grid_render
@@ -1326,16 +1291,12 @@ class MiniGridEnv(gym.Env):
         r.push()
         r.translate(
             CELL_PIXELS * (self.agent_pos[0] + 0.5),
-            CELL_PIXELS * (self.agent_pos[1] + 0.5)
+            CELL_PIXELS * (self.agent_pos[1] + 0.5),
         )
         r.rotate(self.agent_dir * 90)
         r.setLineColor(255, 0, 0)
         r.setColor(255, 0, 0)
-        r.drawPolygon([
-            (-12, 10),
-            ( 12,  0),
-            (-12, -10)
-        ])
+        r.drawPolygon([(-12, 10), (12, 0), (-12, -10)])
         r.pop()
 
         # Compute which cells are visible to the agent
@@ -1346,7 +1307,11 @@ class MiniGridEnv(gym.Env):
         # of the agent's view area
         f_vec = self.dir_vec
         r_vec = self.right_vec
-        top_left = self.agent_pos + f_vec * (self.agent_view_size-1) - r_vec * (self.agent_view_size // 2)
+        top_left = (
+            self.agent_pos
+            + f_vec * (self.agent_view_size - 1)
+            - r_vec * (self.agent_view_size // 2)
+        )
 
         # For each cell in the visibility mask
         for vis_j in range(0, self.agent_view_size):
@@ -1364,14 +1329,17 @@ class MiniGridEnv(gym.Env):
                     abs_j * CELL_PIXELS,
                     CELL_PIXELS,
                     CELL_PIXELS,
-                    255, 255, 255, 75
+                    255,
+                    255,
+                    255,
+                    75,
                 )
 
         r.endFrame()
 
-        if mode == 'rgb_array':
+        if mode == "rgb_array":
             return r.getArray()
-        elif mode == 'pixmap':
+        elif mode == "pixmap":
             return r.getPixmap()
 
         return r

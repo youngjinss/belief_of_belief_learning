@@ -408,7 +408,7 @@ class ValueAgent:
     """
 
     def __init__(self, env, sight, observability="partial", consume_goals=1,
-                 movement_cost=0.01, wall_penalty=0.05, gamma=0.99, temperature=0.1):
+                 movement_cost=0.01, wall_penalty=2.0, gamma=0.99, temperature=0.1):
         self.env = env
         self.consume_goals = consume_goals
         self.observability = observability
@@ -465,7 +465,7 @@ class ValueAgent:
                     result_point = point
         return result_point
 
-    def plan_value_iteration(self, max_iterations=100, convergence_threshold=0.01):
+    def plan_value_iteration(self, max_iterations=500, convergence_threshold=0.01):
         """
         Run value iteration to compute optimal policy for current environment state
         """
@@ -483,7 +483,7 @@ class ValueAgent:
                 if self.memory[i, j] is not None and self.memory[i, j] != self.env.objectsEnum["Wall"]:
                     valid_states[i, j] = True
         
-        for iteration in range(max_iterations):
+        for _ in range(max_iterations):
             old_values = self.value_function.copy()
             
             # Value iteration update
@@ -528,18 +528,20 @@ class ValueAgent:
         # Base movement cost
         reward = -self.movement_cost
         
-        # Check bounds
+        # Check bounds - strongly discourage boundary hitting
         if (new_pos[0] < 0 or new_pos[0] >= self.env.width or 
             new_pos[1] < 0 or new_pos[1] >= self.env.height):
             reward -= self.wall_penalty
-            next_value = self.gamma * self.value_function[i, j]
+            # Stay in same position with additional penalty
+            next_value = self.gamma * self.value_function[i, j] - self.wall_penalty
         else:
             memory_value = self.memory[new_pos[0], new_pos[1]]
             
-            # Check if it's a wall
+            # Check if it's a wall - strongly discourage wall hitting
             if memory_value == self.env.objectsEnum["Wall"]:
                 reward -= self.wall_penalty
-                next_value = self.gamma * self.value_function[i, j]
+                # Stay in same position with additional penalty
+                next_value = self.gamma * self.value_function[i, j] - self.wall_penalty
             else:
                 # Check if it's a goal
                 if memory_value in self.env.GoalValue:

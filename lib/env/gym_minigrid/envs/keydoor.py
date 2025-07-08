@@ -61,14 +61,27 @@ class KeyDoorEnv(MiniGridEnv):
         # Generate random positions for keys
         for color in self.door_colors:
             # Place key
+            key = Key(color)
+            # Make keys overlappable so agent can step on them
+            key.can_overlap = lambda: True
             key_pos = self.place_obj(
-                Key(color), reject_fn=lambda env, pos: tuple(pos) in key_positions
+                key, reject_fn=lambda env, pos: tuple(pos) in key_positions
             )
             key_positions.append(tuple(key_pos))
 
             # Place door on walls
             door_pos = self._place_door_on_wall(color, door_positions)
             door_positions.append(door_pos)
+            
+            # Make doors overlappable if agent has the key
+            door = self.grid.get(*door_pos)
+            if isinstance(door, Door):
+                # Create a closure that captures the door's color
+                def make_door_can_overlap(door_color):
+                    def door_can_overlap():
+                        return not door.is_locked or door_color in self.agent_keys
+                    return door_can_overlap
+                door.can_overlap = make_door_can_overlap(color)
 
         # Place agent randomly
         self.place_agent()
@@ -105,21 +118,22 @@ class KeyDoorEnv(MiniGridEnv):
         return door_pos
 
     def step(self, action):
-        # Custom pickup action
-        if action == 5:  # pickup action
-            pickup_reward = self._pickup_action()
-            # Return observation without moving
-            obs = self.gen_obs()
-            return obs, pickup_reward, False, False, {}
-
-        # Handle regular movement actions
+        # Handle regular movement actions first
         obs, reward, done, stuck, info = super().step(action)
         
         # Convert old API format to new Gymnasium format
         terminated = done
         truncated = False  # Don't terminate early due to stuck condition
 
-        # Check if agent opened target door
+        # Check for automatic key pickup when agent moves to a key position
+        pickup_reward = self._auto_pickup_key()
+        reward += pickup_reward
+        
+        # Check for automatic door opening when agent moves to a door position
+        door_reward = self._auto_open_door()
+        reward += door_reward
+        
+        # Check if agent opened target door (end condition)
         door_positions = self._get_door_positions()
         agent_pos_tuple = tuple(self.agent_pos)
         if agent_pos_tuple in door_positions:
@@ -129,14 +143,12 @@ class KeyDoorEnv(MiniGridEnv):
                 and door.color == self.target_door_color
                 and door.is_open
             ):
-                reward += self.preference[self.target_door_color]
                 terminated = True
 
         return obs, reward, terminated, truncated, info
 
-    def _pickup_action(self):
-        """Handle pickup action"""
-        # Check if there's a key at current position
+    def _auto_pickup_key(self):
+        """Automatically pick up key when agent steps on it"""
         obj = self.grid.get(*self.agent_pos)
 
         if isinstance(obj, Key):
@@ -144,7 +156,7 @@ class KeyDoorEnv(MiniGridEnv):
             if len(self.agent_keys) < self.max_keys:
                 key_color = obj.color
 
-                # Pick up key
+                # Pick up key automatically
                 self.agent_keys.append(key_color)
                 self.grid.set(*self.agent_pos, None)
 
@@ -153,6 +165,24 @@ class KeyDoorEnv(MiniGridEnv):
                     return 0.5  # Reward for collecting target key
                 else:
                     return -self.cost[key_color]  # Cost for collecting wrong key
+
+        return 0
+    
+    def _auto_open_door(self):
+        """Automatically open door when agent steps on it and has the key"""
+        obj = self.grid.get(*self.agent_pos)
+
+        if isinstance(obj, Door) and obj.is_locked:
+            door_color = obj.color
+            
+            # Check if agent has the key for this door
+            if door_color in self.agent_keys:
+                # Open the door automatically
+                obj.is_open = True
+                obj.is_locked = False
+                
+                # Give reward based on preference
+                return self.preference[door_color]
 
         return 0
 

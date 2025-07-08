@@ -366,7 +366,6 @@ if __name__ == "__main__":
         choices=["full", "partial"],
         help="Observability type: full or partial",
     )
-    parser.add_argument("--output_dir", type=str, help="Directory to save games")
     parser.add_argument(
         "--shuffle",
         action="store_true",
@@ -423,14 +422,10 @@ if __name__ == "__main__":
             config.max_moves = args.max_moves
         if args.observability is not None:
             config.observability = args.observability
-        if args.output_dir is not None:
-            config.output_dir = args.output_dir
         if args.shuffle:
             config.shuffle = args.shuffle
         if args.no_walls:
             config.no_walls = args.no_walls
-        if args.save_dir is not None:
-            config.data_dir = args.save_dir
         if args.random_positions:
             config.random_positions = args.random_positions
         if args.random_goal_rewards:

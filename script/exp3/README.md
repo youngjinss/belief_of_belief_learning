@@ -1,182 +1,86 @@
-# Exp3: Custom KeyDoor Environment
+# KeyDoor Environment Experiments
 
-This directory contains the implementation and testing of a custom MiniGrid environment with 4 keys and 4 doors, designed for experiments with preference-based decision making and key collection strategies.
+This directory contains experiments for the KeyDoor environment with A* and random agents.
 
-## Overview
+## Structure
 
-The KeyDoor environment extends the MiniGrid framework to create a multi-key, multi-door scenario where agents must collect keys to open doors based on their preferences and costs.
+- `agents.py` - Agent implementations (AStarAgent, RandomAgent)  
+- `config.py` - Configuration class for experiments
+- `render_kd.py` - Main rendering script with agent_type argument
+- `backup/` - Backup files and old implementations
 
-## Environment Registration Process
+## Usage
 
-### 1. Environment Implementation
+### A* Agent
+```bash
+python render_kd.py --agent_type astar --episodes 3 --pause 0.5 --debug
+```
 
-The custom KeyDoor environment is implemented in:
+### Random Agent
+```bash
+python render_kd.py --agent_type random --episodes 3 --pause 0.3
+```
+
+### Available Arguments
+
+- `--agent_type {astar,random}` - Agent type to use
+- `--seed SEED` - Random seed (default: 42)
+- `--episodes EPISODES` - Number of episodes (default: 3)
+- `--pause PAUSE` - Pause between actions in seconds (default: 0.5)
+- `--max_steps MAX_STEPS` - Maximum steps per episode (default: 500)
+- `--env_size {3x3,5x5,9x9,11x11}` - Environment size (default: 9x9)
+- `--observability {full,partial}` - Observability type (default: full)
+- `--debug` - Enable debug output
+
+## Features
+
+- **Automatic key pickup**: Agent automatically picks up keys when stepping on them
+- **Automatic door opening**: Agent automatically opens doors when stepping on them (if they have the key)
+- **Turn-based navigation**: A* agent uses proper MiniGrid turn-based movement
+- **Configurable environment**: Support for different grid sizes and observability modes
+- **Structured code**: Following ToMnetF pattern with separate agents, config, and visualization files
+
+## Environment Details
+
+The KeyDoor environment requires the agent to:
+1. Collect the target key (color matches target door)
+2. Navigate to the target door
+3. Open the door by stepping on it (automatic with key)
+
+Success is achieved when the agent reaches the opened door position.
+
+## Code Structure
+
+This code follows the ToMnetF pattern with:
+- **agents.py**: Contains all agent implementations (AStarAgent, RandomAgent)
+- **config.py**: Configuration class with environment and agent parameters
+- **render_kd.py**: Main script that handles rendering and episode running
+
+## Agent Types
+
+### AStarAgent
+- Uses A* pathfinding algorithm for optimal navigation
+- Two-phase strategy: collect key, then open door
+- Handles MiniGrid's turn-based movement system (turn left/right, then forward)
+- Automatic key collection and door opening when stepping on objects
+
+### RandomAgent
+- Performs random actions with bias towards movement
+- 80% chance of movement actions (turn_left, turn_right, forward)
+- 20% chance of toggle action (for door opening)
+- No learning or strategic behavior
+
+## Environment Registration
+
+The custom KeyDoor environment is registered in:
 ```
 lib/env/gym_minigrid/envs/keydoor.py
 ```
 
-**Key Components:**
-- `KeyDoorEnv`: Base environment class
-- `KeyDoor3x3Env`, `KeyDoor5x5Env`, `KeyDoor9x9Env`, `KeyDoor11x11Env`: Size-specific variants
-
-### 2. Registration System
-
-The environment registration follows the standard gym/gymnasium pattern:
-
-#### a) Environment Registration
-```python
-# In keydoor.py
-from gym_minigrid.register import register
-
-register(id="MiniGrid-KeyDoor-3x3-v0", entry_point="gym_minigrid.envs:KeyDoor3x3Env")
-register(id="MiniGrid-KeyDoor-5x5-v0", entry_point="gym_minigrid.envs:KeyDoor5x5Env")
-register(id="MiniGrid-KeyDoor-9x9-v0", entry_point="gym_minigrid.envs:KeyDoor9x9Env")
-register(id="MiniGrid-KeyDoor-11x11-v0", entry_point="gym_minigrid.envs:KeyDoor11x11Env")
-```
-
-#### b) Module Import Chain
-```python
-# lib/env/gym_minigrid/__init__.py
-from . import envs
-
-# lib/env/gym_minigrid/envs/__init__.py
-from .keydoor import *  # This triggers registration
-```
-
-#### c) Registration Function
-```python
-# lib/env/gym_minigrid/register.py
-def register(id, entry_point, reward_threshold=0.95):
-    gym_register(id=id, entry_point=entry_point, reward_threshold=reward_threshold)
-    # Also registers with gymnasium if available
-```
-
-### 3. Import Path Setup
-
-For scripts to access the custom environment, the correct import path must be configured:
-
+Import path setup:
 ```python
 # Add gym_minigrid to Python path
 gym_minigrid_path = os.path.join(os.path.dirname(__file__), '../../lib/env')
 sys.path.insert(0, gym_minigrid_path)
-
-# Import gym_minigrid (triggers registration)
 import gym_minigrid
 ```
-
-**Critical Note:** The path must point to `lib/env` (not just `lib`) to ensure the local gym_minigrid module is imported instead of the system-installed one.
-
-## Environment Features
-
-### Grid Layout
-- **Sizes:** 3x3, 5x5, 9x9, 11x11
-- **Walls:** Surrounding walls with doors placed on walls
-- **Objects:** 4 keys and 4 doors with matching colors (red, green, blue, yellow)
-- **Observability:** Full observability (agent can see entire grid)
-
-### Agent Capabilities
-- **Actions:** 6 actions (up=0, down=1, left=2, right=3, stay=4, pickup=5)
-- **Inventory:** Can carry multiple keys (configurable `max_keys`)
-- **Movement:** Standard MiniGrid movement with collision detection
-
-### Reward Structure
-- **Target Key Collection:** +0.5 reward for collecting target color key
-- **Non-target Key Collection:** Negative reward based on cost parameter
-- **Door Opening:** Final reward based on preference parameter when target door is opened
-- **Episode Termination:** When agent opens target door
-
-### Configuration Parameters
-```python
-preference = {'red': 1.0, 'green': 0.8, 'blue': 0.6, 'yellow': 0.4}
-cost = {'red': 0.1, 'green': 0.2, 'blue': 0.3, 'yellow': 0.4}
-max_keys = 4  # Maximum keys agent can carry
-```
-
-## Usage Examples
-
-### Basic Environment Creation
-```python
-import gymnasium as gym
-import gym_minigrid
-
-# Create environment
-env = gym.make('MiniGrid-KeyDoor-5x5-v0')
-
-# Reset and run
-obs, info = env.reset()
-action = 5  # pickup action
-obs, reward, terminated, truncated, info = env.step(action)
-```
-
-### Direct Class Instantiation
-```python
-from gym_minigrid.envs.keydoor import KeyDoor5x5Env
-
-# Create with custom parameters
-env = KeyDoor5x5Env(
-    max_keys=2,
-    preference={'red': 2.0, 'green': 1.0, 'blue': 0.5, 'yellow': 0.1},
-    cost={'red': 0.05, 'green': 0.1, 'blue': 0.2, 'yellow': 0.3}
-)
-```
-
-## Testing
-
-### Simple Test Script
-```bash
-python simple_test.py
-```
-
-This script:
-1. Imports the custom gym_minigrid module
-2. Verifies environment registration
-3. Creates KeyDoor environment instance
-4. Tests reset and step functionality
-5. Displays environment information
-
-### Expected Output
-```
- gym_minigrid imported successfully
-Registered environments: [... 'MiniGrid-KeyDoor-3x3-v0', 'MiniGrid-KeyDoor-5x5-v0', ...]
- KeyDoor5x5Env created successfully
- Environment reset successful. Mission: collect red key and open red door
- Step successful. Reward: 0
- All tests passed!
-```
-
-## Key Implementation Details
-
-### Environment Generation
-1. **Grid Creation:** Creates empty grid with surrounding walls
-2. **Key Placement:** Randomly places 4 keys in open spaces
-3. **Door Placement:** Places 4 doors on wall positions
-4. **Agent Placement:** Randomly places agent in open space
-5. **Target Selection:** Selects target door based on highest preference
-
-### Action Handling
-- **Movement Actions (0-4):** Standard MiniGrid movement
-- **Pickup Action (5):** Custom implementation for key collection
-- **Key-Door Matching:** Keys must match door colors to unlock
-- **Inventory Management:** Tracks collected keys in `agent_keys` list
-
-### Reward Calculation
-- **Immediate Rewards:** Given for key collection
-- **Final Reward:** Given when target door is opened
-- **Cost Penalties:** Applied for collecting non-target keys
-
-## Troubleshooting
-
-### Common Issues
-1. **Environment Not Found:** Ensure correct import path setup
-2. **Array Comparison Errors:** Fixed by using tuple conversion for position comparisons
-3. **Reset Return Values:** Handled both old and new gymnasium return formats
-
-### Import Path Issues
-The most critical aspect is ensuring the local gym_minigrid module is imported:
-```python
-# Correct path - points to lib/env
-gym_minigrid_path = os.path.join(os.path.dirname(__file__), '../../lib/env')
-sys.path.insert(0, gym_minigrid_path)
-```
-
-This ensures the custom KeyDoor environment is registered and available for use.

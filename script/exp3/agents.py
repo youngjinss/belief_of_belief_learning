@@ -375,3 +375,30 @@ class AStarAgent:
         self.path = []
         self.collected_keys = set()
         self.strategy_phase = "collect_key"
+
+
+class RandomAgent:
+    """A random agent that explores the KeyDoor environment."""
+    
+    def __init__(self, action_space, movement_prob=0.8):
+        self.action_space = action_space
+        self.movement_prob = movement_prob
+    
+    def get_action(self, obs):
+        """Return a random action with bias towards movement."""
+        rand = np.random.random()
+        
+        if rand < self.movement_prob:
+            # Focus on movement actions: turn_left, turn_right, forward
+            return np.random.choice([0, 1, 2])  # 0=turn_left, 1=turn_right, 2=forward
+        else:
+            # Toggle action (for opening doors)
+            return 5  # toggle
+    
+    def analyze_feedback(self, reward, done):
+        """Random agent doesn't learn from feedback."""
+        pass
+    
+    def reset(self):
+        """Reset agent state for new episode"""
+        pass

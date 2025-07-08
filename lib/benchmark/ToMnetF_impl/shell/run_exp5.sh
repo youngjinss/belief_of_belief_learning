@@ -12,7 +12,7 @@ TEST_RANDOM_SEED=123
 BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SCRIPTS_DIR="$BASE_DIR/scripts"
 DATA_DIR="$BASE_DIR/data/experiment5"
-TEST_DATA_DIR="$BASE_DIR/data/test"
+TEST_DATA_DIR="$BASE_DIR/data/experiment5/test"
 MODELS_DIR="$BASE_DIR/models/experiment5"
 RESULTS_DIR="$BASE_DIR/result/experiment5"
 PLOTS_DIR="$BASE_DIR/plots/experiment5"
@@ -131,7 +131,7 @@ run_evaluation() {
     log_step "Logging evaluation output to: $RUN_LOG_DIR/evaluation.log"
     
     cd "$SCRIPTS_DIR/experiment5"
-    python evaluate.py --config_override > "$RUN_LOG_DIR/evaluation.log" 2>&1
+    python evaluate.py --config_override --test_data_paths "$TEST_DATA_DIR" > "$RUN_LOG_DIR/evaluation.log" 2>&1
     
     log_step "Evaluation completed"
     

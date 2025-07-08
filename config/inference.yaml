@@ -1,0 +1,50 @@
+# 데이터 컬럼
+dataloader:
+  columns:
+    ohlcv_cols:
+      - "open"
+      - "high"
+      - "low"
+      - "close"
+      - "volume"
+      - "quote_volume"
+      - "count"
+      - "taker_buy_volume"
+      - "taker_buy_quote_volume"
+    target_cols: null  # 자동 생성: [f"l_{i}" for i in range(20)] + [f"s_{i}" for i in range(20)]
+  
+  timeframe: "15m"
+  n_bins: 50          # 히스토그램 구간 수
+  ohlcv_dim: 9          # OHLCV 데이터 차원
+
+# 모델 설정
+model:
+  select: "hbt"
+
+  # 추론 설정
+  batch_size: 512       # 배치 크기
+  num_epochs: 200       # 에폭 수
+  val_ratio: -1         # test dataset 사용
+  device: "cuda:3"       # 학습 장치 (cuda 또는 cpu)
+    
+  # HBT 모델 구조
+  hbt:
+    action_dim: 100         # 행동 분포 차원 (20 롱 + 20 숏)
+    hidden_dim: 512         # 은닉층 차원 크기
+    output_dim: 100         # 출력 차원 (행동 분포와 동일)
+    context_length: 240      # 컨텍스트 창의 시간 단계 수
+    num_heads: 8           # 어텐션 헤드 수
+    dropout: 0.1           # 드롭아웃 비율
+    use_other_player_beliefs: true  # 다른 플레이어 신념 사용 여부
+    
+    # 벤치마크 모델 설정
+    benchmark:
+      enabled: false        # 벤치마크 모델 사용 여부
+    
+    # 모델 저장/로드 경로
+    save_path:
+      version: "2025-04-14 00:36:31"
+      path: null
+      proposed: "best_hbt_model.pth"
+      benchmark: "best_hbt_benchmark.pth"
+

@@ -1,0 +1,15 @@
+# Binance API 설정
+api:
+  path_dir_where_to_dump: "./data/binance/"
+  asset_class: "um"  # 옵션: spot, um, cm
+  data_type: "klines"  # 옵션: aggTrades, klines, trades
+  data_frequency: "30m"
+
+# 데이터 다운로드 설정
+download:
+  tickers: 
+    - "BTCUSDT"
+  is_to_update_existing: true
+  default_date_range:
+    start_date: "2022-01-01"
+    end_date: "2022-12-31"

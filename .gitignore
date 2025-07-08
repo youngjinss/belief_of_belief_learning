@@ -1,0 +1,63 @@
+.vscode
+
+# lib 폴더 내 폴더 무시
+lib/build/
+lib/UNKNOWN.egg-info/
+lib/utils/telegrambot.py
+lib/backup/
+log/*
+
+# lib 폴더 내 benchmark 무시
+lib/benchmark/backup/
+lib/benchmark/.claude/
+
+# lib 폴더 내 ToMnet 구현한 결과 데이터 무시
+lib/benchmark/ToMnet_impl/data/
+lib/benchmark/ToMnet_impl/models/
+lib/benchmark/ToMnet_impl/.claude/
+lib/benchmark/ToMnet_impl/result/
+lib/benchmark/ToMnet_impl/plots/
+lib/benchmark/ToMnet_impl/experiment.log
+lib/benchmark/ToMnet_impl/figure5_experiment.log
+lib/benchmark/ToMnet_impl/test_results/
+lib/benchmark/ToMnet_impl/debug_results/
+lib/benchmark/ToMnet_impl/shell/debug/
+lib/benchmark/ToMnet_impl/scripts/debug/
+
+# lib 폴더 내 ToMnetF_impl 구현 결과 데이터 무시
+lib/benchmark/ToMnetF_impl/data/
+lib/benchmark/ToMnetF_impl/models/
+lib/benchmark/ToMnetF_impl/log/
+lib/benchmark/ToMnetF_impl/plots/
+lib/benchmark/ToMnetF_impl/result/
+lib/benchmark/ToMnetF_impl/experiment*.log
+
+# lib 폴더 내 (구현된) env 무시
+lib/env/lb-foraging/
+lib/env/multi-agent-framework/
+lib/env/abides-jpmc-public/
+lib/env/pymarketsim/
+lib/env/maxe/
+
+# claude 무시
+CLAUDE.md
+
+# 데이터 폴더 무시
+data/
+results/
+
+# 로그 폴더 무시
+log/
+
+# 모든 하위 폴더의 __pycache__ 폴더 무시
+__pycache__/
+
+# 모든 하위 폴더의 .DS_Store 파일 무시
+.DS_Store
+
+# 모든 하위 폴더의 .idea 폴더 무시
+.idea/
+
+# 모든 하위 폴더의 .pytest_cache 폴더 무시
+.pytest_cache/
+

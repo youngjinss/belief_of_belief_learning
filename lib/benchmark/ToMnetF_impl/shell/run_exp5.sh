@@ -78,8 +78,8 @@ create_log_files
 
 run_data_generation() {
     # Check if data already exists
-    if [ -f "$TRAIN_DATA_DIR/processed_data_exp5.pkl" ]; then
-        log_step "Data generation skipped - processed_data_exp5.pkl already exists"
+    if [ -f "$TRAIN_DATA_DIR/test1.txt" ]; then
+        log_step "Data generation skipped - test*.txt already exists"
         return 0
     fi
     
@@ -147,12 +147,9 @@ run_test_data_generation() {
     # From config.py: n_games=20000, training_proportion=0.9, so validation=2000 games
     
     # Check if test data already exists and has correct number of files
-    if [ -d "$TEST_DATA_DIR" ]; then
-        EXISTING_TEST_FILES=$(find "$TEST_DATA_DIR" -name "test*.txt" | wc -l)
-        if [ "$EXISTING_TEST_FILES" -eq "$VALIDATION_GAMES" ]; then
-            log_step "Test data generation skipped - $VALIDATION_GAMES test files already exist in $TEST_DATA_DIR"
-            return 0
-        fi
+    if [ -f "$TEST_DATA_DIR/test1.txt" ]; then
+        log_step "Test data generation skipped - $VALIDATION_GAMES test files already exist in $TEST_DATA_DIR"
+        return 0
     fi
     
     log_step "Starting test data generation for experiment $EXPERIMENT_NO"
@@ -164,7 +161,7 @@ run_test_data_generation() {
     
     cd "$SCRIPTS_DIR/experiment5"
     python generate.py --config_override --n_games "$VALIDATION_GAMES" --random_seed "$TEST_RANDOM_SEED" --save_dir "$TEST_DATA_DIR" > "$RUN_LOG_DIR/test_data_generation.log" 2>&1
-    
+
     # Verify test data was generated correctly
     GENERATED_TEST_FILES=$(find "$TEST_DATA_DIR" -name "test*.txt" | wc -l)
     if [ "$GENERATED_TEST_FILES" -eq "$VALIDATION_GAMES" ]; then

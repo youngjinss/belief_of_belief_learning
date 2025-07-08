@@ -165,9 +165,9 @@ def save_game_with_labels(
     """
     import re
 
-    # Shouldn't be here, but it fixes the save of last goal :(
-    if env.goal_picked != 0:
-        agent.step_picked_goal.append(len(agent.trajectory) - 1)
+    # REMOVED: Duplicate call - already handled in on_pickup()
+    # if env.goal_picked != 0:
+    #     agent.step_picked_goal.append(len(agent.trajectory) - 1)
 
     # Get the path to folder
     gf = base_dir if name == "" else os.path.join(base_dir, name)

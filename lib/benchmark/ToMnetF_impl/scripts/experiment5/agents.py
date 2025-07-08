@@ -127,8 +127,9 @@ class AgentStar:
                 ignore_list.append(self.goal_found)
                 result = self.astar(observability=observability)
 
-        if self.env.goal_picked != 0:
-            self.step_picked_goal.append(len(self.trajectory) - 1)
+        # REMOVED: Duplicate call - already handled in on_pickup()
+        # if self.env.goal_picked != 0:
+        #     self.step_picked_goal.append(len(self.trajectory) - 1)
         self.position_trajectory.append(self.position)
         self.trajectory.append(result)
         return result
@@ -339,9 +340,9 @@ class AgentStar:
 
     def save_game(self, name="experiment1", base_dir="../../data"):
 
-        # Shouldn't be here, but it fixes the save of last goal :(
-        if self.env.goal_picked != 0:
-            self.step_picked_goal.append(len(self.trajectory) - 1)
+        # REMOVED: Duplicate call - already handled in on_pickup()
+        # if self.env.goal_picked != 0:
+        #     self.step_picked_goal.append(len(self.trajectory) - 1)
 
         # Get the path to folder
         gf = os.path.join(base_dir, name)  # path to games folder
@@ -620,9 +621,9 @@ class ValueAgent:
         import re
         import os
         
-        # Shouldn't be here, but it fixes the save of last goal :(
-        if self.env.goal_picked != 0:
-            self.step_picked_goal.append(len(self.trajectory) - 1)
+        # REMOVED: Duplicate call - already handled in on_pickup()
+        # if self.env.goal_picked != 0:
+        #     self.step_picked_goal.append(len(self.trajectory) - 1)
 
         # Get the path to folder
         gf = os.path.join(base_dir, name)

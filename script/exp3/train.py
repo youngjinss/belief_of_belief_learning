@@ -200,7 +200,16 @@ def prepare_data_for_training(games, max_trajectory_length=100):
     }
 
 
-def train_epoch(model, train_loader, optimizer, loss_fn, device, max_n_past=5, data_config=None, training_process_config=None):
+def train_epoch(
+    model,
+    train_loader,
+    optimizer,
+    loss_fn,
+    device,
+    max_n_past=5,
+    data_config=None,
+    training_process_config=None,
+):
     """
     Train for one epoch
 
@@ -242,7 +251,7 @@ def train_epoch(model, train_loader, optimizer, loss_fn, device, max_n_past=5, d
         # Use trajectory up to previous timestep as input to MentalNet
         # MentalNet processes recent trajectory to predict action at current timestep
         current_timestep = data_config["time_step"] if data_config else 20
-        
+
         # Recent trajectory: from start to current_timestep-1 (up to previous timestep)
         recent_trajectory = trajectories[
             :, :current_timestep
@@ -268,7 +277,9 @@ def train_epoch(model, train_loader, optimizer, loss_fn, device, max_n_past=5, d
 
         # Backward pass
         total_loss_batch.backward()
-        max_grad_norm = training_process_config["max_grad_norm"] if training_process_config else 1.0
+        max_grad_norm = (
+            training_process_config["max_grad_norm"] if training_process_config else 1.0
+        )
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=max_grad_norm)
         optimizer.step()
 
@@ -352,15 +363,19 @@ def validate_epoch(model, val_loader, loss_fn, device, max_n_past=5, data_config
             # Use trajectory up to previous timestep as input to MentalNet
             # MentalNet processes recent trajectory to predict action at current timestep
             current_timestep = data_config["time_step"] if data_config else 20
-            
+
             # Recent trajectory: from start to current_timestep-1 (up to previous timestep)
             recent_trajectory = trajectories[:, :current_timestep]
 
             # Action target: action at current_timestep
             if current_timestep < actions.size(1):
-                action_targets = actions[:, current_timestep]  # Action at current timestep
+                action_targets = actions[
+                    :, current_timestep
+                ]  # Action at current timestep
             else:
-                action_targets = actions[:, -1]  # Use last action if trajectory is shorter
+                action_targets = actions[
+                    :, -1
+                ]  # Use last action if trajectory is shorter
 
             goal_targets = goals
 
@@ -522,13 +537,13 @@ def train_tomnet(
     # Use provided config or create default
     if config is None:
         config = Config()
-    
+
     # Extract parameters from config
     training_kwargs = config.get_training_kwargs()
     model_kwargs = config.get_model_kwargs()
     data_config = config.get_data_config()
     training_process_config = config.get_training_process_config()
-    
+
     batch_size = training_kwargs["batch_size"]
     epochs = training_kwargs["epochs"]
     lr = training_kwargs["lr"]
@@ -605,13 +620,11 @@ def train_tomnet(
 
     # Loss function and optimizer
     loss_fn = ToMnetLoss(
-        action_weight=training_process_config["action_weight"], 
-        goal_weight=training_process_config["goal_weight"]
+        action_weight=training_process_config["action_weight"],
+        goal_weight=training_process_config["goal_weight"],
     )
     optimizer = torch.optim.Adam(
-        model.parameters(), 
-        lr=lr, 
-        weight_decay=config.training_config["weight_decay"]
+        model.parameters(), lr=lr, weight_decay=config.training_config["weight_decay"]
     )
 
     # Early stopping
@@ -647,8 +660,14 @@ def train_tomnet(
 
         # Training
         train_metrics = train_epoch(
-            model, train_loader, optimizer, loss_fn, device, max_n_past, 
-            data_config, training_process_config
+            model,
+            train_loader,
+            optimizer,
+            loss_fn,
+            device,
+            max_n_past,
+            data_config,
+            training_process_config,
         )
 
         # Validation
@@ -708,7 +727,7 @@ def train_tomnet(
     # Save model configuration
     with open(os.path.join(experiment_save_dir, "model_config.json"), "w") as f:
         json.dump(model_kwargs, f, indent=2)
-    
+
     # Save full configuration
     config_dict = {
         "training_config": config.get_training_config(),
@@ -746,21 +765,39 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="Train KeyDoor ToMnet")
-    
+
     # Basic parameters
-    parser.add_argument("--config_override", action="store_true", help="Enable command line parameter overrides")
-    parser.add_argument("--data_dir", type=str, default="./data/exp3", help="Directory containing game data")
-    parser.add_argument("--save_dir", type=str, default="./results/exp3", help="Directory to save results")
-    
+    parser.add_argument(
+        "--config_override",
+        action="store_true",
+        help="Enable command line parameter overrides",
+    )
+    parser.add_argument(
+        "--data_dir",
+        type=str,
+        default="./data/exp3",
+        help="Directory containing game data",
+    )
+    parser.add_argument(
+        "--save_dir",
+        type=str,
+        default="./results/exp3",
+        help="Directory to save results",
+    )
+
     # Training configuration
     parser.add_argument("--batch_size", type=int, help="Batch size for training")
     parser.add_argument("--epochs", type=int, help="Number of training epochs")
     parser.add_argument("--lr", type=float, help="Learning rate")
     parser.add_argument("--weight_decay", type=float, help="Weight decay for optimizer")
-    parser.add_argument("--training_proportion", type=float, help="Proportion of data to use for training")
+    parser.add_argument(
+        "--training_proportion",
+        type=float,
+        help="Proportion of data to use for training",
+    )
     parser.add_argument("--device", type=str, help="Device to use (auto, cpu, cuda)")
     parser.add_argument("--optimizer", type=str, help="Optimizer type (adam)")
-    
+
     # Model architecture
     parser.add_argument("--residual_blocks", type=int, help="Number of residual blocks")
     parser.add_argument("--n_echar", type=int, help="Character embedding dimension")
@@ -770,18 +807,30 @@ if __name__ == "__main__":
     parser.add_argument("--action_space", type=int, help="Action space size")
     parser.add_argument("--goal_space", type=int, help="Goal space size")
     parser.add_argument("--hidden_size_lstm", type=int, help="LSTM hidden size")
-    
+
     # Data processing
     parser.add_argument("--max_moves", type=int, help="Maximum moves per trajectory")
     parser.add_argument("--time_step", type=int, help="Time step for model processing")
-    parser.add_argument("--max_n_past", type=int, help="Maximum number of past episodes")
-    parser.add_argument("--n_past_min", type=int, help="Minimum number of past episodes")
-    parser.add_argument("--n_past_max", type=int, help="Maximum number of past episodes for sampling")
-    
+    parser.add_argument(
+        "--max_n_past", type=int, help="Maximum number of past episodes"
+    )
+    parser.add_argument(
+        "--n_past_min", type=int, help="Minimum number of past episodes"
+    )
+    parser.add_argument(
+        "--n_past_max", type=int, help="Maximum number of past episodes for sampling"
+    )
+
     # Training process
-    parser.add_argument("--early_stopping_patience", type=int, help="Early stopping patience")
-    parser.add_argument("--early_stopping_min_delta", type=float, help="Early stopping minimum delta")
-    parser.add_argument("--max_grad_norm", type=float, help="Maximum gradient norm for clipping")
+    parser.add_argument(
+        "--early_stopping_patience", type=int, help="Early stopping patience"
+    )
+    parser.add_argument(
+        "--early_stopping_min_delta", type=float, help="Early stopping minimum delta"
+    )
+    parser.add_argument(
+        "--max_grad_norm", type=float, help="Maximum gradient norm for clipping"
+    )
     parser.add_argument("--action_weight", type=float, help="Action loss weight")
     parser.add_argument("--goal_weight", type=float, help="Goal loss weight")
 

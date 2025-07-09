@@ -83,10 +83,8 @@ class AStarAgent:
         # Get current agent position from environment
         new_pos = tuple(self.env.agent_pos)
         if new_pos != self.agent_pos:
-            print(f"DEBUG: Agent position updated from {self.agent_pos} to {new_pos}")
             # If we have a path and we moved to the expected next position, advance the path
             if self.path and len(self.path) >= 2 and self.path[1] == new_pos:
-                print(f"DEBUG: Advanced path by removing {self.path[0]}")
                 self.path.pop(0)
             else:
                 # Position changed unexpectedly, clear path
@@ -94,8 +92,7 @@ class AStarAgent:
             self.agent_pos = new_pos
         else:
             # Position didn't change - could be turning or stuck
-            if self.agent_pos is not None:
-                print(f"DEBUG: Agent position unchanged at {self.agent_pos}")
+            pass
 
         # Get the grid from environment
         self.grid = self.env.grid
@@ -133,22 +130,13 @@ class AStarAgent:
         # Find target key position
         target_key_pos = self._find_object_position(Key, target_key_color)
         if target_key_pos is None:
-            print(f"DEBUG: Could not find {target_key_color} key in grid")
             return 4  # Stay if key not found
-
-        print(
-            f"DEBUG: Found {target_key_color} key at {target_key_pos}, agent at {self.agent_pos}"
-        )
 
         # Check if we're already at the key position
         if self.agent_pos == target_key_pos:
-            print(
-                f"DEBUG: Agent is at key position {target_key_pos}, key will be picked up automatically"
-            )
             return 4  # Stay - key pickup is automatic
 
         # Navigate to the key position (key will be picked up automatically when agent steps on it)
-        print(f"DEBUG: Agent needs to reach key position {target_key_pos}")
         return self._navigate_to_position(target_key_pos)
 
     def _open_target_door(self, target_door_color):
@@ -163,7 +151,6 @@ class AStarAgent:
             door = self.grid.get(*target_door_pos)
             if isinstance(door, Door) and door.is_open:
                 # Already opened, episode should end
-                print(f"DEBUG: Agent is at opened door position {target_door_pos}")
                 return 4  # Stay on the opened door
             elif (
                 isinstance(door, Door)
@@ -171,13 +158,9 @@ class AStarAgent:
                 and target_door_color in self.collected_keys
             ):
                 # Door will be opened automatically when agent steps on it
-                print(
-                    f"DEBUG: Agent is at locked door position {target_door_pos}, door will open automatically"
-                )
                 return 4  # Stay - door opening is automatic
 
         # Navigate to door (door will open automatically when agent steps on it)
-        print(f"DEBUG: Agent needs to reach door position {target_door_pos}")
         return self._navigate_to_position(target_door_pos)
 
     def _find_object_position(self, obj_type, color):
@@ -199,7 +182,6 @@ class AStarAgent:
         ):
             # Calculate new path if needed
             self.path = self._astar_pathfind(self.agent_pos, target_pos)
-            print(f"DEBUG: Calculated path: {self.path}")
 
         if len(self.path) >= 2:
             # Get next step in path
@@ -207,9 +189,6 @@ class AStarAgent:
 
             # Verify current position matches path start
             if self.path[0] != self.agent_pos:
-                print(
-                    f"DEBUG: Position mismatch. Agent at {self.agent_pos}, path starts at {self.path[0]}. Recalculating."
-                )
                 self.path = self._astar_pathfind(self.agent_pos, target_pos)
                 if len(self.path) < 2:
                     return 4  # Drop if no path found
@@ -225,23 +204,13 @@ class AStarAgent:
             agent_dir = self.env.agent_dir
             current_dir_vec = self.direction_vectors[agent_dir]
 
-            print(
-                f"DEBUG: Moving from {self.agent_pos} to {next_pos}, move_dir: {move_dir}, agent_dir: {agent_dir}, current_dir_vec: {current_dir_vec}"
-            )
-
             # Check if we're already facing the right direction
             if move_dir == current_dir_vec:
                 # We're facing the right direction, move forward
                 # Check if the target position is actually walkable
                 if self._is_walkable(next_pos):
-                    print(
-                        f"DEBUG: Already facing correct direction, moving forward to {next_pos}"
-                    )
                     return 2  # Forward
                 else:
-                    print(
-                        f"DEBUG: Target position {next_pos} is not walkable, clearing path"
-                    )
                     self.path = []
                     return 4  # Drop
             else:
@@ -258,26 +227,15 @@ class AStarAgent:
                     # MiniGrid uses 0=left turn, 1=right turn
                     turn_diff = (target_dir - agent_dir) % 4
                     if turn_diff == 1:  # Turn right
-                        print(
-                            f"DEBUG: Need to turn right to face direction {target_dir}"
-                        )
                         return 1
                     elif turn_diff == 3:  # Turn left (3 steps right = 1 step left)
-                        print(
-                            f"DEBUG: Need to turn left to face direction {target_dir}"
-                        )
                         return 0
                     elif turn_diff == 2:  # Turn around (choose right)
-                        print(
-                            f"DEBUG: Need to turn around to face direction {target_dir}"
-                        )
                         return 1
                 else:
-                    print(f"DEBUG: Invalid move direction {move_dir}")
                     self.path = []
                     return 4  # Drop
 
-        print(f"DEBUG: No path found or path too short: {self.path}")
         return 4  # Drop if no path found
 
     def _astar_pathfind(self, start_pos, goal_pos):
@@ -384,7 +342,6 @@ class AStarAgent:
                 return True
 
         # Walls and other objects are not walkable
-        print(f"DEBUG: Position {pos} is not walkable, contains: {obj}")
         return False
 
     def _heuristic(self, pos1, pos2):

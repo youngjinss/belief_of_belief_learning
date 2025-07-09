@@ -7,7 +7,9 @@ class Config:
         self.env_name = "MiniGrid-KeyDoor-{size}-v0"
         self.width = 9
         self.height = 9
-        self.env_size = f"{self.width}x{self.height}"  # Options: "3x3", "5x5", "9x9", "11x11"
+        self.env_size = (
+            f"{self.width}x{self.height}"  # Options: "3x3", "5x5", "9x9", "11x11"
+        )
         self.max_steps = 500
         self.seed = 42
 
@@ -325,7 +327,10 @@ class Config:
             self.training_config["lr"] = args.lr
         if hasattr(args, "weight_decay") and args.weight_decay is not None:
             self.training_config["weight_decay"] = args.weight_decay
-        if hasattr(args, "training_proportion") and args.training_proportion is not None:
+        if (
+            hasattr(args, "training_proportion")
+            and args.training_proportion is not None
+        ):
             self.training_config["training_proportion"] = args.training_proportion
         if hasattr(args, "device") and args.device is not None:
             self.training_config["device"] = args.device
@@ -363,10 +368,20 @@ class Config:
             self.data_config["n_past_max"] = args.n_past_max
 
         # Training process configuration
-        if hasattr(args, "early_stopping_patience") and args.early_stopping_patience is not None:
-            self.training_process_config["early_stopping_patience"] = args.early_stopping_patience
-        if hasattr(args, "early_stopping_min_delta") and args.early_stopping_min_delta is not None:
-            self.training_process_config["early_stopping_min_delta"] = args.early_stopping_min_delta
+        if (
+            hasattr(args, "early_stopping_patience")
+            and args.early_stopping_patience is not None
+        ):
+            self.training_process_config["early_stopping_patience"] = (
+                args.early_stopping_patience
+            )
+        if (
+            hasattr(args, "early_stopping_min_delta")
+            and args.early_stopping_min_delta is not None
+        ):
+            self.training_process_config["early_stopping_min_delta"] = (
+                args.early_stopping_min_delta
+            )
         if hasattr(args, "max_grad_norm") and args.max_grad_norm is not None:
             self.training_process_config["max_grad_norm"] = args.max_grad_norm
         if hasattr(args, "action_weight") and args.action_weight is not None:

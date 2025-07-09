@@ -228,6 +228,7 @@ def save_game_with_labels(
     initial_maze_lines=None,
     gammas=None,
     goal_rewards=None,
+    game_costs=None,
 ):
     """
     Save game data with SR and consumption labels in experiment 5 format
@@ -287,6 +288,14 @@ def save_game_with_labels(
             reward_list = [goal_rewards.get(color, 0.0) for color in colors]
             f.write("Goal Rewards: " + ",".join(map(str, reward_list)) + "\n")
             f.write("Goal Rewards Sum: " + str(sum(reward_list)) + "\n")
+        
+        # Save game costs (sum constrained to 1.0)
+        if game_costs is not None:
+            # Convert to list format: [red, green, blue, yellow]
+            colors = ["red", "green", "blue", "yellow"]
+            cost_list = [game_costs.get(color, 0.0) for color in colors]
+            f.write("Game Costs: " + ",".join(map(str, cost_list)) + "\n")
+            f.write("Game Costs Sum: " + str(sum(cost_list)) + "\n")
 
         # Save consumption labels
         f.write(
@@ -419,6 +428,73 @@ def generate_game_rewards(config_dict, game_id):
     return {colors[i]: rewards[i] for i in range(len(colors))}
 
 
+def generate_game_costs(config_dict, game_id):
+    """
+    Generate random costs for this game based on config settings
+    
+    Args:
+        config_dict: Dictionary containing configuration
+        game_id: Game ID for seeding
+    
+    Returns:
+        dict: Mapping of door colors to cost values (sum=1.0)
+    """
+    # Set seed for consistent cost generation for this game
+    np.random.seed(config_dict["base_random_seed"] + game_id + 2000)
+    
+    cost_settings = config_dict.get("cost_settings", {})
+    
+    if cost_settings.get("use_random_costs", True):
+        # Generate random costs that sum to 1.0
+        min_cost = cost_settings.get("min_cost", 0.05)
+        max_cost = cost_settings.get("max_cost", 0.7)
+        total_cost_sum = cost_settings.get("total_cost_sum", 1.0)
+        
+        # Generate 3 random split points between 0 and 1
+        splits = np.random.uniform(0, 1, 3)
+        splits = np.sort(splits)
+        
+        # Create 4 proportions from splits
+        proportions = [
+            splits[0],
+            splits[1] - splits[0],
+            splits[2] - splits[1],
+            1 - splits[2],
+        ]
+        
+        # Scale to total cost sum (1.0)
+        costs = [prop * total_cost_sum for prop in proportions]
+        
+        # Ensure minimum cost constraint
+        for i in range(len(costs)):
+            if costs[i] < min_cost:
+                costs[i] = min_cost
+        
+        # Rescale to maintain sum constraint
+        current_sum = sum(costs)
+        if current_sum != total_cost_sum:
+            scale_factor = total_cost_sum / current_sum
+            costs = [c * scale_factor for c in costs]
+        
+        # Ensure no cost exceeds maximum
+        for i in range(len(costs)):
+            if costs[i] > max_cost:
+                costs[i] = max_cost
+        
+        # Final rescaling to maintain exact sum
+        current_sum = sum(costs)
+        if current_sum != total_cost_sum:
+            scale_factor = total_cost_sum / current_sum
+            costs = [c * scale_factor for c in costs]
+    else:
+        # Use default costs
+        costs = cost_settings.get("default_costs", [0.1, 0.2, 0.3, 0.4])
+    
+    # Map to color names
+    colors = ["red", "green", "blue", "yellow"]
+    return {colors[i]: costs[i] for i in range(len(colors))}
+
+
 def run_single_game(game_id, config_dict, save_dir):
     """
     Run a single KeyDoor game simulation
@@ -436,21 +512,19 @@ def run_single_game(game_id, config_dict, save_dir):
 
     # Generate goal rewards for this game
     goal_rewards = generate_game_rewards(config_dict, game_id)
+    
+    # Generate random costs for this game
+    game_costs = generate_game_costs(config_dict, game_id)
 
-    # Create KeyDoor environment using gym.make (same as render_kd.py)
+    # Create KeyDoor environment with custom preferences and costs
     env_size = config_dict["env_size"]
     if env_size == "5x5":
-        env_name = "MiniGrid-KeyDoor-5x5-v0"
+        env = KeyDoor5x5Env(preference=goal_rewards, cost=game_costs, max_steps=config_dict["max_steps"])
     elif env_size == "9x9":
-        env_name = "MiniGrid-KeyDoor-9x9-v0"
+        env = KeyDoor9x9Env(preference=goal_rewards, cost=game_costs, max_steps=config_dict["max_steps"])
     else:
         raise ValueError(f"Unknown environment size: {env_size}")
 
-    import gymnasium as gym
-
-    # Create environment same way as render_kd.py
-    env = gym.make(env_name, max_steps=config_dict["max_steps"])
-    env = env.unwrapped if hasattr(env, "unwrapped") else env
 
     # Reset environment with seed
     env.seed(config_dict["base_random_seed"] + game_id)
@@ -594,6 +668,7 @@ def run_single_game(game_id, config_dict, save_dir):
         initial_maze_lines=initial_maze_lines,
         gammas=sr_gammas,
         goal_rewards=goal_rewards,
+        game_costs=game_costs,
     )
 
     return game_id
@@ -640,6 +715,8 @@ def generate_trajectories(config=None, random_seed=42, n_processes=None):
         "sr_grid_size": config.sr_settings["grid_size"],
         # Goal reward settings
         "goal_reward_settings": config.goal_reward_settings,
+        # Cost settings
+        "cost_settings": config.cost_settings,
         # Backward compatibility
         "random_movement_prob": config.agent_configs.get("random", {}).get(
             "movement_prob", 0.8

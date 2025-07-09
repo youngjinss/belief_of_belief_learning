@@ -101,6 +101,20 @@ class Config:
             "max_reward": 3.0,  # Maximum reward value
         }
 
+        # Cost settings (constraint: total sum must be 1)
+        self.cost_settings = {
+            "use_random_costs": True,  # Enable random cost generation
+            "total_cost_sum": 1.0,  # Total sum of all costs (fixed constraint)
+            "default_costs": [
+                0.1,
+                0.2,
+                0.3,
+                0.4,
+            ],  # Default costs for red, green, blue, yellow (sum=1)
+            "min_cost": 0.05,  # Minimum cost value (5%)
+            "max_cost": 0.7,   # Maximum cost value (70%)
+        }
+
         # Training configuration
         self.training_config = {
             "batch_size": 512,
@@ -265,6 +279,71 @@ class Config:
             rewards = [r * scale_factor for r in rewards]
 
         return rewards
+
+    def generate_random_costs(self):
+        """
+        Generate random costs that sum to 1.0 (required constraint)
+        
+        Returns:
+            dict: Mapping of door colors to cost values with sum=1.0
+        """
+        import numpy as np
+        
+        min_cost = self.cost_settings["min_cost"]
+        max_cost = self.cost_settings["max_cost"]
+        total_cost_sum = self.cost_settings["total_cost_sum"]
+        
+        # Generate 3 random split points between 0 and 1
+        splits = np.random.uniform(0, 1, 3)
+        splits = np.sort(splits)
+        
+        # Create 4 proportions from splits
+        proportions = [
+            splits[0],
+            splits[1] - splits[0],
+            splits[2] - splits[1],
+            1 - splits[2],
+        ]
+        
+        # Scale to total cost sum (1.0)
+        costs = [prop * total_cost_sum for prop in proportions]
+        
+        # Ensure minimum cost constraint
+        for i in range(len(costs)):
+            if costs[i] < min_cost:
+                costs[i] = min_cost
+        
+        # Rescale to maintain sum constraint
+        current_sum = sum(costs)
+        if current_sum != total_cost_sum:
+            scale_factor = total_cost_sum / current_sum
+            costs = [c * scale_factor for c in costs]
+        
+        # Ensure no cost exceeds maximum
+        for i in range(len(costs)):
+            if costs[i] > max_cost:
+                costs[i] = max_cost
+        
+        # Final rescaling to maintain exact sum
+        current_sum = sum(costs)
+        if current_sum != total_cost_sum:
+            scale_factor = total_cost_sum / current_sum
+            costs = [c * scale_factor for c in costs]
+        
+        # Map to door colors
+        door_colors = ["red", "green", "blue", "yellow"]
+        cost_dict = {color: cost for color, cost in zip(door_colors, costs)}
+        
+        return cost_dict
+
+    def get_costs(self):
+        """Get costs (either random or default)"""
+        if self.cost_settings["use_random_costs"]:
+            return self.generate_random_costs()
+        else:
+            door_colors = ["red", "green", "blue", "yellow"]
+            default_costs = self.cost_settings["default_costs"]
+            return {color: cost for color, cost in zip(door_colors, default_costs)}
 
     def get_goal_rewards(self):
         """Get goal rewards (either random or default)"""

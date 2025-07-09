@@ -736,7 +736,7 @@ def generate_trajectories(config=None, random_seed=42, n_processes=None):
 
         for i, result in enumerate(pool.imap(game_func, game_ids)):
             results.append(result)
-            if (i + 1) % 10 == 0:
+            if (i + 1) % 5000 == 0:
                 print(f"Generated {i + 1}/{n_games} games")
 
         # Wait for all processes to complete

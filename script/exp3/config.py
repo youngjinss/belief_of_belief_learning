@@ -38,7 +38,7 @@ class Config:
         self.log_actions = False
         self.log_rewards = False
         self.log_debug = False
-        
+
         # Directory settings for evaluation and visualization
         self.model_dir = "results/exp3"
         self.test_data_dir = "data/exp3/test"
@@ -112,7 +112,7 @@ class Config:
                 0.4,
             ],  # Default costs for red, green, blue, yellow (sum=1)
             "min_cost": 0.05,  # Minimum cost value (5%)
-            "max_cost": 0.7,   # Maximum cost value (70%)
+            "max_cost": 0.7,  # Maximum cost value (70%)
         }
 
         # Training configuration
@@ -162,7 +162,7 @@ class Config:
             "action_weight": 1.0,
             "goal_weight": 1.0,
         }
-        
+
         # Evaluation configuration
         self.evaluation_config = {
             "batch_size": 32,
@@ -171,7 +171,7 @@ class Config:
             "save_predictions": True,
             "use_percentage": 1.0,
         }
-        
+
         # N_past evaluation settings
         self.n_past_evaluation = {
             "n_past_min": 0,
@@ -235,68 +235,43 @@ class Config:
         """
         import numpy as np
 
-        if total_reward is None:
-            total_reward = self.goal_reward_settings["total_reward_sum"]
+        # Generate 4 random rewards from uniform [0,1]
+        rewards = np.random.uniform(0, 1, 4).tolist()
 
-        min_reward = self.goal_reward_settings["min_reward"]
-        max_reward = self.goal_reward_settings["max_reward"]
+        # Find the maximum value
+        max_value = max(rewards)
 
-        # Generate 3 random split points between min and max
-        splits = np.random.uniform(0, 1, 3)
-        splits = np.sort(splits)
+        # Find all indices with the maximum value
+        max_indices = [i for i, val in enumerate(rewards) if val == max_value]
 
-        # Create 4 proportions
-        proportions = [
-            splits[0],
-            splits[1] - splits[0],
-            splits[2] - splits[1],
-            1 - splits[2],
-        ]
+        # If there are ties, randomly select one
+        if len(max_indices) > 1:
+            selected_index = np.random.choice(max_indices)
+        else:
+            selected_index = max_indices[0]
 
-        # Scale to total reward
-        rewards = [prop * total_reward for prop in proportions]
-
-        # Ensure minimum reward constraint
-        for i in range(len(rewards)):
-            if rewards[i] < min_reward:
-                rewards[i] = min_reward
-
-        # Rescale to maintain sum constraint
-        current_sum = sum(rewards)
-        if current_sum != total_reward:
-            scale_factor = total_reward / current_sum
-            rewards = [r * scale_factor for r in rewards]
-
-        # Ensure no reward exceeds maximum
-        for i in range(len(rewards)):
-            if rewards[i] > max_reward:
-                rewards[i] = max_reward
-
-        # Final rescaling to maintain exact sum
-        current_sum = sum(rewards)
-        if current_sum != total_reward:
-            scale_factor = total_reward / current_sum
-            rewards = [r * scale_factor for r in rewards]
+        # Set only the selected maximum to 1.0
+        rewards[selected_index] = 1.0
 
         return rewards
 
     def generate_random_costs(self):
         """
         Generate random costs that sum to 1.0 (required constraint)
-        
+
         Returns:
             dict: Mapping of door colors to cost values with sum=1.0
         """
         import numpy as np
-        
+
         min_cost = self.cost_settings["min_cost"]
         max_cost = self.cost_settings["max_cost"]
         total_cost_sum = self.cost_settings["total_cost_sum"]
-        
+
         # Generate 3 random split points between 0 and 1
         splits = np.random.uniform(0, 1, 3)
         splits = np.sort(splits)
-        
+
         # Create 4 proportions from splits
         proportions = [
             splits[0],
@@ -304,36 +279,36 @@ class Config:
             splits[2] - splits[1],
             1 - splits[2],
         ]
-        
+
         # Scale to total cost sum (1.0)
         costs = [prop * total_cost_sum for prop in proportions]
-        
+
         # Ensure minimum cost constraint
         for i in range(len(costs)):
             if costs[i] < min_cost:
                 costs[i] = min_cost
-        
+
         # Rescale to maintain sum constraint
         current_sum = sum(costs)
         if current_sum != total_cost_sum:
             scale_factor = total_cost_sum / current_sum
             costs = [c * scale_factor for c in costs]
-        
+
         # Ensure no cost exceeds maximum
         for i in range(len(costs)):
             if costs[i] > max_cost:
                 costs[i] = max_cost
-        
+
         # Final rescaling to maintain exact sum
         current_sum = sum(costs)
         if current_sum != total_cost_sum:
             scale_factor = total_cost_sum / current_sum
             costs = [c * scale_factor for c in costs]
-        
+
         # Map to door colors
         door_colors = ["red", "green", "blue", "yellow"]
         cost_dict = {color: cost for color, cost in zip(door_colors, costs)}
-        
+
         return cost_dict
 
     def get_costs(self):
@@ -367,11 +342,11 @@ class Config:
     def get_training_process_config(self):
         """Get training process configuration"""
         return self.training_process_config.copy()
-    
+
     def get_evaluation_config(self):
         """Get evaluation configuration"""
         return self.evaluation_config.copy()
-    
+
     def get_n_past_evaluation_config(self):
         """Get N_past evaluation configuration"""
         return self.n_past_evaluation.copy()
@@ -505,7 +480,7 @@ class Config:
             self.n_games = args.n_games
         if hasattr(args, "save_dir") and args.save_dir is not None:
             self.save_dir = args.save_dir
-        
+
         # Evaluation configuration
         if hasattr(args, "test_data_dir") and args.test_data_dir is not None:
             self.test_data_dir = args.test_data_dir
@@ -521,7 +496,7 @@ class Config:
             self.evaluation_config["n_samples"] = args.n_samples
         if hasattr(args, "save_predictions") and args.save_predictions is not None:
             self.evaluation_config["save_predictions"] = args.save_predictions
-        
+
         # N_past evaluation settings
         if hasattr(args, "n_past_min") and args.n_past_min is not None:
             self.n_past_evaluation["n_past_min"] = args.n_past_min

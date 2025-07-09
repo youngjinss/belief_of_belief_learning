@@ -110,35 +110,37 @@ def calculate_sr_labels_for_trajectory(positions, grid_size=9, gammas=None):
     return sr_labels_per_timestep
 
 
-def calculate_key_door_rank(keys_collected, doors_opened, target_door_color):
+def calculate_key_door_rank(
+    keys_collected, doors_opened, target_door_color, goal_rewards
+):
     """
-    Calculate the rank of keys and doors based on collection order and target
+    Calculate the rank of keys and doors based on reward values
 
     Args:
         keys_collected: List of key colors collected in order
         doors_opened: List of door colors opened in order
         target_door_color: The target door color
+        goal_rewards: Dictionary of color -> reward value
 
     Returns:
         key_door_rank: List of ranks [rank_key0, rank_key1, rank_key2, rank_key3]
-                      where 1 is the most important (target key), 4 is least important
+                      where 1 is the highest reward, 4 is lowest reward
     """
     colors = ["red", "green", "blue", "yellow"]
-    key_door_rank = [4, 4, 4, 4]  # Default lowest rank
 
-    # Target key gets rank 1
-    if target_door_color in colors:
-        target_idx = colors.index(target_door_color)
-        key_door_rank[target_idx] = 1
+    # Get reward values for each color
+    reward_values = [goal_rewards.get(color, 0) for color in colors]
 
-    # Other collected keys get ranks 2, 3 based on collection order
-    rank = 2
-    for key_color in keys_collected:
-        if key_color != target_door_color and key_color in colors:
-            idx = colors.index(key_color)
-            if key_door_rank[idx] == 4:  # Not yet ranked
-                key_door_rank[idx] = rank
-                rank += 1
+    # Create ranking: highest reward gets rank 1, lowest gets rank 4
+    # Sort indices by reward value (descending order)
+    sorted_indices = sorted(
+        range(len(reward_values)), key=lambda i: reward_values[i], reverse=True
+    )
+
+    # Create ranking array
+    key_door_rank = [0] * 4
+    for rank, idx in enumerate(sorted_indices):
+        key_door_rank[idx] = rank + 1
 
     return key_door_rank
 
@@ -288,7 +290,7 @@ def save_game_with_labels(
             reward_list = [goal_rewards.get(color, 0.0) for color in colors]
             f.write("Goal Rewards: " + ",".join(map(str, reward_list)) + "\n")
             f.write("Goal Rewards Sum: " + str(sum(reward_list)) + "\n")
-        
+
         # Save game costs (sum constrained to 1.0)
         if game_costs is not None:
             # Convert to list format: [red, green, blue, yellow]
@@ -378,47 +380,23 @@ def generate_game_rewards(config_dict, game_id):
     reward_settings = config_dict.get("goal_reward_settings", {})
 
     if reward_settings.get("use_random_rewards", True):
-        # Generate random rewards that sum to total
-        total_reward = reward_settings.get("total_reward_sum", 4)
-        min_reward = reward_settings.get("min_reward", 0.1)
-        max_reward = reward_settings.get("max_reward", 3.0)
+        # Generate 4 random rewards from uniform [0,1]
+        rewards = np.random.uniform(0, 1, 4).tolist()
 
-        # Generate 3 random split points
-        splits = np.random.uniform(0, 1, 3)
-        splits = np.sort(splits)
+        # Find the maximum value
+        max_value = max(rewards)
 
-        # Create 4 proportions
-        proportions = [
-            splits[0],
-            splits[1] - splits[0],
-            splits[2] - splits[1],
-            1 - splits[2],
-        ]
+        # Find all indices with the maximum value
+        max_indices = [i for i, val in enumerate(rewards) if val == max_value]
 
-        # Scale to total reward
-        rewards = [prop * total_reward for prop in proportions]
+        # If there are ties, randomly select one
+        if len(max_indices) > 1:
+            selected_index = np.random.choice(max_indices)
+        else:
+            selected_index = max_indices[0]
 
-        # Ensure minimum reward constraint
-        for i in range(len(rewards)):
-            if rewards[i] < min_reward:
-                rewards[i] = min_reward
-
-        # Rescale to maintain sum constraint
-        current_sum = sum(rewards)
-        if current_sum > 0:
-            scale_factor = total_reward / current_sum
-            rewards = [r * scale_factor for r in rewards]
-
-        # Ensure no reward exceeds maximum
-        for i in range(len(rewards)):
-            if rewards[i] > max_reward:
-                rewards[i] = max_reward
-
-        # Final rescaling to maintain exact sum
-        current_sum = sum(rewards)
-        if current_sum > 0:
-            scale_factor = total_reward / current_sum
-            rewards = [r * scale_factor for r in rewards]
+        # Set only the selected maximum to 1.0
+        rewards[selected_index] = 1.0
     else:
         # Use default rewards
         rewards = reward_settings.get("default_rewards", [0.5, 1.0, 1.5, 1.0])
@@ -431,29 +409,29 @@ def generate_game_rewards(config_dict, game_id):
 def generate_game_costs(config_dict, game_id):
     """
     Generate random costs for this game based on config settings
-    
+
     Args:
         config_dict: Dictionary containing configuration
         game_id: Game ID for seeding
-    
+
     Returns:
         dict: Mapping of door colors to cost values (sum=1.0)
     """
     # Set seed for consistent cost generation for this game
     np.random.seed(config_dict["base_random_seed"] + game_id + 2000)
-    
+
     cost_settings = config_dict.get("cost_settings", {})
-    
+
     if cost_settings.get("use_random_costs", True):
         # Generate random costs that sum to 1.0
         min_cost = cost_settings.get("min_cost", 0.05)
         max_cost = cost_settings.get("max_cost", 0.7)
         total_cost_sum = cost_settings.get("total_cost_sum", 1.0)
-        
+
         # Generate 3 random split points between 0 and 1
         splits = np.random.uniform(0, 1, 3)
         splits = np.sort(splits)
-        
+
         # Create 4 proportions from splits
         proportions = [
             splits[0],
@@ -461,26 +439,26 @@ def generate_game_costs(config_dict, game_id):
             splits[2] - splits[1],
             1 - splits[2],
         ]
-        
+
         # Scale to total cost sum (1.0)
         costs = [prop * total_cost_sum for prop in proportions]
-        
+
         # Ensure minimum cost constraint
         for i in range(len(costs)):
             if costs[i] < min_cost:
                 costs[i] = min_cost
-        
+
         # Rescale to maintain sum constraint
         current_sum = sum(costs)
         if current_sum != total_cost_sum:
             scale_factor = total_cost_sum / current_sum
             costs = [c * scale_factor for c in costs]
-        
+
         # Ensure no cost exceeds maximum
         for i in range(len(costs)):
             if costs[i] > max_cost:
                 costs[i] = max_cost
-        
+
         # Final rescaling to maintain exact sum
         current_sum = sum(costs)
         if current_sum != total_cost_sum:
@@ -489,7 +467,7 @@ def generate_game_costs(config_dict, game_id):
     else:
         # Use default costs
         costs = cost_settings.get("default_costs", [0.1, 0.2, 0.3, 0.4])
-    
+
     # Map to color names
     colors = ["red", "green", "blue", "yellow"]
     return {colors[i]: costs[i] for i in range(len(colors))}
@@ -512,19 +490,22 @@ def run_single_game(game_id, config_dict, save_dir):
 
     # Generate goal rewards for this game
     goal_rewards = generate_game_rewards(config_dict, game_id)
-    
+
     # Generate random costs for this game
     game_costs = generate_game_costs(config_dict, game_id)
 
     # Create KeyDoor environment with custom preferences and costs
     env_size = config_dict["env_size"]
     if env_size == "5x5":
-        env = KeyDoor5x5Env(preference=goal_rewards, cost=game_costs, max_steps=config_dict["max_steps"])
+        env = KeyDoor5x5Env(
+            preference=goal_rewards, cost=game_costs, max_steps=config_dict["max_steps"]
+        )
     elif env_size == "9x9":
-        env = KeyDoor9x9Env(preference=goal_rewards, cost=game_costs, max_steps=config_dict["max_steps"])
+        env = KeyDoor9x9Env(
+            preference=goal_rewards, cost=game_costs, max_steps=config_dict["max_steps"]
+        )
     else:
         raise ValueError(f"Unknown environment size: {env_size}")
-
 
     # Reset environment with seed
     env.seed(config_dict["base_random_seed"] + game_id)
@@ -652,7 +633,7 @@ def run_single_game(game_id, config_dict, save_dir):
         env.target_door_color if hasattr(env, "target_door_color") else "yellow"
     )
     key_door_rank = calculate_key_door_rank(
-        keys_collected, doors_opened, target_door_color
+        keys_collected, doors_opened, target_door_color, goal_rewards
     )
 
     # Save game with labels

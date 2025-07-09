@@ -505,13 +505,8 @@ def run_single_game(game_id, config_dict, save_dir):
     max_steps = config_dict["max_steps"]
     episode_reward = 0
 
-    print(f"Game {game_id}: Starting with agent {agent_type}")
-    print(f"Game {game_id}: Mission: {env.mission}")
-    print(f"Game {game_id}: Target door color: {env.target_door_color}")
-
     # Log goal rewards
     total_reward = sum(goal_rewards.values())
-    print(f"Game {game_id}: Goal rewards (sum={total_reward:.2f}): {goal_rewards}")
 
     while step_count < max_steps:
         # Record current position
@@ -561,10 +556,6 @@ def run_single_game(game_id, config_dict, save_dir):
 
         # Check if episode is done
         if done:
-            success = reward > 0
-            print(f"Game {game_id}: Episode ended after {step_count} steps")
-            print(f"Game {game_id}: Final reward: {episode_reward:.2f}")
-            print(f"Game {game_id}: Success: {'Yes' if success else 'No'}")
             break
 
     # Store tracking data in agent for save function

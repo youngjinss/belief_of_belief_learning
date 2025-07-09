@@ -34,9 +34,17 @@ class Config:
 
         # Experiment settings
         self.experiment_name = "exp3"
+        self.experiment_no = 3
         self.log_actions = False
         self.log_rewards = False
         self.log_debug = False
+        
+        # Directory settings for evaluation and visualization
+        self.model_dir = "results/exp3"
+        self.test_data_dir = "data/exp3/test"
+        self.result_dir = "results/exp3"
+        self.plot_dir = "results/exp3/plots"
+        self.log_dir = "log/exp3"
 
         # Environment variants
         self.env_variants = {
@@ -139,6 +147,22 @@ class Config:
             "max_grad_norm": 1.0,
             "action_weight": 1.0,
             "goal_weight": 1.0,
+        }
+        
+        # Evaluation configuration
+        self.evaluation_config = {
+            "batch_size": 32,
+            "device": "auto",
+            "n_samples": 1000,
+            "save_predictions": True,
+            "use_percentage": 1.0,
+        }
+        
+        # N_past evaluation settings
+        self.n_past_evaluation = {
+            "n_past_min": 0,
+            "n_past_max": 4,
+            "n_past_infer": 4,
         }
 
     def get_env_name(self):
@@ -264,6 +288,14 @@ class Config:
     def get_training_process_config(self):
         """Get training process configuration"""
         return self.training_process_config.copy()
+    
+    def get_evaluation_config(self):
+        """Get evaluation configuration"""
+        return self.evaluation_config.copy()
+    
+    def get_n_past_evaluation_config(self):
+        """Get N_past evaluation configuration"""
+        return self.n_past_evaluation.copy()
 
     def get_model_kwargs(self):
         """Get model initialization parameters"""
@@ -394,6 +426,30 @@ class Config:
             self.n_games = args.n_games
         if hasattr(args, "save_dir") and args.save_dir is not None:
             self.save_dir = args.save_dir
+        
+        # Evaluation configuration
+        if hasattr(args, "test_data_dir") and args.test_data_dir is not None:
+            self.test_data_dir = args.test_data_dir
+        if hasattr(args, "model_dir") and args.model_dir is not None:
+            self.model_dir = args.model_dir
+        if hasattr(args, "result_dir") and args.result_dir is not None:
+            self.result_dir = args.result_dir
+        if hasattr(args, "plot_dir") and args.plot_dir is not None:
+            self.plot_dir = args.plot_dir
+        if hasattr(args, "experiment_no") and args.experiment_no is not None:
+            self.experiment_no = args.experiment_no
+        if hasattr(args, "n_samples") and args.n_samples is not None:
+            self.evaluation_config["n_samples"] = args.n_samples
+        if hasattr(args, "save_predictions") and args.save_predictions is not None:
+            self.evaluation_config["save_predictions"] = args.save_predictions
+        
+        # N_past evaluation settings
+        if hasattr(args, "n_past_min") and args.n_past_min is not None:
+            self.n_past_evaluation["n_past_min"] = args.n_past_min
+        if hasattr(args, "n_past_max") and args.n_past_max is not None:
+            self.n_past_evaluation["n_past_max"] = args.n_past_max
+        if hasattr(args, "n_past_infer") and args.n_past_infer is not None:
+            self.n_past_evaluation["n_past_infer"] = args.n_past_infer
 
     def validate(self):
         """Validate configuration"""

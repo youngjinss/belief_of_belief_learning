@@ -5,9 +5,11 @@ import multiprocessing as mp
 from functools import partial
 
 # Add parent directory to path for imports
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.append(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+)
 
-from lib.env.gym_minigrid.envs.keydoor import KeyDoorEnv5x5, KeyDoorEnv6x6, KeyDoorEnv9x9
+from lib.env.gym_minigrid.envs.keydoor import KeyDoor5x5Env, KeyDoor9x9Env
 from script.exp3.agents import AStarAgent, RandomAgent, ValueAgent
 from script.exp3.config import Config
 
@@ -68,9 +70,7 @@ def calculate_successor_representation(
     return sr_maps_sparse
 
 
-def calculate_sr_labels_for_trajectory(
-    positions, grid_size=9, gammas=[0.5, 0.9, 0.99]
-):
+def calculate_sr_labels_for_trajectory(positions, grid_size=9, gammas=[0.5, 0.9, 0.99]):
     """
     Calculate SR labels for each timestep in the trajectory
 
@@ -97,24 +97,24 @@ def calculate_sr_labels_for_trajectory(
 def calculate_key_door_rank(keys_collected, doors_opened, target_door_color):
     """
     Calculate the rank of keys and doors based on collection order and target
-    
+
     Args:
         keys_collected: List of key colors collected in order
         doors_opened: List of door colors opened in order
         target_door_color: The target door color
-        
+
     Returns:
         key_door_rank: List of ranks [rank_key0, rank_key1, rank_key2, rank_key3]
                       where 1 is the most important (target key), 4 is least important
     """
-    colors = ['red', 'green', 'blue', 'yellow']
+    colors = ["red", "green", "blue", "yellow"]
     key_door_rank = [4, 4, 4, 4]  # Default lowest rank
-    
+
     # Target key gets rank 1
     if target_door_color in colors:
         target_idx = colors.index(target_door_color)
         key_door_rank[target_idx] = 1
-    
+
     # Other collected keys get ranks 2, 3 based on collection order
     rank = 2
     for key_color in keys_collected:
@@ -123,87 +123,87 @@ def calculate_key_door_rank(keys_collected, doors_opened, target_door_color):
             if key_door_rank[idx] == 4:  # Not yet ranked
                 key_door_rank[idx] = rank
                 rank += 1
-                
+
     return key_door_rank
 
 
 def calculate_consumption_labels(keys_collected, doors_opened):
     """
     Calculate consumption labels for keys and doors
-    
+
     Args:
         keys_collected: List of key colors collected
         doors_opened: List of door colors opened
-        
+
     Returns:
         consumption_vector: Binary vector of length 8 (4 keys + 4 doors)
-                          [key_red, key_green, key_blue, key_yellow, 
+                          [key_red, key_green, key_blue, key_yellow,
                            door_red, door_green, door_blue, door_yellow]
     """
     consumption_vector = np.zeros(8, dtype=np.float32)
-    colors = ['red', 'green', 'blue', 'yellow']
-    
+    colors = ["red", "green", "blue", "yellow"]
+
     # Mark collected keys
     for key_color in keys_collected:
         if key_color in colors:
             idx = colors.index(key_color)
             consumption_vector[idx] = 1.0
-            
+
     # Mark opened doors
     for door_color in doors_opened:
         if door_color in colors:
             idx = colors.index(door_color)
             consumption_vector[4 + idx] = 1.0
-            
+
     return consumption_vector
 
 
 def env_to_maze_format(env, agent_pos):
     """
     Convert KeyDoor environment to experiment 5 maze format
-    
+
     Args:
         env: KeyDoor environment
         agent_pos: Current agent position
-        
+
     Returns:
         maze_str: String representation of the maze
     """
     maze_lines = []
     width, height = env.width, env.height
-    
+
     # Add top wall
     maze_lines.append("#" * (width + 2))
-    
+
     # Process each row
     for j in range(height):
         row = "#"
         for i in range(width):
             cell = env.grid.get(i, j)
-            
+
             if agent_pos == (i, j):
                 row += "O"  # Agent
             elif cell is None:
                 row += "-"  # Empty space
-            elif cell.type == 'wall':
+            elif cell.type == "wall":
                 row += "#"  # Wall
-            elif cell.type == 'key':
+            elif cell.type == "key":
                 # Map key colors to letters A, B, C, D
-                color_map = {'red': 'A', 'green': 'B', 'blue': 'C', 'yellow': 'D'}
-                row += color_map.get(cell.color, '?')
-            elif cell.type == 'door':
+                color_map = {"red": "A", "green": "B", "blue": "C", "yellow": "D"}
+                row += color_map.get(cell.color, "?")
+            elif cell.type == "door":
                 # Use lowercase for doors
-                color_map = {'red': 'a', 'green': 'b', 'blue': 'c', 'yellow': 'd'}
-                row += color_map.get(cell.color, '?')
+                color_map = {"red": "a", "green": "b", "blue": "c", "yellow": "d"}
+                row += color_map.get(cell.color, "?")
             else:
                 row += "?"  # Unknown
-                
+
         row += "#"
         maze_lines.append(row)
-    
+
     # Add bottom wall
     maze_lines.append("#" * (width + 2))
-    
+
     return maze_lines
 
 
@@ -219,7 +219,7 @@ def save_game_with_labels(
 ):
     """
     Save game data with SR and consumption labels in experiment 5 format
-    
+
     Args:
         agent: The agent that played the game
         env: The KeyDoor environment
@@ -231,11 +231,11 @@ def save_game_with_labels(
         game_id: Unique game ID for file naming
     """
     import uuid
-    
+
     # Get the path to folder
     gf = base_dir if name == "" else os.path.join(base_dir, name)
     os.makedirs(gf, exist_ok=True)
-    
+
     # Use game_id if provided, otherwise generate a unique filename
     if game_id is not None:
         new_file_path = os.path.join(gf, f"test{game_id}.txt")
@@ -244,26 +244,33 @@ def save_game_with_labels(
         unique_id = str(uuid.uuid4())[:8]
         timestamp = int(np.random.rand() * 1e9)
         new_file_path = os.path.join(gf, f"test_{timestamp}_{unique_id}.txt")
-    
+
     with open(new_file_path, "w") as f:
         f.write("Maze:\n")
-        
+
         # Save the maze in experiment 5 format
-        maze_lines = env_to_maze_format(env, agent.position_history[-1] if hasattr(agent, 'position_history') and agent.position_history else env.agent_pos)
+        maze_lines = env_to_maze_format(
+            env,
+            (
+                agent.position_history[-1]
+                if hasattr(agent, "position_history") and agent.position_history
+                else env.agent_pos
+            ),
+        )
         for line in maze_lines:
             f.write(line + "\n")
-            
+
         # Save key/door rank (similar to goal rank)
         f.write("Goal Consumed Rank : " + str(key_door_rank) + "\n")
         f.write("Trajectory length: " + str(len(agent.action_history)) + "\n")
-        
+
         # Save consumption labels
         f.write(
             "Consumption Labels: "
             + ",".join(map(str, consumption_labels.tolist()))
             + "\n"
         )
-        
+
         # Save SR data per timestep in sparse format
         f.write("SR_Data_Per_Timestep:\n")
         for t, sr_data_at_t in enumerate(sr_labels_per_timestep):
@@ -277,28 +284,43 @@ def save_game_with_labels(
                     [f"{pos[0]},{pos[1]}:{val}" for pos, val in sparse_sr]
                 )
                 f.write(f"SR_gamma_{gamma}: {sparse_str}\n")
-        
+
         # Save trajectory moves
         for i in range(len(agent.action_history)):
-            pos = agent.position_history[i] if hasattr(agent, 'position_history') and i < len(agent.position_history) else [0, 0]
+            pos = (
+                agent.position_history[i]
+                if hasattr(agent, "position_history")
+                and i < len(agent.position_history)
+                else [0, 0]
+            )
             action = agent.action_history[i]
-            
+
             # Check if key or door was interacted at this step
             interaction = "X"
-            if hasattr(agent, 'keys_collected_steps'):
+            if hasattr(agent, "keys_collected_steps"):
                 for step, key_color in agent.keys_collected_steps:
                     if step == i:
-                        color_map = {'red': 'A', 'green': 'B', 'blue': 'C', 'yellow': 'D'}
-                        interaction = color_map.get(key_color, 'X')
+                        color_map = {
+                            "red": "A",
+                            "green": "B",
+                            "blue": "C",
+                            "yellow": "D",
+                        }
+                        interaction = color_map.get(key_color, "X")
                         break
-            
-            if interaction == "X" and hasattr(agent, 'doors_opened_steps'):
+
+            if interaction == "X" and hasattr(agent, "doors_opened_steps"):
                 for step, door_color in agent.doors_opened_steps:
                     if step == i:
-                        color_map = {'red': 'a', 'green': 'b', 'blue': 'c', 'yellow': 'd'}
-                        interaction = color_map.get(door_color, 'X')
+                        color_map = {
+                            "red": "a",
+                            "green": "b",
+                            "blue": "c",
+                            "yellow": "d",
+                        }
+                        interaction = color_map.get(door_color, "X")
                         break
-                        
+
             msg = f"[{pos[0]}, {pos[1]}] : {action} : {interaction}"
             f.write(msg + "\n")
 
@@ -306,49 +328,69 @@ def save_game_with_labels(
 def run_single_game(game_id, config_dict, save_dir):
     """
     Run a single KeyDoor game simulation
-    
+
     Args:
         game_id: Unique identifier for this game
         config_dict: Dictionary containing config parameters
         save_dir: Directory to save game data
-        
+
     Returns:
         game_id: For tracking completion
     """
     # Set unique random seed for this game
     np.random.seed(config_dict["base_random_seed"] + game_id)
-    
-    # Create KeyDoor environment
+
+    # Create KeyDoor environment using gym.make (same as render_kd.py)
     env_size = config_dict["env_size"]
     if env_size == "5x5":
-        env = KeyDoorEnv5x5()
-    elif env_size == "6x6":
-        env = KeyDoorEnv6x6()
+        env_name = "MiniGrid-KeyDoor-5x5-v0"
     elif env_size == "9x9":
-        env = KeyDoorEnv9x9()
+        env_name = "MiniGrid-KeyDoor-9x9-v0"
     else:
         raise ValueError(f"Unknown environment size: {env_size}")
+
+    import gymnasium as gym
     
-    obs = env.reset()
+    # Create environment same way as render_kd.py
+    env = gym.make(env_name, max_steps=config_dict["max_steps"])
+    env = env.unwrapped if hasattr(env, "unwrapped") else env
     
-    # Create agent based on config
+    # Reset environment with seed
+    env.seed(config_dict["base_random_seed"] + game_id)
+    reset_result = env.reset()
+    if isinstance(reset_result, tuple):
+        obs, _ = reset_result
+    else:
+        obs = reset_result
+
+    # Handle observation if it's a dict (same as render_kd.py)
+    if isinstance(obs, dict):
+        obs = obs.get("image", obs)
+
+    # Create agent based on config (same as render_kd.py)
     agent_type = config_dict["agent_type"]
     if agent_type == "astar":
         agent = AStarAgent(env, observability=config_dict["observability"])
     elif agent_type == "value":
+        agent_config = config_dict.get("agent_configs", {}).get("value", {})
         agent = ValueAgent(
             env,
-            gamma=config_dict.get("value_gamma", 0.99),
-            observability=config_dict["observability"]
+            observability=agent_config.get("observability", "full"),
+            movement_cost=agent_config.get("movement_cost", 0.01),
+            wall_penalty=agent_config.get("wall_penalty", 2.0),
+            gamma=agent_config.get("gamma", 0.99),
+            temperature=agent_config.get("temperature", 0.1),
         )
     elif agent_type == "random":
         agent = RandomAgent(
-            env.action_space,
-            movement_prob=config_dict.get("random_movement_prob", 0.8)
+            env.action_space, movement_prob=config_dict.get("random_movement_prob", 0.8)
         )
     else:
         raise ValueError(f"Unknown agent type: {agent_type}")
-    
+
+    # Reset agent
+    agent.reset()
+
     # Initialize tracking
     position_history = []
     action_history = []
@@ -356,69 +398,90 @@ def run_single_game(game_id, config_dict, save_dir):
     doors_opened = []
     keys_collected_steps = []
     doors_opened_steps = []
-    
+
     # Run game simulation
     step_count = 0
     max_steps = config_dict["max_steps"]
+    episode_reward = 0
+
+    print(f"Game {game_id}: Starting with agent {agent_type}")
+    print(f"Game {game_id}: Mission: {env.mission}")
+    print(f"Game {game_id}: Target door color: {env.target_door_color}")
     
     while step_count < max_steps:
         # Record current position
-        position_history.append(tuple(env.agent_pos))
-        
+        current_position = tuple(env.agent_pos)
+        position_history.append(current_position)
+
         # Get action from agent
         action = agent.get_action(obs)
         action_history.append(action)
-        
-        # Execute action
-        old_keys = set(env.agent_keys)
-        old_doors_opened = sum(1 for _, _, obj in env.grid.iter_cells() 
-                              if obj and obj.type == 'door' and not obj.is_locked)
-        
-        obs, reward, done, info = env.step(action)
-        
-        # Check for key collection
-        new_keys = set(env.agent_keys)
-        if len(new_keys) > len(old_keys):
-            collected_key = list(new_keys - old_keys)[0]
-            keys_collected.append(collected_key)
-            keys_collected_steps.append((step_count, collected_key))
-        
-        # Check for door opening
-        new_doors_opened = sum(1 for _, _, obj in env.grid.iter_cells() 
-                              if obj and obj.type == 'door' and not obj.is_locked)
-        if new_doors_opened > old_doors_opened:
-            # Find which door was opened
-            for x, y, obj in env.grid.iter_cells():
-                if obj and obj.type == 'door' and not obj.is_locked:
-                    if (x, y) not in [(dx, dy) for dx, dy, dobj in env.grid.iter_cells() 
-                                     if dobj and dobj.type == 'door' and not dobj.is_locked]:
-                        doors_opened.append(obj.color)
-                        doors_opened_steps.append((step_count, obj.color))
-                        break
-        
+
+        # Execute action (same as render_kd.py)
+        obs, reward, terminated, truncated, info = env.step(action)
+        done = terminated or truncated
+
+        # Handle observation if it's a dict
+        if isinstance(obs, dict):
+            obs = obs.get("image", obs)
+
+        # Update reward
+        episode_reward += reward
         step_count += 1
-        
+
+        # Track key collection and door opening
+        if hasattr(agent, "collected_keys"):
+            current_keys = list(agent.collected_keys)
+            if len(current_keys) > len(keys_collected):
+                new_key = [k for k in current_keys if k not in keys_collected][0]
+                keys_collected.append(new_key)
+                keys_collected_steps.append((step_count-1, new_key))
+
+        # Check for door opening by reward
+        if reward > 0 and step_count > 1:
+            if reward >= 1.0:  # Door opening reward
+                # Find which door was opened
+                for x in range(env.grid.width):
+                    for y in range(env.grid.height):
+                        obj = env.grid.get(x, y)
+                        if obj and obj.type == "door" and obj.is_open:
+                            if obj.color not in doors_opened:
+                                doors_opened.append(obj.color)
+                                doors_opened_steps.append((step_count-1, obj.color))
+                                break
+
+        # Let agent analyze feedback (for learning agents)
+        if hasattr(agent, "analyze_feedback"):
+            agent.analyze_feedback(reward, done)
+
+        # Check if episode is done
         if done:
+            success = reward > 0
+            print(f"Game {game_id}: Episode ended after {step_count} steps")
+            print(f"Game {game_id}: Final reward: {episode_reward:.2f}")
+            print(f"Game {game_id}: Success: {'Yes' if success else 'No'}")
             break
-    
+
     # Store tracking data in agent for save function
     agent.position_history = position_history
     agent.action_history = action_history
     agent.keys_collected_steps = keys_collected_steps
     agent.doors_opened_steps = doors_opened_steps
-    
+
     # Calculate SR labels for each timestep
     sr_labels_per_timestep = calculate_sr_labels_for_trajectory(
         position_history, grid_size=env.width
     )
-    
+
     # Calculate consumption labels (keys and doors)
     consumption_labels = calculate_consumption_labels(keys_collected, doors_opened)
-    
+
     # Calculate key/door rank based on target
-    target_door_color = env.target_color if hasattr(env, 'target_color') else 'yellow'
-    key_door_rank = calculate_key_door_rank(keys_collected, doors_opened, target_door_color)
-    
+    target_door_color = env.target_door_color if hasattr(env, "target_door_color") else "yellow"
+    key_door_rank = calculate_key_door_rank(
+        keys_collected, doors_opened, target_door_color
+    )
+
     # Save game with labels
     save_game_with_labels(
         agent=agent,
@@ -430,14 +493,14 @@ def run_single_game(game_id, config_dict, save_dir):
         base_dir=save_dir,
         game_id=game_id,
     )
-    
+
     return game_id
 
 
 def generate_trajectories(config=None, random_seed=42, n_processes=None):
     """
     Generate trajectories for KeyDoor environment in ToMnet format
-    
+
     Args:
         config: Config object containing all parameters. If None, uses default values.
         random_seed: Random seed for environment generation
@@ -445,22 +508,22 @@ def generate_trajectories(config=None, random_seed=42, n_processes=None):
     """
     if config is None:
         config = Config()
-    
+
     n_games = config.n_games
-    
+
     print(f"Generating {n_games} KeyDoor trajectories with random seed: {random_seed}")
     print(f"Agent type: {config.agent_type}")
     print(f"Environment size: {config.env_size}")
-    
+
     # Create output directory
     os.makedirs(config.save_dir, exist_ok=True)
-    
+
     # Set number of processes (default to CPU count - 1, min 1)
     if n_processes is None:
         n_processes = max(1, mp.cpu_count() - 1)
-    
+
     print(f"Using {n_processes} processes for parallel game generation")
-    
+
     # Convert config to dictionary for multiprocessing
     config_dict = {
         "env_size": config.env_size,
@@ -470,29 +533,31 @@ def generate_trajectories(config=None, random_seed=42, n_processes=None):
         "base_random_seed": random_seed,
         # Agent-specific configs
         "value_gamma": config.agent_configs.get("value", {}).get("gamma", 0.99),
-        "random_movement_prob": config.agent_configs.get("random", {}).get("movement_prob", 0.8),
+        "random_movement_prob": config.agent_configs.get("random", {}).get(
+            "movement_prob", 0.8
+        ),
     }
-    
+
     # Create partial function with fixed arguments
     game_func = partial(
         run_single_game, config_dict=config_dict, save_dir=config.save_dir
     )
-    
+
     # Run games in parallel
     with mp.Pool(processes=n_processes) as pool:
         # Use imap for progress tracking
         game_ids = range(n_games)
         results = []
-        
+
         for i, result in enumerate(pool.imap(game_func, game_ids)):
             results.append(result)
             if (i + 1) % 10 == 0:
                 print(f"Generated {i + 1}/{n_games} games")
-        
+
         # Wait for all processes to complete
         pool.close()
         pool.join()
-    
+
     print(f"Generated {n_games} games successfully using {n_processes} processes!")
     print(f"Data saved to: {config.save_dir}")
 
@@ -503,11 +568,16 @@ if __name__ == "__main__":
         mp.set_start_method("spawn")
     except RuntimeError:
         pass  # Already set
-    
+
     import argparse
-    
+
     parser = argparse.ArgumentParser(
         description="Generate trajectories for KeyDoor environment in ToMnet format"
+    )
+    parser.add_argument(
+        "--config_override",
+        action="store_true",
+        help="Override config with command line arguments",
     )
     parser.add_argument(
         "--n_games", type=int, default=5, help="Number of games to generate"
@@ -522,7 +592,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--env_size",
         type=str,
-        choices=["5x5", "6x6", "9x9"],
+        choices=["5x5", "9x9", "11x11"],
         default="9x9",
         help="KeyDoor environment size",
     )
@@ -544,16 +614,18 @@ if __name__ == "__main__":
         default=None,
         help="Number of parallel processes (default: CPU count - 1)",
     )
-    
+
     args = parser.parse_args()
-    
-    # Create config
+
     config = Config()
-    config.n_games = args.n_games
-    config.agent_type = args.agent_type
-    config.env_size = args.env_size
-    config.save_dir = args.save_dir
     
+    # Override config with command line arguments if specified
+    if args.config_override:
+        config.n_games = args.n_games
+        config.agent_type = args.agent_type
+        config.env_size = args.env_size
+        config.save_dir = args.save_dir
+
     generate_trajectories(
         config, random_seed=args.random_seed, n_processes=args.n_processes
     )

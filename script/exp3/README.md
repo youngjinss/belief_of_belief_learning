@@ -97,3 +97,39 @@ gym_minigrid_path = os.path.join(os.path.dirname(__file__), '../../lib/env')
 sys.path.insert(0, gym_minigrid_path)
 import gym_minigrid
 ```
+
+## experiment v1:
+
+A. AStarAgent - Lines that need changes:
+
+  1. Line 137: return 4  # Stay - key pickup is automatic
+    - Fix: Change to return 3  # pickup action when at key position
+  2. Line 161: return 4  # Stay - door opening is automatic
+    - Fix: Change to return 5  # toggle action when at door position
+  3. Line 152-154: Episode termination logic
+    - Fix: Add return 6  # done action when target door is opened
+  4. Missing inventory management
+    - Fix: Add logic to handle drop action when inventory is full
+
+B. ValueAgent - Lines that need changes:
+
+  1. Line 454: return 4  # Stay if key not found
+    - Fix: Similar pickup logic needed
+  2. Line 464: return 4  # Stay if door not found
+    - Fix: Similar toggle logic needed
+  3. Line 484: return 4  # Stay if no action found
+    - Fix: Need to handle all 7 actions in value iteration
+
+C. RandomAgent - Lines that need changes:
+
+  1. Line 677: return np.random.choice([0, 1, 2])  # movement only
+    - Fix: Should include all actions with proper weighting
+  2. Line 680: return np.random.choice([3, 5])  # pickup or toggle
+    - Fix: Should include drop and done actions
+
+Key Behavioral Changes Needed:
+
+  1. State Management: Agents need to track when they're at objects vs. adjacent to them
+  2. Action Sequencing: Must explicitly use pickup → navigate → toggle → done sequence
+  3. Inventory Logic: Must handle dropping keys when inventory is full
+  4. Success Detection: Must detect when target door is opened and use done action

@@ -1,5 +1,5 @@
-from gym_minigrid.minigrid import *
-from gym_minigrid.register import register
+from ..minigrid import *
+from ..register import register
 import numpy as np
 
 
@@ -40,9 +40,9 @@ class KeyDoorEnv(MiniGridEnv):
             agent_view_size=size,  # Agent can see entire grid
         )
 
-        # Custom action space: up, down, left, right, stay, pickup
+        # Custom action space: up, down, left, right, stay
         self.actions = MiniGridEnv.Actions
-        self.action_space = spaces.Discrete(6)
+        self.action_space = spaces.Discrete(5)
 
     def _gen_grid(self, width, height):
         # Create empty grid

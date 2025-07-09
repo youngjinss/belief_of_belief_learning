@@ -1,5 +1,5 @@
-from gym_minigrid.roomgrid import RoomGrid
-from gym_minigrid.register import register
+from ..roomgrid import RoomGrid
+from ..register import register
 
 
 class KeyCorridor(RoomGrid):

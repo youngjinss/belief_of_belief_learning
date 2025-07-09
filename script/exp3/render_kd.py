@@ -98,23 +98,23 @@ def render_to_image(env):
     """Render environment to PIL Image using native MiniGrid rendering"""
     # Get the rendered image as RGB array
     renderer = env.render()
-    
+
     # If renderer is a MiniGrid Renderer object, get the array
-    if hasattr(renderer, 'getArray'):
+    if hasattr(renderer, "getArray"):
         img = renderer.getArray()
         if isinstance(img, np.ndarray):
             return Image.fromarray(img)
-    
+
     # If img is already a PIL Image, return it
     if isinstance(renderer, Image.Image):
         return renderer
-    
+
     # If it's a numpy array, convert to PIL Image
     if isinstance(renderer, np.ndarray):
         if renderer.dtype != np.uint8:
             renderer = (renderer * 255).astype(np.uint8)
         return Image.fromarray(renderer)
-    
+
     # If it's something else, try to handle it
     return None
 
@@ -150,9 +150,9 @@ def run_episode(env, agent, config, episode, args):
             env.render()
         except Exception as e:
             print(f"Warning: Could not render: {e}")
-    
+
     # Capture initial frame for GIF if saving
-    if hasattr(args, 'gif') and args.gif:
+    if hasattr(args, "gif") and args.gif:
         initial_frame = render_to_image(env)
         if initial_frame:
             frames.append(initial_frame)
@@ -199,7 +199,7 @@ def run_episode(env, agent, config, episode, args):
                 print(f"Warning: Could not render: {e}")
 
         # Capture frame for GIF if saving
-        if hasattr(args, 'gif') and args.gif:
+        if hasattr(args, "gif") and args.gif:
             frame = render_to_image(env)
             if frame:
                 frames.append(frame)
@@ -211,18 +211,22 @@ def run_episode(env, agent, config, episode, args):
         # Check if episode is done
         if done:
             # Save GIF if requested
-            if hasattr(args, 'gif') and args.gif and frames:
-                gif_path = f"{args.gif}_ep{episode+1}.gif" if args.gif else f"keydoor_ep{episode+1}.gif"
+            if hasattr(args, "gif") and args.gif and frames:
+                gif_path = (
+                    f"{args.gif}_ep{episode+1}.gif"
+                    if args.gif
+                    else f"keydoor_ep{episode+1}.gif"
+                )
                 print(f"Saving {len(frames)} frames to {gif_path}")
                 frames[0].save(
                     gif_path,
                     save_all=True,
                     append_images=frames[1:],
                     duration=500,  # 500ms per frame
-                    loop=0
+                    loop=0,
                 )
                 print(f"GIF saved to {gif_path}")
-            
+
             if reward > 0:
                 print(f"✓ SUCCESS! Episode completed with reward: {episode_reward:.2f}")
                 return step_count, episode_reward, True
@@ -236,18 +240,22 @@ def run_episode(env, agent, config, episode, args):
 
     # Episode ended due to max steps
     # Save GIF if requested
-    if hasattr(args, 'gif') and args.gif and frames:
-        gif_path = f"{args.gif}_ep{episode+1}.gif" if args.gif else f"keydoor_ep{episode+1}.gif"
+    if hasattr(args, "gif") and args.gif and frames:
+        gif_path = (
+            f"{args.gif}_ep{episode+1}.gif"
+            if args.gif
+            else f"keydoor_ep{episode+1}.gif"
+        )
         print(f"Saving {len(frames)} frames to {gif_path}")
         frames[0].save(
             gif_path,
             save_all=True,
             append_images=frames[1:],
             duration=500,  # 500ms per frame
-            loop=0
+            loop=0,
         )
         print(f"GIF saved to {gif_path}")
-    
+
     print(f"Episode ended after {step_count} steps (max reached)")
     return step_count, episode_reward, False
 
@@ -328,11 +336,11 @@ def main():
         env = gym.make(env_name, max_steps=config.max_steps)
         # Disable gym wrappers that cause issues
         env = env.unwrapped if hasattr(env, "unwrapped") else env
-        
+
         # Set render mode for GIF saving
         if args.gif:
             env.render_mode = "rgb_array"
-        
+
         print(f"✓ Environment {env_name} created successfully")
     except Exception as e:
         print(f"✗ Failed to create environment {env_name}: {e}")

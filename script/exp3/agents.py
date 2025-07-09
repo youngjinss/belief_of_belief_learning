@@ -168,8 +168,16 @@ class AStarAgent:
         for i in range(self.grid.width):
             for j in range(self.grid.height):
                 obj = self.grid.get(i, j)
-                if isinstance(obj, obj_type) and obj.color == color:
-                    return (i, j)
+                if obj is not None:
+                    # Check both isinstance and class name for compatibility
+                    if isinstance(obj, obj_type) and obj.color == color:
+                        return (i, j)
+                    elif (
+                        hasattr(obj, "color")
+                        and obj.color == color
+                        and obj.__class__.__name__ == obj_type.__name__
+                    ):
+                        return (i, j)
         return None
 
     def _navigate_to_position(self, target_pos):
@@ -254,7 +262,12 @@ class AStarAgent:
         heapq.heappush(open_list, start_node)
 
         # Main A* loop
+        iteration_count = 0
         while open_list:
+            iteration_count += 1
+            if iteration_count > 200:  # Prevent infinite loops
+                break
+
             # Get node with lowest f cost
             current_node = heapq.heappop(open_list)
 
@@ -333,8 +346,20 @@ class AStarAgent:
         if isinstance(obj, Key):
             return True
 
+        # Check using class name for compatibility
+        if hasattr(obj, "__class__") and obj.__class__.__name__ == "Key":
+            return True
+
         # Doors are walkable if they're open or we have the key
         if isinstance(obj, Door):
+            if obj.is_open:
+                return True
+            # Check if we have the key for locked doors
+            if obj.is_locked and obj.color in self.collected_keys:
+                return True
+
+        # Check using class name for compatibility
+        if hasattr(obj, "__class__") and obj.__class__.__name__ == "Door":
             if obj.is_open:
                 return True
             # Check if we have the key for locked doors
@@ -471,8 +496,16 @@ class ValueAgent:
         for i in range(self.grid.width):
             for j in range(self.grid.height):
                 obj = self.grid.get(i, j)
-                if isinstance(obj, obj_type) and obj.color == color:
-                    return (i, j)
+                if obj is not None:
+                    # Check both isinstance and class name for compatibility
+                    if isinstance(obj, obj_type) and obj.color == color:
+                        return (i, j)
+                    elif (
+                        hasattr(obj, "color")
+                        and obj.color == color
+                        and obj.__class__.__name__ == obj_type.__name__
+                    ):
+                        return (i, j)
         return None
 
     def _navigate_with_value_iteration(self, target_pos):

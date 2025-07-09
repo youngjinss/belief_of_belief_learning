@@ -69,6 +69,21 @@ class Config:
             },
         }
 
+        # Successor Representation (SR) settings
+        self.sr_settings = {
+            "gammas": [0.5, 0.9, 0.99],  # Discount factors for SR calculation
+            "grid_size": 9,  # Default grid size for SR
+        }
+
+        # Goal reward settings (following ToMnetF pattern)
+        self.goal_reward_settings = {
+            "use_random_rewards": True,  # Enable random goal rewards
+            "total_reward_sum": 4,  # Total sum of all goal rewards (user preference)
+            "default_rewards": [0.5, 1.0, 1.5, 1.0],  # Default rewards for goals A, B, C, D (sum=4)
+            "min_reward": 0.1,  # Minimum reward value
+            "max_reward": 3.0,  # Maximum reward value
+        }
+
     def get_env_name(self):
         """Get full environment name"""
         return self.env_name.format(size=self.env_size)
@@ -114,6 +129,63 @@ class Config:
             "log_rewards": self.log_rewards,
             "log_debug": self.log_debug,
         }
+
+    def generate_random_goal_rewards(self, total_reward=None):
+        """
+        Generate random goal rewards that sum to total_reward
+        Following ToMnetF pattern but with configurable sum
+        
+        Returns:
+            list: Four goal rewards that sum to total_reward
+        """
+        import numpy as np
+        
+        if total_reward is None:
+            total_reward = self.goal_reward_settings["total_reward_sum"]
+        
+        min_reward = self.goal_reward_settings["min_reward"]
+        max_reward = self.goal_reward_settings["max_reward"]
+        
+        # Generate 3 random split points between min and max
+        splits = np.random.uniform(0, 1, 3)
+        splits = np.sort(splits)
+        
+        # Create 4 proportions
+        proportions = [splits[0], splits[1] - splits[0], splits[2] - splits[1], 1 - splits[2]]
+        
+        # Scale to total reward
+        rewards = [prop * total_reward for prop in proportions]
+        
+        # Ensure minimum reward constraint
+        for i in range(len(rewards)):
+            if rewards[i] < min_reward:
+                rewards[i] = min_reward
+        
+        # Rescale to maintain sum constraint
+        current_sum = sum(rewards)
+        if current_sum != total_reward:
+            scale_factor = total_reward / current_sum
+            rewards = [r * scale_factor for r in rewards]
+        
+        # Ensure no reward exceeds maximum
+        for i in range(len(rewards)):
+            if rewards[i] > max_reward:
+                rewards[i] = max_reward
+        
+        # Final rescaling to maintain exact sum
+        current_sum = sum(rewards)
+        if current_sum != total_reward:
+            scale_factor = total_reward / current_sum
+            rewards = [r * scale_factor for r in rewards]
+        
+        return rewards
+
+    def get_goal_rewards(self):
+        """Get goal rewards (either random or default)"""
+        if self.goal_reward_settings["use_random_rewards"]:
+            return self.generate_random_goal_rewards()
+        else:
+            return self.goal_reward_settings["default_rewards"]
 
     def update_from_args(self, args):
         """Update configuration from command line arguments"""

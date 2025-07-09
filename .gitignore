@@ -4,7 +4,6 @@
 lib/build/
 lib/UNKNOWN.egg-info/
 lib/utils/telegrambot.py
-lib/backup/
 log/*
 
 # lib 폴더 내 benchmark 무시
@@ -39,6 +38,9 @@ lib/env/abides-jpmc-public/
 lib/env/pymarketsim/
 lib/env/maxe/
 lib/env/rl-starter-files/
+
+# backup 파일 무시
+*/backup/*
 
 # claude 무시
 CLAUDE.md

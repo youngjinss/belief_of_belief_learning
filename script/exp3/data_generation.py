@@ -484,14 +484,50 @@ class DataReader:
         plt.show()
 
 
-# Example usage
 if __name__ == "__main__":
-    # Initialize data reader
-    reader = DataReader(time_step=500, w=9, h=9, d=8, experiment_no=3)
+    import argparse
+    from config import Config
+    
+    parser = argparse.ArgumentParser(description="Process KeyDoor experimental data")
+    
+    # Basic parameters
+    parser.add_argument("--config_override", action="store_true", help="Enable command line parameter overrides")
+    parser.add_argument("--data_dir", type=str, default="./data/exp3", help="Directory containing game data")
+    parser.add_argument("--output_dir", type=str, default="./data/exp3", help="Directory for output files")
+    
+    # Data reader parameters
+    parser.add_argument("--time_step", type=int, help="Maximum time steps")
+    parser.add_argument("--maze_width", type=int, help="Maze width")
+    parser.add_argument("--maze_height", type=int, help="Maze height") 
+    parser.add_argument("--maze_depth", type=int, help="Maze depth (channels)")
+    parser.add_argument("--experiment_no", type=int, default=3, help="Experiment number")
+    
+    # Processing options
+    parser.add_argument("--visualize", action="store_true", help="Generate visualization plots")
+    parser.add_argument("--save_processed", action="store_true", help="Save processed data to pickle")
+    parser.add_argument("--stats_only", action="store_true", help="Only compute and display statistics")
+    
+    args = parser.parse_args()
+    
+    # Create config and update from args if override is enabled
+    config = Config()
+    if args.config_override:
+        config.update_from_args(args)
+    
+    # Get data configuration
+    data_config = config.get_data_config()
+    
+    # Initialize data reader with config parameters
+    reader = DataReader(
+        time_step=data_config["time_step"],
+        w=data_config["maze_width"],
+        h=data_config["maze_height"],
+        d=data_config["maze_depth"],
+        experiment_no=args.experiment_no
+    )
 
     # Read all games from data directory
-    data_dir = "./data/exp3"
-    games = reader.ReadAllGames(data_dir)
+    games = reader.ReadAllGames(args.data_dir)
 
     # Get statistics
     stats = reader.get_data_statistics(games)
@@ -499,8 +535,12 @@ if __name__ == "__main__":
     for key, value in stats.items():
         print(f"  {key}: {value}")
 
-    # Visualize statistics
-    reader.visualize_statistics(stats, save_path="exp3_data_statistics.png")
+    # Visualize statistics if requested
+    if args.visualize:
+        save_path = os.path.join(args.output_dir, "exp3_data_statistics.png")
+        reader.visualize_statistics(stats, save_path=save_path)
 
-    # Save processed data
-    reader.save_processed_data(games, "./data/exp3/processed_games.pkl")
+    # Save processed data if requested
+    if args.save_processed:
+        output_path = os.path.join(args.output_dir, "processed_games.pkl")
+        reader.save_processed_data(games, output_path)

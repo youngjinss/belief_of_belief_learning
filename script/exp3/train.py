@@ -133,9 +133,10 @@ def generate_past_episodes_from_batch(
                     selected_indices = torch.cat([selected_indices, additional])
                 selected_indices = selected_indices[:n_past]
 
-            # Fill past episodes
+            # Fill past episodes (ensure we don't exceed max_n_past)
             for j, idx in enumerate(selected_indices):
-                past_episodes_batch[i, j] = trajectories[idx]
+                if j < max_n_past:  # Ensure we don't exceed the allocated tensor size
+                    past_episodes_batch[i, j] = trajectories[idx]
 
     return past_episodes_batch
 
@@ -199,7 +200,7 @@ def prepare_data_for_training(games, max_trajectory_length=100):
     }
 
 
-def train_epoch(model, train_loader, optimizer, loss_fn, device, max_n_past=5):
+def train_epoch(model, train_loader, optimizer, loss_fn, device, max_n_past=5, data_config=None, training_process_config=None):
     """
     Train for one epoch
 
@@ -238,15 +239,18 @@ def train_epoch(model, train_loader, optimizer, loss_fn, device, max_n_past=5):
             trajectories, goals, batch_size, max_n_past=max_n_past
         )
 
-        # Use a portion of trajectory as current episode (e.g., first 50 timesteps)
-        current_trajectory = trajectories[
-            :, :50
+        # Use trajectory up to previous timestep as input to MentalNet
+        # MentalNet processes recent trajectory to predict action at current timestep
+        current_timestep = data_config["time_step"] if data_config else 20
+        
+        # Recent trajectory: from start to current_timestep-1 (up to previous timestep)
+        recent_trajectory = trajectories[
+            :, :current_timestep
         ]  # [batch_size, seq_len, channels, height, width]
 
-        # Use actions from a specific timestep as targets (e.g., timestep 25)
-        target_timestep = 25
-        if target_timestep < actions.size(1):
-            action_targets = actions[:, target_timestep]
+        # Action target: action at current_timestep
+        if current_timestep < actions.size(1):
+            action_targets = actions[:, current_timestep]  # Action at current timestep
         else:
             action_targets = actions[:, -1]  # Use last action if trajectory is shorter
 
@@ -255,7 +259,7 @@ def train_epoch(model, train_loader, optimizer, loss_fn, device, max_n_past=5):
         optimizer.zero_grad()
 
         # Forward pass
-        action_logits, goal_logits, _, _ = model(past_episodes, current_trajectory)
+        action_logits, goal_logits, _, _ = model(past_episodes, recent_trajectory)
 
         # Compute loss
         total_loss_batch, action_loss_batch, goal_loss_batch = loss_fn(
@@ -264,7 +268,8 @@ def train_epoch(model, train_loader, optimizer, loss_fn, device, max_n_past=5):
 
         # Backward pass
         total_loss_batch.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        max_grad_norm = training_process_config["max_grad_norm"] if training_process_config else 1.0
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=max_grad_norm)
         optimizer.step()
 
         # Update metrics
@@ -305,7 +310,7 @@ def train_epoch(model, train_loader, optimizer, loss_fn, device, max_n_past=5):
     }
 
 
-def validate_epoch(model, val_loader, loss_fn, device, max_n_past=5):
+def validate_epoch(model, val_loader, loss_fn, device, max_n_past=5, data_config=None):
     """
     Validate for one epoch
 
@@ -344,20 +349,23 @@ def validate_epoch(model, val_loader, loss_fn, device, max_n_past=5):
                 trajectories, goals, batch_size, max_n_past=max_n_past
             )
 
-            # Use a portion of trajectory as current episode
-            current_trajectory = trajectories[:, :50]
+            # Use trajectory up to previous timestep as input to MentalNet
+            # MentalNet processes recent trajectory to predict action at current timestep
+            current_timestep = data_config["time_step"] if data_config else 20
+            
+            # Recent trajectory: from start to current_timestep-1 (up to previous timestep)
+            recent_trajectory = trajectories[:, :current_timestep]
 
-            # Use actions from a specific timestep as targets
-            target_timestep = 25
-            if target_timestep < actions.size(1):
-                action_targets = actions[:, target_timestep]
+            # Action target: action at current_timestep
+            if current_timestep < actions.size(1):
+                action_targets = actions[:, current_timestep]  # Action at current timestep
             else:
-                action_targets = actions[:, -1]
+                action_targets = actions[:, -1]  # Use last action if trajectory is shorter
 
             goal_targets = goals
 
             # Forward pass
-            action_logits, goal_logits, _, _ = model(past_episodes, current_trajectory)
+            action_logits, goal_logits, _, _ = model(past_episodes, recent_trajectory)
 
             # Compute loss
             total_loss_batch, action_loss_batch, goal_loss_batch = loss_fn(
@@ -501,15 +509,7 @@ def save_training_plots(history, save_dir):
 def train_tomnet(
     data_dir="./data/exp3",
     save_dir="./results/exp3",
-    batch_size=32,
-    epochs=100,
-    lr=0.001,
-    training_proportion=0.8,
-    max_trajectory_length=100,
-    max_n_past=5,
-    device="auto",
-    patience=10,
-    min_delta=0.001,
+    config=None,
 ):
     """
     Main training function for KeyDoor ToMnet
@@ -517,16 +517,28 @@ def train_tomnet(
     Args:
         data_dir: Directory containing game data
         save_dir: Directory to save results
-        batch_size: Batch size for training
-        epochs: Number of training epochs
-        lr: Learning rate
-        training_proportion: Proportion of data to use for training
-        max_trajectory_length: Maximum trajectory length
-        max_n_past: Maximum number of past episodes
-        device: Device to use ("auto", "cpu", or "cuda")
-        patience: Early stopping patience
-        min_delta: Early stopping minimum delta
+        config: Configuration object (Config instance)
     """
+    # Use provided config or create default
+    if config is None:
+        config = Config()
+    
+    # Extract parameters from config
+    training_kwargs = config.get_training_kwargs()
+    model_kwargs = config.get_model_kwargs()
+    data_config = config.get_data_config()
+    training_process_config = config.get_training_process_config()
+    
+    batch_size = training_kwargs["batch_size"]
+    epochs = training_kwargs["epochs"]
+    lr = training_kwargs["lr"]
+    training_proportion = training_kwargs["training_proportion"]
+    max_moves = training_kwargs["max_moves"]
+    time_step = training_kwargs["time_step"]
+    max_n_past = training_kwargs["max_n_past"]
+    device = training_kwargs["device"]
+    patience = training_kwargs["patience"]
+    min_delta = training_kwargs["min_delta"]
     # Setup
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     experiment_save_dir = os.path.join(save_dir, f"exp3_{timestamp}")
@@ -550,7 +562,7 @@ def train_tomnet(
         raise ValueError(f"No games found in {data_dir}")
 
     # Prepare data
-    data = prepare_data_for_training(games, max_trajectory_length)
+    data = prepare_data_for_training(games, max_moves)
 
     # Create datasets
     dataset = TensorDataset(data["trajectories"], data["actions"], data["goals"])
@@ -585,29 +597,22 @@ def train_tomnet(
     if len(train_dataset) == 0 or len(val_dataset) == 0:
         raise ValueError("Dataset too small for training. Need at least 2 samples.")
 
-    # Create model
-    model_config = {
-        "batch_size": batch_size,
-        "residual_blocks": 3,
-        "n_echar": 64,
-        "n_ement": 64,
-        "out_channels": 32,
-        "channels_in": 8,
-        "time_step": max_trajectory_length,
-        "action_space": 7,
-        "goal_space": 4,
-        "max_n_past": max_n_past,
-        "use_n_past": True,
-    }
-
-    model = create_model(model_config)
+    # Create model using config
+    model = create_model(model_kwargs)
     model = model.to(device)
 
     print(f"Model created with {count_parameters(model):,} parameters")
 
     # Loss function and optimizer
-    loss_fn = ToMnetLoss(action_weight=1.0, goal_weight=1.0)
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=0.001)
+    loss_fn = ToMnetLoss(
+        action_weight=training_process_config["action_weight"], 
+        goal_weight=training_process_config["goal_weight"]
+    )
+    optimizer = torch.optim.Adam(
+        model.parameters(), 
+        lr=lr, 
+        weight_decay=config.training_config["weight_decay"]
+    )
 
     # Early stopping
     early_stopping = EarlyStopping(
@@ -642,11 +647,14 @@ def train_tomnet(
 
         # Training
         train_metrics = train_epoch(
-            model, train_loader, optimizer, loss_fn, device, max_n_past
+            model, train_loader, optimizer, loss_fn, device, max_n_past, 
+            data_config, training_process_config
         )
 
         # Validation
-        val_metrics = validate_epoch(model, val_loader, loss_fn, device, max_n_past)
+        val_metrics = validate_epoch(
+            model, val_loader, loss_fn, device, max_n_past, data_config
+        )
 
         epoch_time = time.time() - epoch_start_time
 
@@ -699,7 +707,17 @@ def train_tomnet(
 
     # Save model configuration
     with open(os.path.join(experiment_save_dir, "model_config.json"), "w") as f:
-        json.dump(model_config, f, indent=2)
+        json.dump(model_kwargs, f, indent=2)
+    
+    # Save full configuration
+    config_dict = {
+        "training_config": config.get_training_config(),
+        "model_config": config.get_model_config(),
+        "data_config": config.get_data_config(),
+        "training_process_config": config.get_training_process_config(),
+    }
+    with open(os.path.join(experiment_save_dir, "full_config.json"), "w") as f:
+        json.dump(config_dict, f, indent=2)
 
     # Save training plots
     save_training_plots(history, experiment_save_dir)
@@ -728,59 +746,55 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="Train KeyDoor ToMnet")
-    parser.add_argument(
-        "--data_dir",
-        type=str,
-        default="./data/exp3",
-        help="Directory containing game data",
-    )
-    parser.add_argument(
-        "--save_dir",
-        type=str,
-        default="./results/exp3",
-        help="Directory to save results",
-    )
-    parser.add_argument(
-        "--batch_size", type=int, default=32, help="Batch size for training"
-    )
-    parser.add_argument(
-        "--epochs", type=int, default=100, help="Number of training epochs"
-    )
-    parser.add_argument("--lr", type=float, default=0.001, help="Learning rate")
-    parser.add_argument(
-        "--training_proportion",
-        type=float,
-        default=0.8,
-        help="Proportion of data to use for training",
-    )
-    parser.add_argument(
-        "--max_trajectory_length",
-        type=int,
-        default=100,
-        help="Maximum trajectory length",
-    )
-    parser.add_argument(
-        "--max_n_past", type=int, default=5, help="Maximum number of past episodes"
-    )
-    parser.add_argument(
-        "--device", type=str, default="auto", help="Device to use (auto, cpu, cuda)"
-    )
-    parser.add_argument(
-        "--patience", type=int, default=10, help="Early stopping patience"
-    )
+    
+    # Basic parameters
+    parser.add_argument("--config_override", action="store_true", help="Enable command line parameter overrides")
+    parser.add_argument("--data_dir", type=str, default="./data/exp3", help="Directory containing game data")
+    parser.add_argument("--save_dir", type=str, default="./results/exp3", help="Directory to save results")
+    
+    # Training configuration
+    parser.add_argument("--batch_size", type=int, help="Batch size for training")
+    parser.add_argument("--epochs", type=int, help="Number of training epochs")
+    parser.add_argument("--lr", type=float, help="Learning rate")
+    parser.add_argument("--weight_decay", type=float, help="Weight decay for optimizer")
+    parser.add_argument("--training_proportion", type=float, help="Proportion of data to use for training")
+    parser.add_argument("--device", type=str, help="Device to use (auto, cpu, cuda)")
+    parser.add_argument("--optimizer", type=str, help="Optimizer type (adam)")
+    
+    # Model architecture
+    parser.add_argument("--residual_blocks", type=int, help="Number of residual blocks")
+    parser.add_argument("--n_echar", type=int, help="Character embedding dimension")
+    parser.add_argument("--n_ement", type=int, help="Mental state embedding dimension")
+    parser.add_argument("--out_channels", type=int, help="CNN output channels")
+    parser.add_argument("--channels_in", type=int, help="CNN input channels")
+    parser.add_argument("--action_space", type=int, help="Action space size")
+    parser.add_argument("--goal_space", type=int, help="Goal space size")
+    parser.add_argument("--hidden_size_lstm", type=int, help="LSTM hidden size")
+    
+    # Data processing
+    parser.add_argument("--max_moves", type=int, help="Maximum moves per trajectory")
+    parser.add_argument("--time_step", type=int, help="Time step for model processing")
+    parser.add_argument("--max_n_past", type=int, help="Maximum number of past episodes")
+    parser.add_argument("--n_past_min", type=int, help="Minimum number of past episodes")
+    parser.add_argument("--n_past_max", type=int, help="Maximum number of past episodes for sampling")
+    
+    # Training process
+    parser.add_argument("--early_stopping_patience", type=int, help="Early stopping patience")
+    parser.add_argument("--early_stopping_min_delta", type=float, help="Early stopping minimum delta")
+    parser.add_argument("--max_grad_norm", type=float, help="Maximum gradient norm for clipping")
+    parser.add_argument("--action_weight", type=float, help="Action loss weight")
+    parser.add_argument("--goal_weight", type=float, help="Goal loss weight")
 
     args = parser.parse_args()
+
+    # Create config and update from args if override is enabled
+    config = Config()
+    if args.config_override:
+        config.update_from_args(args)
 
     # Run training
     results = train_tomnet(
         data_dir=args.data_dir,
         save_dir=args.save_dir,
-        batch_size=args.batch_size,
-        epochs=args.epochs,
-        lr=args.lr,
-        training_proportion=args.training_proportion,
-        max_trajectory_length=args.max_trajectory_length,
-        max_n_past=args.max_n_past,
-        device=args.device,
-        patience=args.patience,
+        config=config,
     )

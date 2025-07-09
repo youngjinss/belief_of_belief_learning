@@ -87,9 +87,9 @@ class LSTM(nn.Module):
 class CharNet(nn.Module):
     def __init__(
         self,
-        Batch: int,
-        ResidualBlocks: int,
-        N_echar: int,
+        batch: int,
+        residual_blocks: int,
+        n_echar: int,
         out_channels: int,
         channels_in: int,
         time_step: int,
@@ -98,11 +98,11 @@ class CharNet(nn.Module):
     ):
         super(CharNet, self).__init__()
 
-        self.n = ResidualBlocks
-        self.N_echar = N_echar
+        self.n = residual_blocks
+        self.n_echar = n_echar
         self.out_channels = out_channels
         self.channels_in = channels_in
-        self.B = Batch
+        self.batch = batch
         self.time_step = time_step
         self.hidden_size_lstm = 64
         self.max_n_past = max_n_past
@@ -117,7 +117,7 @@ class CharNet(nn.Module):
         )
 
         # Residual blocks
-        for _ in range(ResidualBlocks):
+        for _ in range(residual_blocks):
             self.conv_layers.append(
                 ResidualBlock(out_channels, out_channels, kernel_size=3, padding=1)
             )
@@ -129,7 +129,7 @@ class CharNet(nn.Module):
         self.lstm = LSTM(out_channels, self.hidden_size_lstm)
 
         # Character embedding output
-        self.char_embedding = nn.Linear(self.hidden_size_lstm, N_echar)
+        self.char_embedding = nn.Linear(self.hidden_size_lstm, n_echar)
 
     def forward(self, past_trajectories):
         """
@@ -139,7 +139,7 @@ class CharNet(nn.Module):
             past_trajectories: (batch_size, n_past, seq_len, channels, height, width)
 
         Returns:
-            Character embeddings: (batch_size, N_echar)
+            Character embeddings: (batch_size, n_echar)
         """
         batch_size = past_trajectories.size(0)
         n_past = past_trajectories.size(1)
@@ -185,23 +185,23 @@ class CharNet(nn.Module):
 class MentalNet(nn.Module):
     def __init__(
         self,
-        Batch: int,
-        ResidualBlocks: int,
-        N_ement: int,
+        batch: int,
+        residual_blocks: int,
+        n_ement: int,
         out_channels: int,
         channels_in: int,
         time_step: int,
-        N_echar: int,
+        n_echar: int,
     ):
         super(MentalNet, self).__init__()
 
-        self.n = ResidualBlocks
-        self.N_ement = N_ement
+        self.n = residual_blocks
+        self.n_ement = n_ement
         self.out_channels = out_channels
         self.channels_in = channels_in
-        self.B = Batch
+        self.batch = batch
         self.time_step = time_step
-        self.N_echar = N_echar
+        self.n_echar = n_echar
         self.hidden_size_lstm = 64
 
         # Convolutional layers for spatial feature extraction
@@ -213,7 +213,7 @@ class MentalNet(nn.Module):
         )
 
         # Residual blocks
-        for _ in range(ResidualBlocks):
+        for _ in range(residual_blocks):
             self.conv_layers.append(
                 ResidualBlock(out_channels, out_channels, kernel_size=3, padding=1)
             )
@@ -226,11 +226,11 @@ class MentalNet(nn.Module):
 
         # Mental state network
         self.mental_state_net = nn.Sequential(
-            nn.Linear(self.hidden_size_lstm + N_echar, 128),
+            nn.Linear(self.hidden_size_lstm + n_echar, self.hidden_size_lstm),
             nn.ReLU(),
-            nn.Linear(128, 64),
+            nn.Linear(self.hidden_size_lstm, self.hidden_size_lstm),
             nn.ReLU(),
-            nn.Linear(64, N_ement),
+            nn.Linear(self.hidden_size_lstm, n_ement),
         )
 
     def forward(self, current_trajectory, character_embedding):
@@ -239,10 +239,10 @@ class MentalNet(nn.Module):
 
         Args:
             current_trajectory: (batch_size, seq_len, channels, height, width)
-            character_embedding: (batch_size, N_echar)
+            character_embedding: (batch_size, n_echar)
 
         Returns:
-            Mental state embedding: (batch_size, N_ement)
+            Mental state embedding: (batch_size, n_ement)
         """
         batch_size = current_trajectory.size(0)
         seq_len = current_trajectory.size(1)
@@ -273,23 +273,23 @@ class MentalNet(nn.Module):
 class PredNet(nn.Module):
     def __init__(
         self,
-        Batch: int,
-        N_ement: int,
-        N_echar: int,
+        batch: int,
+        n_ement: int,
+        n_echar: int,
         action_space: int = 7,
         goal_space: int = 4,
     ):
         super(PredNet, self).__init__()
 
-        self.B = Batch
-        self.N_ement = N_ement
-        self.N_echar = N_echar
+        self.batch = batch
+        self.n_ement = n_ement
+        self.n_echar = n_echar
         self.action_space = action_space
         self.goal_space = goal_space
 
         # Action prediction network
         self.action_predictor = nn.Sequential(
-            nn.Linear(N_ement + N_echar, 128),
+            nn.Linear(n_ement + n_echar, 128),
             nn.ReLU(),
             nn.Linear(128, 64),
             nn.ReLU(),
@@ -298,7 +298,7 @@ class PredNet(nn.Module):
 
         # Goal prediction network
         self.goal_predictor = nn.Sequential(
-            nn.Linear(N_ement + N_echar, 128),
+            nn.Linear(n_ement + n_echar, 128),
             nn.ReLU(),
             nn.Linear(128, 64),
             nn.ReLU(),
@@ -310,8 +310,8 @@ class PredNet(nn.Module):
         Forward pass for prediction network
 
         Args:
-            mental_state: (batch_size, N_ement)
-            character_embedding: (batch_size, N_echar)
+            mental_state: (batch_size, n_ement)
+            character_embedding: (batch_size, n_echar)
 
         Returns:
             action_logits: (batch_size, action_space)
@@ -330,10 +330,10 @@ class PredNet(nn.Module):
 class ToMnet(nn.Module):
     def __init__(
         self,
-        Batch: int = 32,
-        ResidualBlocks: int = 3,
-        N_echar: int = 64,
-        N_ement: int = 64,
+        batch: int = 32,
+        residual_blocks: int = 3,
+        n_echar: int = 64,
+        n_ement: int = 64,
         out_channels: int = 32,
         channels_in: int = 8,
         time_step: int = 500,
@@ -344,20 +344,21 @@ class ToMnet(nn.Module):
     ):
         super(ToMnet, self).__init__()
 
-        self.B = Batch
-        self.N_echar = N_echar
-        self.N_ement = N_ement
+        self.batch = batch
+        self.n_echar = n_echar
+        self.n_ement = n_ement
         self.time_step = time_step
         self.action_space = action_space
         self.goal_space = goal_space
         self.max_n_past = max_n_past
         self.use_n_past = use_n_past
+        self.channels_in = channels_in
 
-        # Character network
+        # Character network - processes past episodes
         self.char_net = CharNet(
-            Batch=Batch,
-            ResidualBlocks=ResidualBlocks,
-            N_echar=N_echar,
+            batch=batch,
+            residual_blocks=residual_blocks,
+            n_echar=n_echar,
             out_channels=out_channels,
             channels_in=channels_in,
             time_step=time_step,
@@ -365,29 +366,29 @@ class ToMnet(nn.Module):
             use_n_past=use_n_past,
         )
 
-        # Mental state network
+        # Mental state network - processes current trajectory + character embedding
         self.mental_net = MentalNet(
-            Batch=Batch,
-            ResidualBlocks=ResidualBlocks,
-            N_ement=N_ement,
+            batch=batch,
+            residual_blocks=residual_blocks,
+            n_ement=n_ement,
             out_channels=out_channels,
             channels_in=channels_in,
             time_step=time_step,
-            N_echar=N_echar,
+            n_echar=n_echar,
         )
 
-        # Prediction network
+        # Prediction network - processes mental state + character embedding
         self.pred_net = PredNet(
-            Batch=Batch,
-            N_ement=N_ement,
-            N_echar=N_echar,
+            batch=batch,
+            n_ement=n_ement,
+            n_echar=n_echar,
             action_space=action_space,
             goal_space=goal_space,
         )
 
     def forward(self, past_trajectories, current_trajectory):
         """
-        Forward pass for ToMnet
+        Forward pass for ToMnet (3-stage architecture)
 
         Args:
             past_trajectories: (batch_size, n_past, seq_len, channels, height, width)
@@ -396,23 +397,23 @@ class ToMnet(nn.Module):
         Returns:
             action_logits: (batch_size, action_space)
             goal_logits: (batch_size, goal_space)
-            character_embedding: (batch_size, N_echar)
-            mental_state: (batch_size, N_ement)
+            character_embedding: (batch_size, n_echar)
+            mental_state: (batch_size, n_ement)
         """
-        # Character network
+        # Character network - processes past episodes
         if self.use_n_past and past_trajectories is not None:
             character_embedding = self.char_net(past_trajectories)
         else:
             # Use zero embedding if no past trajectories
             batch_size = current_trajectory.size(0)
             character_embedding = torch.zeros(
-                batch_size, self.N_echar, device=current_trajectory.device
+                batch_size, self.n_echar, device=current_trajectory.device
             )
 
-        # Mental state network
+        # Mental state network - processes current trajectory + character embedding
         mental_state = self.mental_net(current_trajectory, character_embedding)
 
-        # Prediction network
+        # Prediction network - processes mental state + character embedding
         action_logits, goal_logits = self.pred_net(mental_state, character_embedding)
 
         return action_logits, goal_logits, character_embedding, mental_state
@@ -462,7 +463,7 @@ class ToMnet(nn.Module):
                 return self.char_net(past_trajectories)
             else:
                 batch_size = 1
-                return torch.zeros(batch_size, self.N_echar)
+                return torch.zeros(batch_size, self.n_echar)
 
     def get_mental_state(self, current_trajectory, character_embedding):
         """
@@ -522,10 +523,10 @@ def create_model(config):
         ToMnet model
     """
     model = ToMnet(
-        Batch=config.get("batch_size", 32),
-        ResidualBlocks=config.get("residual_blocks", 3),
-        N_echar=config.get("n_echar", 64),
-        N_ement=config.get("n_ement", 64),
+        batch=config.get("batch", 32),
+        residual_blocks=config.get("residual_blocks", 3),
+        n_echar=config.get("n_echar", 64),
+        n_ement=config.get("n_ement", 64),
         out_channels=config.get("out_channels", 32),
         channels_in=config.get("channels_in", 8),
         time_step=config.get("time_step", 500),

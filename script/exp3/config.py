@@ -5,7 +5,9 @@ class Config:
     def __init__(self):
         # Environment settings
         self.env_name = "MiniGrid-KeyDoor-{size}-v0"
-        self.env_size = "9x9"  # Options: "3x3", "5x5", "9x9", "11x11"
+        self.width = 9
+        self.height = 9
+        self.env_size = f"{self.width}x{self.height}"  # Options: "3x3", "5x5", "9x9", "11x11"
         self.max_steps = 500
         self.seed = 42
 
@@ -15,8 +17,8 @@ class Config:
         self.movement_prob = 0.8  # For random agent
 
         # Visualization settings
-        self.episodes = 200
-        self.pause = 0.5  # Pause duration between actions in seconds
+        self.episodes = 1
+        self.pause = 0.1  # Pause duration between actions in seconds
         self.render = True
         self.debug = True
 
@@ -30,9 +32,9 @@ class Config:
 
         # Experiment settings
         self.experiment_name = "exp3"
-        self.log_actions = True
-        self.log_rewards = True
-        self.log_debug = True
+        self.log_actions = False
+        self.log_rewards = False
+        self.log_debug = False
 
         # Environment variants
         self.env_variants = {
@@ -72,7 +74,7 @@ class Config:
         # Successor Representation (SR) settings
         self.sr_settings = {
             "gammas": [0.5, 0.9, 0.99],  # Discount factors for SR calculation
-            "grid_size": 9,  # Default grid size for SR
+            "grid_size": self.width,  # Default grid size for SR
         }
 
         # Goal reward settings (following ToMnetF pattern)
@@ -87,6 +89,54 @@ class Config:
             ],  # Default rewards for goals A, B, C, D (sum=4)
             "min_reward": 0.1,  # Minimum reward value
             "max_reward": 3.0,  # Maximum reward value
+        }
+
+        # Training configuration
+        self.training_config = {
+            "batch_size": 512,
+            "epochs": 200,
+            "lr": 0.001,
+            "weight_decay": 0.001,
+            "training_proportion": 0.8,
+            "device": "auto",
+            "optimizer": "adam",
+        }
+
+        # Model architecture
+        self.model_config = {
+            "residual_blocks": 5,
+            "n_echar": 16,
+            "n_ement": 16,
+            "out_channels": 32,
+            "channels_in": 8,
+            "action_space": 7,
+            "goal_space": 4,
+            "hidden_size_lstm": 64,
+            "fc_layer_sizes": [64, 32],
+            "kernel_size": 3,
+            "padding": 1,
+            "stride": 1,
+        }
+
+        # Data processing configuration
+        self.data_config = {
+            "max_moves": 50,  # Maximum moves per trajectory (equivalent to experiment5)
+            "time_step": 20,  # Time step for model processing (equivalent to experiment5)
+            "max_n_past": 1,  # Maximum past episodes (matching experiment5)
+            "n_past_min": 1,  # Minimum past episodes (matching experiment5)
+            "n_past_max": 1,  # Maximum past episodes for sampling (matching experiment5)
+            "maze_width": self.width,
+            "maze_height": self.height,
+            "maze_depth": 8,
+        }
+
+        # Training process configuration
+        self.training_process_config = {
+            "early_stopping_patience": 30,
+            "early_stopping_min_delta": 0.001,
+            "max_grad_norm": 1.0,
+            "action_weight": 1.0,
+            "goal_weight": 1.0,
         }
 
     def get_env_name(self):
@@ -197,26 +247,138 @@ class Config:
         else:
             return self.goal_reward_settings["default_rewards"]
 
+    def get_training_config(self):
+        """Get training configuration"""
+        return self.training_config.copy()
+
+    def get_model_config(self):
+        """Get model configuration"""
+        return self.model_config.copy()
+
+    def get_data_config(self):
+        """Get data processing configuration"""
+        return self.data_config.copy()
+
+    def get_training_process_config(self):
+        """Get training process configuration"""
+        return self.training_process_config.copy()
+
+    def get_model_kwargs(self):
+        """Get model initialization parameters"""
+        return {
+            "batch": self.training_config["batch_size"],
+            "residual_blocks": self.model_config["residual_blocks"],
+            "n_echar": self.model_config["n_echar"],
+            "n_ement": self.model_config["n_ement"],
+            "out_channels": self.model_config["out_channels"],
+            "channels_in": self.model_config["channels_in"],
+            "time_step": self.data_config["time_step"],
+            "action_space": self.model_config["action_space"],
+            "goal_space": self.model_config["goal_space"],
+            "max_n_past": self.data_config["max_n_past"],
+            "use_n_past": True,
+        }
+
+    def get_training_kwargs(self):
+        """Get training function parameters"""
+        return {
+            "batch_size": self.training_config["batch_size"],
+            "epochs": self.training_config["epochs"],
+            "lr": self.training_config["lr"],
+            "training_proportion": self.training_config["training_proportion"],
+            "max_moves": self.data_config["max_moves"],
+            "time_step": self.data_config["time_step"],
+            "max_n_past": self.data_config["max_n_past"],
+            "device": self.training_config["device"],
+            "patience": self.training_process_config["early_stopping_patience"],
+            "min_delta": self.training_process_config["early_stopping_min_delta"],
+        }
+
     def update_from_args(self, args):
         """Update configuration from command line arguments"""
-        if hasattr(args, "agent_type"):
+        # Environment and agent settings
+        if hasattr(args, "agent_type") and args.agent_type is not None:
             self.agent_type = args.agent_type
-        if hasattr(args, "seed"):
+        if hasattr(args, "seed") and args.seed is not None:
             self.seed = args.seed
-        if hasattr(args, "episodes"):
+        if hasattr(args, "episodes") and args.episodes is not None:
             self.episodes = args.episodes
-        if hasattr(args, "pause"):
+        if hasattr(args, "pause") and args.pause is not None:
             self.pause = args.pause
-        if hasattr(args, "max_steps"):
+        if hasattr(args, "max_steps") and args.max_steps is not None:
             self.max_steps = args.max_steps
-        if hasattr(args, "env_size"):
+        if hasattr(args, "env_size") and args.env_size is not None:
             self.env_size = args.env_size
-        if hasattr(args, "observability"):
+        if hasattr(args, "observability") and args.observability is not None:
             self.observability = args.observability
-        if hasattr(args, "gif"):
+        if hasattr(args, "gif") and args.gif is not None:
             self.gif_output = args.gif
-        if hasattr(args, "debug"):
+        if hasattr(args, "debug") and args.debug is not None:
             self.debug = args.debug
+
+        # Training configuration
+        if hasattr(args, "batch_size") and args.batch_size is not None:
+            self.training_config["batch_size"] = args.batch_size
+        if hasattr(args, "epochs") and args.epochs is not None:
+            self.training_config["epochs"] = args.epochs
+        if hasattr(args, "lr") and args.lr is not None:
+            self.training_config["lr"] = args.lr
+        if hasattr(args, "weight_decay") and args.weight_decay is not None:
+            self.training_config["weight_decay"] = args.weight_decay
+        if hasattr(args, "training_proportion") and args.training_proportion is not None:
+            self.training_config["training_proportion"] = args.training_proportion
+        if hasattr(args, "device") and args.device is not None:
+            self.training_config["device"] = args.device
+        if hasattr(args, "optimizer") and args.optimizer is not None:
+            self.training_config["optimizer"] = args.optimizer
+
+        # Model architecture
+        if hasattr(args, "residual_blocks") and args.residual_blocks is not None:
+            self.model_config["residual_blocks"] = args.residual_blocks
+        if hasattr(args, "n_echar") and args.n_echar is not None:
+            self.model_config["n_echar"] = args.n_echar
+        if hasattr(args, "n_ement") and args.n_ement is not None:
+            self.model_config["n_ement"] = args.n_ement
+        if hasattr(args, "out_channels") and args.out_channels is not None:
+            self.model_config["out_channels"] = args.out_channels
+        if hasattr(args, "channels_in") and args.channels_in is not None:
+            self.model_config["channels_in"] = args.channels_in
+        if hasattr(args, "action_space") and args.action_space is not None:
+            self.model_config["action_space"] = args.action_space
+        if hasattr(args, "goal_space") and args.goal_space is not None:
+            self.model_config["goal_space"] = args.goal_space
+        if hasattr(args, "hidden_size_lstm") and args.hidden_size_lstm is not None:
+            self.model_config["hidden_size_lstm"] = args.hidden_size_lstm
+
+        # Data processing configuration
+        if hasattr(args, "max_moves") and args.max_moves is not None:
+            self.data_config["max_moves"] = args.max_moves
+        if hasattr(args, "time_step") and args.time_step is not None:
+            self.data_config["time_step"] = args.time_step
+        if hasattr(args, "max_n_past") and args.max_n_past is not None:
+            self.data_config["max_n_past"] = args.max_n_past
+        if hasattr(args, "n_past_min") and args.n_past_min is not None:
+            self.data_config["n_past_min"] = args.n_past_min
+        if hasattr(args, "n_past_max") and args.n_past_max is not None:
+            self.data_config["n_past_max"] = args.n_past_max
+
+        # Training process configuration
+        if hasattr(args, "early_stopping_patience") and args.early_stopping_patience is not None:
+            self.training_process_config["early_stopping_patience"] = args.early_stopping_patience
+        if hasattr(args, "early_stopping_min_delta") and args.early_stopping_min_delta is not None:
+            self.training_process_config["early_stopping_min_delta"] = args.early_stopping_min_delta
+        if hasattr(args, "max_grad_norm") and args.max_grad_norm is not None:
+            self.training_process_config["max_grad_norm"] = args.max_grad_norm
+        if hasattr(args, "action_weight") and args.action_weight is not None:
+            self.training_process_config["action_weight"] = args.action_weight
+        if hasattr(args, "goal_weight") and args.goal_weight is not None:
+            self.training_process_config["goal_weight"] = args.goal_weight
+
+        # Data generation settings
+        if hasattr(args, "n_games") and args.n_games is not None:
+            self.n_games = args.n_games
+        if hasattr(args, "save_dir") and args.save_dir is not None:
+            self.save_dir = args.save_dir
 
     def validate(self):
         """Validate configuration"""

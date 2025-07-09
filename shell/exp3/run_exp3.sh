@@ -129,7 +129,7 @@ run_test_data_generation() {
 
 run_training() {
     # Check if training already completed
-    if [ -f "$RESULTS_DIR/exp3_"*"/best_model.pth" ]; then
+    if ls "$RESULTS_DIR"/exp3_*/best_model.pth 1> /dev/null 2>&1; then
         log_step "Training skipped - best_model.pth already exists"
         return 0
     fi
@@ -138,7 +138,7 @@ run_training() {
     log_step "Logging training output to: $RUN_LOG_DIR/training.log"
     
     cd "$SCRIPTS_DIR"
-    python train.py --data_dir "$DATA_DIR" --save_dir "$RESULTS_DIR" --epochs 100 --batch_size 32 --lr 0.001 --patience 10 > "$RUN_LOG_DIR/training.log" 2>&1
+    python train.py --config_override --data_dir "$DATA_DIR" --save_dir "$RESULTS_DIR" --epochs 100 --batch_size 32 --lr 0.001 --early_stopping_patience 10 > "$RUN_LOG_DIR/training.log" 2>&1
     
     log_step "Training completed"
     

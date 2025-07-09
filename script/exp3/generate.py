@@ -738,10 +738,7 @@ if __name__ == "__main__":
 
     # Override config with command line arguments if specified
     if args.config_override:
-        config.n_games = args.n_games
-        config.agent_type = args.agent_type
-        config.env_size = args.env_size
-        config.save_dir = args.save_dir
+        config.update_from_args(args)
 
     generate_trajectories(
         config, random_seed=args.random_seed, n_processes=args.n_processes

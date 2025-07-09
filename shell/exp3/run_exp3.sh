@@ -1,15 +1,19 @@
 #!/bin/bash
-# nohup bash shell/exp3/rrun_exp3.sh > exp3.log 2>&1 &
-# KeyDoor trajectory generation script for experiment 3
-# Usage: bash run_generate.sh [n_games] [agent_type] [env_size]
+# nohup bash shell/exp3/run_exp3.sh all > exp3.log 2>&1 &
+# Complete workflow automation for KeyDoor experiment 3 with ToMnet training
+# Usage: bash run_exp3.sh [data_generation|train|evaluate|visualize|all]
 
 set -e  # Exit on error
 
 # Configuration
 EXPERIMENT_NO=3
+VALIDATION_GAMES=100
+TEST_RANDOM_SEED=123
 BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SCRIPTS_DIR="$BASE_DIR/script/exp3"
 DATA_DIR="$BASE_DIR/data/exp3"
+TEST_DATA_DIR="$BASE_DIR/data/exp3/test"
+RESULTS_DIR="$BASE_DIR/results/exp3"
 LOG_DIR="$BASE_DIR/log/exp3"
 
 # Create timestamp for this run
@@ -17,13 +21,17 @@ TIMESTAMP=$(date '+%Y%m%d_%H%M%S')
 RUN_LOG_DIR="$LOG_DIR/$TIMESTAMP"
 
 # Create directories
-mkdir -p "$DATA_DIR" "$RUN_LOG_DIR"
+mkdir -p "$DATA_DIR" "$TEST_DATA_DIR" "$RESULTS_DIR" "$LOG_DIR" "$RUN_LOG_DIR"
 
 # Function to pre-create all log files
 create_log_files() {
     local log_files=(
         "execution.log"
-        "generation.log"
+        "train_data_generation.log"
+        "test_data_generation.log"
+        "training.log"
+        "evaluation.log"
+        "visualization.log"
     )
     
     log_step "Pre-creating log files..."
@@ -35,33 +43,26 @@ create_log_files() {
 }
 
 # Parse command line arguments
-N_GAMES=${1:-5}
-AGENT_TYPE=${2:-astar}
-ENV_SIZE=${3:-9x9}
-RANDOM_SEED=${4:-42}
-N_PROCESSES=${5:-}
+COMMAND=${1:-all}
 
 print_usage() {
-    echo "Usage: $0 [n_games] [agent_type] [env_size] [random_seed] [n_processes]"
+    echo "Usage: $0 [data_generation|test_data_generation|train|evaluate|visualize|all]"
     echo ""
-    echo "Parameters:"
-    echo "  n_games       Number of games to generate (default: 5)"
-    echo "  agent_type    Type of agent [astar|value|random] (default: astar)"
-    echo "  env_size      Environment size [5x5|9x9|11x11] (default: 9x9)"
-    echo "  random_seed   Random seed for generation (default: 42)"
-    echo "  n_processes   Number of parallel processes (default: auto)"
+    echo "Commands:"
+    echo "  data_generation       Generate KeyDoor trajectory data for training"
+    echo "  test_data_generation  Generate test data ($VALIDATION_GAMES games with seed $TEST_RANDOM_SEED) for evaluation"
+    echo "  train                Train ToMnet model for KeyDoor experiment"
+    echo "  evaluate             Evaluate trained model performance"
+    echo "  visualize            Create plots and visualizations"
+    echo "  all                  Run complete pipeline including test data generation"
     echo ""
-    echo "Examples:"
-    echo "  $0 10 astar 9x9            # Generate 10 games with A* agent"
-    echo "  $0 50 value 9x9 123        # Generate 50 games with value agent, seed 123"
-    echo "  $0 100 random 9x9 456 8    # Generate 100 games with random agent, 8 processes"
-    echo ""
-    echo "KeyDoor Environment Features:"
-    echo "  - 4 colored keys (red, green, blue, yellow)"
-    echo "  - 4 matching doors that require corresponding keys"
-    echo "  - Agent must collect target key and open target door"
+    echo "KeyDoor Experiment 3 Features:"
+    echo "  - Multi-colored key-door environment (4 keys, 4 doors)"
+    echo "  - A* agent for optimal trajectory generation"
     echo "  - Automatic key pickup and door opening mechanics"
-    echo "  - Successor representation (SR) labels for ToMnet training"
+    echo "  - Successor representation labels for ToMnet training"
+    echo "  - ToMnet architecture adapted for KeyDoor environment"
+    echo "  - Character embedding with past episode generation"
     echo ""
 }
 
@@ -74,38 +75,25 @@ log_step() {
 # Pre-create all log files after log_step function is defined
 create_log_files
 
-run_generation() {
-    log_step "Starting KeyDoor trajectory generation for experiment $EXPERIMENT_NO"
-    log_step "Parameters: n_games=$N_GAMES, agent_type=$AGENT_TYPE, env_size=$ENV_SIZE"
-    log_step "Random seed: $RANDOM_SEED, processes: ${N_PROCESSES:-auto}"
-    log_step "Logging generation output to: $RUN_LOG_DIR/generation.log"
-    
-    cd "$SCRIPTS_DIR"
-    
-    # Build command with config_override
-    local cmd="python generate.py --config_override"
-    cmd="$cmd --n_games $N_GAMES"
-    cmd="$cmd --agent_type $AGENT_TYPE"
-    cmd="$cmd --env_size $ENV_SIZE"
-    cmd="$cmd --save_dir $DATA_DIR"
-    cmd="$cmd --random_seed $RANDOM_SEED"
-    
-    # Add n_processes if specified
-    if [ -n "$N_PROCESSES" ]; then
-        cmd="$cmd --n_processes $N_PROCESSES"
+run_data_generation() {
+    # Check if data already exists
+    if [ -f "$DATA_DIR/test1.txt" ]; then
+        log_step "Data generation skipped - test*.txt already exists"
+        return 0
     fi
     
-    log_step "Running command: $cmd"
+    log_step "Starting KeyDoor trajectory generation for experiment $EXPERIMENT_NO"
+    log_step "Logging data generation output to: $RUN_LOG_DIR/train_data_generation.log"
     
-    # Execute the command
-    eval "$cmd" > "$RUN_LOG_DIR/generation.log" 2>&1
+    cd "$SCRIPTS_DIR"
+    python generate.py --config_override --n_games 50 --agent_type astar --env_size 9x9 --save_dir "$DATA_DIR" > "$RUN_LOG_DIR/train_data_generation.log" 2>&1
     
-    log_step "Generation completed successfully"
+    log_step "Data generation completed"
     
     # Log generation summary if available
-    if [ -f "$RUN_LOG_DIR/generation.log" ]; then
-        log_step "Generation summary:"
-        grep -i "generated.*games\|success\|completed" "$RUN_LOG_DIR/generation.log" | tail -5 || true
+    if [ -f "$RUN_LOG_DIR/train_data_generation.log" ]; then
+        log_step "Data generation summary:"
+        grep -i "generated.*games\|success\|completed" "$RUN_LOG_DIR/train_data_generation.log" | tail -5 || true
     fi
     
     # Count generated files
@@ -113,85 +101,239 @@ run_generation() {
     log_step "Generated $generated_files trajectory files in $DATA_DIR"
 }
 
-# Check for help flags
-case $1 in
-    help|--help|-h)
-        print_usage
-        exit 0
-        ;;
-    *)
-        ;;
-esac
+run_test_data_generation() {
+    # Check if test data already exists
+    if [ -f "$TEST_DATA_DIR/test1.txt" ]; then
+        log_step "Test data generation skipped - $VALIDATION_GAMES test files already exist in $TEST_DATA_DIR"
+        return 0
+    fi
+    
+    log_step "Starting test data generation for experiment $EXPERIMENT_NO"
+    log_step "Generating $VALIDATION_GAMES test games with random seed $TEST_RANDOM_SEED"
+    log_step "Logging test data generation output to: $RUN_LOG_DIR/test_data_generation.log"
+    
+    # Create test data directory
+    mkdir -p "$TEST_DATA_DIR"
+    
+    cd "$SCRIPTS_DIR"
+    python generate.py --config_override --n_games "$VALIDATION_GAMES" --agent_type astar --env_size 9x9 --save_dir "$TEST_DATA_DIR" --random_seed "$TEST_RANDOM_SEED" > "$RUN_LOG_DIR/test_data_generation.log" 2>&1
 
-# Validate agent type
-case $AGENT_TYPE in
-    astar|value|random)
-        ;;
-    *)
-        echo "Error: Invalid agent type '$AGENT_TYPE'. Must be one of: astar, value, random"
-        echo ""
-        print_usage
-        exit 1
-        ;;
-esac
+    # Verify test data was generated correctly
+    GENERATED_TEST_FILES=$(find "$TEST_DATA_DIR" -name "test*.txt" | wc -l)
+    if [ "$GENERATED_TEST_FILES" -eq "$VALIDATION_GAMES" ]; then
+        log_step "Test data generation completed successfully - $GENERATED_TEST_FILES files generated"
+    else
+        log_step "Warning: Expected $VALIDATION_GAMES test files, but found $GENERATED_TEST_FILES"
+    fi
+}
 
-# Validate environment size
-case $ENV_SIZE in
-    5x5|9x9|11x11)
-        ;;
-    *)
-        echo "Error: Invalid environment size '$ENV_SIZE'. Must be one of: 5x5, 9x9, 11x11"
-        echo ""
-        print_usage
-        exit 1
-        ;;
-esac
+run_training() {
+    # Check if training already completed
+    if [ -f "$RESULTS_DIR/exp3_"*"/best_model.pth" ]; then
+        log_step "Training skipped - best_model.pth already exists"
+        return 0
+    fi
+    
+    log_step "Starting ToMnet training for experiment $EXPERIMENT_NO"
+    log_step "Logging training output to: $RUN_LOG_DIR/training.log"
+    
+    cd "$SCRIPTS_DIR"
+    python train.py --data_dir "$DATA_DIR" --save_dir "$RESULTS_DIR" --epochs 100 --batch_size 32 --lr 0.001 --patience 10 > "$RUN_LOG_DIR/training.log" 2>&1
+    
+    log_step "Training completed"
+    
+    # Log training summary if available
+    if [ -f "$RUN_LOG_DIR/training.log" ]; then
+        log_step "Training summary:"
+        grep -i "epoch\|best.*loss\|accuracy\|completed" "$RUN_LOG_DIR/training.log" | tail -10 || true
+    fi
+}
 
-# Validate n_games is a positive integer
-if ! [[ "$N_GAMES" =~ ^[0-9]+$ ]] || [ "$N_GAMES" -le 0 ]; then
-    echo "Error: n_games must be a positive integer, got '$N_GAMES'"
-    echo ""
-    print_usage
-    exit 1
-fi
+run_evaluation() {
+    # Check if evaluation script exists
+    if [ ! -f "$SCRIPTS_DIR/evaluate.py" ]; then
+        log_step "Evaluation skipped - evaluate.py not found"
+        log_step "Create evaluate.py script for model evaluation"
+        return 0
+    fi
+    
+    # Check if evaluation already completed
+    if [ -f "$RESULTS_DIR/evaluation_results.json" ]; then
+        log_step "Evaluation skipped - evaluation_results.json already exists"
+        return 0
+    fi
+    
+    log_step "Starting evaluation for experiment $EXPERIMENT_NO"
+    log_step "Logging evaluation output to: $RUN_LOG_DIR/evaluation.log"
+    
+    cd "$SCRIPTS_DIR"
+    python evaluate.py --test_data_dir "$TEST_DATA_DIR" --results_dir "$RESULTS_DIR" > "$RUN_LOG_DIR/evaluation.log" 2>&1
+    
+    log_step "Evaluation completed"
+    
+    # Log evaluation summary if available
+    if [ -f "$RUN_LOG_DIR/evaluation.log" ]; then
+        log_step "Evaluation summary:"
+        grep -i "accuracy\|performance\|results" "$RUN_LOG_DIR/evaluation.log" | tail -5 || true
+    fi
+}
+
+run_visualization() {
+    # Check if visualization script exists
+    if [ ! -f "$SCRIPTS_DIR/visualize.py" ]; then
+        log_step "Visualization skipped - visualize.py not found"
+        log_step "Create visualize.py script for result visualization"
+        return 0
+    fi
+    
+    # Check if visualization already completed
+    if [ -f "$RESULTS_DIR/training_curves.png" ]; then
+        log_step "Visualization skipped - training_curves.png already exists"
+        return 0
+    fi
+    
+    log_step "Starting visualization for experiment $EXPERIMENT_NO"
+    log_step "Logging visualization output to: $RUN_LOG_DIR/visualization.log"
+    
+    cd "$SCRIPTS_DIR"
+    python visualize.py --results_dir "$RESULTS_DIR" --plot_type "all" > "$RUN_LOG_DIR/visualization.log" 2>&1
+    
+    log_step "Visualization completed"
+}
+
+# Function to check KeyDoor experiment implementation
+check_exp3_implementation() {
+    log_step "Checking KeyDoor experiment implementation..."
+    
+    cd "$SCRIPTS_DIR"
+    
+    # Check if required files exist
+    if [ -f "config.py" ]; then
+        log_step "✓ config.py exists"
+    else
+        log_step "✗ config.py not found"
+    fi
+    
+    if [ -f "generate.py" ]; then
+        log_step "✓ generate.py exists"
+    else
+        log_step "✗ generate.py not found"
+    fi
+    
+    if [ -f "train.py" ]; then
+        log_step "✓ train.py exists"
+    else
+        log_step "✗ train.py not found"
+    fi
+    
+    if [ -f "tomnet.py" ]; then
+        log_step "✓ tomnet.py exists"
+    else
+        log_step "✗ tomnet.py not found"
+    fi
+    
+    if [ -f "data_generation.py" ]; then
+        log_step "✓ data_generation.py exists"
+    else
+        log_step "✗ data_generation.py not found"
+    fi
+    
+    # Check if config has KeyDoor-specific parameters
+    if grep -q "KeyDoor" config.py; then
+        log_step "✓ KeyDoor environment configured in config.py"
+    else
+        log_step "✗ KeyDoor environment not configured in config.py"
+    fi
+    
+    if grep -q "astar" config.py; then
+        log_step "✓ A* agent configured in config.py"
+    else
+        log_step "✗ A* agent not configured in config.py"
+    fi
+    
+    # Check if ToMnet model supports KeyDoor
+    if grep -q "action_space.*7" tomnet.py 2>/dev/null; then
+        log_step "✓ KeyDoor action space (7 actions) configured in tomnet.py"
+    else
+        log_step "✗ KeyDoor action space not configured in tomnet.py"
+    fi
+    
+    if grep -q "goal_space.*4" tomnet.py 2>/dev/null; then
+        log_step "✓ KeyDoor goal space (4 goals) configured in tomnet.py"
+    else
+        log_step "✗ KeyDoor goal space not configured in tomnet.py"
+    fi
+    
+    log_step "KeyDoor experiment implementation check completed"
+}
 
 # Main execution
-log_step "Starting KeyDoor trajectory generation pipeline"
-log_step "All logs will be saved to: $RUN_LOG_DIR/"
-
-run_generation
+case $COMMAND in
+    data_generation)
+        check_exp3_implementation
+        run_data_generation
+        ;;
+    test_data_generation)
+        run_test_data_generation
+        ;;
+    train)
+        run_training
+        ;;
+    evaluate)
+        run_evaluation
+        ;;
+    visualize)
+        run_visualization
+        ;;
+    all)
+        log_step "Running complete KeyDoor pipeline for experiment $EXPERIMENT_NO"
+        log_step "All logs will be saved to: $RUN_LOG_DIR/"
+        check_exp3_implementation
+        run_data_generation
+        run_test_data_generation
+        run_training
+        run_evaluation
+        run_visualization
+        log_step "Complete pipeline finished successfully"
+        ;;
+    check)
+        check_exp3_implementation
+        ;;
+    help|--help|-h)
+        print_usage
+        ;;
+    *)
+        echo "Error: Unknown command '$COMMAND'"
+        echo ""
+        print_usage
+        exit 1
+        ;;
+esac
 
 log_step "Script completed successfully"
 log_step "Log files saved to: $RUN_LOG_DIR/"
 echo ""
 echo "Log files created:"
 echo "  - $RUN_LOG_DIR/execution.log (main script execution log)"
-echo "  - $RUN_LOG_DIR/generation.log (trajectory generation log)"
 
-# List log files with sizes
+# List all log files with sizes
 for log_file in "$RUN_LOG_DIR"/*.log; do
     if [ -f "$log_file" ]; then
         filename=$(basename "$log_file")
-        size=$(ls -lh "$log_file" | awk '{print $5}')
-        echo "  - $log_file (size: $size)"
+        if [ "$filename" != "execution.log" ]; then
+            size=$(ls -lh "$log_file" | awk '{print $5}')
+            echo "  - $log_file (size: $size)"
+        fi
     fi
 done
 
 echo ""
-echo "Generated trajectory files:"
-find "$DATA_DIR" -name "test*.txt" -type f | head -10 | while read file; do
-    echo "  - $file"
-done
-
-if [ $(find "$DATA_DIR" -name "test*.txt" -type f | wc -l) -gt 10 ]; then
-    echo "  ... and $(expr $(find "$DATA_DIR" -name "test*.txt" -type f | wc -l) - 10) more files"
-fi
-
-echo ""
 echo "KeyDoor Experiment 3 Features:"
 echo "  - Multi-colored key-door environment (4 keys, 4 doors)"
-echo "  - Three agent types: A* (optimal), Value (reinforcement learning), Random"
+echo "  - A* agent for optimal trajectory generation"
 echo "  - Automatic key pickup and door opening mechanics"
 echo "  - Successor representation labels for ToMnet training"
-echo "  - Parallel trajectory generation for efficiency"
-echo "  - Compatible with experiment 5 ToMnet format"
+echo "  - ToMnet architecture adapted for KeyDoor environment"
+echo "  - Character embedding with past episode generation from batch"
+echo "  - Early stopping and model checkpointing"
+echo "  - Comprehensive training history tracking and visualization"

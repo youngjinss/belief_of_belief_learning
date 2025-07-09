@@ -11,7 +11,7 @@ VALIDATION_GAMES=100
 TEST_RANDOM_SEED=123
 BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SCRIPTS_DIR="$BASE_DIR/script/exp3"
-DATA_DIR="$BASE_DIR/data/exp3"
+TRAIN_DATA_DIR="$BASE_DIR/data/exp3"
 TEST_DATA_DIR="$BASE_DIR/data/exp3/test"
 RESULTS_DIR="$BASE_DIR/results/exp3"
 LOG_DIR="$BASE_DIR/log/exp3"
@@ -21,7 +21,7 @@ TIMESTAMP=$(date '+%Y%m%d_%H%M%S')
 RUN_LOG_DIR="$LOG_DIR/$TIMESTAMP"
 
 # Create directories
-mkdir -p "$DATA_DIR" "$TEST_DATA_DIR" "$RESULTS_DIR" "$LOG_DIR" "$RUN_LOG_DIR"
+mkdir -p "$TRAIN_DATA_DIR" "$TEST_DATA_DIR" "$RESULTS_DIR" "$LOG_DIR" "$RUN_LOG_DIR"
 
 # Function to pre-create all log files
 create_log_files() {
@@ -77,7 +77,7 @@ create_log_files
 
 run_data_generation() {
     # Check if data already exists
-    if [ -f "$DATA_DIR/test1.txt" ]; then
+    if [ -f "$TRAIN_DATA_DIR/test1.txt" ]; then
         log_step "Data generation skipped - test*.txt already exists"
         return 0
     fi
@@ -86,7 +86,7 @@ run_data_generation() {
     log_step "Logging data generation output to: $RUN_LOG_DIR/train_data_generation.log"
     
     cd "$SCRIPTS_DIR"
-    python generate.py --config_override --n_games 50 --agent_type astar --env_size 9x9 --save_dir "$DATA_DIR" > "$RUN_LOG_DIR/train_data_generation.log" 2>&1
+    python generate.py --config_override --save_dir "$TRAIN_DATA_DIR" > "$RUN_LOG_DIR/train_data_generation.log" 2>&1
     
     log_step "Data generation completed"
     
@@ -97,8 +97,8 @@ run_data_generation() {
     fi
     
     # Count generated files
-    local generated_files=$(find "$DATA_DIR" -name "test*.txt" | wc -l)
-    log_step "Generated $generated_files trajectory files in $DATA_DIR"
+    local generated_files=$(find "$TRAIN_DATA_DIR" -name "test*.txt" | wc -l)
+    log_step "Generated $generated_files trajectory files in $TRAIN_DATA_DIR"
 }
 
 run_test_data_generation() {
@@ -116,7 +116,7 @@ run_test_data_generation() {
     mkdir -p "$TEST_DATA_DIR"
     
     cd "$SCRIPTS_DIR"
-    python generate.py --config_override --n_games "$VALIDATION_GAMES" --agent_type astar --env_size 9x9 --save_dir "$TEST_DATA_DIR" --random_seed "$TEST_RANDOM_SEED" > "$RUN_LOG_DIR/test_data_generation.log" 2>&1
+    python generate.py --config_override --n_games "$VALIDATION_GAMES" --save_dir "$TEST_DATA_DIR" --random_seed "$TEST_RANDOM_SEED" > "$RUN_LOG_DIR/test_data_generation.log" 2>&1
 
     # Verify test data was generated correctly
     GENERATED_TEST_FILES=$(find "$TEST_DATA_DIR" -name "test*.txt" | wc -l)
@@ -138,7 +138,7 @@ run_training() {
     log_step "Logging training output to: $RUN_LOG_DIR/training.log"
     
     cd "$SCRIPTS_DIR"
-    python train.py --config_override --data_dir "$DATA_DIR" --save_dir "$RESULTS_DIR" --epochs 100 --batch_size 32 --lr 0.001 --early_stopping_patience 10 > "$RUN_LOG_DIR/training.log" 2>&1
+    python train.py --config_override --data_dir "$TRAIN_DATA_DIR" --save_dir "$RESULTS_DIR" > "$RUN_LOG_DIR/training.log" 2>&1
     
     log_step "Training completed"
     

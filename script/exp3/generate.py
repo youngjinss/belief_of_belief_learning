@@ -697,7 +697,7 @@ if __name__ == "__main__":
         help="Override config with command line arguments",
     )
     parser.add_argument(
-        "--n_games", type=int, default=5, help="Number of games to generate"
+        "--n_games", type=int, help="Number of games to generate"
     )
     parser.add_argument(
         "--agent_type",

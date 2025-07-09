@@ -160,24 +160,21 @@ def calculate_consumption_labels(keys_collected, doors_opened):
 
 def env_to_maze_format(env, agent_pos):
     """
-    Convert KeyDoor environment to experiment 5 maze format
+    Convert KeyDoor environment to maze format without outer walls
 
     Args:
         env: KeyDoor environment
         agent_pos: Current agent position
 
     Returns:
-        maze_str: String representation of the maze
+        maze_str: String representation of the maze (9x9 internal grid)
     """
     maze_lines = []
     width, height = env.width, env.height
 
-    # Add top wall
-    maze_lines.append("#" * (width + 2))
-
-    # Process each row
+    # Process each row without adding outer walls
     for j in range(height):
-        row = "#"
+        row = ""
         for i in range(width):
             cell = env.grid.get(i, j)
 
@@ -198,11 +195,7 @@ def env_to_maze_format(env, agent_pos):
             else:
                 row += "?"  # Unknown
 
-        row += "#"
         maze_lines.append(row)
-
-    # Add bottom wall
-    maze_lines.append("#" * (width + 2))
 
     return maze_lines
 
@@ -216,6 +209,7 @@ def save_game_with_labels(
     name="",
     base_dir="data/exp3",
     game_id=None,
+    initial_maze_lines=None,
 ):
     """
     Save game data with SR and consumption labels in experiment 5 format
@@ -248,15 +242,19 @@ def save_game_with_labels(
     with open(new_file_path, "w") as f:
         f.write("Maze:\n")
 
-        # Save the maze in experiment 5 format
-        maze_lines = env_to_maze_format(
-            env,
-            (
-                agent.position_history[-1]
-                if hasattr(agent, "position_history") and agent.position_history
-                else env.agent_pos
-            ),
-        )
+        # Save the maze in experiment 5 format (use initial state if provided, otherwise final state)
+        if initial_maze_lines is not None:
+            maze_lines = initial_maze_lines
+        else:
+            # Fallback to final state (for backward compatibility)
+            maze_lines = env_to_maze_format(
+                env,
+                (
+                    agent.position_history[-1]
+                    if hasattr(agent, "position_history") and agent.position_history
+                    else env.agent_pos
+                ),
+            )
         for line in maze_lines:
             f.write(line + "\n")
 
@@ -350,11 +348,11 @@ def run_single_game(game_id, config_dict, save_dir):
         raise ValueError(f"Unknown environment size: {env_size}")
 
     import gymnasium as gym
-    
+
     # Create environment same way as render_kd.py
     env = gym.make(env_name, max_steps=config_dict["max_steps"])
     env = env.unwrapped if hasattr(env, "unwrapped") else env
-    
+
     # Reset environment with seed
     env.seed(config_dict["base_random_seed"] + game_id)
     reset_result = env.reset()
@@ -399,6 +397,10 @@ def run_single_game(game_id, config_dict, save_dir):
     keys_collected_steps = []
     doors_opened_steps = []
 
+    # Save initial maze state (before agent starts moving)
+    initial_agent_pos = tuple(env.agent_pos)
+    initial_maze_lines = env_to_maze_format(env, initial_agent_pos)
+
     # Run game simulation
     step_count = 0
     max_steps = config_dict["max_steps"]
@@ -407,7 +409,7 @@ def run_single_game(game_id, config_dict, save_dir):
     print(f"Game {game_id}: Starting with agent {agent_type}")
     print(f"Game {game_id}: Mission: {env.mission}")
     print(f"Game {game_id}: Target door color: {env.target_door_color}")
-    
+
     while step_count < max_steps:
         # Record current position
         current_position = tuple(env.agent_pos)
@@ -435,7 +437,7 @@ def run_single_game(game_id, config_dict, save_dir):
             if len(current_keys) > len(keys_collected):
                 new_key = [k for k in current_keys if k not in keys_collected][0]
                 keys_collected.append(new_key)
-                keys_collected_steps.append((step_count-1, new_key))
+                keys_collected_steps.append((step_count - 1, new_key))
 
         # Check for door opening by reward
         if reward > 0 and step_count > 1:
@@ -447,7 +449,7 @@ def run_single_game(game_id, config_dict, save_dir):
                         if obj and obj.type == "door" and obj.is_open:
                             if obj.color not in doors_opened:
                                 doors_opened.append(obj.color)
-                                doors_opened_steps.append((step_count-1, obj.color))
+                                doors_opened_steps.append((step_count - 1, obj.color))
                                 break
 
         # Let agent analyze feedback (for learning agents)
@@ -477,7 +479,9 @@ def run_single_game(game_id, config_dict, save_dir):
     consumption_labels = calculate_consumption_labels(keys_collected, doors_opened)
 
     # Calculate key/door rank based on target
-    target_door_color = env.target_door_color if hasattr(env, "target_door_color") else "yellow"
+    target_door_color = (
+        env.target_door_color if hasattr(env, "target_door_color") else "yellow"
+    )
     key_door_rank = calculate_key_door_rank(
         keys_collected, doors_opened, target_door_color
     )
@@ -492,6 +496,7 @@ def run_single_game(game_id, config_dict, save_dir):
         name="",
         base_dir=save_dir,
         game_id=game_id,
+        initial_maze_lines=initial_maze_lines,
     )
 
     return game_id
@@ -618,7 +623,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     config = Config()
-    
+
     # Override config with command line arguments if specified
     if args.config_override:
         config.n_games = args.n_games

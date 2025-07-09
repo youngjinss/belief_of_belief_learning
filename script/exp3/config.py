@@ -15,7 +15,7 @@ class Config:
         self.movement_prob = 0.8  # For random agent
 
         # Visualization settings
-        self.episodes = 3
+        self.episodes = 200
         self.pause = 0.5  # Pause duration between actions in seconds
         self.render = True
         self.debug = True
@@ -25,7 +25,7 @@ class Config:
         self.gif_output = None  # Filename for saving gif (without .gif extension)
 
         # Data generation settings
-        self.n_games = 5  # Number of games to generate for ToMnet data
+        self.n_games = 20000  # Number of games to generate for ToMnet data
         self.save_dir = "script/exp3/data"  # Directory to save generated data
 
         # Experiment settings

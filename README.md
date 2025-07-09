@@ -9,6 +9,11 @@
 
 
 /divider
+ 
+### exp3 버전 기록
+- key door 환경에 a star, value, random 적용 후 ToMnet 적용
+
+/divider
 
 ## exp1 버전 기록 (archive) 
 [v0] 시뮬레이션 기반 추론 연구

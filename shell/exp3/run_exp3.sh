@@ -1,5 +1,5 @@
 #!/bin/bash
-# nohup bash shell/exp3/run_generate.sh > exp3.log 2>&1 &
+# nohup bash shell/exp3/rrun_exp3.sh > exp3.log 2>&1 &
 # KeyDoor trajectory generation script for experiment 3
 # Usage: bash run_generate.sh [n_games] [agent_type] [env_size]
 

@@ -108,7 +108,7 @@ class Config:
             "lr": 0.001,
             "weight_decay": 0.001,
             "training_proportion": 0.8,
-            "device": "auto",
+            "device": "cuda:3",
             "optimizer": "adam",
         }
 

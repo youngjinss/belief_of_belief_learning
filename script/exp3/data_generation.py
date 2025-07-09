@@ -21,7 +21,7 @@ class DataReader:
             time_step: Maximum trajectory length
             w: Maze width (9x9 for KeyDoor)
             h: Maze height (9x9 for KeyDoor)
-            d: Maze depth (8 layers: 1-agent, 1-walls, 4-keys, 4-doors, 4-actions)
+            d: Maze depth (8 layers: 1-ageLoaded game:nt, 1-walls, 4-keys, 4-doors, 4-actions)
             experiment_no: Experiment number (3 for KeyDoor)
         """
         self.EXPERIMENT_NO = experiment_no
@@ -342,7 +342,6 @@ class DataReader:
             try:
                 game_data = self.ReadOneGame(filepath)
                 games.append(game_data)
-                print(f"Loaded game: {os.path.basename(filepath)}")
             except Exception as e:
                 print(f"Error loading {filepath}: {e}")
                 continue

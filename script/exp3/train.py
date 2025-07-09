@@ -3,7 +3,6 @@ from torch.utils.data import DataLoader, TensorDataset
 import matplotlib.pyplot as plt
 import os
 import json
-import pickle
 import sys
 import numpy as np
 from datetime import datetime
@@ -548,7 +547,6 @@ def train_tomnet(
     epochs = training_kwargs["epochs"]
     lr = training_kwargs["lr"]
     training_proportion = training_kwargs["training_proportion"]
-    max_moves = training_kwargs["max_moves"]
     time_step = training_kwargs["time_step"]
     max_n_past = training_kwargs["max_n_past"]
     device = training_kwargs["device"]
@@ -577,7 +575,7 @@ def train_tomnet(
         raise ValueError(f"No games found in {data_dir}")
 
     # Prepare data
-    data = prepare_data_for_training(games, max_moves)
+    data = prepare_data_for_training(games, time_step)
 
     # Create datasets
     dataset = TensorDataset(data["trajectories"], data["actions"], data["goals"])

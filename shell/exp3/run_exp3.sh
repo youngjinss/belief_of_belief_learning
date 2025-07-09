@@ -7,7 +7,7 @@ set -e  # Exit on error
 
 # Configuration
 EXPERIMENT_NO=3
-VALIDATION_GAMES=100
+VALIDATION_GAMES=2000
 TEST_RANDOM_SEED=123
 BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SCRIPTS_DIR="$BASE_DIR/script/exp3"

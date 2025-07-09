@@ -94,11 +94,11 @@ class Config:
             "default_rewards": [
                 0.5,
                 1.0,
-                1.5,
-                1.0,
+                0.1,
+                0.2,
             ],  # Default rewards for goals A, B, C, D (sum=4)
             "min_reward": 0.1,  # Minimum reward value
-            "max_reward": 3.0,  # Maximum reward value
+            "max_reward": 1.0,  # Maximum reward value
         }
 
         # Cost settings (constraint: total sum must be 1)
@@ -117,11 +117,11 @@ class Config:
 
         # Training configuration
         self.training_config = {
-            "batch_size": 512,
+            "batch_size": 1024,
             "epochs": 200,
             "lr": 0.001,
             "weight_decay": 0.001,
-            "training_proportion": 0.8,
+            "training_proportion": 0.9,
             "device": "cuda:3",
             "optimizer": "adam",
         }

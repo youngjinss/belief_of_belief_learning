@@ -694,6 +694,12 @@ def train_tomnet(
         )
         print("-" * 80)
 
+        # Force flush to ensure real-time logging
+        sys.stdout.flush()
+        # Also flush any file handlers if redirected
+        if hasattr(sys.stdout, "buffer"):
+            sys.stdout.buffer.flush()
+
         # Save best model
         if val_metrics["loss"] < best_val_loss:
             best_val_loss = val_metrics["loss"]

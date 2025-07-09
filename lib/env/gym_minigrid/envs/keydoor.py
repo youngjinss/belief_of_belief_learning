@@ -40,9 +40,9 @@ class KeyDoorEnv(MiniGridEnv):
             agent_view_size=size,  # Agent can see entire grid
         )
 
-        # Custom action space: up, down, left, right, stay
+        # Use standard MiniGrid actions: left=0, right=1, forward=2, pickup=3, drop=4, toggle=5, done=6
         self.actions = MiniGridEnv.Actions
-        self.action_space = spaces.Discrete(5)
+        self.action_space = spaces.Discrete(7)
 
     def _gen_grid(self, width, height):
         # Create empty grid
@@ -118,7 +118,7 @@ class KeyDoorEnv(MiniGridEnv):
         return door_pos
 
     def step(self, action):
-        # Handle regular movement actions first
+        # Handle regular movement actions first using parent class
         obs, reward, done, stuck, info = super().step(action)
         
         # Convert old API format to new Gymnasium format

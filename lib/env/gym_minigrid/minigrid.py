@@ -603,7 +603,7 @@ class Grid:
         return grid
 
     def process_vis(grid, agent_pos):
-        mask = np.zeros(shape=(grid.width, grid.height), dtype=np.bool)
+        mask = np.zeros(shape=(grid.width, grid.height), dtype=bool)
 
         mask[agent_pos[0], agent_pos[1]] = True
 
@@ -1184,7 +1184,7 @@ class MiniGridEnv(gym.Env):
                 agent_pos=(self.agent_view_size // 2, self.agent_view_size - 1)
             )
         else:
-            vis_mask = np.ones(shape=(grid.width, grid.height), dtype=np.bool)
+            vis_mask = np.ones(shape=(grid.width, grid.height), dtype=bool)
 
         # Make it so the agent sees what it's carrying
         # We do this by placing the carried object at the agent's position

@@ -300,7 +300,7 @@ class RoomGrid(MiniGridEnv):
             dir = DIR_TO_VEC[self.start_dir]
             front_pos = pos + dir
             front_cell = self.grid.get(*front_pos)
-            if front_cell is None or front_cell.type is "wall":
+            if front_cell is None or front_cell.type == "wall":
                 break
 
         return self.start_pos

@@ -7,7 +7,6 @@ import sys
 import numpy as np
 from datetime import datetime
 import time
-from tqdm import tqdm
 
 # Add current directory to path
 sys.path.append(os.path.dirname(__file__))
@@ -231,9 +230,7 @@ def train_epoch(
     correct_goals = 0
     total_samples = 0
 
-    progress_bar = tqdm(train_loader, desc="Training", leave=False)
-
-    for batch_idx, batch in enumerate(progress_bar):
+    for batch_idx, batch in enumerate(train_loader):
         trajectories, actions, goals = batch[:3]
 
         trajectories = trajectories.to(device)
@@ -295,14 +292,6 @@ def train_epoch(
         correct_goals += (predicted_goals == goal_targets).sum().item()
         total_samples += batch_size
 
-        # Update progress bar
-        progress_bar.set_postfix(
-            {
-                "Loss": f"{total_loss_batch.item():.4f}",
-                "Action Acc": f"{correct_actions / total_samples:.4f}",
-                "Goal Acc": f"{correct_goals / total_samples:.4f}",
-            }
-        )
 
     num_batches = len(train_loader)
     avg_loss = total_loss / num_batches if num_batches > 0 else 0
@@ -343,9 +332,7 @@ def validate_epoch(model, val_loader, loss_fn, device, max_n_past=5, data_config
     total_samples = 0
 
     with torch.no_grad():
-        progress_bar = tqdm(val_loader, desc="Validation", leave=False)
-
-        for batch_idx, batch in enumerate(progress_bar):
+        for batch_idx, batch in enumerate(val_loader):
             trajectories, actions, goals = batch[:3]
 
             trajectories = trajectories.to(device)
@@ -399,14 +386,6 @@ def validate_epoch(model, val_loader, loss_fn, device, max_n_past=5, data_config
             correct_goals += (predicted_goals == goal_targets).sum().item()
             total_samples += batch_size
 
-            # Update progress bar
-            progress_bar.set_postfix(
-                {
-                    "Loss": f"{total_loss_batch.item():.4f}",
-                    "Action Acc": f"{correct_actions / total_samples:.4f}",
-                    "Goal Acc": f"{correct_goals / total_samples:.4f}",
-                }
-            )
 
     num_batches = len(val_loader)
     avg_loss = total_loss / num_batches if num_batches > 0 else 0
@@ -690,17 +669,26 @@ def train_tomnet(
         history["epoch_time"].append(epoch_time)
 
         # Print metrics
+        train_loss = train_metrics['loss']
+        train_acc = (train_metrics['action_accuracy'] + train_metrics['goal_accuracy']) / 2 * 100
+        val_acc = (val_metrics['action_accuracy'] + val_metrics['goal_accuracy']) / 2 * 100
+        train_action_loss = train_metrics['action_loss']
+        train_consumption_loss = train_metrics['goal_loss']
+        train_sr_loss = 0  # Placeholder for SR loss
+        val_action_loss = val_metrics['action_loss']
+        val_consumption_loss = val_metrics['goal_loss']
+        val_sr_loss = 0  # Placeholder for SR loss
+        
         print(
-            f"Train - Loss: {train_metrics['loss']:.4f}, "
-            f"Action Acc: {train_metrics['action_accuracy']:.4f}, "
-            f"Goal Acc: {train_metrics['goal_accuracy']:.4f}"
+            f"Epoch: {epoch + 1:3d} | Train Loss: {train_loss:.4f} | Train Acc: {train_acc:.4f}% | Val Acc: {val_acc:.4f}% | Time: {epoch_time:.2f}s"
         )
         print(
-            f"Val   - Loss: {val_metrics['loss']:.4f}, "
-            f"Action Acc: {val_metrics['action_accuracy']:.4f}, "
-            f"Goal Acc: {val_metrics['goal_accuracy']:.4f}"
+            f"  Train - Action: {train_action_loss:.4f} | Consumption: {train_consumption_loss:.4f} | SR: {train_sr_loss:.4f}"
         )
-        print(f"Epoch time: {epoch_time:.2f}s")
+        print(
+            f"  Val   - Action: {val_action_loss:.4f} | Consumption: {val_consumption_loss:.4f} | SR: {val_sr_loss:.4f}"
+        )
+        print("-" * 80)
 
         # Save best model
         if val_metrics["loss"] < best_val_loss:

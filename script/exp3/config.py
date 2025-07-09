@@ -79,7 +79,12 @@ class Config:
         self.goal_reward_settings = {
             "use_random_rewards": True,  # Enable random goal rewards
             "total_reward_sum": 4,  # Total sum of all goal rewards (user preference)
-            "default_rewards": [0.5, 1.0, 1.5, 1.0],  # Default rewards for goals A, B, C, D (sum=4)
+            "default_rewards": [
+                0.5,
+                1.0,
+                1.5,
+                1.0,
+            ],  # Default rewards for goals A, B, C, D (sum=4)
             "min_reward": 0.1,  # Minimum reward value
             "max_reward": 3.0,  # Maximum reward value
         }
@@ -134,50 +139,55 @@ class Config:
         """
         Generate random goal rewards that sum to total_reward
         Following ToMnetF pattern but with configurable sum
-        
+
         Returns:
             list: Four goal rewards that sum to total_reward
         """
         import numpy as np
-        
+
         if total_reward is None:
             total_reward = self.goal_reward_settings["total_reward_sum"]
-        
+
         min_reward = self.goal_reward_settings["min_reward"]
         max_reward = self.goal_reward_settings["max_reward"]
-        
+
         # Generate 3 random split points between min and max
         splits = np.random.uniform(0, 1, 3)
         splits = np.sort(splits)
-        
+
         # Create 4 proportions
-        proportions = [splits[0], splits[1] - splits[0], splits[2] - splits[1], 1 - splits[2]]
-        
+        proportions = [
+            splits[0],
+            splits[1] - splits[0],
+            splits[2] - splits[1],
+            1 - splits[2],
+        ]
+
         # Scale to total reward
         rewards = [prop * total_reward for prop in proportions]
-        
+
         # Ensure minimum reward constraint
         for i in range(len(rewards)):
             if rewards[i] < min_reward:
                 rewards[i] = min_reward
-        
+
         # Rescale to maintain sum constraint
         current_sum = sum(rewards)
         if current_sum != total_reward:
             scale_factor = total_reward / current_sum
             rewards = [r * scale_factor for r in rewards]
-        
+
         # Ensure no reward exceeds maximum
         for i in range(len(rewards)):
             if rewards[i] > max_reward:
                 rewards[i] = max_reward
-        
+
         # Final rescaling to maintain exact sum
         current_sum = sum(rewards)
         if current_sum != total_reward:
             scale_factor = total_reward / current_sum
             rewards = [r * scale_factor for r in rewards]
-        
+
         return rewards
 
     def get_goal_rewards(self):

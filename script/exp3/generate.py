@@ -6,9 +6,13 @@ from functools import partial
 import warnings
 
 # Suppress gymnasium registration warnings
-warnings.filterwarnings("ignore", message=".*Overriding environment.*already in registry.*")
+warnings.filterwarnings(
+    "ignore", message=".*Overriding environment.*already in registry.*"
+)
 warnings.filterwarnings("ignore", message=".*gym_minigrid has been deprecated.*")
-warnings.filterwarnings("ignore", message=".*environment creator metadata doesn't include `render_modes`.*")
+warnings.filterwarnings(
+    "ignore", message=".*environment creator metadata doesn't include `render_modes`.*"
+)
 
 # Add parent directory to path for imports
 sys.path.append(
@@ -44,7 +48,7 @@ def calculate_successor_representation(
     """
     if gammas is None:
         gammas = [0.5, 0.9, 0.99]
-    
+
     sr_maps_sparse = []
 
     # Calculate SR for each discount factor
@@ -93,7 +97,7 @@ def calculate_sr_labels_for_trajectory(positions, grid_size=9, gammas=None):
     """
     if gammas is None:
         gammas = [0.5, 0.9, 0.99]
-    
+
     sr_labels_per_timestep = []
 
     # Calculate SR for each timestep in the trajectory
@@ -275,7 +279,7 @@ def save_game_with_labels(
         # Save key/door rank (similar to goal rank)
         f.write("Goal Consumed Rank : " + str(key_door_rank) + "\n")
         f.write("Trajectory length: " + str(len(agent.action_history)) + "\n")
-        
+
         # Save goal rewards (sum constrained to configured total)
         if goal_rewards is not None:
             # Convert to list format: [red, green, blue, yellow]
@@ -294,7 +298,7 @@ def save_game_with_labels(
         # Save SR data per timestep in sparse format
         if gammas is None:
             gammas = [0.5, 0.9, 0.99]
-        
+
         f.write("SR_Data_Per_Timestep:\n")
         for t, sr_data_at_t in enumerate(sr_labels_per_timestep):
             f.write(f"Timestep_{t}:\n")
@@ -351,51 +355,56 @@ def save_game_with_labels(
 def generate_game_rewards(config_dict, game_id):
     """
     Generate goal rewards for this game based on config settings
-    
+
     Args:
         config_dict: Dictionary containing configuration
         game_id: Game ID for seeding
-        
+
     Returns:
         dict: Mapping of goal colors to reward values
     """
     # Set seed for consistent reward generation for this game
     np.random.seed(config_dict["base_random_seed"] + game_id + 1000)
-    
+
     reward_settings = config_dict.get("goal_reward_settings", {})
-    
+
     if reward_settings.get("use_random_rewards", True):
         # Generate random rewards that sum to total
         total_reward = reward_settings.get("total_reward_sum", 4)
         min_reward = reward_settings.get("min_reward", 0.1)
         max_reward = reward_settings.get("max_reward", 3.0)
-        
+
         # Generate 3 random split points
         splits = np.random.uniform(0, 1, 3)
         splits = np.sort(splits)
-        
+
         # Create 4 proportions
-        proportions = [splits[0], splits[1] - splits[0], splits[2] - splits[1], 1 - splits[2]]
-        
+        proportions = [
+            splits[0],
+            splits[1] - splits[0],
+            splits[2] - splits[1],
+            1 - splits[2],
+        ]
+
         # Scale to total reward
         rewards = [prop * total_reward for prop in proportions]
-        
+
         # Ensure minimum reward constraint
         for i in range(len(rewards)):
             if rewards[i] < min_reward:
                 rewards[i] = min_reward
-        
+
         # Rescale to maintain sum constraint
         current_sum = sum(rewards)
         if current_sum > 0:
             scale_factor = total_reward / current_sum
             rewards = [r * scale_factor for r in rewards]
-        
+
         # Ensure no reward exceeds maximum
         for i in range(len(rewards)):
             if rewards[i] > max_reward:
                 rewards[i] = max_reward
-        
+
         # Final rescaling to maintain exact sum
         current_sum = sum(rewards)
         if current_sum > 0:
@@ -404,7 +413,7 @@ def generate_game_rewards(config_dict, game_id):
     else:
         # Use default rewards
         rewards = reward_settings.get("default_rewards", [0.5, 1.0, 1.5, 1.0])
-    
+
     # Map to color names
     colors = ["red", "green", "blue", "yellow"]
     return {colors[i]: rewards[i] for i in range(len(colors))}
@@ -424,7 +433,7 @@ def run_single_game(game_id, config_dict, save_dir):
     """
     # Set unique random seed for this game
     np.random.seed(config_dict["base_random_seed"] + game_id)
-    
+
     # Generate goal rewards for this game
     goal_rewards = generate_game_rewards(config_dict, game_id)
 
@@ -499,7 +508,7 @@ def run_single_game(game_id, config_dict, save_dir):
     print(f"Game {game_id}: Starting with agent {agent_type}")
     print(f"Game {game_id}: Mission: {env.mission}")
     print(f"Game {game_id}: Target door color: {env.target_door_color}")
-    
+
     # Log goal rewards
     total_reward = sum(goal_rewards.values())
     print(f"Game {game_id}: Goal rewards (sum={total_reward:.2f}): {goal_rewards}")

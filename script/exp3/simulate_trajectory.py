@@ -7,9 +7,13 @@ from PIL import Image
 import warnings
 
 # Suppress gymnasium registration warnings
-warnings.filterwarnings("ignore", message=".*Overriding environment.*already in registry.*")
+warnings.filterwarnings(
+    "ignore", message=".*Overriding environment.*already in registry.*"
+)
 warnings.filterwarnings("ignore", message=".*gym_minigrid has been deprecated.*")
-warnings.filterwarnings("ignore", message=".*environment creator metadata doesn't include `render_modes`.*")
+warnings.filterwarnings(
+    "ignore", message=".*environment creator metadata doesn't include `render_modes`.*"
+)
 
 # Add the lib directory to the path
 lib_path = os.path.join(os.path.dirname(__file__), "..", "..", "lib")

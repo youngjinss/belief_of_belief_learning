@@ -292,7 +292,6 @@ def train_epoch(
         correct_goals += (predicted_goals == goal_targets).sum().item()
         total_samples += batch_size
 
-
     num_batches = len(train_loader)
     avg_loss = total_loss / num_batches if num_batches > 0 else 0
     avg_action_loss = total_action_loss / num_batches if num_batches > 0 else 0
@@ -385,7 +384,6 @@ def validate_epoch(model, val_loader, loss_fn, device, max_n_past=5, data_config
             correct_actions += (predicted_actions == action_targets).sum().item()
             correct_goals += (predicted_goals == goal_targets).sum().item()
             total_samples += batch_size
-
 
     num_batches = len(val_loader)
     avg_loss = total_loss / num_batches if num_batches > 0 else 0
@@ -669,16 +667,22 @@ def train_tomnet(
         history["epoch_time"].append(epoch_time)
 
         # Print metrics
-        train_loss = train_metrics['loss']
-        train_acc = (train_metrics['action_accuracy'] + train_metrics['goal_accuracy']) / 2 * 100
-        val_acc = (val_metrics['action_accuracy'] + val_metrics['goal_accuracy']) / 2 * 100
-        train_action_loss = train_metrics['action_loss']
-        train_consumption_loss = train_metrics['goal_loss']
+        train_loss = train_metrics["loss"]
+        train_acc = (
+            (train_metrics["action_accuracy"] + train_metrics["goal_accuracy"])
+            / 2
+            * 100
+        )
+        val_acc = (
+            (val_metrics["action_accuracy"] + val_metrics["goal_accuracy"]) / 2 * 100
+        )
+        train_action_loss = train_metrics["action_loss"]
+        train_consumption_loss = train_metrics["goal_loss"]
         train_sr_loss = 0  # Placeholder for SR loss
-        val_action_loss = val_metrics['action_loss']
-        val_consumption_loss = val_metrics['goal_loss']
+        val_action_loss = val_metrics["action_loss"]
+        val_consumption_loss = val_metrics["goal_loss"]
         val_sr_loss = 0  # Placeholder for SR loss
-        
+
         print(
             f"Epoch: {epoch + 1:3d} | Train Loss: {train_loss:.4f} | Train Acc: {train_acc:.4f}% | Val Acc: {val_acc:.4f}% | Time: {epoch_time:.2f}s"
         )

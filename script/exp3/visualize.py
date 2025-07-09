@@ -175,7 +175,9 @@ def plot_accuracy_heatmap_by_n_past(results_by_n_past, output_dir=None):
         ax=ax,
     )
 
-    ax.set_title("KeyDoor: Per-Action Accuracy by N_past", fontsize=14, fontweight="bold")
+    ax.set_title(
+        "KeyDoor: Per-Action Accuracy by N_past", fontsize=14, fontweight="bold"
+    )
     ax.set_xlabel("Action Type", fontsize=12)
     ax.set_ylabel("Number of Past Episodes", fontsize=12)
 
@@ -214,10 +216,14 @@ def plot_training_curves(history_path, output_dir, experiment_no=3):
 
     # Create subplots
     fig, axes = plt.subplots(2, 2, figsize=(15, 10))
-    fig.suptitle(f"KeyDoor ToMnet Training History (Experiment {experiment_no})", fontsize=16)
+    fig.suptitle(
+        f"KeyDoor ToMnet Training History (Experiment {experiment_no})", fontsize=16
+    )
 
     # Loss curves
-    axes[0, 0].plot(history["epoch"], history["train_loss"], label="Train Loss", marker="o")
+    axes[0, 0].plot(
+        history["epoch"], history["train_loss"], label="Train Loss", marker="o"
+    )
     axes[0, 0].plot(history["epoch"], history["val_loss"], label="Val Loss", marker="s")
     axes[0, 0].set_title("Total Loss")
     axes[0, 0].set_xlabel("Epoch")
@@ -226,8 +232,18 @@ def plot_training_curves(history_path, output_dir, experiment_no=3):
     axes[0, 0].grid(True, alpha=0.3)
 
     # Action accuracy curves
-    axes[0, 1].plot(history["epoch"], history["train_action_accuracy"], label="Train Action Acc", marker="o")
-    axes[0, 1].plot(history["epoch"], history["val_action_accuracy"], label="Val Action Acc", marker="s")
+    axes[0, 1].plot(
+        history["epoch"],
+        history["train_action_accuracy"],
+        label="Train Action Acc",
+        marker="o",
+    )
+    axes[0, 1].plot(
+        history["epoch"],
+        history["val_action_accuracy"],
+        label="Val Action Acc",
+        marker="s",
+    )
     axes[0, 1].set_title("Action Accuracy")
     axes[0, 1].set_xlabel("Epoch")
     axes[0, 1].set_ylabel("Accuracy")
@@ -235,8 +251,15 @@ def plot_training_curves(history_path, output_dir, experiment_no=3):
     axes[0, 1].grid(True, alpha=0.3)
 
     # Goal accuracy curves
-    axes[1, 0].plot(history["epoch"], history["train_goal_accuracy"], label="Train Goal Acc", marker="o")
-    axes[1, 0].plot(history["epoch"], history["val_goal_accuracy"], label="Val Goal Acc", marker="s")
+    axes[1, 0].plot(
+        history["epoch"],
+        history["train_goal_accuracy"],
+        label="Train Goal Acc",
+        marker="o",
+    )
+    axes[1, 0].plot(
+        history["epoch"], history["val_goal_accuracy"], label="Val Goal Acc", marker="s"
+    )
     axes[1, 0].set_title("Goal Accuracy")
     axes[1, 0].set_xlabel("Epoch")
     axes[1, 0].set_ylabel("Accuracy")
@@ -244,10 +267,27 @@ def plot_training_curves(history_path, output_dir, experiment_no=3):
     axes[1, 0].grid(True, alpha=0.3)
 
     # Loss components
-    axes[1, 1].plot(history["epoch"], history["train_action_loss"], label="Train Action Loss", marker="o")
-    axes[1, 1].plot(history["epoch"], history["train_goal_loss"], label="Train Goal Loss", marker="s")
-    axes[1, 1].plot(history["epoch"], history["val_action_loss"], label="Val Action Loss", marker="^")
-    axes[1, 1].plot(history["epoch"], history["val_goal_loss"], label="Val Goal Loss", marker="v")
+    axes[1, 1].plot(
+        history["epoch"],
+        history["train_action_loss"],
+        label="Train Action Loss",
+        marker="o",
+    )
+    axes[1, 1].plot(
+        history["epoch"],
+        history["train_goal_loss"],
+        label="Train Goal Loss",
+        marker="s",
+    )
+    axes[1, 1].plot(
+        history["epoch"],
+        history["val_action_loss"],
+        label="Val Action Loss",
+        marker="^",
+    )
+    axes[1, 1].plot(
+        history["epoch"], history["val_goal_loss"], label="Val Goal Loss", marker="v"
+    )
     axes[1, 1].set_title("Loss Components")
     axes[1, 1].set_xlabel("Epoch")
     axes[1, 1].set_ylabel("Loss")
@@ -316,7 +356,11 @@ def plot_confusion_matrix(predictions_path, output_dir, experiment_no=3):
         ax=ax,
     )
 
-    ax.set_title(f"KeyDoor: Confusion Matrix (Experiment {experiment_no})", fontsize=14, fontweight="bold")
+    ax.set_title(
+        f"KeyDoor: Confusion Matrix (Experiment {experiment_no})",
+        fontsize=14,
+        fontweight="bold",
+    )
     ax.set_xlabel("Predicted Action", fontsize=12)
     ax.set_ylabel("True Action", fontsize=12)
 
@@ -326,7 +370,9 @@ def plot_confusion_matrix(predictions_path, output_dir, experiment_no=3):
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
         plt.savefig(
-            os.path.join(output_dir, f"keydoor_confusion_matrix_exp{experiment_no}.png"),
+            os.path.join(
+                output_dir, f"keydoor_confusion_matrix_exp{experiment_no}.png"
+            ),
             dpi=300,
             bbox_inches="tight",
         )
@@ -370,7 +416,10 @@ def plot_action_likelihood(predictions_path, output_dir, experiment_no=3):
 
     # Create figure with subplots
     fig, axes = plt.subplots(2, 4, figsize=(16, 8))
-    fig.suptitle(f"KeyDoor: Action Likelihood Distributions (Experiment {experiment_no})", fontsize=16)
+    fig.suptitle(
+        f"KeyDoor: Action Likelihood Distributions (Experiment {experiment_no})",
+        fontsize=16,
+    )
 
     for action in range(7):  # 7 actions in KeyDoor
         row = action // 4
@@ -381,9 +430,11 @@ def plot_action_likelihood(predictions_path, output_dir, experiment_no=3):
         action_mask = targets == action
         if np.sum(action_mask) > 0:
             likelihoods = probabilities[action_mask, action]
-            
+
             # Plot histogram
-            ax.hist(likelihoods, bins=30, alpha=0.7, color=f"C{action}", edgecolor="black")
+            ax.hist(
+                likelihoods, bins=30, alpha=0.7, color=f"C{action}", edgecolor="black"
+            )
             ax.set_title(f"{action_names[action]}")
             ax.set_xlabel("Likelihood")
             ax.set_ylabel("Frequency")
@@ -391,11 +442,17 @@ def plot_action_likelihood(predictions_path, output_dir, experiment_no=3):
 
             # Add statistics
             mean_likelihood = np.mean(likelihoods)
-            ax.axvline(mean_likelihood, color="red", linestyle="--", 
-                      label=f"Mean: {mean_likelihood:.3f}")
+            ax.axvline(
+                mean_likelihood,
+                color="red",
+                linestyle="--",
+                label=f"Mean: {mean_likelihood:.3f}",
+            )
             ax.legend()
         else:
-            ax.text(0.5, 0.5, "No samples", ha="center", va="center", transform=ax.transAxes)
+            ax.text(
+                0.5, 0.5, "No samples", ha="center", va="center", transform=ax.transAxes
+            )
             ax.set_title(f"{action_names[action]}")
 
     # Remove empty subplot
@@ -408,7 +465,9 @@ def plot_action_likelihood(predictions_path, output_dir, experiment_no=3):
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
         plt.savefig(
-            os.path.join(output_dir, f"keydoor_action_likelihood_exp{experiment_no}.png"),
+            os.path.join(
+                output_dir, f"keydoor_action_likelihood_exp{experiment_no}.png"
+            ),
             dpi=300,
             bbox_inches="tight",
         )
@@ -435,31 +494,31 @@ def plot_character_embeddings(
     model.eval()
     embeddings = []
     goals = []
-    
+
     sample_count = 0
     with torch.no_grad():
         for batch in test_loader:
             if sample_count >= n_samples:
                 break
-                
+
             if len(batch) >= 3:
                 trajectories, actions, batch_goals = batch[:3]
                 trajectories = trajectories.to(device)
                 batch_goals = batch_goals.to(device)
-                
+
                 batch_size = trajectories.size(0)
-                
+
                 # Generate past episodes
                 past_episodes = generate_past_episodes_from_batch(
                     trajectories, batch_goals, batch_size, 1, 1, 1
                 )
-                
+
                 # Get character embeddings
                 char_embeddings = model.char_net(past_episodes)
-                
+
                 embeddings.extend(char_embeddings.cpu().numpy())
                 goals.extend(batch_goals.cpu().numpy())
-                
+
                 sample_count += len(batch_goals)
 
     if len(embeddings) == 0:
@@ -471,28 +530,30 @@ def plot_character_embeddings(
 
     # Create subplots
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
-    fig.suptitle(f"KeyDoor: Character Embeddings (Experiment {experiment_no})", fontsize=16)
+    fig.suptitle(
+        f"KeyDoor: Character Embeddings (Experiment {experiment_no})", fontsize=16
+    )
 
     # Goal colors for KeyDoor (4 goals: A, B, C, D)
-    goal_colors = ['red', 'green', 'blue', 'yellow']
-    goal_names = ['Goal A (Red)', 'Goal B (Green)', 'Goal C (Blue)', 'Goal D (Yellow)']
+    goal_colors = ["red", "green", "blue", "yellow"]
+    goal_names = ["Goal A (Red)", "Goal B (Green)", "Goal C (Blue)", "Goal D (Yellow)"]
 
     # PCA visualization
     if embeddings.shape[1] > 2:
         pca = PCA(n_components=2)
         embeddings_pca = pca.fit_transform(embeddings)
-        
+
         for goal in range(4):
             mask = goals == goal
             if np.sum(mask) > 0:
                 ax1.scatter(
-                    embeddings_pca[mask, 0], 
+                    embeddings_pca[mask, 0],
                     embeddings_pca[mask, 1],
-                    c=goal_colors[goal], 
-                    label=goal_names[goal], 
-                    alpha=0.6
+                    c=goal_colors[goal],
+                    label=goal_names[goal],
+                    alpha=0.6,
                 )
-        
+
         ax1.set_title("PCA Visualization")
         ax1.set_xlabel(f"PC1 ({pca.explained_variance_ratio_[0]:.2%} variance)")
         ax1.set_ylabel(f"PC2 ({pca.explained_variance_ratio_[1]:.2%} variance)")
@@ -504,18 +565,18 @@ def plot_character_embeddings(
         tsne = TSNE(n_components=2, random_state=42)
         embeddings_tsne = tsne.fit_transform(embeddings[:1000])  # Limit for performance
         goals_tsne = goals[:1000]
-        
+
         for goal in range(4):
             mask = goals_tsne == goal
             if np.sum(mask) > 0:
                 ax2.scatter(
-                    embeddings_tsne[mask, 0], 
+                    embeddings_tsne[mask, 0],
                     embeddings_tsne[mask, 1],
-                    c=goal_colors[goal], 
-                    label=goal_names[goal], 
-                    alpha=0.6
+                    c=goal_colors[goal],
+                    label=goal_names[goal],
+                    alpha=0.6,
                 )
-        
+
         ax2.set_title("t-SNE Visualization")
         ax2.set_xlabel("t-SNE 1")
         ax2.set_ylabel("t-SNE 2")
@@ -528,7 +589,9 @@ def plot_character_embeddings(
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
         plt.savefig(
-            os.path.join(output_dir, f"keydoor_character_embeddings_exp{experiment_no}.png"),
+            os.path.join(
+                output_dir, f"keydoor_character_embeddings_exp{experiment_no}.png"
+            ),
             dpi=300,
             bbox_inches="tight",
         )
@@ -539,7 +602,7 @@ def plot_character_embeddings(
     print("-" * 60)
     print(f"Total samples: {len(embeddings)}")
     print(f"Embedding dimension: {embeddings.shape[1]}")
-    
+
     # Per-goal statistics
     for goal in range(4):
         mask = goals == goal
@@ -566,45 +629,43 @@ def create_additional_visualizations(
         config = Config()
 
     print("Creating additional KeyDoor visualizations...")
-    
+
     # Create output directory
     os.makedirs(output_dir, exist_ok=True)
-    
+
     # Plot character embeddings
     plot_character_embeddings(
-        model, test_loader, device, output_dir, experiment_no, 
-        n_samples=config.evaluation_config.get("n_samples", 1000)
+        model,
+        test_loader,
+        device,
+        output_dir,
+        experiment_no,
+        n_samples=config.evaluation_config.get("n_samples", 1000),
     )
-    
+
     print("Additional visualizations completed!")
 
 
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(
-        description="Visualize KeyDoor ToMnet results"
-    )
+    parser = argparse.ArgumentParser(description="Visualize KeyDoor ToMnet results")
     parser.add_argument(
         "--config_override",
         action="store_true",
         help="Override config with command line arguments",
     )
-    parser.add_argument(
-        "--results_dir", type=str, help="Directory containing results"
-    )
-    parser.add_argument(
-        "--plot_dir", type=str, help="Directory to save plots"
-    )
+    parser.add_argument("--results_dir", type=str, help="Directory containing results")
+    parser.add_argument("--plot_dir", type=str, help="Directory to save plots")
     parser.add_argument(
         "--experiment_no", type=int, default=3, help="Experiment number"
     )
     parser.add_argument(
-        "--plot_type", 
-        type=str, 
+        "--plot_type",
+        type=str,
         choices=["training", "confusion", "likelihood", "embeddings", "n_past", "all"],
         default="all",
-        help="Type of plot to create"
+        help="Type of plot to create",
     )
 
     args = parser.parse_args()
@@ -632,8 +693,9 @@ if __name__ == "__main__":
             os.path.join(results_dir, "training_history.json"),
             os.path.join(results_dir, f"exp{experiment_no}_*/training_history.json"),
         ]
-        
+
         import glob
+
         for pattern in history_files:
             matching_files = glob.glob(pattern)
             for history_file in matching_files:
@@ -647,8 +709,9 @@ if __name__ == "__main__":
             os.path.join(results_dir, "predictions.pkl"),
             os.path.join(results_dir, f"exp{experiment_no}_*/predictions.pkl"),
         ]
-        
+
         import glob
+
         for pattern in pred_files:
             matching_files = glob.glob(pattern)
             for pred_file in matching_files:
@@ -662,8 +725,9 @@ if __name__ == "__main__":
             os.path.join(results_dir, "predictions.pkl"),
             os.path.join(results_dir, f"exp{experiment_no}_*/predictions.pkl"),
         ]
-        
+
         import glob
+
         for pattern in pred_files:
             matching_files = glob.glob(pattern)
             for pred_file in matching_files:
@@ -677,12 +741,12 @@ if __name__ == "__main__":
         if os.path.exists(n_past_file):
             with open(n_past_file, "r") as f:
                 n_past_results = json.load(f)
-            
+
             # Convert string keys back to integers
             results_by_n_past = {}
             for key, value in n_past_results.items():
                 results_by_n_past[int(key)] = value
-            
+
             plot_accuracy_by_n_past(results_by_n_past, plot_dir)
             plot_accuracy_heatmap_by_n_past(results_by_n_past, plot_dir)
 

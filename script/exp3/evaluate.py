@@ -81,7 +81,7 @@ def evaluate_model_with_n_past(
                     # Get current trajectory for MentalNet processing
                     current_timestep = data_config["time_step"] if data_config else 20
                     recent_trajectory = trajectories[:, :current_timestep]
-                    
+
                     # Get action targets
                     if current_timestep < actions.size(1):
                         action_targets = actions[:, current_timestep]
@@ -117,7 +117,14 @@ def evaluate_model_with_n_past(
     return results_by_n_past
 
 
-def evaluate_model(model, test_loader, device, data_config=None, save_predictions=False, output_dir=None):
+def evaluate_model(
+    model,
+    test_loader,
+    device,
+    data_config=None,
+    save_predictions=False,
+    output_dir=None,
+):
     """
     Evaluate model performance
 
@@ -149,16 +156,18 @@ def evaluate_model(model, test_loader, device, data_config=None, save_prediction
 
                 # Generate past episodes for proper evaluation
                 past_episodes = generate_past_episodes_from_batch(
-                    trajectories, goals, batch_size, 
+                    trajectories,
+                    goals,
+                    batch_size,
                     n_past_min=data_config.get("n_past_min", 1) if data_config else 1,
                     n_past_max=data_config.get("n_past_max", 1) if data_config else 1,
-                    max_n_past=data_config.get("max_n_past", 1) if data_config else 1
+                    max_n_past=data_config.get("max_n_past", 1) if data_config else 1,
                 )
 
                 # Get current trajectory for MentalNet processing
                 current_timestep = data_config["time_step"] if data_config else 20
                 recent_trajectory = trajectories[:, :current_timestep]
-                
+
                 # Get action targets
                 if current_timestep < actions.size(1):
                     action_targets = actions[:, current_timestep]
@@ -166,7 +175,9 @@ def evaluate_model(model, test_loader, device, data_config=None, save_prediction
                     action_targets = actions[:, -1]
 
                 # Model forward pass
-                action_logits, goal_logits, _, _ = model(past_episodes, recent_trajectory)
+                action_logits, goal_logits, _, _ = model(
+                    past_episodes, recent_trajectory
+                )
 
                 # Get predictions
                 probabilities = F.softmax(action_logits, dim=1)
@@ -255,15 +266,16 @@ def evaluate_keydoor_model(
         # Find the best model in results directory
         model_pattern = os.path.join(config.model_dir, "*/best_model.pth")
         import glob
+
         model_files = glob.glob(model_pattern)
         if model_files:
             model_path = model_files[0]  # Use the first (most recent) model
         else:
             raise FileNotFoundError(f"No trained model found in {config.model_dir}")
-    
+
     if test_data_dir is None:
         test_data_dir = config.test_data_dir
-    
+
     if results_dir is None:
         results_dir = config.result_dir
 
@@ -293,25 +305,21 @@ def evaluate_keydoor_model(
     print("Loading test data...")
     data_reader = DataReader()
     test_games = data_reader.ReadAllGames(test_data_dir)
-    
+
     if len(test_games) == 0:
         raise ValueError(f"No test games found in {test_data_dir}")
-    
+
     # Prepare test data
     test_data = prepare_data_for_training(test_games, data_config["max_moves"])
-    
+
     # Create test dataset and loader
     test_dataset = TensorDataset(
-        test_data["trajectories"], 
-        test_data["actions"], 
-        test_data["goals"]
+        test_data["trajectories"], test_data["actions"], test_data["goals"]
     )
     test_loader = DataLoader(
-        test_dataset, 
-        batch_size=eval_config["batch_size"], 
-        shuffle=False
+        test_dataset, batch_size=eval_config["batch_size"], shuffle=False
     )
-    
+
     print(f"Test data loaded: {len(test_dataset)} samples")
 
     # Evaluate model
@@ -322,7 +330,7 @@ def evaluate_keydoor_model(
         device,
         data_config=data_config,
         save_predictions=eval_config["save_predictions"],
-        output_dir=results_dir
+        output_dir=results_dir,
     )
 
     print(f"Evaluation completed!")
@@ -332,7 +340,9 @@ def evaluate_keydoor_model(
     print(f"Recall: {metrics['recall']:.4f}")
 
     # Save results
-    results_path = os.path.join(results_dir, f"evaluation_results_exp{config.experiment_no}.json")
+    results_path = os.path.join(
+        results_dir, f"evaluation_results_exp{config.experiment_no}.json"
+    )
     with open(results_path, "w") as f:
         json.dump(metrics, f, indent=2)
     print(f"Results saved to: {results_path}")
@@ -434,12 +444,13 @@ def analyze_action_likelihood(
         # Find the best model in results directory
         model_pattern = os.path.join(config.model_dir, "*/best_model.pth")
         import glob
+
         model_files = glob.glob(model_pattern)
         if model_files:
             model_path = model_files[0]
         else:
             raise FileNotFoundError(f"No trained model found in {config.model_dir}")
-        
+
         model_kwargs = config.get_model_kwargs()
         model = load_model(model_path, device, model_kwargs)
 
@@ -449,14 +460,12 @@ def analyze_action_likelihood(
         test_games = data_reader.ReadAllGames(config.test_data_dir)
         test_data = prepare_data_for_training(test_games, data_config["max_moves"])
         test_dataset = TensorDataset(
-            test_data["trajectories"], 
-            test_data["actions"], 
-            test_data["goals"]
+            test_data["trajectories"], test_data["actions"], test_data["goals"]
         )
         test_loader = DataLoader(
-            test_dataset, 
-            batch_size=config.evaluation_config["batch_size"], 
-            shuffle=False
+            test_dataset,
+            batch_size=config.evaluation_config["batch_size"],
+            shuffle=False,
         )
 
     model.eval()
@@ -478,16 +487,18 @@ def analyze_action_likelihood(
 
                 # Generate past episodes
                 past_episodes = generate_past_episodes_from_batch(
-                    trajectories, goals, batch_size, 
+                    trajectories,
+                    goals,
+                    batch_size,
                     n_past_min=data_config.get("n_past_min", 1),
                     n_past_max=data_config.get("n_past_max", 1),
-                    max_n_past=data_config.get("max_n_past", 1)
+                    max_n_past=data_config.get("max_n_past", 1),
                 )
 
                 # Get current trajectory
                 current_timestep = data_config["time_step"]
                 recent_trajectory = trajectories[:, :current_timestep]
-                
+
                 # Get action targets
                 if current_timestep < actions.size(1):
                     action_targets = actions[:, current_timestep]
@@ -536,9 +547,7 @@ def analyze_action_likelihood(
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(
-        description="Evaluate KeyDoor ToMnet model"
-    )
+    parser = argparse.ArgumentParser(description="Evaluate KeyDoor ToMnet model")
     parser.add_argument(
         "--config_override",
         action="store_true",
@@ -550,9 +559,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--model_dir", type=str, help="Directory containing trained models"
     )
-    parser.add_argument(
-        "--model_path", type=str, help="Path to specific trained model"
-    )
+    parser.add_argument("--model_path", type=str, help="Path to specific trained model")
     parser.add_argument(
         "--result_dir", type=str, help="Directory to save evaluation results"
     )
@@ -589,7 +596,7 @@ if __name__ == "__main__":
             results_dir=args.result_dir,
         )
         print("Evaluation completed successfully!")
-        
+
         # Print summary
         print("\n" + "=" * 50)
         print("EVALUATION SUMMARY")
@@ -599,12 +606,12 @@ if __name__ == "__main__":
         print(f"Precision: {results['precision']:.4f}")
         print(f"Recall: {results['recall']:.4f}")
         print(f"Samples evaluated: {results['n_samples']}")
-        
+
         # Per-action accuracy
         print("\nPer-Action Accuracy:")
-        for action_key, accuracy in results['action_accuracy'].items():
+        for action_key, accuracy in results["action_accuracy"].items():
             print(f"  {action_key}: {accuracy:.4f}")
-        
+
     except Exception as e:
         print(f"Evaluation failed: {e}")
         sys.exit(1)

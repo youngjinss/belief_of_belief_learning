@@ -3,6 +3,12 @@ import sys
 import numpy as np
 import multiprocessing as mp
 from functools import partial
+import warnings
+
+# Suppress gymnasium registration warnings
+warnings.filterwarnings("ignore", message=".*Overriding environment.*already in registry.*")
+warnings.filterwarnings("ignore", message=".*gym_minigrid has been deprecated.*")
+warnings.filterwarnings("ignore", message=".*environment creator metadata doesn't include `render_modes`.*")
 
 # Add parent directory to path for imports
 sys.path.append(

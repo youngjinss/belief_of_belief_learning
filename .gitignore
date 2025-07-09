@@ -42,6 +42,9 @@ lib/env/rl-starter-files/
 # backup 파일 무시
 */backup/*
 
+# log 무시
+*.log*
+
 # claude 무시
 CLAUDE.md
 *claude*

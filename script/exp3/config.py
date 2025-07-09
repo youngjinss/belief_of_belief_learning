@@ -20,7 +20,7 @@ class Config:
         self.episodes = 1
         self.pause = 0.1  # Pause duration between actions in seconds
         self.render = True
-        self.debug = True
+        self.debug = False
 
         # Output settings
         self.output_dir = "script/exp3/results"
@@ -46,7 +46,7 @@ class Config:
 
         # Agent configurations
         self.agent_configs = {
-            "astar": {"observability": "full", "debug": True},
+            "astar": {"observability": "full", "debug": False},
             "random": {"movement_prob": 0.8, "exploration_bias": 0.1},
             "value": {
                 "observability": "full",

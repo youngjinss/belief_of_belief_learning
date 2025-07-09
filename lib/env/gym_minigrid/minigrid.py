@@ -419,8 +419,9 @@ class Grid:
         self.grid[j * self.width + i] = v
 
     def get(self, i, j):
-        assert i >= 0 and i < self.width
-        assert j >= 0 and j < self.height
+        # Bounds checking - return None for out-of-bounds access
+        if i < 0 or i >= self.width or j < 0 or j >= self.height:
+            return None
         return self.grid[j * self.width + i]
 
     def horz_wall(self, x, y, length=None):

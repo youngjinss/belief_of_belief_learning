@@ -88,8 +88,8 @@ def evaluate_model_with_n_past(
                     else:
                         action_targets = actions[:, -1]
 
-                    # Model forward pass
-                    action_logits, _, _, _ = model(past_episodes, recent_trajectory)
+                    # Model forward pass (model returns 6 outputs)
+                    action_logits, goal_logits, consumption_logits, sr_pred, char_emb, mental_state = model(past_episodes, recent_trajectory)
 
                     # Get predictions
                     _, predicted = torch.max(action_logits, 1)
@@ -174,8 +174,8 @@ def evaluate_model(
                 else:
                     action_targets = actions[:, -1]
 
-                # Model forward pass
-                action_logits, goal_logits, _, _ = model(
+                # Model forward pass (model returns 6 outputs)
+                action_logits, goal_logits, consumption_logits, sr_pred, char_emb, mental_state = model(
                     past_episodes, recent_trajectory
                 )
 
@@ -496,8 +496,8 @@ def analyze_action_likelihood(
                 else:
                     action_targets = actions[:, -1]
 
-                # Model forward pass
-                action_logits, _, _, _ = model(past_episodes, recent_trajectory)
+                # Model forward pass (model returns 6 outputs)
+                action_logits, goal_logits, consumption_logits, sr_pred, char_emb, mental_state = model(past_episodes, recent_trajectory)
                 probabilities = F.softmax(action_logits, dim=1)
 
                 for i in range(len(action_targets)):

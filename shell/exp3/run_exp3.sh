@@ -129,7 +129,7 @@ run_test_data_generation() {
 
 run_training() {
     # Check if training already completed
-    if ls "$RESULTS_DIR"/exp3_*/best_model.pth 1> /dev/null 2>&1; then
+    if ls "$RESULTS_DIR"/best_model.pth 1> /dev/null 2>&1; then
         log_step "Training skipped - best_model.pth already exists"
         return 0
     fi
@@ -167,7 +167,7 @@ run_evaluation() {
     log_step "Logging evaluation output to: $RUN_LOG_DIR/evaluation.log"
     
     cd "$SCRIPTS_DIR"
-    python evaluate.py --test_data_dir "$TEST_DATA_DIR" --results_dir "$RESULTS_DIR" > "$RUN_LOG_DIR/evaluation.log" 2>&1
+    python evaluate.py --test_data_dir "$TEST_DATA_DIR" --result_dir "$RESULTS_DIR" > "$RUN_LOG_DIR/evaluation.log" 2>&1
     
     log_step "Evaluation completed"
     
@@ -196,7 +196,7 @@ run_visualization() {
     log_step "Logging visualization output to: $RUN_LOG_DIR/visualization.log"
     
     cd "$SCRIPTS_DIR"
-    python visualize.py --results_dir "$RESULTS_DIR" --plot_type "all" > "$RUN_LOG_DIR/visualization.log" 2>&1
+    python visualize.py --result_dir "$RESULTS_DIR" --plot_type "all" > "$RUN_LOG_DIR/visualization.log" 2>&1
     
     log_step "Visualization completed"
 }

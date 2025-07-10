@@ -530,8 +530,7 @@ def train_tomnet(
     patience = training_kwargs["patience"]
     min_delta = training_kwargs["min_delta"]
     # Setup
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    experiment_save_dir = os.path.join(save_dir, f"exp3_{timestamp}")
+    experiment_save_dir = save_dir
     os.makedirs(experiment_save_dir, exist_ok=True)
 
     # Device setup

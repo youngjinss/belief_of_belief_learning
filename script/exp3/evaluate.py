@@ -264,13 +264,9 @@ def evaluate_keydoor_model(
     # Use provided paths or default from config
     if model_path is None:
         # Find the best model in results directory
-        model_pattern = os.path.join(config.model_dir, "*/best_model.pth")
-        import glob
-
-        model_files = glob.glob(model_pattern)
-        if model_files:
-            model_path = model_files[0]  # Use the first (most recent) model
-        else:
+        model_path = os.path.join(config.model_dir, "best_model.pth")
+        
+        if model_path is None:
             raise FileNotFoundError(f"No trained model found in {config.model_dir}")
 
     if test_data_dir is None:
@@ -442,13 +438,8 @@ def analyze_action_likelihood(
 
     if model is None:
         # Find the best model in results directory
-        model_pattern = os.path.join(config.model_dir, "*/best_model.pth")
-        import glob
-
-        model_files = glob.glob(model_pattern)
-        if model_files:
-            model_path = model_files[0]
-        else:
+        model_path = os.path.join(config.model_dir, "best_model.pth")
+        if model_path is None:
             raise FileNotFoundError(f"No trained model found in {config.model_dir}")
 
         model_kwargs = config.get_model_kwargs()
@@ -588,30 +579,25 @@ if __name__ == "__main__":
         config.update_from_args(args)
 
     # Run evaluation
-    try:
-        results = evaluate_keydoor_model(
-            config=config,
-            model_path=args.model_path,
-            test_data_dir=args.test_data_dir,
-            results_dir=args.result_dir,
-        )
-        print("Evaluation completed successfully!")
+    results = evaluate_keydoor_model(
+        config=config,
+        model_path=args.model_path,
+        test_data_dir=args.test_data_dir,
+        results_dir=args.result_dir,
+    )
+    print("Evaluation completed successfully!")
 
-        # Print summary
-        print("\n" + "=" * 50)
-        print("EVALUATION SUMMARY")
-        print("=" * 50)
-        print(f"Overall Accuracy: {results['accuracy']:.4f}")
-        print(f"F1 Score: {results['f1_score']:.4f}")
-        print(f"Precision: {results['precision']:.4f}")
-        print(f"Recall: {results['recall']:.4f}")
-        print(f"Samples evaluated: {results['n_samples']}")
+    # Print summary
+    print("\n" + "=" * 50)
+    print("EVALUATION SUMMARY")
+    print("=" * 50)
+    print(f"Overall Accuracy: {results['accuracy']:.4f}")
+    print(f"F1 Score: {results['f1_score']:.4f}")
+    print(f"Precision: {results['precision']:.4f}")
+    print(f"Recall: {results['recall']:.4f}")
+    print(f"Samples evaluated: {results['n_samples']}")
 
-        # Per-action accuracy
-        print("\nPer-Action Accuracy:")
-        for action_key, accuracy in results["action_accuracy"].items():
-            print(f"  {action_key}: {accuracy:.4f}")
-
-    except Exception as e:
-        print(f"Evaluation failed: {e}")
-        sys.exit(1)
+    # Per-action accuracy
+    print("\nPer-Action Accuracy:")
+    for action_key, accuracy in results["action_accuracy"].items():
+        print(f"  {action_key}: {accuracy:.4f}")

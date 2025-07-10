@@ -201,6 +201,7 @@ class MentalNet(nn.Module):
         self.n = residual_blocks
         self.n_ement = n_ement
         self.out_channels = out_channels
+        self.original_channels_in = channels_in  # This is current_state_channels (8)
         self.channels_in = channels_in + n_echar  # Current state channels + character embedding
         self.batch = batch
         self.n_echar = n_echar
@@ -367,7 +368,8 @@ class ToMnet(nn.Module):
         n_echar: int = 64,
         n_ement: int = 64,
         out_channels: int = 32,
-        channels_in: int = 9,  # 8 original channels + 1 heading direction channel
+        channels_in: int = 9,  # 8 original channels + 1 heading direction channel (for CharNet)
+        current_state_channels: int = 8,  # For MentalNet (without heading direction)
         time_step: int = 500,
         action_space: int = 7,
         goal_space: int = 4,
@@ -408,7 +410,7 @@ class ToMnet(nn.Module):
             residual_blocks=residual_blocks,
             n_ement=n_ement,
             out_channels=out_channels,
-            channels_in=channels_in,  # Will be adjusted inside MentalNet to channels_in + n_echar
+            channels_in=current_state_channels,  # Use current_state_channels for MentalNet
             time_step=time_step,
             n_echar=n_echar,
         )
@@ -604,6 +606,7 @@ def create_model(config):
         n_ement=config.get("n_ement", 64),
         out_channels=config.get("out_channels", 32),
         channels_in=config.get("channels_in", 8),
+        current_state_channels=config.get("current_state_channels", 8),
         time_step=config.get("time_step", 500),
         action_space=config.get("action_space", 7),
         goal_space=config.get("goal_space", 4),

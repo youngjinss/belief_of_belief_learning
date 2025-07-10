@@ -130,6 +130,7 @@ class Config:
             "n_ement": 16,
             "out_channels": 128,
             "channels_in": 9,  # 8 original channels + 1 heading direction channel
+            "current_state_channels": 8,  # For MentalNet: 8 original channels (no heading direction)
             "action_space": 7,
             "goal_space": 4,
             "env_width": self.width,

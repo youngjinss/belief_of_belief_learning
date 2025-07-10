@@ -332,6 +332,12 @@ def save_game_with_labels(
                 else [0, 0]
             )
             action = agent.action_history[i]
+            heading = (
+                agent.heading_history[i]
+                if hasattr(agent, "heading_history")
+                and i < len(agent.heading_history)
+                else 0
+            )
 
             # Check if key or door was interacted at this step
             interaction = "X"
@@ -359,7 +365,7 @@ def save_game_with_labels(
                         interaction = color_map.get(door_color, "X")
                         break
 
-            msg = f"[{pos[0]}, {pos[1]}] : {action} : {interaction}"
+            msg = f"[{pos[0]}, {pos[1]}] : {action} : {interaction} : {heading}"
             f.write(msg + "\n")
 
 
@@ -546,6 +552,7 @@ def run_single_game(game_id, config_dict, save_dir):
     # Initialize tracking
     position_history = []
     action_history = []
+    heading_history = []  # Track heading direction (0=north, 1=east, 2=south, 3=west)
     keys_collected = []
     doors_opened = []
     keys_collected_steps = []
@@ -564,9 +571,11 @@ def run_single_game(game_id, config_dict, save_dir):
     total_reward = sum(goal_rewards.values())
 
     while step_count < max_steps:
-        # Record current position
+        # Record current position and heading
         current_position = tuple(env.agent_pos)
+        current_heading = env.agent_dir  # 0=north, 1=east, 2=south, 3=west
         position_history.append(current_position)
+        heading_history.append(current_heading)
 
         # Get action from agent
         action = agent.get_action(obs)
@@ -585,8 +594,9 @@ def run_single_game(game_id, config_dict, save_dir):
         step_count += 1
 
         # Track key collection and door opening
-        if hasattr(agent, "collected_keys"):
-            current_keys = list(agent.collected_keys)
+        # Use environment's agent_keys instead of agent.collected_keys
+        if hasattr(env, "agent_keys"):
+            current_keys = list(env.agent_keys)
             if len(current_keys) > len(keys_collected):
                 new_key = [k for k in current_keys if k not in keys_collected][0]
                 keys_collected.append(new_key)
@@ -616,6 +626,7 @@ def run_single_game(game_id, config_dict, save_dir):
     # Store tracking data in agent for save function
     agent.position_history = position_history
     agent.action_history = action_history
+    agent.heading_history = heading_history
     agent.keys_collected_steps = keys_collected_steps
     agent.doors_opened_steps = doors_opened_steps
 

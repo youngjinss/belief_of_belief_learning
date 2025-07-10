@@ -38,9 +38,6 @@ try:
 except Exception as e:
     print(f"Warning: Could not import gym_minigrid: {e}")
 
-# Import our modules
-from config import Config
-from agents import AStarAgent, RandomAgent, ValueAgent
 
 
 def env_to_maze_format(env, agent_pos):
@@ -121,6 +118,7 @@ class GameSimulation:
         # Additional trajectory data
         self.actions = []
         self.interactions = []
+        self.headings = []  # Track heading direction (0=north, 1=east, 2=south, 3=west)
 
         i = 0
         while i < len(lines):
@@ -195,17 +193,20 @@ class GameSimulation:
                 continue
 
             if sr_section and line.startswith("[") and ":" in line:
-                # Position log section: [x, y] : action : interaction
+                # Position log section: [x, y] : action : interaction : heading
                 parts = line.split(" : ")
                 if len(parts) >= 3:
                     pos_str = parts[0].strip("[]")
                     pos = tuple(map(int, pos_str.split(", ")))
                     action = int(parts[1])
                     interaction = parts[2]
+                    # Check if heading is available (new format)
+                    heading = int(parts[3]) if len(parts) >= 4 else 1  # Default to east if not available
 
                     self.agent_positions.append(pos)
                     self.actions.append(action)
                     self.interactions.append(interaction)
+                    self.headings.append(heading)
                 i += 1
                 continue
 
@@ -290,15 +291,24 @@ class GameSimulation:
                 elif cell == "O":
                     agent_pos = (x, y)
 
-        # Set agent position
+        # Set agent position and heading
         if len(self.agent_positions) > 0:
             # Use trajectory starting position
             env.agent_pos = np.array(self.agent_positions[0])
-            env.agent_dir = 1
+            # Use recorded heading if available, otherwise default to east
+            env.agent_dir = self.headings[0] if len(self.headings) > 0 else 1
         elif agent_pos:
             # Use maze position
             env.agent_pos = np.array(agent_pos)
-            env.agent_dir = 1
+            env.agent_dir = 1  # Default to east
+        else:
+            # Fallback: find agent position from maze if not found in trajectory
+            for y in range(maze_height):
+                for x in range(maze_width):
+                    if self.maze[y][x] == "O":
+                        env.agent_pos = np.array([x, y])
+                        env.agent_dir = 1  # Default to east
+                        break
 
         # Set target door color
         if self.goal_rank:
@@ -368,6 +378,11 @@ class GameSimulation:
         except Exception as e:
             print(f"Warning: Could not render: {e}")
 
+        print(f"Initial agent position: {env.agent_pos}")
+        print(f"Initial agent direction: {env.agent_dir} ({'north' if env.agent_dir == 0 else 'east' if env.agent_dir == 1 else 'south' if env.agent_dir == 2 else 'west'})")
+        print(f"Initial agent keys: {env.agent_keys}")
+        print(f"Initial positions from maze: {self.initial_positions}")
+
         print("\nReplaying trajectory...")
 
         # Replay each step
@@ -377,21 +392,29 @@ class GameSimulation:
             interaction = (
                 self.interactions[step] if step < len(self.interactions) else "X"
             )
+            heading = self.headings[step] if step < len(self.headings) else 1
 
-            # Get action name
+            # Get action name and heading name
             action_name = (
                 self.action_names[action]
                 if action < len(self.action_names)
                 else f"action_{action}"
             )
+            heading_names = ["north", "east", "south", "west"]
+            heading_name = heading_names[heading] if heading < len(heading_names) else f"dir_{heading}"
 
-            print(f"Step {step + 1}: {action_name} at {position} -> {interaction}")
+            print(f"Step {step + 1}: {action_name} at {position} facing {heading_name} -> {interaction}")
+            if hasattr(env, 'agent_keys') and env.agent_keys:
+                print(f"  Agent inventory: {env.agent_keys}")
 
             # Take step in environment
             try:
                 obs, reward, terminated, truncated, info = env.step(action)
                 done = terminated or truncated
 
+                # Let MiniGrid handle key pickup naturally - ignore interaction data for keys
+                # The interaction data is just for logging, not for controlling the environment
+                
                 # Handle observation if it's a dict
                 if isinstance(obs, dict):
                     obs = obs.get("image", obs)
@@ -411,7 +434,10 @@ class GameSimulation:
                 # Check if episode is done
                 if done:
                     print(f"Episode ended at step {step + 1} with reward: {reward:.2f}")
-                    break
+                    print(f"Environment says episode is done, but trajectory continues...")
+                    print(f"Terminated: {terminated}, Truncated: {truncated}")
+                    # Don't break here - continue with the trajectory regardless of environment state
+                    done = False
 
                 # Pause between steps
                 if pause_time > 0:
@@ -448,6 +474,7 @@ class GameSimulation:
         print(f"Consumption Labels: {self.consumption_labels}")
         print(f"Number of timesteps with SR data: {len(self.sr_data)}")
         print(f"Number of position records: {len(self.agent_positions)}")
+        print(f"Number of heading records: {len(self.headings)}")
         print(f"\nInitial positions:")
         for key, pos in self.initial_positions.items():
             print(f"  {key}: {pos}")
@@ -456,6 +483,13 @@ class GameSimulation:
         print(f"\nFirst 5 SR data entries:")
         for i in range(min(5, len(self.sr_data))):
             print(f"  Timestep {i}: {self.sr_data.get(i, {})}")
+        
+        # Show first few heading records
+        print(f"\nFirst 5 heading records:")
+        for i in range(min(5, len(self.headings))):
+            heading_names = ["north", "east", "south", "west"]
+            heading_name = heading_names[self.headings[i]] if self.headings[i] < len(heading_names) else f"dir_{self.headings[i]}"
+            print(f"  Step {i}: {heading_name} ({self.headings[i]})")
 
 
 def main():

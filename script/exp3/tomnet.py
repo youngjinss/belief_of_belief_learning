@@ -6,6 +6,11 @@ import numpy as np
 """
 ToMnet architecture for KeyDoor environment (experiment 3)
 Adapted from ToMnetF experiment5 for KeyDoor environment
+
+Channel structure (9 channels total):
+- Channels 0-7: Original game state channels (walls, keys, doors, agent position, etc.)
+- Channel 8: Agent heading direction (0=north, 1=east, 2=south, 3=west)
+
 @author: Based on ToMnetF implementation, adapted for KeyDoor
 """
 
@@ -335,7 +340,7 @@ class ToMnet(nn.Module):
         n_echar: int = 64,
         n_ement: int = 64,
         out_channels: int = 32,
-        channels_in: int = 8,
+        channels_in: int = 9,  # 8 original channels + 1 heading direction channel
         time_step: int = 500,
         action_space: int = 7,
         goal_space: int = 4,
@@ -553,7 +558,7 @@ if __name__ == "__main__":
         "n_echar": 64,
         "n_ement": 64,
         "out_channels": 32,
-        "channels_in": 8,
+        "channels_in": 9,  # 8 original channels + 1 heading direction channel
         "time_step": 100,
         "action_space": 7,
         "goal_space": 4,
@@ -569,7 +574,7 @@ if __name__ == "__main__":
     batch_size = 8
     n_past = 3
     seq_len = 50
-    channels = 8
+    channels = 9  # 8 original channels + 1 heading direction channel
     height = 9
     width = 9
 

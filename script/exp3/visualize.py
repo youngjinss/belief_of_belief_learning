@@ -215,8 +215,12 @@ def plot_training_curves(history_path, output_dir, experiment_no=3):
         history = json.load(f)
 
     # Check if component losses are available
-    has_component_losses = "train_action_loss" in history and "train_consumption_loss" in history and "train_sr_loss" in history
-    
+    has_component_losses = (
+        "train_action_loss" in history
+        and "train_consumption_loss" in history
+        and "train_sr_loss" in history
+    )
+
     if has_component_losses:
         # Create 3x2 subplot grid for comprehensive visualization (matching experiment 5)
         fig, axes = plt.subplots(3, 2, figsize=(15, 15))
@@ -228,7 +232,7 @@ def plot_training_curves(history_path, output_dir, experiment_no=3):
         fig, axes = plt.subplots(2, 2, figsize=(15, 10))
         ax1, ax2 = axes[0]
         ax3, ax4 = axes[1]
-    
+
     fig.suptitle(
         f"KeyDoor ToMnet Training History (Experiment {experiment_no})", fontsize=16
     )
@@ -397,7 +401,10 @@ def plot_training_curves(history_path, output_dir, experiment_no=3):
             marker="o",
         )
         ax3.plot(
-            history["epoch"], history["val_goal_accuracy"], label="Val Goal Acc", marker="s"
+            history["epoch"],
+            history["val_goal_accuracy"],
+            label="Val Goal Acc",
+            marker="s",
         )
         ax3.set_title("Goal Accuracy")
         ax3.set_xlabel("Epoch")
@@ -425,7 +432,10 @@ def plot_training_curves(history_path, output_dir, experiment_no=3):
             marker="^",
         )
         ax4.plot(
-            history["epoch"], history["val_goal_loss"] if "val_goal_loss" in history else [], label="Val Goal Loss", marker="v"
+            history["epoch"],
+            history["val_goal_loss"] if "val_goal_loss" in history else [],
+            label="Val Goal Loss",
+            marker="v",
         )
         ax4.set_title("Loss Components")
         ax4.set_xlabel("Epoch")
@@ -453,11 +463,13 @@ def plot_training_curves(history_path, output_dir, experiment_no=3):
     print(f"Best validation loss: {min(history['val_loss']):.4f}")
     print(f"Best validation action accuracy: {max(history['val_action_accuracy']):.4f}")
     print(f"Best validation goal accuracy: {max(history['val_goal_accuracy']):.4f}")
-    
+
     # Print component loss summaries if available
     if has_component_losses:
         if "val_consumption_loss" in history:
-            print(f"Best validation consumption loss: {min(history['val_consumption_loss']):.4f}")
+            print(
+                f"Best validation consumption loss: {min(history['val_consumption_loss']):.4f}"
+            )
         if "val_sr_loss" in history:
             print(f"Best validation SR loss: {min(history['val_sr_loss']):.4f}")
 
@@ -643,7 +655,7 @@ def plot_character_embeddings(
 
     sample_count = 0
     print(f"Starting character embedding extraction for {n_samples} samples...")
-    
+
     with torch.no_grad():
         for batch_idx, batch in enumerate(test_loader):
             if sample_count >= n_samples:
@@ -655,7 +667,9 @@ def plot_character_embeddings(
                 batch_goals = batch_goals.to(device)
 
                 batch_size = trajectories.size(0)
-                print(f"Processing batch {batch_idx}: batch_size={batch_size}, trajectories.shape={trajectories.shape}")
+                print(
+                    f"Processing batch {batch_idx}: batch_size={batch_size}, trajectories.shape={trajectories.shape}"
+                )
 
                 # Generate past episodes
                 past_episodes = generate_past_episodes_from_batch(
@@ -667,10 +681,10 @@ def plot_character_embeddings(
                 try:
                     char_embeddings = model.get_character_embedding(past_episodes)
                     print(f"Character embeddings.shape={char_embeddings.shape}")
-                    
+
                     embeddings.extend(char_embeddings.cpu().numpy())
                     goals.extend(batch_goals.cpu().numpy())
-                    
+
                     sample_count += len(batch_goals)
                     print(f"Total samples processed: {sample_count}")
                 except Exception as e:
@@ -678,8 +692,10 @@ def plot_character_embeddings(
                     continue
             else:
                 print(f"Batch {batch_idx} has insufficient elements: {len(batch)}")
-    
-    print(f"Character embedding extraction completed. Total embeddings: {len(embeddings)}")
+
+    print(
+        f"Character embedding extraction completed. Total embeddings: {len(embeddings)}"
+    )
 
     if len(embeddings) == 0:
         print("No embeddings to visualize")
@@ -722,7 +738,14 @@ def plot_character_embeddings(
             ax1.grid(True, alpha=0.3)
         except Exception as e:
             print(f"Error in PCA visualization: {e}")
-            ax1.text(0.5, 0.5, f"PCA Error: {str(e)}", ha="center", va="center", transform=ax1.transAxes)
+            ax1.text(
+                0.5,
+                0.5,
+                f"PCA Error: {str(e)}",
+                ha="center",
+                va="center",
+                transform=ax1.transAxes,
+            )
     else:
         # For 2D embeddings, plot directly
         for goal in range(4):
@@ -745,7 +768,9 @@ def plot_character_embeddings(
     if len(embeddings) > 50:  # t-SNE needs sufficient samples
         try:
             tsne = TSNE(n_components=2, random_state=42)
-            embeddings_tsne = tsne.fit_transform(embeddings[:1000])  # Limit for performance
+            embeddings_tsne = tsne.fit_transform(
+                embeddings[:1000]
+            )  # Limit for performance
             goals_tsne = goals[:1000]
 
             for goal in range(4):
@@ -766,10 +791,23 @@ def plot_character_embeddings(
             ax2.grid(True, alpha=0.3)
         except Exception as e:
             print(f"Error in t-SNE visualization: {e}")
-            ax2.text(0.5, 0.5, f"t-SNE Error: {str(e)}", ha="center", va="center", transform=ax2.transAxes)
+            ax2.text(
+                0.5,
+                0.5,
+                f"t-SNE Error: {str(e)}",
+                ha="center",
+                va="center",
+                transform=ax2.transAxes,
+            )
     else:
-        ax2.text(0.5, 0.5, f"Not enough samples for t-SNE\n({len(embeddings)} < 50)", 
-                ha="center", va="center", transform=ax2.transAxes)
+        ax2.text(
+            0.5,
+            0.5,
+            f"Not enough samples for t-SNE\n({len(embeddings)} < 50)",
+            ha="center",
+            va="center",
+            transform=ax2.transAxes,
+        )
         ax2.set_title("t-SNE Visualization")
 
     plt.tight_layout()

@@ -22,21 +22,23 @@ Adapted from ToMnetF experiment5 for KeyDoor environment
 """
 
 
-def convert_sparse_sr_to_dense(sr_data_timestep, height, width, gammas=[0.5, 0.9, 0.99]):
+def convert_sparse_sr_to_dense(
+    sr_data_timestep, height, width, gammas=[0.5, 0.9, 0.99]
+):
     """
     Convert sparse SR data to dense format
-    
+
     Args:
         sr_data_timestep: Dictionary with gamma values as keys and sparse data as values
         height: Grid height
         width: Grid width
         gammas: List of discount factors
-        
+
     Returns:
         Dense SR array of shape (3, height, width)
     """
     dense_sr = np.zeros((len(gammas), height, width))
-    
+
     for gamma_idx, gamma in enumerate(gammas):
         # Convert gamma to string to match data keys
         gamma_key = str(gamma)
@@ -46,7 +48,7 @@ def convert_sparse_sr_to_dense(sr_data_timestep, height, width, gammas=[0.5, 0.9
                 x, y = pos
                 if 0 <= x < width and 0 <= y < height:
                     dense_sr[gamma_idx, y, x] = value
-    
+
     return dense_sr
 
 
@@ -282,9 +284,11 @@ def prepare_data_for_training(games, max_trajectory_length=100):
         action_list = game["actions"]
         goal_tensor = game["goal_tensor"]  # [4] one-hot encoded
         goal_rank = game["goal_rank"]  # [rank1, rank2, rank3, rank4]
-        
+
         # Extract SR and consumption data
-        game_consumption = game.get("consumption_labels", np.zeros(8))  # 8 = 4 keys + 4 doors
+        game_consumption = game.get(
+            "consumption_labels", np.zeros(8)
+        )  # 8 = 4 keys + 4 doors
         game_sr_data = game.get("sr_data_per_timestep", {})
 
         # Truncate trajectory to max length
@@ -300,13 +304,15 @@ def prepare_data_for_training(games, max_trajectory_length=100):
             # Add heading direction channel (9th channel)
             height, width = trajectory.shape[2], trajectory.shape[3]
             heading_channel = np.zeros((seq_len, 1, height, width))
-            
+
             # Simple heading direction: 0=north, 1=east, 2=south, 3=west (encoded as 0.0, 0.25, 0.5, 0.75)
             # For now, use a placeholder value of 0 (north) for all timesteps
             # TODO: Extract actual heading from action sequence
-            
+
             # Concatenate heading channel to trajectory
-            trajectory = np.concatenate([trajectory, heading_channel], axis=1)  # Now 9 channels
+            trajectory = np.concatenate(
+                [trajectory, heading_channel], axis=1
+            )  # Now 9 channels
 
         # Pad if necessary
         if seq_len < max_trajectory_length:
@@ -318,7 +324,7 @@ def prepare_data_for_training(games, max_trajectory_length=100):
         # Get the last timestep's SR data or create zeros
         height, width = trajectory.shape[2], trajectory.shape[3]
         final_timestep = seq_len - 1
-        
+
         if final_timestep in game_sr_data:
             sr_data_final = game_sr_data[final_timestep]
             # Convert sparse SR to dense format (3, height, width) for 3 gammas
@@ -401,7 +407,15 @@ def train_epoch(
 
     for batch_idx, batch in enumerate(train_loader):
         # Unpack all data including new SR and consumption labels
-        trajectories, actions, goals, goal_ranks, goal_rewards, consumption_labels, sr_labels = batch
+        (
+            trajectories,
+            actions,
+            goals,
+            goal_ranks,
+            goal_rewards,
+            consumption_labels,
+            sr_labels,
+        ) = batch
 
         trajectories = trajectories.to(device)
         actions = actions.to(device)
@@ -414,11 +428,13 @@ def train_epoch(
 
         # Generate past episodes from batch
         past_episodes = generate_past_episodes_from_batch(
-            trajectories, goal_ranks, batch_size, 
+            trajectories,
+            goal_ranks,
+            batch_size,
             n_past_min=data_config.get("n_past_min", 1),
             n_past_max=data_config.get("n_past_max", 5),
-            max_n_past=max_n_past, 
-            rank_threshold=data_config.get("rank_threshold", 1)
+            max_n_past=max_n_past,
+            rank_threshold=data_config.get("rank_threshold", 1),
         )
 
         # Use trajectory up to previous timestep as input to MentalNet
@@ -429,15 +445,19 @@ def train_epoch(
         recent_trajectory = trajectories[
             :, :current_timestep
         ]  # [batch_size, seq_len, channels, height, width]
-        
+
         # Extract current state from trajectory (last timestep, first N channels for static environment)
-        # The model expects current_state with shape [batch_size, current_state_channels, height, width] 
+        # The model expects current_state with shape [batch_size, current_state_channels, height, width]
         # (walls + player + goals, no heading direction)
         current_state_channels = model_config.get("current_state_channels", 8)
         if current_timestep > 0 and current_timestep <= trajectories.size(1):
-            current_state = trajectories[:, current_timestep - 1, :current_state_channels]  # [batch_size, current_state_channels, height, width]
+            current_state = trajectories[
+                :, current_timestep - 1, :current_state_channels
+            ]  # [batch_size, current_state_channels, height, width]
         else:
-            current_state = trajectories[:, -1, :current_state_channels]  # Use last timestep, first N channels
+            current_state = trajectories[
+                :, -1, :current_state_channels
+            ]  # Use last timestep, first N channels
 
         # Action target: action at current_timestep
         if current_timestep < actions.size(1):
@@ -452,12 +472,26 @@ def train_epoch(
         optimizer.zero_grad()
 
         # Forward pass - CharNet gets past_episodes, MentalNet gets recent_trajectory, PredNet gets current_state
-        action_logits, goal_logits, consumption_logits, sr_pred, _, _ = model(past_episodes, recent_trajectory, current_state)
+        action_logits, goal_logits, consumption_logits, sr_pred, _, _ = model(
+            past_episodes, recent_trajectory, current_state
+        )
 
         # Compute loss with all components
-        total_loss_batch, action_loss_batch, goal_loss_batch, consumption_loss_batch, sr_loss_batch = loss_fn(
-            action_logits, goal_logits, consumption_logits, sr_pred, 
-            action_targets, goal_targets, consumption_targets, sr_targets
+        (
+            total_loss_batch,
+            action_loss_batch,
+            goal_loss_batch,
+            consumption_loss_batch,
+            sr_loss_batch,
+        ) = loss_fn(
+            action_logits,
+            goal_logits,
+            consumption_logits,
+            sr_pred,
+            action_targets,
+            goal_targets,
+            consumption_targets,
+            sr_targets,
         )
 
         # Backward pass
@@ -487,7 +521,9 @@ def train_epoch(
     avg_loss = total_loss / num_batches if num_batches > 0 else 0
     avg_action_loss = total_action_loss / num_batches if num_batches > 0 else 0
     avg_goal_loss = total_goal_loss / num_batches if num_batches > 0 else 0
-    avg_consumption_loss = total_consumption_loss / num_batches if num_batches > 0 else 0
+    avg_consumption_loss = (
+        total_consumption_loss / num_batches if num_batches > 0 else 0
+    )
     avg_sr_loss = total_sr_loss / num_batches if num_batches > 0 else 0
     action_accuracy = correct_actions / total_samples
     goal_accuracy = correct_goals / total_samples
@@ -503,7 +539,15 @@ def train_epoch(
     }
 
 
-def validate_epoch(model, val_loader, loss_fn, device, max_n_past=5, data_config=None, model_config=None):
+def validate_epoch(
+    model,
+    val_loader,
+    loss_fn,
+    device,
+    max_n_past=5,
+    data_config=None,
+    model_config=None,
+):
     """
     Validate for one epoch
 
@@ -530,7 +574,15 @@ def validate_epoch(model, val_loader, loss_fn, device, max_n_past=5, data_config
     with torch.no_grad():
         for batch_idx, batch in enumerate(val_loader):
             # Unpack all data including new SR and consumption labels
-            trajectories, actions, goals, goal_ranks, goal_rewards, consumption_labels, sr_labels = batch
+            (
+                trajectories,
+                actions,
+                goals,
+                goal_ranks,
+                goal_rewards,
+                consumption_labels,
+                sr_labels,
+            ) = batch
 
             trajectories = trajectories.to(device)
             actions = actions.to(device)
@@ -543,11 +595,13 @@ def validate_epoch(model, val_loader, loss_fn, device, max_n_past=5, data_config
 
             # Generate past episodes from batch
             past_episodes = generate_past_episodes_from_batch(
-                trajectories, goal_ranks, batch_size, 
+                trajectories,
+                goal_ranks,
+                batch_size,
                 n_past_min=data_config.get("n_past_min", 1),
                 n_past_max=data_config.get("n_past_max", 5),
-                max_n_past=max_n_past, 
-                rank_threshold=data_config.get("rank_threshold", 1)
+                max_n_past=max_n_past,
+                rank_threshold=data_config.get("rank_threshold", 1),
             )
 
             # Use trajectory up to previous timestep as input to MentalNet
@@ -555,16 +609,22 @@ def validate_epoch(model, val_loader, loss_fn, device, max_n_past=5, data_config
             current_timestep = data_config["time_step"] if data_config else 20
 
             # Recent trajectory: from start to current_timestep (for MentalNet)
-            recent_trajectory = trajectories[:, :current_timestep]  # [batch_size, seq_len, channels, height, width]
+            recent_trajectory = trajectories[
+                :, :current_timestep
+            ]  # [batch_size, seq_len, channels, height, width]
 
             # Extract current state from trajectory (last timestep, first N channels for static environment)
-            # The model expects current_state with shape [batch_size, current_state_channels, height, width] 
+            # The model expects current_state with shape [batch_size, current_state_channels, height, width]
             # (walls + player + goals, no heading direction)
             current_state_channels = model_config.get("current_state_channels", 8)
             if current_timestep > 0 and current_timestep <= trajectories.size(1):
-                current_state = trajectories[:, current_timestep - 1, :current_state_channels]  # [batch_size, current_state_channels, height, width]
+                current_state = trajectories[
+                    :, current_timestep - 1, :current_state_channels
+                ]  # [batch_size, current_state_channels, height, width]
             else:
-                current_state = trajectories[:, -1, :current_state_channels]  # Use last timestep, first N channels
+                current_state = trajectories[
+                    :, -1, :current_state_channels
+                ]  # Use last timestep, first N channels
 
             # Action target: action at current_timestep
             if current_timestep < actions.size(1):
@@ -581,12 +641,26 @@ def validate_epoch(model, val_loader, loss_fn, device, max_n_past=5, data_config
             sr_targets = sr_labels
 
             # Forward pass - CharNet gets past_episodes, MentalNet gets recent_trajectory, PredNet gets current_state
-            action_logits, goal_logits, consumption_logits, sr_pred, _, _ = model(past_episodes, recent_trajectory, current_state)
+            action_logits, goal_logits, consumption_logits, sr_pred, _, _ = model(
+                past_episodes, recent_trajectory, current_state
+            )
 
             # Compute loss with all components
-            total_loss_batch, action_loss_batch, goal_loss_batch, consumption_loss_batch, sr_loss_batch = loss_fn(
-                action_logits, goal_logits, consumption_logits, sr_pred, 
-                action_targets, goal_targets, consumption_targets, sr_targets
+            (
+                total_loss_batch,
+                action_loss_batch,
+                goal_loss_batch,
+                consumption_loss_batch,
+                sr_loss_batch,
+            ) = loss_fn(
+                action_logits,
+                goal_logits,
+                consumption_logits,
+                sr_pred,
+                action_targets,
+                goal_targets,
+                consumption_targets,
+                sr_targets,
             )
 
             # Update metrics
@@ -608,7 +682,9 @@ def validate_epoch(model, val_loader, loss_fn, device, max_n_past=5, data_config
     avg_loss = total_loss / num_batches if num_batches > 0 else 0
     avg_action_loss = total_action_loss / num_batches if num_batches > 0 else 0
     avg_goal_loss = total_goal_loss / num_batches if num_batches > 0 else 0
-    avg_consumption_loss = total_consumption_loss / num_batches if num_batches > 0 else 0
+    avg_consumption_loss = (
+        total_consumption_loss / num_batches if num_batches > 0 else 0
+    )
     avg_sr_loss = total_sr_loss / num_batches if num_batches > 0 else 0
     action_accuracy = correct_actions / total_samples
     goal_accuracy = correct_goals / total_samples
@@ -779,13 +855,13 @@ def train_tomnet(
 
     # Create datasets with all data including SR and consumption labels
     dataset = TensorDataset(
-        data["trajectories"], 
-        data["actions"], 
-        data["goals"], 
+        data["trajectories"],
+        data["actions"],
+        data["goals"],
         data["goal_ranks"],
         data["goal_rewards"],
         data["consumption_labels"],
-        data["sr_labels"]
+        data["sr_labels"],
     )
 
     # Train/validation split
@@ -821,7 +897,9 @@ def train_tomnet(
     # Create model using config
     # Ensure the model gets current_state_channels for MentalNet
     model_kwargs_updated = model_kwargs.copy()
-    model_kwargs_updated["current_state_channels"] = model_config.get("current_state_channels", 8)
+    model_kwargs_updated["current_state_channels"] = model_config.get(
+        "current_state_channels", 8
+    )
     model = create_model(model_kwargs_updated)
     model = model.to(device)
 
@@ -1062,7 +1140,9 @@ if __name__ == "__main__":
         "--n_past_max", type=int, help="Maximum number of past episodes for sampling"
     )
     parser.add_argument(
-        "--rank_threshold", type=int, help="How many top ranks to consider for matching (1=only highest, 2=top 2, etc.)"
+        "--rank_threshold",
+        type=int,
+        help="How many top ranks to consider for matching (1=only highest, 2=top 2, etc.)",
     )
 
     # Training process

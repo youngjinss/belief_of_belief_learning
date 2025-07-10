@@ -140,21 +140,31 @@ class CharNet(nn.Module):
             Character embeddings: (batch_size, n_echar)
         """
         if self.use_n_past and past_trajectories is not None:
-            batch_size, n_past_max = past_trajectories.size(0), past_trajectories.size(1)
+            batch_size, n_past_max = past_trajectories.size(0), past_trajectories.size(
+                1
+            )
 
             # Initialize character embedding from past episodes
-            e_char_past = torch.zeros(batch_size, self.n_echar).to(past_trajectories.device)
+            e_char_past = torch.zeros(batch_size, self.n_echar).to(
+                past_trajectories.device
+            )
             # Track number of valid episodes per sample for averaging
             valid_episode_counts = torch.zeros(batch_size).to(past_trajectories.device)
 
             # Process each past episode and accumulate for averaging
             for ep_idx in range(n_past_max):
                 # Get episode ep_idx for all samples in batch
-                episode_batch = past_trajectories[:, ep_idx]  # (batch, seq_len, channels, height, width)
+                episode_batch = past_trajectories[
+                    :, ep_idx
+                ]  # (batch, seq_len, channels, height, width)
 
                 # Reshape to (batch * seq_len, channels, height, width) for Conv2d processing
-                batch_size_local, seq_len_local, channels, height, width = episode_batch.shape
-                episode_batch = episode_batch.reshape(batch_size_local * seq_len_local, channels, height, width)
+                batch_size_local, seq_len_local, channels, height, width = (
+                    episode_batch.shape
+                )
+                episode_batch = episode_batch.reshape(
+                    batch_size_local * seq_len_local, channels, height, width
+                )
 
                 # Check if episode is non-zero (not masked)
                 episode_check = episode_batch.view(batch_size_local, seq_len_local, -1)
@@ -173,8 +183,16 @@ class CharNet(nn.Module):
 
                     # Reshape back to (batch, seq_len, height, width, out_channels)
                     _, out_channels, out_height, out_width = ep_x.shape
-                    ep_x = ep_x.view(batch_size_local, seq_len_local, out_channels, out_height, out_width)
-                    ep_x = ep_x.permute(0, 1, 3, 4, 2)  # (batch, seq_len, height, width, out_channels)
+                    ep_x = ep_x.view(
+                        batch_size_local,
+                        seq_len_local,
+                        out_channels,
+                        out_height,
+                        out_width,
+                    )
+                    ep_x = ep_x.permute(
+                        0, 1, 3, 4, 2
+                    )  # (batch, seq_len, height, width, out_channels)
 
                     # Average over spatial dimensions
                     ep_x = torch.mean(ep_x, [2, 3])  # (batch, seq_len, out_channels)
@@ -200,12 +218,17 @@ class CharNet(nn.Module):
             return e_char_past
         else:
             # Return default embedding if not using past episodes
-            batch_size = past_trajectories.size(0) if past_trajectories is not None else self.batch
+            batch_size = (
+                past_trajectories.size(0)
+                if past_trajectories is not None
+                else self.batch
+            )
             return self.default_embedding.unsqueeze(0).expand(batch_size, -1)
 
 
 class MentalNet(nn.Module):
     """Simplified MentalNet that processes current state instead of trajectory"""
+
     def __init__(
         self,
         batch: int,
@@ -222,7 +245,9 @@ class MentalNet(nn.Module):
         self.n_ement = n_ement
         self.out_channels = out_channels
         self.original_channels_in = channels_in  # This is current_state_channels (8)
-        self.channels_in = channels_in + n_echar  # Current state channels + character embedding
+        self.channels_in = (
+            channels_in + n_echar
+        )  # Current state channels + character embedding
         self.batch = batch
         self.n_echar = n_echar
 
@@ -264,10 +289,12 @@ class MentalNet(nn.Module):
             Spatial features: (batch_size, out_channels, height, width)
         """
         batch_size, seq_len, channels, height, width = recent_trajectory_with_char.shape
-        
+
         # Reshape to process all timesteps through conv layers
-        x = recent_trajectory_with_char.view(batch_size * seq_len, channels, height, width)
-        
+        x = recent_trajectory_with_char.view(
+            batch_size * seq_len, channels, height, width
+        )
+
         # Extract spatial features through conv layers
         for layer in self.conv_layers:
             x = layer(x)
@@ -275,18 +302,20 @@ class MentalNet(nn.Module):
         # Reshape back to sequence format
         _, out_channels, out_height, out_width = x.shape
         x = x.view(batch_size, seq_len, out_channels, out_height, out_width)
-        
+
         # Global average pooling over spatial dimensions for each timestep
         x_pooled = x.mean(dim=[3, 4])  # (batch_size, seq_len, out_channels)
-        
+
         # Use the last timestep for mental state prediction
         final_features = x_pooled[:, -1, :]  # (batch_size, out_channels)
-        
+
         # Mental state prediction
         mental_state = self.mental_state_net(final_features)
-        
+
         # Return spatial features from last timestep for SR prediction
-        spatial_features = x[:, -1, :, :, :]  # (batch_size, out_channels, height, width)
+        spatial_features = x[
+            :, -1, :, :, :
+        ]  # (batch_size, out_channels, height, width)
 
         return mental_state, spatial_features
 
@@ -345,12 +374,12 @@ class PredNet(nn.Module):
         self.conv_sr = nn.Conv2d(
             in_channels=out_channels,  # This should match out_channels from MentalNet
             out_channels=out_channels,
-            kernel_size=1
+            kernel_size=1,
         )
         self.conv_sr_out = nn.Conv2d(
             in_channels=out_channels,
             out_channels=3,  # 3 discount factors
-            kernel_size=1
+            kernel_size=1,
         )
 
     def forward(self, mental_state, character_embedding, spatial_features):
@@ -375,17 +404,23 @@ class PredNet(nn.Module):
         action_logits = self.action_predictor(combined)
         goal_logits = self.goal_predictor(combined)
         consumption_logits = self.consumption_predictor(combined)
-        
+
         # Predict SR maps using spatial convolutions (matching experiment 5)
-        sr_features = self.conv_sr(spatial_features)  # (batch_size, out_channels, height, width)
+        sr_features = self.conv_sr(
+            spatial_features
+        )  # (batch_size, out_channels, height, width)
         sr_features = F.relu(sr_features)
         sr_pred = self.conv_sr_out(sr_features)  # (batch_size, 3, height, width)
-        
+
         # Apply softmax to each SR channel independently to get probability distributions
         batch_size, channels, height, width = sr_pred.shape
-        sr_pred = sr_pred.view(batch_size, channels, -1)  # (batch_size, 3, spatial_size)
+        sr_pred = sr_pred.view(
+            batch_size, channels, -1
+        )  # (batch_size, 3, spatial_size)
         sr_pred = F.softmax(sr_pred, dim=2)
-        sr_pred = sr_pred.view(batch_size, channels, height, width)  # Back to spatial format
+        sr_pred = sr_pred.view(
+            batch_size, channels, height, width
+        )  # Back to spatial format
 
         return action_logits, goal_logits, consumption_logits, sr_pred
 
@@ -488,13 +523,15 @@ class ToMnet(nn.Module):
 
         # 2. Mental state network - processes recent_trajectory + character embedding
         batch_size, seq_len, channels, height, width = recent_trajectory.shape
-        
+
         # Reshape character embedding to spatial format for trajectory concatenation
-        e_char_spatial = character_embedding.unsqueeze(1).unsqueeze(3).unsqueeze(4)  # (batch, 1, n_echar, 1, 1)
+        e_char_spatial = (
+            character_embedding.unsqueeze(1).unsqueeze(3).unsqueeze(4)
+        )  # (batch, 1, n_echar, 1, 1)
         e_char_spatial = e_char_spatial.expand(
             batch_size, seq_len, self.n_echar, height, width
         )  # (batch, seq_len, n_echar, height, width)
-        
+
         # Concatenate recent_trajectory with character embedding
         recent_trajectory_with_char = torch.cat(
             [recent_trajectory, e_char_spatial], dim=2
@@ -504,9 +541,18 @@ class ToMnet(nn.Module):
         mental_state, spatial_features = self.mental_net(recent_trajectory_with_char)
 
         # 3. Prediction network - processes current_state + character embedding + mental state
-        action_logits, goal_logits, consumption_logits, sr_pred = self.pred_net(mental_state, character_embedding, spatial_features)
+        action_logits, goal_logits, consumption_logits, sr_pred = self.pred_net(
+            mental_state, character_embedding, spatial_features
+        )
 
-        return action_logits, goal_logits, consumption_logits, sr_pred, character_embedding, mental_state
+        return (
+            action_logits,
+            goal_logits,
+            consumption_logits,
+            sr_pred,
+            character_embedding,
+            mental_state,
+        )
 
     def predict_action(self, past_trajectories, recent_trajectory, current_state):
         """
@@ -521,7 +567,9 @@ class ToMnet(nn.Module):
             Predicted action probabilities
         """
         with torch.no_grad():
-            action_logits, _, _, _, _, _ = self.forward(past_trajectories, recent_trajectory, current_state)
+            action_logits, _, _, _, _, _ = self.forward(
+                past_trajectories, recent_trajectory, current_state
+            )
             return F.softmax(action_logits, dim=1)
 
     def predict_goal(self, past_trajectories, recent_trajectory, current_state):
@@ -537,7 +585,9 @@ class ToMnet(nn.Module):
             Predicted goal probabilities
         """
         with torch.no_grad():
-            _, goal_logits, _, _, _, _ = self.forward(past_trajectories, recent_trajectory, current_state)
+            _, goal_logits, _, _, _, _ = self.forward(
+                past_trajectories, recent_trajectory, current_state
+            )
             return F.softmax(goal_logits, dim=1)
 
     def get_character_embedding(self, past_trajectories):
@@ -572,14 +622,20 @@ class ToMnet(nn.Module):
             # Need to concatenate trajectory with character embedding like in forward()
             batch_size, seq_len, channels, height, width = recent_trajectory.shape
             e_char_spatial = character_embedding.unsqueeze(1).unsqueeze(3).unsqueeze(4)
-            e_char_spatial = e_char_spatial.expand(batch_size, seq_len, self.n_echar, height, width)
-            recent_trajectory_with_char = torch.cat([recent_trajectory, e_char_spatial], dim=2)
+            e_char_spatial = e_char_spatial.expand(
+                batch_size, seq_len, self.n_echar, height, width
+            )
+            recent_trajectory_with_char = torch.cat(
+                [recent_trajectory, e_char_spatial], dim=2
+            )
             mental_state, _ = self.mental_net(recent_trajectory_with_char)
             return mental_state
 
 
 class ToMnetLoss(nn.Module):
-    def __init__(self, action_weight=1.0, goal_weight=1.0, consumption_weight=1.0, sr_weight=1.0):
+    def __init__(
+        self, action_weight=1.0, goal_weight=1.0, consumption_weight=1.0, sr_weight=1.0
+    ):
         super(ToMnetLoss, self).__init__()
         self.action_weight = action_weight
         self.goal_weight = goal_weight
@@ -589,7 +645,17 @@ class ToMnetLoss(nn.Module):
         self.goal_loss = nn.CrossEntropyLoss()
         self.consumption_loss = nn.BCEWithLogitsLoss()  # For consumption prediction
 
-    def forward(self, action_logits, goal_logits, consumption_logits, sr_pred, action_targets, goal_targets, consumption_targets, sr_targets):
+    def forward(
+        self,
+        action_logits,
+        goal_logits,
+        consumption_logits,
+        sr_pred,
+        action_targets,
+        goal_targets,
+        consumption_targets,
+        sr_targets,
+    ):
         """
         Compute combined loss (following experiment 5 approach)
 
@@ -612,19 +678,22 @@ class ToMnetLoss(nn.Module):
         """
         action_loss = self.action_loss(action_logits, action_targets)
         goal_loss = self.goal_loss(goal_logits, goal_targets)
-        
+
         # Consumption loss (use sigmoid + BCE for multi-label classification)
-        consumption_loss = self.consumption_loss(consumption_logits, consumption_targets)
-        
+        consumption_loss = self.consumption_loss(
+            consumption_logits, consumption_targets
+        )
+
         # SR loss using KL divergence
         from train import calculate_sr_loss_kl_divergence
+
         sr_loss = calculate_sr_loss_kl_divergence(sr_pred, sr_targets)
 
         total_loss = (
-            self.action_weight * action_loss + 
-            self.goal_weight * goal_loss + 
-            self.consumption_weight * consumption_loss + 
-            self.sr_weight * sr_loss
+            self.action_weight * action_loss
+            + self.goal_weight * goal_loss
+            + self.consumption_weight * consumption_loss
+            + self.sr_weight * sr_loss
         )
 
         return total_loss, action_loss, goal_loss, consumption_loss, sr_loss
@@ -703,8 +772,8 @@ if __name__ == "__main__":
     current_trajectory = torch.randn(batch_size, seq_len, channels, height, width)
 
     # Forward pass
-    action_logits, goal_logits, consumption_logits, sr_pred, char_emb, mental_state = model(
-        past_trajectories, current_trajectory
+    action_logits, goal_logits, consumption_logits, sr_pred, char_emb, mental_state = (
+        model(past_trajectories, current_trajectory)
     )
 
     print(f"Action logits shape: {action_logits.shape}")
@@ -722,8 +791,14 @@ if __name__ == "__main__":
 
     loss_fn = ToMnetLoss()
     total_loss, action_loss, goal_loss, consumption_loss, sr_loss = loss_fn(
-        action_logits, goal_logits, consumption_logits, sr_pred, 
-        action_targets, goal_targets, consumption_targets, sr_targets
+        action_logits,
+        goal_logits,
+        consumption_logits,
+        sr_pred,
+        action_targets,
+        goal_targets,
+        consumption_targets,
+        sr_targets,
     )
 
     print(f"Total loss: {total_loss.item():.4f}")

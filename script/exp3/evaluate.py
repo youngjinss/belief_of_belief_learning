@@ -81,9 +81,11 @@ def evaluate_model_with_n_past(
                     # Get current trajectory for MentalNet processing
                     current_timestep = data_config["time_step"] if data_config else 20
                     recent_trajectory = trajectories[:, :current_timestep]
-                    
+
                     # Extract current state for PredNet
-                    current_state = trajectories[:, current_timestep-1]  # [batch, channels, height, width]
+                    current_state = trajectories[
+                        :, current_timestep - 1
+                    ]  # [batch, channels, height, width]
 
                     # Get action targets
                     if current_timestep < actions.size(1):
@@ -92,7 +94,9 @@ def evaluate_model_with_n_past(
                         action_targets = actions[:, -1]
 
                     # Model forward pass (model returns 6 outputs)
-                    action_logits, _, _, _, _, _ = model(past_episodes, recent_trajectory, current_state)
+                    action_logits, _, _, _, _, _ = model(
+                        past_episodes, recent_trajectory, current_state
+                    )
 
                     # Get predictions
                     _, predicted = torch.max(action_logits, 1)
@@ -170,9 +174,11 @@ def evaluate_model(
                 # Get current trajectory for MentalNet processing
                 current_timestep = data_config["time_step"] if data_config else 20
                 recent_trajectory = trajectories[:, :current_timestep]
-                
+
                 # Extract current state for PredNet
-                current_state = trajectories[:, current_timestep-1]  # [batch, channels, height, width]
+                current_state = trajectories[
+                    :, current_timestep - 1
+                ]  # [batch, channels, height, width]
 
                 # Get action targets
                 if current_timestep < actions.size(1):
@@ -181,9 +187,14 @@ def evaluate_model(
                     action_targets = actions[:, -1]
 
                 # Model forward pass (model returns 6 outputs)
-                action_logits, goal_logits, consumption_logits, sr_pred, char_emb, mental_state = model(
-                    past_episodes, recent_trajectory, current_state
-                )
+                (
+                    action_logits,
+                    goal_logits,
+                    consumption_logits,
+                    sr_pred,
+                    char_emb,
+                    mental_state,
+                ) = model(past_episodes, recent_trajectory, current_state)
 
                 # Get predictions
                 probabilities = F.softmax(action_logits, dim=1)
@@ -271,7 +282,7 @@ def evaluate_keydoor_model(
     if model_path is None:
         # Find the best model in results directory
         model_path = os.path.join(config.model_dir, "best_model.pth")
-        
+
         if model_path is None:
             raise FileNotFoundError(f"No trained model found in {config.model_dir}")
 
@@ -495,9 +506,11 @@ def analyze_action_likelihood(
                 # Get current trajectory
                 current_timestep = data_config["time_step"]
                 recent_trajectory = trajectories[:, :current_timestep]
-                
+
                 # Extract current state for PredNet
-                current_state = trajectories[:, current_timestep-1]  # [batch, channels, height, width]
+                current_state = trajectories[
+                    :, current_timestep - 1
+                ]  # [batch, channels, height, width]
 
                 # Get action targets
                 if current_timestep < actions.size(1):
@@ -506,7 +519,9 @@ def analyze_action_likelihood(
                     action_targets = actions[:, -1]
 
                 # Model forward pass (model returns 6 outputs)
-                action_logits, _, _, _, _, _ = model(past_episodes, recent_trajectory, current_state)
+                action_logits, _, _, _, _, _ = model(
+                    past_episodes, recent_trajectory, current_state
+                )
                 probabilities = F.softmax(action_logits, dim=1)
 
                 for i in range(len(action_targets)):

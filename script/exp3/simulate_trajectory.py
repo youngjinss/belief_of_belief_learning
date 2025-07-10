@@ -39,7 +39,6 @@ except Exception as e:
     print(f"Warning: Could not import gym_minigrid: {e}")
 
 
-
 def env_to_maze_format(env, agent_pos):
     """
     Convert KeyDoor environment to maze format without outer walls
@@ -399,16 +398,18 @@ class GameSimulation:
                 3: 2,  # left -> west
                 # For stay, pickup, toggle actions, keep current direction
             }
-            
+
             if action in action_to_direction:
                 env.agent_dir = action_to_direction[action]
                 direction_names = ["east", "south", "west", "north"]
                 direction_name = direction_names[env.agent_dir]
-                print(f"Step {step + 1}: {action_name} at {position} facing {direction_name} -> {interaction}")
+                print(
+                    f"Step {step + 1}: {action_name} at {position} facing {direction_name} -> {interaction}"
+                )
             else:
                 print(f"Step {step + 1}: {action_name} at {position} -> {interaction}")
-                
-            if hasattr(env, 'agent_keys') and env.agent_keys:
+
+            if hasattr(env, "agent_keys") and env.agent_keys:
                 print(f"  Agent inventory: {env.agent_keys}")
 
             # Take step in environment
@@ -418,7 +419,7 @@ class GameSimulation:
 
                 # Let MiniGrid handle key pickup naturally - ignore interaction data for keys
                 # The interaction data is just for logging, not for controlling the environment
-                
+
                 # Handle observation if it's a dict
                 if isinstance(obs, dict):
                     obs = obs.get("image", obs)
@@ -438,7 +439,9 @@ class GameSimulation:
                 # Check if episode is done
                 if done:
                     print(f"Episode ended at step {step + 1} with reward: {reward:.2f}")
-                    print(f"Environment says episode is done, but trajectory continues...")
+                    print(
+                        f"Environment says episode is done, but trajectory continues..."
+                    )
                     print(f"Terminated: {terminated}, Truncated: {truncated}")
                     # Don't break here - continue with the trajectory regardless of environment state
                     done = False
@@ -486,7 +489,6 @@ class GameSimulation:
         print(f"\nFirst 5 SR data entries:")
         for i in range(min(5, len(self.sr_data))):
             print(f"  Timestep {i}: {self.sr_data.get(i, {})}")
-        
 
 
 def main():

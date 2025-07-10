@@ -451,8 +451,8 @@ def train_epoch(
 
         optimizer.zero_grad()
 
-        # Forward pass - CharNet gets past_episodes, MentalNet gets current_state
-        action_logits, goal_logits, consumption_logits, sr_pred, _, _ = model(past_episodes, current_state)
+        # Forward pass - CharNet gets past_episodes, MentalNet gets recent_trajectory, PredNet gets current_state
+        action_logits, goal_logits, consumption_logits, sr_pred, _, _ = model(past_episodes, recent_trajectory, current_state)
 
         # Compute loss with all components
         total_loss_batch, action_loss_batch, goal_loss_batch, consumption_loss_batch, sr_loss_batch = loss_fn(
@@ -554,6 +554,9 @@ def validate_epoch(model, val_loader, loss_fn, device, max_n_past=5, data_config
             # MentalNet processes recent trajectory to predict action at current timestep
             current_timestep = data_config["time_step"] if data_config else 20
 
+            # Recent trajectory: from start to current_timestep (for MentalNet)
+            recent_trajectory = trajectories[:, :current_timestep]  # [batch_size, seq_len, channels, height, width]
+
             # Extract current state from trajectory (last timestep, first N channels for static environment)
             # The model expects current_state with shape [batch_size, current_state_channels, height, width] 
             # (walls + player + goals, no heading direction)
@@ -577,8 +580,8 @@ def validate_epoch(model, val_loader, loss_fn, device, max_n_past=5, data_config
             consumption_targets = consumption_labels
             sr_targets = sr_labels
 
-            # Forward pass - CharNet gets past_episodes, MentalNet gets current_state
-            action_logits, goal_logits, consumption_logits, sr_pred, _, _ = model(past_episodes, current_state)
+            # Forward pass - CharNet gets past_episodes, MentalNet gets recent_trajectory, PredNet gets current_state
+            action_logits, goal_logits, consumption_logits, sr_pred, _, _ = model(past_episodes, recent_trajectory, current_state)
 
             # Compute loss with all components
             total_loss_batch, action_loss_batch, goal_loss_batch, consumption_loss_batch, sr_loss_batch = loss_fn(

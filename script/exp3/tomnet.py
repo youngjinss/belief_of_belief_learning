@@ -508,34 +508,36 @@ class ToMnet(nn.Module):
 
         return action_logits, goal_logits, consumption_logits, sr_pred, character_embedding, mental_state
 
-    def predict_action(self, past_trajectories, current_trajectory):
+    def predict_action(self, past_trajectories, recent_trajectory, current_state):
         """
         Predict next action
 
         Args:
             past_trajectories: Past episode trajectories
-            current_trajectory: Current episode trajectory
+            recent_trajectory: Recent trajectory for MentalNet
+            current_state: Current state for PredNet
 
         Returns:
             Predicted action probabilities
         """
         with torch.no_grad():
-            action_logits, _, _, _, _, _ = self.forward(past_trajectories, current_trajectory)
+            action_logits, _, _, _, _, _ = self.forward(past_trajectories, recent_trajectory, current_state)
             return F.softmax(action_logits, dim=1)
 
-    def predict_goal(self, past_trajectories, current_trajectory):
+    def predict_goal(self, past_trajectories, recent_trajectory, current_state):
         """
         Predict goal
 
         Args:
             past_trajectories: Past episode trajectories
-            current_trajectory: Current episode trajectory
+            recent_trajectory: Recent trajectory for MentalNet
+            current_state: Current state for PredNet
 
         Returns:
             Predicted goal probabilities
         """
         with torch.no_grad():
-            _, goal_logits, _, _, _, _ = self.forward(past_trajectories, current_trajectory)
+            _, goal_logits, _, _, _, _ = self.forward(past_trajectories, recent_trajectory, current_state)
             return F.softmax(goal_logits, dim=1)
 
     def get_character_embedding(self, past_trajectories):
@@ -555,19 +557,24 @@ class ToMnet(nn.Module):
                 batch_size = 1
                 return torch.zeros(batch_size, self.n_echar)
 
-    def get_mental_state(self, current_trajectory, character_embedding):
+    def get_mental_state(self, recent_trajectory, character_embedding):
         """
-        Get mental state from current trajectory and character embedding
+        Get mental state from recent trajectory and character embedding
 
         Args:
-            current_trajectory: Current episode trajectory
+            recent_trajectory: Recent trajectory for MentalNet
             character_embedding: Character embedding
 
         Returns:
             Mental state embedding
         """
         with torch.no_grad():
-            mental_state, _ = self.mental_net(current_trajectory, character_embedding)
+            # Need to concatenate trajectory with character embedding like in forward()
+            batch_size, seq_len, channels, height, width = recent_trajectory.shape
+            e_char_spatial = character_embedding.unsqueeze(1).unsqueeze(3).unsqueeze(4)
+            e_char_spatial = e_char_spatial.expand(batch_size, seq_len, self.n_echar, height, width)
+            recent_trajectory_with_char = torch.cat([recent_trajectory, e_char_spatial], dim=2)
+            mental_state, _ = self.mental_net(recent_trajectory_with_char)
             return mental_state
 
 

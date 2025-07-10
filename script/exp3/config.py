@@ -126,17 +126,17 @@ class Config:
         # Model architecture
         self.model_config = {
             "residual_blocks": 5,
-            "n_echar": 16,
-            "n_ement": 16,
-            "out_channels": 32,
+            "n_echar": 24,
+            "n_ement": 24,
+            "out_channels": 128,
             "channels_in": 9,  # 8 original channels + 1 heading direction channel
             "current_state_channels": 8,  # For MentalNet: 8 original channels (no heading direction)
             "action_space": 7,
             "goal_space": 4,
             "env_width": self.width,
             "env_height": self.height,
-            "hidden_size_lstm": 32,
-            "fc_layer_sizes": [32, 32],
+            "hidden_size_lstm": 128,
+            "fc_layer_sizes": [128, 64],
             "kernel_size": 3,
             "padding": 1,
             "stride": 1,

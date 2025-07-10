@@ -196,7 +196,7 @@ run_visualization() {
     log_step "Logging visualization output to: $RUN_LOG_DIR/visualization.log"
     
     cd "$SCRIPTS_DIR"
-    python visualize.py --result_dir "$RESULTS_DIR" --plot_type "all" > "$RUN_LOG_DIR/visualization.log" 2>&1
+    python visualize.py --config_override --result_dir "$RESULTS_DIR" --plot_type "all" > "$RUN_LOG_DIR/visualization.log" 2>&1
     
     log_step "Visualization completed"
 }

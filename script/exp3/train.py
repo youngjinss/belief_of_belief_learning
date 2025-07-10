@@ -22,6 +22,76 @@ Adapted from ToMnetF experiment5 for KeyDoor environment
 """
 
 
+def convert_sparse_sr_to_dense(sr_data_timestep, height, width, gammas=[0.5, 0.9, 0.99]):
+    """
+    Convert sparse SR data to dense format
+    
+    Args:
+        sr_data_timestep: Dictionary with gamma values as keys and sparse data as values
+        height: Grid height
+        width: Grid width
+        gammas: List of discount factors
+        
+    Returns:
+        Dense SR array of shape (3, height, width)
+    """
+    dense_sr = np.zeros((len(gammas), height, width))
+    
+    for gamma_idx, gamma in enumerate(gammas):
+        if gamma in sr_data_timestep:
+            sparse_entries = sr_data_timestep[gamma]
+            for pos, value in sparse_entries:
+                x, y = pos
+                if 0 <= x < width and 0 <= y < height:
+                    dense_sr[gamma_idx, y, x] = value
+    
+    return dense_sr
+
+
+def calculate_sr_loss_kl_divergence(sr_pred, sr_target):
+    """
+    Calculate SR loss using KL divergence for probability distributions
+    Vectorized version for efficiency (adapted from experiment 5)
+
+    Args:
+        sr_pred: Predicted SR maps (batch_size, 3, height, width)
+        sr_target: Target SR maps (batch_size, 3, height, width)
+
+    Returns:
+        sr_loss: KL divergence loss averaged over discount factors
+    """
+    batch_size, n_gammas, height, width = sr_pred.shape
+
+    # Vectorized reshape: (batch_size, 3, height*width)
+    sr_pred_flat = sr_pred.view(batch_size, n_gammas, -1)
+    sr_target_flat = sr_target.view(batch_size, n_gammas, -1)
+
+    # Ensure predictions are probability distributions (softmax already applied in model)
+    # sr_pred_flat should already be softmax from model output
+
+    # Ensure targets are probability distributions and handle edge cases
+    # Normalize along spatial dimension (dim=2)
+    sr_target_flat = sr_target_flat / (sr_target_flat.sum(dim=2, keepdim=True) + 1e-8)
+
+    # Add small epsilon to avoid log(0)
+    sr_pred_flat_safe = sr_pred_flat + 1e-8
+    sr_target_flat_safe = sr_target_flat + 1e-8
+
+    # Vectorized KL divergence computation for all gammas at once
+    # KL(target || pred) = sum(target * log(target/pred))
+    kl_loss = torch.nn.functional.kl_div(
+        sr_pred_flat_safe.log(),
+        sr_target_flat_safe,
+        reduction="none",  # Keep batch and gamma dimensions
+    )
+
+    # Sum over spatial dimension, then average over batch and gamma
+    kl_loss = kl_loss.sum(dim=2)  # (batch_size, n_gammas)
+    kl_loss = kl_loss.mean()  # Average over batch and gamma dimensions
+
+    return kl_loss
+
+
 class EarlyStopping:
     """Early stopping to stop training when validation loss doesn't improve"""
 
@@ -154,6 +224,8 @@ def prepare_data_for_training(games, max_trajectory_length=100):
     actions = []
     goals = []
     goal_rewards = []
+    consumption_labels = []
+    sr_labels = []
 
     print(f"Preparing data from {len(games)} games...")
 
@@ -161,11 +233,31 @@ def prepare_data_for_training(games, max_trajectory_length=100):
         trajectory = game["trajectory_tensor"]  # [seq_len, channels, height, width]
         action_list = game["actions"]
         goal_tensor = game["goal_tensor"]  # [4] one-hot encoded
+        
+        # Extract SR and consumption data
+        game_consumption = game.get("consumption_labels", np.zeros(8))  # 8 = 4 keys + 4 doors
+        game_sr_data = game.get("sr_data_per_timestep", {})
 
         # Truncate trajectory to max length
         seq_len = min(trajectory.shape[0], max_trajectory_length)
         trajectory = trajectory[:seq_len]
         action_list = action_list[:seq_len]
+
+        # Ensure we have exactly 9 channels (8 original + 1 heading direction)
+        if trajectory.shape[1] >= 9:
+            # Data already has 9+ channels, use first 9
+            trajectory = trajectory[:, :9, :, :]
+        else:
+            # Add heading direction channel (9th channel)
+            height, width = trajectory.shape[2], trajectory.shape[3]
+            heading_channel = np.zeros((seq_len, 1, height, width))
+            
+            # Simple heading direction: 0=north, 1=east, 2=south, 3=west (encoded as 0.0, 0.25, 0.5, 0.75)
+            # For now, use a placeholder value of 0 (north) for all timesteps
+            # TODO: Extract actual heading from action sequence
+            
+            # Concatenate heading channel to trajectory
+            trajectory = np.concatenate([trajectory, heading_channel], axis=1)  # Now 9 channels
 
         # Pad if necessary
         if seq_len < max_trajectory_length:
@@ -173,28 +265,49 @@ def prepare_data_for_training(games, max_trajectory_length=100):
             trajectory = np.concatenate([trajectory, padding], axis=0)
             action_list = action_list + [0] * (max_trajectory_length - len(action_list))
 
+        # Process SR data per timestep (use final timestep SR)
+        # Get the last timestep's SR data or create zeros
+        height, width = trajectory.shape[2], trajectory.shape[3]
+        final_timestep = seq_len - 1
+        
+        if final_timestep in game_sr_data:
+            sr_data_final = game_sr_data[final_timestep]
+            # Convert sparse SR to dense format (3, height, width) for 3 gammas
+            sr_dense = convert_sparse_sr_to_dense(sr_data_final, height, width)
+        else:
+            # Create zero SR if no data available
+            sr_dense = np.zeros((3, height, width))
+
         trajectories.append(trajectory)
         actions.append(action_list)
         goals.append(np.argmax(goal_tensor))  # Convert one-hot to index
         goal_rewards.append(game["goal_rewards"])
+        consumption_labels.append(game_consumption)
+        sr_labels.append(sr_dense)
 
     # Convert to tensors
     trajectories = torch.tensor(np.array(trajectories), dtype=torch.float32)
     actions = torch.tensor(np.array(actions), dtype=torch.long)
     goals = torch.tensor(np.array(goals), dtype=torch.long)
     goal_rewards = torch.tensor(np.array(goal_rewards), dtype=torch.float32)
+    consumption_labels = torch.tensor(np.array(consumption_labels), dtype=torch.float32)
+    sr_labels = torch.tensor(np.array(sr_labels), dtype=torch.float32)
 
     print(f"Data shapes:")
     print(f"  Trajectories: {trajectories.shape}")
     print(f"  Actions: {actions.shape}")
     print(f"  Goals: {goals.shape}")
     print(f"  Goal rewards: {goal_rewards.shape}")
+    print(f"  Consumption labels: {consumption_labels.shape}")
+    print(f"  SR labels: {sr_labels.shape}")
 
     return {
         "trajectories": trajectories,
         "actions": actions,
         "goals": goals,
         "goal_rewards": goal_rewards,
+        "consumption_labels": consumption_labels,
+        "sr_labels": sr_labels,
     }
 
 
@@ -226,16 +339,21 @@ def train_epoch(
     total_loss = 0
     total_action_loss = 0
     total_goal_loss = 0
+    total_consumption_loss = 0
+    total_sr_loss = 0
     correct_actions = 0
     correct_goals = 0
     total_samples = 0
 
     for batch_idx, batch in enumerate(train_loader):
-        trajectories, actions, goals = batch[:3]
+        # Unpack all data including new SR and consumption labels
+        trajectories, actions, goals, goal_rewards, consumption_labels, sr_labels = batch
 
         trajectories = trajectories.to(device)
         actions = actions.to(device)
         goals = goals.to(device)
+        consumption_labels = consumption_labels.to(device)
+        sr_labels = sr_labels.to(device)
 
         batch_size = trajectories.size(0)
 
@@ -260,15 +378,18 @@ def train_epoch(
             action_targets = actions[:, -1]  # Use last action if trajectory is shorter
 
         goal_targets = goals
+        consumption_targets = consumption_labels
+        sr_targets = sr_labels
 
         optimizer.zero_grad()
 
-        # Forward pass
-        action_logits, goal_logits, _, _ = model(past_episodes, recent_trajectory)
+        # Forward pass - now returns consumption and SR predictions
+        action_logits, goal_logits, consumption_logits, sr_pred, _, _ = model(past_episodes, recent_trajectory)
 
-        # Compute loss
-        total_loss_batch, action_loss_batch, goal_loss_batch = loss_fn(
-            action_logits, goal_logits, action_targets, goal_targets
+        # Compute loss with all components
+        total_loss_batch, action_loss_batch, goal_loss_batch, consumption_loss_batch, sr_loss_batch = loss_fn(
+            action_logits, goal_logits, consumption_logits, sr_pred, 
+            action_targets, goal_targets, consumption_targets, sr_targets
         )
 
         # Backward pass
@@ -283,6 +404,8 @@ def train_epoch(
         total_loss += total_loss_batch.item()
         total_action_loss += action_loss_batch.item()
         total_goal_loss += goal_loss_batch.item()
+        total_consumption_loss += consumption_loss_batch.item()
+        total_sr_loss += sr_loss_batch.item()
 
         # Calculate accuracy
         _, predicted_actions = torch.max(action_logits, 1)
@@ -296,6 +419,8 @@ def train_epoch(
     avg_loss = total_loss / num_batches if num_batches > 0 else 0
     avg_action_loss = total_action_loss / num_batches if num_batches > 0 else 0
     avg_goal_loss = total_goal_loss / num_batches if num_batches > 0 else 0
+    avg_consumption_loss = total_consumption_loss / num_batches if num_batches > 0 else 0
+    avg_sr_loss = total_sr_loss / num_batches if num_batches > 0 else 0
     action_accuracy = correct_actions / total_samples
     goal_accuracy = correct_goals / total_samples
 
@@ -303,6 +428,8 @@ def train_epoch(
         "loss": avg_loss,
         "action_loss": avg_action_loss,
         "goal_loss": avg_goal_loss,
+        "consumption_loss": avg_consumption_loss,
+        "sr_loss": avg_sr_loss,
         "action_accuracy": action_accuracy,
         "goal_accuracy": goal_accuracy,
     }
@@ -326,17 +453,22 @@ def validate_epoch(model, val_loader, loss_fn, device, max_n_past=5, data_config
     total_loss = 0
     total_action_loss = 0
     total_goal_loss = 0
+    total_consumption_loss = 0
+    total_sr_loss = 0
     correct_actions = 0
     correct_goals = 0
     total_samples = 0
 
     with torch.no_grad():
         for batch_idx, batch in enumerate(val_loader):
-            trajectories, actions, goals = batch[:3]
+            # Unpack all data including new SR and consumption labels
+            trajectories, actions, goals, goal_rewards, consumption_labels, sr_labels = batch
 
             trajectories = trajectories.to(device)
             actions = actions.to(device)
             goals = goals.to(device)
+            consumption_labels = consumption_labels.to(device)
+            sr_labels = sr_labels.to(device)
 
             batch_size = trajectories.size(0)
 
@@ -363,19 +495,24 @@ def validate_epoch(model, val_loader, loss_fn, device, max_n_past=5, data_config
                 ]  # Use last action if trajectory is shorter
 
             goal_targets = goals
+            consumption_targets = consumption_labels
+            sr_targets = sr_labels
 
-            # Forward pass
-            action_logits, goal_logits, _, _ = model(past_episodes, recent_trajectory)
+            # Forward pass - now returns consumption and SR predictions
+            action_logits, goal_logits, consumption_logits, sr_pred, _, _ = model(past_episodes, recent_trajectory)
 
-            # Compute loss
-            total_loss_batch, action_loss_batch, goal_loss_batch = loss_fn(
-                action_logits, goal_logits, action_targets, goal_targets
+            # Compute loss with all components
+            total_loss_batch, action_loss_batch, goal_loss_batch, consumption_loss_batch, sr_loss_batch = loss_fn(
+                action_logits, goal_logits, consumption_logits, sr_pred, 
+                action_targets, goal_targets, consumption_targets, sr_targets
             )
 
             # Update metrics
             total_loss += total_loss_batch.item()
             total_action_loss += action_loss_batch.item()
             total_goal_loss += goal_loss_batch.item()
+            total_consumption_loss += consumption_loss_batch.item()
+            total_sr_loss += sr_loss_batch.item()
 
             # Calculate accuracy
             _, predicted_actions = torch.max(action_logits, 1)
@@ -389,6 +526,8 @@ def validate_epoch(model, val_loader, loss_fn, device, max_n_past=5, data_config
     avg_loss = total_loss / num_batches if num_batches > 0 else 0
     avg_action_loss = total_action_loss / num_batches if num_batches > 0 else 0
     avg_goal_loss = total_goal_loss / num_batches if num_batches > 0 else 0
+    avg_consumption_loss = total_consumption_loss / num_batches if num_batches > 0 else 0
+    avg_sr_loss = total_sr_loss / num_batches if num_batches > 0 else 0
     action_accuracy = correct_actions / total_samples
     goal_accuracy = correct_goals / total_samples
 
@@ -396,6 +535,8 @@ def validate_epoch(model, val_loader, loss_fn, device, max_n_past=5, data_config
         "loss": avg_loss,
         "action_loss": avg_action_loss,
         "goal_loss": avg_goal_loss,
+        "consumption_loss": avg_consumption_loss,
+        "sr_loss": avg_sr_loss,
         "action_accuracy": action_accuracy,
         "goal_accuracy": goal_accuracy,
     }
@@ -553,8 +694,15 @@ def train_tomnet(
     # Prepare data
     data = prepare_data_for_training(games, time_step)
 
-    # Create datasets
-    dataset = TensorDataset(data["trajectories"], data["actions"], data["goals"])
+    # Create datasets with all data including SR and consumption labels
+    dataset = TensorDataset(
+        data["trajectories"], 
+        data["actions"], 
+        data["goals"], 
+        data["goal_rewards"],
+        data["consumption_labels"],
+        data["sr_labels"]
+    )
 
     # Train/validation split
     total_size = len(dataset)
@@ -596,6 +744,8 @@ def train_tomnet(
     loss_fn = ToMnetLoss(
         action_weight=training_process_config["action_weight"],
         goal_weight=training_process_config["goal_weight"],
+        consumption_weight=training_process_config.get("consumption_weight", 1.0),
+        sr_weight=training_process_config.get("sr_weight", 1.0),
     )
     optimizer = torch.optim.Adam(
         model.parameters(), lr=lr, weight_decay=config.training_config["weight_decay"]
@@ -676,11 +826,11 @@ def train_tomnet(
             (val_metrics["action_accuracy"] + val_metrics["goal_accuracy"]) / 2 * 100
         )
         train_action_loss = train_metrics["action_loss"]
-        train_consumption_loss = train_metrics["goal_loss"]
-        train_sr_loss = 0  # Placeholder for SR loss
+        train_consumption_loss = train_metrics["consumption_loss"]
+        train_sr_loss = train_metrics["sr_loss"]
         val_action_loss = val_metrics["action_loss"]
-        val_consumption_loss = val_metrics["goal_loss"]
-        val_sr_loss = 0  # Placeholder for SR loss
+        val_consumption_loss = val_metrics["consumption_loss"]
+        val_sr_loss = val_metrics["sr_loss"]
 
         print(
             f"Epoch: {epoch + 1:3d} | Train Loss: {train_loss:.4f} | Train Acc: {train_acc:.4f}% | Val Acc: {val_acc:.4f}% | Time: {epoch_time:.2f}s"

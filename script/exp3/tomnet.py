@@ -259,12 +259,15 @@ class MentalNet(nn.Module):
         for layer in self.conv_layers:
             x = layer(x)
 
-        # Global average pooling
-        x = self.global_avg_pool(x)  # (batch_size * seq_len, out_channels, 1, 1)
-        x = x.reshape(batch_size, seq_len, self.out_channels)
+        # Store spatial features for SR prediction
+        spatial_features = x  # (batch_size * seq_len, out_channels, height, width)
+        
+        # Global average pooling for mental state
+        x_pooled = self.global_avg_pool(x)  # (batch_size * seq_len, out_channels, 1, 1)
+        x_pooled = x_pooled.reshape(batch_size, seq_len, self.out_channels)
 
         # LSTM processing
-        trajectory_features = self.lstm(x)  # (batch_size, hidden_size)
+        trajectory_features = self.lstm(x_pooled)  # (batch_size, hidden_size)
 
         # Combine with character embedding
         combined_features = torch.cat([trajectory_features, character_embedding], dim=1)
@@ -272,7 +275,10 @@ class MentalNet(nn.Module):
         # Mental state prediction
         mental_state = self.mental_state_net(combined_features)
 
-        return mental_state
+        # Get final spatial features (last timestep)
+        final_spatial_features = spatial_features[-batch_size:]  # (batch_size, out_channels, height, width)
+
+        return mental_state, final_spatial_features
 
 
 class PredNet(nn.Module):
@@ -283,6 +289,8 @@ class PredNet(nn.Module):
         n_echar: int,
         action_space: int = 7,
         goal_space: int = 4,
+        env_width: int = 9,
+        env_height: int = 9,
     ):
         super(PredNet, self).__init__()
 
@@ -291,45 +299,84 @@ class PredNet(nn.Module):
         self.n_echar = n_echar
         self.action_space = action_space
         self.goal_space = goal_space
+        self.env_width = env_width
+        self.env_height = env_height
 
         # Action prediction network
         self.action_predictor = nn.Sequential(
-            nn.Linear(n_ement + n_echar, 128),
+            nn.Linear(n_ement + n_echar, 64),
             nn.ReLU(),
-            nn.Linear(128, 64),
+            nn.Linear(64, 64),
             nn.ReLU(),
             nn.Linear(64, action_space),
         )
 
         # Goal prediction network
         self.goal_predictor = nn.Sequential(
-            nn.Linear(n_ement + n_echar, 128),
+            nn.Linear(n_ement + n_echar, 64),
             nn.ReLU(),
-            nn.Linear(128, 64),
+            nn.Linear(64, 64),
             nn.ReLU(),
             nn.Linear(64, goal_space),
         )
 
-    def forward(self, mental_state, character_embedding):
+        # Consumption prediction network (8 outputs: 4 keys + 4 doors)
+        self.consumption_predictor = nn.Sequential(
+            nn.Linear(n_ement + n_echar, 64),
+            nn.ReLU(),
+            nn.Linear(64, 64),
+            nn.ReLU(),
+            nn.Linear(64, 8),  # 4 keys + 4 doors
+        )
+
+        # SR prediction network using spatial convolutions (matching experiment 5)
+        # Uses spatial convolutional layers to maintain spatial structure
+        self.conv_sr = nn.Conv2d(
+            in_channels=32,  # This should match out_channels from MentalNet
+            out_channels=32,
+            kernel_size=1
+        )
+        self.conv_sr_out = nn.Conv2d(
+            in_channels=32,
+            out_channels=3,  # 3 discount factors
+            kernel_size=1
+        )
+
+    def forward(self, mental_state, character_embedding, spatial_features):
         """
         Forward pass for prediction network
 
         Args:
             mental_state: (batch_size, n_ement)
             character_embedding: (batch_size, n_echar)
+            spatial_features: (batch_size, out_channels, height, width)
 
         Returns:
             action_logits: (batch_size, action_space)
             goal_logits: (batch_size, goal_space)
+            consumption_logits: (batch_size, 8)
+            sr_pred: (batch_size, 3, env_height, env_width)
         """
         # Combine mental state and character embedding
         combined = torch.cat([mental_state, character_embedding], dim=1)
 
-        # Predict actions and goals
+        # Predict actions, goals, and consumption
         action_logits = self.action_predictor(combined)
         goal_logits = self.goal_predictor(combined)
+        consumption_logits = self.consumption_predictor(combined)
+        
+        # Predict SR maps using spatial convolutions (matching experiment 5)
+        sr_features = self.conv_sr(spatial_features)  # (batch_size, out_channels, height, width)
+        sr_features = F.relu(sr_features)
+        sr_pred = self.conv_sr_out(sr_features)  # (batch_size, 3, height, width)
+        
+        # Apply softmax to each SR channel independently to get probability distributions
+        batch_size, channels, height, width = sr_pred.shape
+        sr_pred = sr_pred.view(batch_size, channels, -1)  # (batch_size, 3, spatial_size)
+        sr_pred = F.softmax(sr_pred, dim=2)
+        sr_pred = sr_pred.view(batch_size, channels, height, width)  # Back to spatial format
 
-        return action_logits, goal_logits
+        return action_logits, goal_logits, consumption_logits, sr_pred
 
 
 class ToMnet(nn.Module):
@@ -346,6 +393,8 @@ class ToMnet(nn.Module):
         goal_space: int = 4,
         max_n_past: int = 10,
         use_n_past: bool = True,
+        env_width: int = 9,
+        env_height: int = 9,
     ):
         super(ToMnet, self).__init__()
 
@@ -389,6 +438,8 @@ class ToMnet(nn.Module):
             n_echar=n_echar,
             action_space=action_space,
             goal_space=goal_space,
+            env_width=env_width,
+            env_height=env_height,
         )
 
     def forward(self, past_trajectories, current_trajectory):
@@ -402,6 +453,8 @@ class ToMnet(nn.Module):
         Returns:
             action_logits: (batch_size, action_space)
             goal_logits: (batch_size, goal_space)
+            consumption_logits: (batch_size, 8)
+            sr_pred: (batch_size, 3, env_height, env_width)
             character_embedding: (batch_size, n_echar)
             mental_state: (batch_size, n_ement)
         """
@@ -416,12 +469,12 @@ class ToMnet(nn.Module):
             )
 
         # Mental state network - processes current trajectory + character embedding
-        mental_state = self.mental_net(current_trajectory, character_embedding)
+        mental_state, spatial_features = self.mental_net(current_trajectory, character_embedding)
 
-        # Prediction network - processes mental state + character embedding
-        action_logits, goal_logits = self.pred_net(mental_state, character_embedding)
+        # Prediction network - processes mental state + character embedding + spatial features
+        action_logits, goal_logits, consumption_logits, sr_pred = self.pred_net(mental_state, character_embedding, spatial_features)
 
-        return action_logits, goal_logits, character_embedding, mental_state
+        return action_logits, goal_logits, consumption_logits, sr_pred, character_embedding, mental_state
 
     def predict_action(self, past_trajectories, current_trajectory):
         """
@@ -435,7 +488,7 @@ class ToMnet(nn.Module):
             Predicted action probabilities
         """
         with torch.no_grad():
-            action_logits, _, _, _ = self.forward(past_trajectories, current_trajectory)
+            action_logits, _, _, _, _, _ = self.forward(past_trajectories, current_trajectory)
             return F.softmax(action_logits, dim=1)
 
     def predict_goal(self, past_trajectories, current_trajectory):
@@ -450,7 +503,7 @@ class ToMnet(nn.Module):
             Predicted goal probabilities
         """
         with torch.no_grad():
-            _, goal_logits, _, _ = self.forward(past_trajectories, current_trajectory)
+            _, goal_logits, _, _, _, _ = self.forward(past_trajectories, current_trajectory)
             return F.softmax(goal_logits, dim=1)
 
     def get_character_embedding(self, past_trajectories):
@@ -482,38 +535,60 @@ class ToMnet(nn.Module):
             Mental state embedding
         """
         with torch.no_grad():
-            return self.mental_net(current_trajectory, character_embedding)
+            mental_state, _ = self.mental_net(current_trajectory, character_embedding)
+            return mental_state
 
 
 class ToMnetLoss(nn.Module):
-    def __init__(self, action_weight=1.0, goal_weight=1.0):
+    def __init__(self, action_weight=1.0, goal_weight=1.0, consumption_weight=1.0, sr_weight=1.0):
         super(ToMnetLoss, self).__init__()
         self.action_weight = action_weight
         self.goal_weight = goal_weight
+        self.consumption_weight = consumption_weight
+        self.sr_weight = sr_weight
         self.action_loss = nn.CrossEntropyLoss()
         self.goal_loss = nn.CrossEntropyLoss()
+        self.consumption_loss = nn.BCEWithLogitsLoss()  # For consumption prediction
 
-    def forward(self, action_logits, goal_logits, action_targets, goal_targets):
+    def forward(self, action_logits, goal_logits, consumption_logits, sr_pred, action_targets, goal_targets, consumption_targets, sr_targets):
         """
-        Compute combined loss
+        Compute combined loss (following experiment 5 approach)
 
         Args:
             action_logits: Predicted action logits
             goal_logits: Predicted goal logits
+            consumption_logits: Predicted consumption logits (batch_size, 8)
+            sr_pred: Predicted SR maps (batch_size, 3, height, width)
             action_targets: True action labels
             goal_targets: True goal labels
+            consumption_targets: True consumption labels (batch_size, 8)
+            sr_targets: True SR maps (batch_size, 3, height, width)
 
         Returns:
             total_loss: Combined loss
             action_loss: Action prediction loss
             goal_loss: Goal prediction loss
+            consumption_loss: Consumption prediction loss
+            sr_loss: SR prediction loss
         """
         action_loss = self.action_loss(action_logits, action_targets)
         goal_loss = self.goal_loss(goal_logits, goal_targets)
+        
+        # Consumption loss (use sigmoid + BCE for multi-label classification)
+        consumption_loss = self.consumption_loss(consumption_logits, consumption_targets)
+        
+        # SR loss using KL divergence
+        from train import calculate_sr_loss_kl_divergence
+        sr_loss = calculate_sr_loss_kl_divergence(sr_pred, sr_targets)
 
-        total_loss = self.action_weight * action_loss + self.goal_weight * goal_loss
+        total_loss = (
+            self.action_weight * action_loss + 
+            self.goal_weight * goal_loss + 
+            self.consumption_weight * consumption_loss + 
+            self.sr_weight * sr_loss
+        )
 
-        return total_loss, action_loss, goal_loss
+        return total_loss, action_loss, goal_loss, consumption_loss, sr_loss
 
 
 # Utility functions
@@ -539,6 +614,8 @@ def create_model(config):
         goal_space=config.get("goal_space", 4),
         max_n_past=config.get("max_n_past", 10),
         use_n_past=config.get("use_n_past", True),
+        env_width=config.get("env_width", 9),
+        env_height=config.get("env_height", 9),
     )
 
     return model
@@ -585,24 +662,31 @@ if __name__ == "__main__":
     current_trajectory = torch.randn(batch_size, seq_len, channels, height, width)
 
     # Forward pass
-    action_logits, goal_logits, char_emb, mental_state = model(
+    action_logits, goal_logits, consumption_logits, sr_pred, char_emb, mental_state = model(
         past_trajectories, current_trajectory
     )
 
     print(f"Action logits shape: {action_logits.shape}")
     print(f"Goal logits shape: {goal_logits.shape}")
+    print(f"Consumption logits shape: {consumption_logits.shape}")
+    print(f"SR prediction shape: {sr_pred.shape}")
     print(f"Character embedding shape: {char_emb.shape}")
     print(f"Mental state shape: {mental_state.shape}")
 
     # Test loss computation
     action_targets = torch.randint(0, 7, (batch_size,))
     goal_targets = torch.randint(0, 4, (batch_size,))
+    consumption_targets = torch.randint(0, 2, (batch_size, 8)).float()  # Binary targets
+    sr_targets = torch.rand(batch_size, 3, height, width)  # Random SR targets
 
     loss_fn = ToMnetLoss()
-    total_loss, action_loss, goal_loss = loss_fn(
-        action_logits, goal_logits, action_targets, goal_targets
+    total_loss, action_loss, goal_loss, consumption_loss, sr_loss = loss_fn(
+        action_logits, goal_logits, consumption_logits, sr_pred, 
+        action_targets, goal_targets, consumption_targets, sr_targets
     )
 
     print(f"Total loss: {total_loss.item():.4f}")
     print(f"Action loss: {action_loss.item():.4f}")
     print(f"Goal loss: {goal_loss.item():.4f}")
+    print(f"Consumption loss: {consumption_loss.item():.4f}")
+    print(f"SR loss: {sr_loss.item():.4f}")

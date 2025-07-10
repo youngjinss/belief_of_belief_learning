@@ -214,85 +214,224 @@ def plot_training_curves(history_path, output_dir, experiment_no=3):
     with open(history_path, "r") as f:
         history = json.load(f)
 
-    # Create subplots
-    fig, axes = plt.subplots(2, 2, figsize=(15, 10))
+    # Check if component losses are available
+    has_component_losses = "train_action_loss" in history and "train_consumption_loss" in history and "train_sr_loss" in history
+    
+    if has_component_losses:
+        # Create 3x2 subplot grid for comprehensive visualization (matching experiment 5)
+        fig, axes = plt.subplots(3, 2, figsize=(15, 15))
+        ax1, ax2 = axes[0]
+        ax3, ax4 = axes[1]
+        ax5, ax6 = axes[2]
+    else:
+        # Fallback to 2x2 layout for basic metrics
+        fig, axes = plt.subplots(2, 2, figsize=(15, 10))
+        ax1, ax2 = axes[0]
+        ax3, ax4 = axes[1]
+    
     fig.suptitle(
         f"KeyDoor ToMnet Training History (Experiment {experiment_no})", fontsize=16
     )
 
-    # Loss curves
-    axes[0, 0].plot(
-        history["epoch"], history["train_loss"], label="Train Loss", marker="o"
-    )
-    axes[0, 0].plot(history["epoch"], history["val_loss"], label="Val Loss", marker="s")
-    axes[0, 0].set_title("Total Loss")
-    axes[0, 0].set_xlabel("Epoch")
-    axes[0, 0].set_ylabel("Loss")
-    axes[0, 0].legend()
-    axes[0, 0].grid(True, alpha=0.3)
+    epochs = history["epoch"]
 
-    # Action accuracy curves
-    axes[0, 1].plot(
-        history["epoch"],
+    # Total accuracy plot
+    ax1.plot(
+        epochs,
         history["train_action_accuracy"],
-        label="Train Action Acc",
+        label="Training",
+        linewidth=2,
         marker="o",
+        markersize=4,
     )
-    axes[0, 1].plot(
-        history["epoch"],
+    ax1.plot(
+        epochs,
         history["val_action_accuracy"],
-        label="Val Action Acc",
+        label="Validation",
+        linewidth=2,
         marker="s",
+        markersize=4,
     )
-    axes[0, 1].set_title("Action Accuracy")
-    axes[0, 1].set_xlabel("Epoch")
-    axes[0, 1].set_ylabel("Accuracy")
-    axes[0, 1].legend()
-    axes[0, 1].grid(True, alpha=0.3)
+    ax1.set_xlabel("Epoch", fontsize=12)
+    ax1.set_ylabel("Accuracy (%)", fontsize=12)
+    ax1.set_title("Model Accuracy", fontsize=14, fontweight="bold")
+    ax1.legend(fontsize=11)
+    ax1.grid(True, alpha=0.3)
+    ax1.set_xlim(0, max(epochs))
 
-    # Goal accuracy curves
-    axes[1, 0].plot(
-        history["epoch"],
-        history["train_goal_accuracy"],
-        label="Train Goal Acc",
+    # Total Loss plot
+    ax2.plot(
+        epochs,
+        history["train_loss"],
+        label="Training",
+        linewidth=2,
         marker="o",
+        markersize=4,
     )
-    axes[1, 0].plot(
-        history["epoch"], history["val_goal_accuracy"], label="Val Goal Acc", marker="s"
-    )
-    axes[1, 0].set_title("Goal Accuracy")
-    axes[1, 0].set_xlabel("Epoch")
-    axes[1, 0].set_ylabel("Accuracy")
-    axes[1, 0].legend()
-    axes[1, 0].grid(True, alpha=0.3)
-
-    # Loss components
-    axes[1, 1].plot(
-        history["epoch"],
-        history["train_action_loss"],
-        label="Train Action Loss",
-        marker="o",
-    )
-    axes[1, 1].plot(
-        history["epoch"],
-        history["train_goal_loss"],
-        label="Train Goal Loss",
+    ax2.plot(
+        epochs,
+        history["val_loss"],
+        label="Validation",
+        linewidth=2,
         marker="s",
+        markersize=4,
     )
-    axes[1, 1].plot(
-        history["epoch"],
-        history["val_action_loss"],
-        label="Val Action Loss",
-        marker="^",
-    )
-    axes[1, 1].plot(
-        history["epoch"], history["val_goal_loss"], label="Val Goal Loss", marker="v"
-    )
-    axes[1, 1].set_title("Loss Components")
-    axes[1, 1].set_xlabel("Epoch")
-    axes[1, 1].set_ylabel("Loss")
-    axes[1, 1].legend()
-    axes[1, 1].grid(True, alpha=0.3)
+    ax2.set_xlabel("Epoch", fontsize=12)
+    ax2.set_ylabel("Loss", fontsize=12)
+    ax2.set_title("Total Loss", fontsize=14, fontweight="bold")
+    ax2.legend(fontsize=11)
+    ax2.grid(True, alpha=0.3)
+    ax2.set_xlim(0, max(epochs))
+
+    if has_component_losses:
+        # Action Loss plot
+        ax3.plot(
+            epochs,
+            history["train_action_loss"],
+            label="Training",
+            linewidth=2,
+            marker="o",
+            markersize=4,
+            color="green",
+        )
+        ax3.plot(
+            epochs,
+            history["val_action_loss"],
+            label="Validation",
+            linewidth=2,
+            marker="s",
+            markersize=4,
+            color="lightgreen",
+        )
+        ax3.set_xlabel("Epoch", fontsize=12)
+        ax3.set_ylabel("Loss", fontsize=12)
+        ax3.set_title("Action Loss", fontsize=14, fontweight="bold")
+        ax3.legend(fontsize=11)
+        ax3.grid(True, alpha=0.3)
+        ax3.set_xlim(0, max(epochs))
+
+        # Consumption Loss plot
+        ax4.plot(
+            epochs,
+            history["train_consumption_loss"],
+            label="Training",
+            linewidth=2,
+            marker="o",
+            markersize=4,
+            color="red",
+        )
+        ax4.plot(
+            epochs,
+            history["val_consumption_loss"],
+            label="Validation",
+            linewidth=2,
+            marker="s",
+            markersize=4,
+            color="salmon",
+        )
+        ax4.set_xlabel("Epoch", fontsize=12)
+        ax4.set_ylabel("Loss", fontsize=12)
+        ax4.set_title("Consumption Loss", fontsize=14, fontweight="bold")
+        ax4.legend(fontsize=11)
+        ax4.grid(True, alpha=0.3)
+        ax4.set_xlim(0, max(epochs))
+
+        # SR Loss plot
+        ax5.plot(
+            epochs,
+            history["train_sr_loss"],
+            label="Training",
+            linewidth=2,
+            marker="o",
+            markersize=4,
+            color="purple",
+        )
+        ax5.plot(
+            epochs,
+            history["val_sr_loss"],
+            label="Validation",
+            linewidth=2,
+            marker="s",
+            markersize=4,
+            color="plum",
+        )
+        ax5.set_xlabel("Epoch", fontsize=12)
+        ax5.set_ylabel("Loss", fontsize=12)
+        ax5.set_title("Successor Representation Loss", fontsize=14, fontweight="bold")
+        ax5.legend(fontsize=11)
+        ax5.grid(True, alpha=0.3)
+        ax5.set_xlim(0, max(epochs))
+
+        # Goal accuracy plot (moved to 6th position)
+        ax6.plot(
+            epochs,
+            history["train_goal_accuracy"],
+            label="Training",
+            linewidth=2,
+            marker="o",
+            markersize=4,
+            color="orange",
+        )
+        ax6.plot(
+            epochs,
+            history["val_goal_accuracy"],
+            label="Validation",
+            linewidth=2,
+            marker="s",
+            markersize=4,
+            color="moccasin",
+        )
+        ax6.set_xlabel("Epoch", fontsize=12)
+        ax6.set_ylabel("Accuracy", fontsize=12)
+        ax6.set_title("Goal Accuracy", fontsize=14, fontweight="bold")
+        ax6.legend(fontsize=11)
+        ax6.grid(True, alpha=0.3)
+        ax6.set_xlim(0, max(epochs))
+    else:
+        # Fallback to basic goal accuracy and loss components
+        # Goal accuracy curves
+        ax3.plot(
+            history["epoch"],
+            history["train_goal_accuracy"],
+            label="Train Goal Acc",
+            marker="o",
+        )
+        ax3.plot(
+            history["epoch"], history["val_goal_accuracy"], label="Val Goal Acc", marker="s"
+        )
+        ax3.set_title("Goal Accuracy")
+        ax3.set_xlabel("Epoch")
+        ax3.set_ylabel("Accuracy")
+        ax3.legend()
+        ax3.grid(True, alpha=0.3)
+
+        # Loss components
+        ax4.plot(
+            history["epoch"],
+            history["train_action_loss"] if "train_action_loss" in history else [],
+            label="Train Action Loss",
+            marker="o",
+        )
+        ax4.plot(
+            history["epoch"],
+            history["train_goal_loss"] if "train_goal_loss" in history else [],
+            label="Train Goal Loss",
+            marker="s",
+        )
+        ax4.plot(
+            history["epoch"],
+            history["val_action_loss"] if "val_action_loss" in history else [],
+            label="Val Action Loss",
+            marker="^",
+        )
+        ax4.plot(
+            history["epoch"], history["val_goal_loss"] if "val_goal_loss" in history else [], label="Val Goal Loss", marker="v"
+        )
+        ax4.set_title("Loss Components")
+        ax4.set_xlabel("Epoch")
+        ax4.set_ylabel("Loss")
+        ax4.legend()
+        ax4.grid(True, alpha=0.3)
 
     plt.tight_layout()
 
@@ -314,6 +453,13 @@ def plot_training_curves(history_path, output_dir, experiment_no=3):
     print(f"Best validation loss: {min(history['val_loss']):.4f}")
     print(f"Best validation action accuracy: {max(history['val_action_accuracy']):.4f}")
     print(f"Best validation goal accuracy: {max(history['val_goal_accuracy']):.4f}")
+    
+    # Print component loss summaries if available
+    if has_component_losses:
+        if "val_consumption_loss" in history:
+            print(f"Best validation consumption loss: {min(history['val_consumption_loss']):.4f}")
+        if "val_sr_loss" in history:
+            print(f"Best validation SR loss: {min(history['val_sr_loss']):.4f}")
 
 
 def plot_confusion_matrix(predictions_path, output_dir, experiment_no=3):
@@ -496,8 +642,10 @@ def plot_character_embeddings(
     goals = []
 
     sample_count = 0
+    print(f"Starting character embedding extraction for {n_samples} samples...")
+    
     with torch.no_grad():
-        for batch in test_loader:
+        for batch_idx, batch in enumerate(test_loader):
             if sample_count >= n_samples:
                 break
 
@@ -507,19 +655,31 @@ def plot_character_embeddings(
                 batch_goals = batch_goals.to(device)
 
                 batch_size = trajectories.size(0)
+                print(f"Processing batch {batch_idx}: batch_size={batch_size}, trajectories.shape={trajectories.shape}")
 
                 # Generate past episodes
                 past_episodes = generate_past_episodes_from_batch(
                     trajectories, batch_goals, batch_size, 1, 1, 1
                 )
+                print(f"Generated past_episodes.shape={past_episodes.shape}")
 
-                # Get character embeddings
-                char_embeddings = model.char_net(past_episodes)
-
-                embeddings.extend(char_embeddings.cpu().numpy())
-                goals.extend(batch_goals.cpu().numpy())
-
-                sample_count += len(batch_goals)
+                # Get character embeddings using the model's method
+                try:
+                    char_embeddings = model.get_character_embedding(past_episodes)
+                    print(f"Character embeddings.shape={char_embeddings.shape}")
+                    
+                    embeddings.extend(char_embeddings.cpu().numpy())
+                    goals.extend(batch_goals.cpu().numpy())
+                    
+                    sample_count += len(batch_goals)
+                    print(f"Total samples processed: {sample_count}")
+                except Exception as e:
+                    print(f"Error getting character embeddings: {e}")
+                    continue
+            else:
+                print(f"Batch {batch_idx} has insufficient elements: {len(batch)}")
+    
+    print(f"Character embedding extraction completed. Total embeddings: {len(embeddings)}")
 
     if len(embeddings) == 0:
         print("No embeddings to visualize")
@@ -540,48 +700,77 @@ def plot_character_embeddings(
 
     # PCA visualization
     if embeddings.shape[1] > 2:
-        pca = PCA(n_components=2)
-        embeddings_pca = pca.fit_transform(embeddings)
+        try:
+            pca = PCA(n_components=2)
+            embeddings_pca = pca.fit_transform(embeddings)
 
+            for goal in range(4):
+                mask = goals == goal
+                if np.sum(mask) > 0:
+                    ax1.scatter(
+                        embeddings_pca[mask, 0],
+                        embeddings_pca[mask, 1],
+                        c=goal_colors[goal],
+                        label=goal_names[goal],
+                        alpha=0.6,
+                    )
+
+            ax1.set_title("PCA Visualization")
+            ax1.set_xlabel(f"PC1 ({pca.explained_variance_ratio_[0]:.2%} variance)")
+            ax1.set_ylabel(f"PC2 ({pca.explained_variance_ratio_[1]:.2%} variance)")
+            ax1.legend()
+            ax1.grid(True, alpha=0.3)
+        except Exception as e:
+            print(f"Error in PCA visualization: {e}")
+            ax1.text(0.5, 0.5, f"PCA Error: {str(e)}", ha="center", va="center", transform=ax1.transAxes)
+    else:
+        # For 2D embeddings, plot directly
         for goal in range(4):
             mask = goals == goal
             if np.sum(mask) > 0:
                 ax1.scatter(
-                    embeddings_pca[mask, 0],
-                    embeddings_pca[mask, 1],
+                    embeddings[mask, 0],
+                    embeddings[mask, 1],
                     c=goal_colors[goal],
                     label=goal_names[goal],
                     alpha=0.6,
                 )
-
-        ax1.set_title("PCA Visualization")
-        ax1.set_xlabel(f"PC1 ({pca.explained_variance_ratio_[0]:.2%} variance)")
-        ax1.set_ylabel(f"PC2 ({pca.explained_variance_ratio_[1]:.2%} variance)")
+        ax1.set_title("Character Embeddings (2D)")
+        ax1.set_xlabel("Dimension 1")
+        ax1.set_ylabel("Dimension 2")
         ax1.legend()
         ax1.grid(True, alpha=0.3)
 
     # t-SNE visualization
     if len(embeddings) > 50:  # t-SNE needs sufficient samples
-        tsne = TSNE(n_components=2, random_state=42)
-        embeddings_tsne = tsne.fit_transform(embeddings[:1000])  # Limit for performance
-        goals_tsne = goals[:1000]
+        try:
+            tsne = TSNE(n_components=2, random_state=42)
+            embeddings_tsne = tsne.fit_transform(embeddings[:1000])  # Limit for performance
+            goals_tsne = goals[:1000]
 
-        for goal in range(4):
-            mask = goals_tsne == goal
-            if np.sum(mask) > 0:
-                ax2.scatter(
-                    embeddings_tsne[mask, 0],
-                    embeddings_tsne[mask, 1],
-                    c=goal_colors[goal],
-                    label=goal_names[goal],
-                    alpha=0.6,
-                )
+            for goal in range(4):
+                mask = goals_tsne == goal
+                if np.sum(mask) > 0:
+                    ax2.scatter(
+                        embeddings_tsne[mask, 0],
+                        embeddings_tsne[mask, 1],
+                        c=goal_colors[goal],
+                        label=goal_names[goal],
+                        alpha=0.6,
+                    )
 
+            ax2.set_title("t-SNE Visualization")
+            ax2.set_xlabel("t-SNE 1")
+            ax2.set_ylabel("t-SNE 2")
+            ax2.legend()
+            ax2.grid(True, alpha=0.3)
+        except Exception as e:
+            print(f"Error in t-SNE visualization: {e}")
+            ax2.text(0.5, 0.5, f"t-SNE Error: {str(e)}", ha="center", va="center", transform=ax2.transAxes)
+    else:
+        ax2.text(0.5, 0.5, f"Not enough samples for t-SNE\n({len(embeddings)} < 50)", 
+                ha="center", va="center", transform=ax2.transAxes)
         ax2.set_title("t-SNE Visualization")
-        ax2.set_xlabel("t-SNE 1")
-        ax2.set_ylabel("t-SNE 2")
-        ax2.legend()
-        ax2.grid(True, alpha=0.3)
 
     plt.tight_layout()
 

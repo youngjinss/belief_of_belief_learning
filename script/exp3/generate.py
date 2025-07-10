@@ -564,17 +564,21 @@ def run_single_game(game_id, config_dict, save_dir):
     # Log goal rewards
     total_reward = sum(goal_rewards.values())
 
-    while step_count < max_steps:
-        # Record current position
-        current_position = tuple(env.agent_pos)
-        position_history.append(current_position)
+    # Record initial position before any actions
+    initial_position = tuple(env.agent_pos)
+    position_history.append(initial_position)
 
+    while step_count < max_steps:
         # Get action from agent
         action = agent.get_action(obs)
         action_history.append(action)
 
         # Execute action (same as render_kd.py)
         obs, reward, terminated, truncated, info = env.step(action)
+        
+        # Record position AFTER action execution
+        current_position = tuple(env.agent_pos)
+        position_history.append(current_position)
         done = terminated or truncated
 
         # Handle observation if it's a dict

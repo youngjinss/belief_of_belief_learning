@@ -762,11 +762,15 @@ def train_tomnet(
         "train_loss": [],
         "train_action_loss": [],
         "train_goal_loss": [],
+        "train_consumption_loss": [],
+        "train_sr_loss": [],
         "train_action_accuracy": [],
         "train_goal_accuracy": [],
         "val_loss": [],
         "val_action_loss": [],
         "val_goal_loss": [],
+        "val_consumption_loss": [],
+        "val_sr_loss": [],
         "val_action_accuracy": [],
         "val_goal_accuracy": [],
         "epoch_time": [],
@@ -806,11 +810,15 @@ def train_tomnet(
         history["train_loss"].append(train_metrics["loss"])
         history["train_action_loss"].append(train_metrics["action_loss"])
         history["train_goal_loss"].append(train_metrics["goal_loss"])
+        history["train_consumption_loss"].append(train_metrics["consumption_loss"])
+        history["train_sr_loss"].append(train_metrics["sr_loss"])
         history["train_action_accuracy"].append(train_metrics["action_accuracy"])
         history["train_goal_accuracy"].append(train_metrics["goal_accuracy"])
         history["val_loss"].append(val_metrics["loss"])
         history["val_action_loss"].append(val_metrics["action_loss"])
         history["val_goal_loss"].append(val_metrics["goal_loss"])
+        history["val_consumption_loss"].append(val_metrics["consumption_loss"])
+        history["val_sr_loss"].append(val_metrics["sr_loss"])
         history["val_action_accuracy"].append(val_metrics["action_accuracy"])
         history["val_goal_accuracy"].append(val_metrics["goal_accuracy"])
         history["epoch_time"].append(epoch_time)

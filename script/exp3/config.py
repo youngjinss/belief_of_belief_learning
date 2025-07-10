@@ -87,10 +87,10 @@ class Config:
         # Goal reward settings (following ToMnetF pattern)
         self.goal_reward_settings = {
             "use_random_rewards": True,  # Enable random goal rewards
-            "total_reward_sum": 4,  # Total sum of all goal rewards (user preference)
+            "total_reward_sum": 2,  # Total sum of all goal rewards (user preference)
             "default_rewards": [
-                0.5,
                 1.0,
+                0.4,
                 0.1,
                 0.2,
             ],  # Default rewards for goals A, B, C, D (sum=4)
@@ -104,9 +104,9 @@ class Config:
             "total_cost_sum": 1.0,  # Total sum of all costs (fixed constraint)
             "default_costs": [
                 0.1,
-                0.2,
-                0.3,
-                0.4,
+                0.1,
+                0.1,
+                0.1,
             ],  # Default costs for red, green, blue, yellow (sum=1)
             "min_cost": 0.05,  # Minimum cost value (5%)
             "max_cost": 0.7,  # Maximum cost value (70%)
@@ -114,9 +114,9 @@ class Config:
 
         # Training configuration
         self.training_config = {
-            "batch_size": 1024,
+            "batch_size": 512,
             "epochs": 200,
-            "lr": 0.01,
+            "lr": 0.0001,
             "weight_decay": 0.001,
             "training_proportion": 0.9,
             "device": "cuda:3",
@@ -145,7 +145,7 @@ class Config:
         # Data processing configuration
         self.data_config = {
             "max_moves": 50,  # Maximum moves per trajectory (equivalent to experiment5)
-            "time_step": 10,  # Time step for model processing (equivalent to experiment5)
+            "time_step": 20,  # Time step for model processing (equivalent to experiment5)
             "max_n_past": 1,  # Maximum past episodes (matching experiment5)
             "n_past_min": 1,  # Minimum past episodes (matching experiment5)
             "n_past_max": 1,  # Maximum past episodes for sampling (matching experiment5)

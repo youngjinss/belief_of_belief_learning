@@ -373,6 +373,7 @@ def train_epoch(
     max_n_past=5,
     data_config=None,
     training_process_config=None,
+    model_config=None,
 ):
     """
     Train for one epoch
@@ -428,6 +429,15 @@ def train_epoch(
         recent_trajectory = trajectories[
             :, :current_timestep
         ]  # [batch_size, seq_len, channels, height, width]
+        
+        # Extract current state from trajectory (last timestep, first N channels for static environment)
+        # The model expects current_state with shape [batch_size, current_state_channels, height, width] 
+        # (walls + player + goals, no heading direction)
+        current_state_channels = model_config.get("current_state_channels", 8)
+        if current_timestep > 0 and current_timestep <= trajectories.size(1):
+            current_state = trajectories[:, current_timestep - 1, :current_state_channels]  # [batch_size, current_state_channels, height, width]
+        else:
+            current_state = trajectories[:, -1, :current_state_channels]  # Use last timestep, first N channels
 
         # Action target: action at current_timestep
         if current_timestep < actions.size(1):
@@ -441,8 +451,8 @@ def train_epoch(
 
         optimizer.zero_grad()
 
-        # Forward pass - now returns consumption and SR predictions
-        action_logits, goal_logits, consumption_logits, sr_pred, _, _ = model(past_episodes, recent_trajectory)
+        # Forward pass - CharNet gets past_episodes, MentalNet gets current_state
+        action_logits, goal_logits, consumption_logits, sr_pred, _, _ = model(past_episodes, current_state)
 
         # Compute loss with all components
         total_loss_batch, action_loss_batch, goal_loss_batch, consumption_loss_batch, sr_loss_batch = loss_fn(
@@ -493,7 +503,7 @@ def train_epoch(
     }
 
 
-def validate_epoch(model, val_loader, loss_fn, device, max_n_past=5, data_config=None):
+def validate_epoch(model, val_loader, loss_fn, device, max_n_past=5, data_config=None, model_config=None):
     """
     Validate for one epoch
 
@@ -544,8 +554,14 @@ def validate_epoch(model, val_loader, loss_fn, device, max_n_past=5, data_config
             # MentalNet processes recent trajectory to predict action at current timestep
             current_timestep = data_config["time_step"] if data_config else 20
 
-            # Recent trajectory: from start to current_timestep-1 (up to previous timestep)
-            recent_trajectory = trajectories[:, :current_timestep]
+            # Extract current state from trajectory (last timestep, first N channels for static environment)
+            # The model expects current_state with shape [batch_size, current_state_channels, height, width] 
+            # (walls + player + goals, no heading direction)
+            current_state_channels = model_config.get("current_state_channels", 8)
+            if current_timestep > 0 and current_timestep <= trajectories.size(1):
+                current_state = trajectories[:, current_timestep - 1, :current_state_channels]  # [batch_size, current_state_channels, height, width]
+            else:
+                current_state = trajectories[:, -1, :current_state_channels]  # Use last timestep, first N channels
 
             # Action target: action at current_timestep
             if current_timestep < actions.size(1):
@@ -561,8 +577,8 @@ def validate_epoch(model, val_loader, loss_fn, device, max_n_past=5, data_config
             consumption_targets = consumption_labels
             sr_targets = sr_labels
 
-            # Forward pass - now returns consumption and SR predictions
-            action_logits, goal_logits, consumption_logits, sr_pred, _, _ = model(past_episodes, recent_trajectory)
+            # Forward pass - CharNet gets past_episodes, MentalNet gets current_state
+            action_logits, goal_logits, consumption_logits, sr_pred, _, _ = model(past_episodes, current_state)
 
             # Compute loss with all components
             total_loss_batch, action_loss_batch, goal_loss_batch, consumption_loss_batch, sr_loss_batch = loss_fn(
@@ -721,6 +737,7 @@ def train_tomnet(
     # Extract parameters from config
     training_kwargs = config.get_training_kwargs()
     model_kwargs = config.get_model_kwargs()
+    model_config = config.get_model_config()
     data_config = config.get_data_config()
     training_process_config = config.get_training_process_config()
 
@@ -799,7 +816,10 @@ def train_tomnet(
         raise ValueError("Dataset too small for training. Need at least 2 samples.")
 
     # Create model using config
-    model = create_model(model_kwargs)
+    # Ensure the model gets current_state_channels for MentalNet
+    model_kwargs_updated = model_kwargs.copy()
+    model_kwargs_updated["current_state_channels"] = model_config.get("current_state_channels", 8)
+    model = create_model(model_kwargs_updated)
     model = model.to(device)
 
     print(f"Model created with {count_parameters(model):,} parameters")
@@ -860,11 +880,12 @@ def train_tomnet(
             max_n_past,
             data_config,
             training_process_config,
+            model_config,
         )
 
         # Validation
         val_metrics = validate_epoch(
-            model, val_loader, loss_fn, device, max_n_past, data_config
+            model, val_loader, loss_fn, device, max_n_past, data_config, model_config
         )
 
         epoch_time = time.time() - epoch_start_time

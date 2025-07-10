@@ -87,6 +87,7 @@ class CharNet(nn.Module):
         time_step: int,
         max_n_past: int = 10,
         use_n_past: bool = True,
+        hidden_size_lstm: int = 64,
     ):
         super(CharNet, self).__init__()
 
@@ -96,36 +97,41 @@ class CharNet(nn.Module):
         self.channels_in = channels_in
         self.batch = batch
         self.time_step = time_step
-        self.hidden_size_lstm = 64
+        self.hidden_size_lstm = 64  # Fixed like experiment 5
         self.max_n_past = max_n_past
         self.use_n_past = use_n_past
 
-        # Convolutional layers for spatial feature extraction
-        self.conv_layers = nn.ModuleList()
-
-        # Initial convolution
-        self.conv_layers.append(
-            nn.Conv2d(channels_in, out_channels, kernel_size=3, padding=1)
-        )
-
-        # Residual blocks
-        for _ in range(residual_blocks):
-            self.conv_layers.append(
-                ResidualBlock(out_channels, out_channels, kernel_size=3, padding=1)
+        if self.use_n_past:
+            # Past episode processing architecture - following experiment 5 exactly
+            self.past_conv_1 = nn.Conv2d(
+                in_channels=channels_in,
+                out_channels=out_channels,
+                kernel_size=(3, 3),
+                stride=1,
+                padding=1,
             )
+            self.past_res_blocks = nn.ModuleList()
 
-        # Global average pooling
-        self.global_avg_pool = nn.AdaptiveAvgPool2d((1, 1))
+            for _ in range(residual_blocks):
+                self.past_res_blocks.append(
+                    ResidualBlock(
+                        in_channels=out_channels,
+                        out_channels=out_channels,
+                        kernel_size=3,
+                        padding=1,
+                        stride=1,
+                    )
+                )
 
-        # LSTM for temporal processing
-        self.lstm = LSTM(out_channels, self.hidden_size_lstm)
+            self.past_lstm = LSTM(out_channels, self.hidden_size_lstm)
+            self.past_e_char = nn.Linear(self.hidden_size_lstm, n_echar)
 
-        # Character embedding output
-        self.char_embedding = nn.Linear(self.hidden_size_lstm, n_echar)
+        # Always create default_embedding as a fallback
+        self.default_embedding = nn.Parameter(torch.zeros(n_echar))
 
     def forward(self, past_trajectories):
         """
-        Forward pass for character network
+        Forward pass for character network - following experiment 5 exactly
 
         Args:
             past_trajectories: (batch_size, n_past, seq_len, channels, height, width)
@@ -133,55 +139,69 @@ class CharNet(nn.Module):
         Returns:
             Character embeddings: (batch_size, n_echar)
         """
-        batch_size = past_trajectories.size(0)
-        n_past = past_trajectories.size(1)
-        seq_len = past_trajectories.size(2)
+        if self.use_n_past and past_trajectories is not None:
+            batch_size, n_past_max = past_trajectories.size(0), past_trajectories.size(1)
 
-        # Process each past episode and accumulate for averaging
-        e_char_past = torch.zeros(batch_size, self.n_echar).to(past_trajectories.device)
-        valid_episode_counts = torch.zeros(batch_size).to(past_trajectories.device)
+            # Initialize character embedding from past episodes
+            e_char_past = torch.zeros(batch_size, self.n_echar).to(past_trajectories.device)
+            # Track number of valid episodes per sample for averaging
+            valid_episode_counts = torch.zeros(batch_size).to(past_trajectories.device)
 
-        for ep_idx in range(n_past):
-            # Get episode ep_idx for all samples in batch
-            episode_batch = past_trajectories[:, ep_idx]  # (batch, seq_len, channels, height, width)
-            
-            # Check if episode is non-zero (not masked)
-            episode_mask = torch.sum(episode_batch.view(batch_size, -1), dim=1) > 0  # (batch,)
-            
-            if episode_mask.any():
+            # Process each past episode and accumulate for averaging
+            for ep_idx in range(n_past_max):
+                # Get episode ep_idx for all samples in batch
+                episode_batch = past_trajectories[:, ep_idx]  # (batch, seq_len, channels, height, width)
+
                 # Reshape to (batch * seq_len, channels, height, width) for Conv2d processing
                 batch_size_local, seq_len_local, channels, height, width = episode_batch.shape
                 episode_batch = episode_batch.reshape(batch_size_local * seq_len_local, channels, height, width)
-                
-                # Process through conv layers
-                ep_x = episode_batch
-                for layer in self.conv_layers:
-                    ep_x = layer(ep_x)
-                
-                # Global average pooling
-                ep_x = self.global_avg_pool(ep_x)  # (batch * seq_len, out_channels, 1, 1)
-                ep_x = ep_x.reshape(batch_size_local, seq_len_local, self.out_channels)
-                
-                # Apply LSTM
-                ep_x = self.lstm(ep_x)  # (batch, hidden_size)
-                
-                # Get character embedding for this episode
-                ep_e_char = self.char_embedding(ep_x)  # (batch, n_echar)
-                
-                # Add to cumulative sum only for non-masked episodes
-                e_char_past += ep_e_char * episode_mask.unsqueeze(-1)
-                valid_episode_counts += episode_mask.float()
-        
-        # Average the character embeddings over valid episodes
-        valid_episode_counts = torch.maximum(
-            valid_episode_counts, torch.ones_like(valid_episode_counts)
-        )
-        char_features = e_char_past / valid_episode_counts.unsqueeze(-1)
 
-        # Character embedding
-        char_embedding = self.char_embedding(char_features)
+                # Check if episode is non-zero (not masked)
+                episode_check = episode_batch.view(batch_size_local, seq_len_local, -1)
+                episode_mask = torch.sum(episode_check, dim=[1, 2]) > 0  # (batch,)
 
-        return char_embedding
+                if episode_mask.any():
+                    # Process through conv layers directly
+                    ep_x = episode_batch  # (batch * seq_len, channels, height, width)
+
+                    # Apply first conv layer
+                    ep_x = self.past_conv_1(ep_x)  # Direct Conv2d
+
+                    # Apply residual blocks
+                    for i in range(self.n):
+                        ep_x = self.past_res_blocks[i](ep_x)
+
+                    # Reshape back to (batch, seq_len, height, width, out_channels)
+                    _, out_channels, out_height, out_width = ep_x.shape
+                    ep_x = ep_x.view(batch_size_local, seq_len_local, out_channels, out_height, out_width)
+                    ep_x = ep_x.permute(0, 1, 3, 4, 2)  # (batch, seq_len, height, width, out_channels)
+
+                    # Average over spatial dimensions
+                    ep_x = torch.mean(ep_x, [2, 3])  # (batch, seq_len, out_channels)
+
+                    # Apply LSTM
+                    ep_x = self.past_lstm(ep_x)
+
+                    # Get character embedding for this episode
+                    ep_e_char = self.past_e_char(ep_x)  # (batch, n_echar)
+
+                    # Add to cumulative sum only for non-masked episodes (vectorized)
+                    e_char_past += ep_e_char * episode_mask.unsqueeze(-1)
+                    # Track valid episode counts
+                    valid_episode_counts += episode_mask.float()
+
+            # Average the character embeddings over valid episodes
+            # Avoid division by zero by using maximum of counts and 1
+            valid_episode_counts = torch.maximum(
+                valid_episode_counts, torch.ones_like(valid_episode_counts)
+            )
+            e_char_past = e_char_past / valid_episode_counts.unsqueeze(-1)
+
+            return e_char_past
+        else:
+            # Return default embedding if not using past episodes
+            batch_size = past_trajectories.size(0) if past_trajectories is not None else self.batch
+            return self.default_embedding.unsqueeze(0).expand(batch_size, -1)
 
 
 class MentalNet(nn.Module):
@@ -377,6 +397,7 @@ class ToMnet(nn.Module):
         use_n_past: bool = True,
         env_width: int = 9,
         env_height: int = 9,
+        hidden_size_lstm: int = 64,
     ):
         super(ToMnet, self).__init__()
 
@@ -402,6 +423,7 @@ class ToMnet(nn.Module):
             time_step=time_step,
             max_n_past=max_n_past,
             use_n_past=use_n_past,
+            hidden_size_lstm=hidden_size_lstm,
         )
 
         # Mental state network - processes current state + character embedding
@@ -614,6 +636,7 @@ def create_model(config):
         use_n_past=config.get("use_n_past", True),
         env_width=config.get("env_width", 9),
         env_height=config.get("env_height", 9),
+        hidden_size_lstm=config.get("hidden_size_lstm", 64),
     )
 
     return model

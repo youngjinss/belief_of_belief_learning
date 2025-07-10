@@ -119,7 +119,7 @@ class Config:
             "lr": 0.01,
             "weight_decay": 0.001,
             "training_proportion": 0.9,
-            "device": "cuda:3",
+            "device": "cpu",
             "optimizer": "adam",
         }
 
@@ -128,15 +128,15 @@ class Config:
             "residual_blocks": 5,
             "n_echar": 16,
             "n_ement": 16,
-            "out_channels": 128,
+            "out_channels": 32,
             "channels_in": 9,  # 8 original channels + 1 heading direction channel
             "current_state_channels": 8,  # For MentalNet: 8 original channels (no heading direction)
             "action_space": 7,
             "goal_space": 4,
             "env_width": self.width,
             "env_height": self.height,
-            "hidden_size_lstm": 128,
-            "fc_layer_sizes": [128, 32],
+            "hidden_size_lstm": 32,
+            "fc_layer_sizes": [32, 32],
             "kernel_size": 3,
             "padding": 1,
             "stride": 1,
@@ -368,6 +368,9 @@ class Config:
             "goal_space": self.model_config["goal_space"],
             "max_n_past": self.data_config["max_n_past"],
             "use_n_past": True,
+            "hidden_size_lstm": self.model_config["hidden_size_lstm"],
+            "env_width": self.model_config["env_width"],
+            "env_height": self.model_config["env_height"],
         }
 
     def get_training_kwargs(self):

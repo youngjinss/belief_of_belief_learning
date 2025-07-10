@@ -13,7 +13,7 @@ Adapted from ToMnetF experiment5 for KeyDoor environment
 
 
 class DataReader:
-    def __init__(self, time_step=500, w=9, h=9, d=8, experiment_no=3):
+    def __init__(self, time_step=500, w=9, h=9, d=9, experiment_no=3):
         """
         Initialize DataReader for KeyDoor environment
 
@@ -21,7 +21,7 @@ class DataReader:
             time_step: Maximum trajectory length
             w: Maze width (9x9 for KeyDoor)
             h: Maze height (9x9 for KeyDoor)
-            d: Maze depth (8 layers: 1-ageLoaded game:nt, 1-walls, 4-keys, 4-doors, 4-actions)
+            d: Maze depth (9 layers: 8 original + 1 heading direction)
             experiment_no: Experiment number (3 for KeyDoor)
         """
         self.EXPERIMENT_NO = experiment_no

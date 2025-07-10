@@ -164,13 +164,13 @@ def run_episode(env, agent, config, episode, args):
 
         # Action names for display
         action_names = [
-            "turn_left",
-            "turn_right",
-            "forward",
+            "up",
+            "right",
+            "down",
+            "left",
+            "stay",
             "pickup",
-            "drop",
             "toggle",
-            "done",
         ]
         action_name = (
             action_names[action] if action < len(action_names) else f"action_{action}"

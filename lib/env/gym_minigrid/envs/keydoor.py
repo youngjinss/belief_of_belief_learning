@@ -40,7 +40,7 @@ class KeyDoorEnv(MiniGridEnv):
             agent_view_size=size,  # Agent can see entire grid
         )
 
-        # Use standard MiniGrid actions: left=0, right=1, forward=2, pickup=3, drop=4, toggle=5, done=6
+        # Use standard MiniGrid actions: up=0, right=1, down=2, left=3, stay=4, pickup=5, toggle=6
         self.actions = MiniGridEnv.Actions
         self.action_space = spaces.Discrete(7)
 

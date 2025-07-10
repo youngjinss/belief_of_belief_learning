@@ -96,13 +96,13 @@ class GameSimulation:
 
         # Action names for display
         self.action_names = [
-            "turn_left",
-            "turn_right",
-            "forward",
+            "up",
+            "right",
+            "down",
+            "left",
+            "stay",
             "pickup",
-            "drop",
             "toggle",
-            "done",
         ]
 
     def parse_data(self):
@@ -118,7 +118,7 @@ class GameSimulation:
         # Additional trajectory data
         self.actions = []
         self.interactions = []
-        self.headings = []  # Track heading direction (0=north, 1=east, 2=south, 3=west)
+        # No heading tracking needed with direct movement
 
         i = 0
         while i < len(lines):
@@ -193,20 +193,17 @@ class GameSimulation:
                 continue
 
             if sr_section and line.startswith("[") and ":" in line:
-                # Position log section: [x, y] : action : interaction : heading
+                # Position log section: [x, y] : action : interaction
                 parts = line.split(" : ")
                 if len(parts) >= 3:
                     pos_str = parts[0].strip("[]")
                     pos = tuple(map(int, pos_str.split(", ")))
                     action = int(parts[1])
                     interaction = parts[2]
-                    # Check if heading is available (new format)
-                    heading = int(parts[3]) if len(parts) >= 4 else 1  # Default to east if not available
 
                     self.agent_positions.append(pos)
                     self.actions.append(action)
                     self.interactions.append(interaction)
-                    self.headings.append(heading)
                 i += 1
                 continue
 
@@ -291,23 +288,19 @@ class GameSimulation:
                 elif cell == "O":
                     agent_pos = (x, y)
 
-        # Set agent position and heading
+        # Set agent position
         if len(self.agent_positions) > 0:
             # Use trajectory starting position
             env.agent_pos = np.array(self.agent_positions[0])
-            # Use recorded heading if available, otherwise default to east
-            env.agent_dir = self.headings[0] if len(self.headings) > 0 else 1
         elif agent_pos:
             # Use maze position
             env.agent_pos = np.array(agent_pos)
-            env.agent_dir = 1  # Default to east
         else:
             # Fallback: find agent position from maze if not found in trajectory
             for y in range(maze_height):
                 for x in range(maze_width):
                     if self.maze[y][x] == "O":
                         env.agent_pos = np.array([x, y])
-                        env.agent_dir = 1  # Default to east
                         break
 
         # Set target door color
@@ -379,7 +372,6 @@ class GameSimulation:
             print(f"Warning: Could not render: {e}")
 
         print(f"Initial agent position: {env.agent_pos}")
-        print(f"Initial agent direction: {env.agent_dir} ({'north' if env.agent_dir == 0 else 'east' if env.agent_dir == 1 else 'south' if env.agent_dir == 2 else 'west'})")
         print(f"Initial agent keys: {env.agent_keys}")
         print(f"Initial positions from maze: {self.initial_positions}")
 
@@ -392,18 +384,30 @@ class GameSimulation:
             interaction = (
                 self.interactions[step] if step < len(self.interactions) else "X"
             )
-            heading = self.headings[step] if step < len(self.headings) else 1
-
-            # Get action name and heading name
+            # Get action name
             action_name = (
                 self.action_names[action]
                 if action < len(self.action_names)
                 else f"action_{action}"
             )
-            heading_names = ["north", "east", "south", "west"]
-            heading_name = heading_names[heading] if heading < len(heading_names) else f"dir_{heading}"
 
-            print(f"Step {step + 1}: {action_name} at {position} facing {heading_name} -> {interaction}")
+            # Update agent direction based on action for better visualization
+            action_to_direction = {
+                0: 3,  # up -> north
+                1: 0,  # right -> east
+                2: 1,  # down -> south
+                3: 2,  # left -> west
+                # For stay, pickup, toggle actions, keep current direction
+            }
+            
+            if action in action_to_direction:
+                env.agent_dir = action_to_direction[action]
+                direction_names = ["east", "south", "west", "north"]
+                direction_name = direction_names[env.agent_dir]
+                print(f"Step {step + 1}: {action_name} at {position} facing {direction_name} -> {interaction}")
+            else:
+                print(f"Step {step + 1}: {action_name} at {position} -> {interaction}")
+                
             if hasattr(env, 'agent_keys') and env.agent_keys:
                 print(f"  Agent inventory: {env.agent_keys}")
 
@@ -474,7 +478,6 @@ class GameSimulation:
         print(f"Consumption Labels: {self.consumption_labels}")
         print(f"Number of timesteps with SR data: {len(self.sr_data)}")
         print(f"Number of position records: {len(self.agent_positions)}")
-        print(f"Number of heading records: {len(self.headings)}")
         print(f"\nInitial positions:")
         for key, pos in self.initial_positions.items():
             print(f"  {key}: {pos}")
@@ -484,12 +487,6 @@ class GameSimulation:
         for i in range(min(5, len(self.sr_data))):
             print(f"  Timestep {i}: {self.sr_data.get(i, {})}")
         
-        # Show first few heading records
-        print(f"\nFirst 5 heading records:")
-        for i in range(min(5, len(self.headings))):
-            heading_names = ["north", "east", "south", "west"]
-            heading_name = heading_names[self.headings[i]] if self.headings[i] < len(heading_names) else f"dir_{self.headings[i]}"
-            print(f"  Step {i}: {heading_name} ({self.headings[i]})")
 
 
 def main():

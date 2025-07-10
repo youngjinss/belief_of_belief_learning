@@ -69,14 +69,7 @@ class AStarAgent:
             (0, 1),  # right (col + 1)
         ]
 
-        # MiniGrid action mapping: 0=turn_left, 1=turn_right, 2=forward, 3=pickup, 4=drop, 5=toggle, 6=done
-        # Agent has direction: 0=right, 1=down, 2=left, 3=up
-        self.direction_vectors = [
-            (1, 0),  # 0: right
-            (0, 1),  # 1: down
-            (-1, 0),  # 2: left
-            (0, -1),  # 3: up
-        ]
+        # MiniGrid action mapping: 0=up, 1=right, 2=down, 3=left, 4=stay, 5=pickup, 6=toggle
 
     def update_observation(self, obs):
         """Update agent's understanding of the environment"""
@@ -123,7 +116,7 @@ class AStarAgent:
             return self._open_target_door(target_key_color)
 
         # Better fallback: try random movement instead of staying stuck
-        return np.random.choice([0, 1, 2])  # random turn or forward
+        return np.random.choice([0, 1, 2, 3])  # random movement
 
     def _collect_target_key(self, target_key_color):
         """Strategy to collect the target key"""
@@ -181,7 +174,7 @@ class AStarAgent:
         return None
 
     def _navigate_to_position(self, target_pos):
-        """Navigate to target position using A* pathfinding and MiniGrid turn-based movement"""
+        """Navigate to target position using A* pathfinding and direct movement"""
         # Always recalculate if path is empty or if we're not on the expected path
         if (
             not self.path
@@ -199,52 +192,27 @@ class AStarAgent:
             if self.path[0] != self.agent_pos:
                 self.path = self._astar_pathfind(self.agent_pos, target_pos)
                 if len(self.path) < 2:
-                    return 4  # Drop if no path found
+                    return 4  # Stay if no path found
                 next_pos = self.path[1]
 
             # Calculate movement direction needed
-            move_dir = (
-                next_pos[0] - self.agent_pos[0],
-                next_pos[1] - self.agent_pos[1],
-            )
+            dx = next_pos[0] - self.agent_pos[0]
+            dy = next_pos[1] - self.agent_pos[1]
 
-            # Get current agent direction from environment
-            agent_dir = self.env.agent_dir
-            current_dir_vec = self.direction_vectors[agent_dir]
-
-            # Check if we're already facing the right direction
-            if move_dir == current_dir_vec:
-                # We're facing the right direction, move forward
-                # Check if the target position is actually walkable
-                if self._is_walkable(next_pos):
-                    return 2  # Forward
-                else:
-                    self.path = []
-                    return 4  # Drop
+            # Map movement to direct action
+            if dx == 0 and dy == -1:
+                return 0  # Up
+            elif dx == 1 and dy == 0:
+                return 1  # Right
+            elif dx == 0 and dy == 1:
+                return 2  # Down
+            elif dx == -1 and dy == 0:
+                return 3  # Left
             else:
-                # We need to turn first
-                # Find which direction we need to face
-                target_dir = None
-                for i, dir_vec in enumerate(self.direction_vectors):
-                    if dir_vec == move_dir:
-                        target_dir = i
-                        break
+                # Shouldn't happen with proper A* path
+                return 4  # Stay
 
-                if target_dir is not None:
-                    # Calculate turn direction (left or right)
-                    # MiniGrid uses 0=left turn, 1=right turn
-                    turn_diff = (target_dir - agent_dir) % 4
-                    if turn_diff == 1:  # Turn right
-                        return 1
-                    elif turn_diff == 3:  # Turn left (3 steps right = 1 step left)
-                        return 0
-                    elif turn_diff == 2:  # Turn around (choose right)
-                        return 1
-                else:
-                    self.path = []
-                    return 4  # Drop
-
-        return 4  # Drop if no path found
+        return 4  # Stay if no path found
 
     def _astar_pathfind(self, start_pos, goal_pos):
         """
@@ -422,17 +390,9 @@ class ValueAgent:
         self.policy = None
         self.converged = False
 
-        # MiniGrid action mapping: 0=turn_left, 1=turn_right, 2=forward, 3=pickup, 4=drop, 5=toggle, 6=done
+        # MiniGrid action mapping: 0=up, 1=right, 2=down, 3=left, 4=stay, 5=pickup, 6=toggle
         # We'll use a simplified 4-action space for value iteration: 0=up, 1=right, 2=down, 3=left
-        self.actions = [(-1, 0), (0, 1), (1, 0), (0, -1)]  # up, right, down, left
-
-        # Direction vectors for MiniGrid agent directions
-        self.direction_vectors = [
-            (1, 0),  # 0: right
-            (0, 1),  # 1: down
-            (-1, 0),  # 2: left
-            (0, -1),  # 3: up
-        ]
+        self.actions = [(0, -1), (1, 0), (0, 1), (-1, 0)]  # up, right, down, left
 
     def update_observation(self, obs):
         """Update agent's understanding of the environment"""
@@ -469,7 +429,7 @@ class ValueAgent:
             return self._open_target_door(target_key_color)
 
         # Better fallback: try random movement instead of staying stuck
-        return np.random.choice([0, 1, 2])  # random turn or forward
+        return np.random.choice([0, 1, 2, 3])  # random movement
 
     def _collect_target_key(self, target_key_color):
         """Strategy to collect the target key using value iteration"""
@@ -623,40 +583,14 @@ class ValueAgent:
         return reward + next_value
 
     def _convert_to_minigrid_action(self, value_action):
-        """Convert value iteration action to MiniGrid turn-based action"""
+        """Convert value iteration action to MiniGrid direct movement action"""
         if value_action is None:
             return 4  # Stay
 
-        # Get movement direction from value action
-        move_dir = self.actions[value_action]
-
-        # Get current agent direction from environment
-        agent_dir = self.env.agent_dir
-        current_dir_vec = self.direction_vectors[agent_dir]
-
-        # Check if we're already facing the right direction
-        if move_dir == current_dir_vec:
-            return 2  # Forward
-        else:
-            # We need to turn first
-            # Find which direction we need to face
-            target_dir = None
-            for i, dir_vec in enumerate(self.direction_vectors):
-                if dir_vec == move_dir:
-                    target_dir = i
-                    break
-
-            if target_dir is not None:
-                # Calculate turn direction (left or right)
-                turn_diff = (target_dir - agent_dir) % 4
-                if turn_diff == 1:  # Turn right
-                    return 1
-                elif turn_diff == 3:  # Turn left
-                    return 0
-                elif turn_diff == 2:  # Turn around (choose right)
-                    return 1
-
-        return 4  # Stay as fallback
+        # Value action directly maps to MiniGrid action for direct movement
+        # value_action: 0=up, 1=right, 2=down, 3=left
+        # MiniGrid actions: 0=up, 1=right, 2=down, 3=left, 4=stay
+        return value_action
 
     def _is_walkable(self, pos):
         """Check if position is walkable"""

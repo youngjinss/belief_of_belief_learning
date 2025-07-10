@@ -655,20 +655,17 @@ class MiniGridEnv(gym.Env):
 
     # Enumeration of possible actions
     class Actions(IntEnum):
-        # Turn left, turn right, move forward
-        left = 0
+        # Direct movement actions
+        up = 0
         right = 1
-        forward = 2
+        down = 2
+        left = 3
+        stay = 4
 
         # Pick up an object
-        pickup = 3
-        # Drop an object
-        drop = 4
+        pickup = 5
         # Toggle/activate an object
-        toggle = 5
-
-        # Done completing task
-        done = 6
+        toggle = 6
 
     def __init__(
         self,
@@ -1096,63 +1093,78 @@ class MiniGridEnv(gym.Env):
         done = False
         stuck = False
 
-        # Get the position in front of the agent
-        fwd_pos = self.front_pos
+        # Define movement vectors for direct movement
+        move_vectors = {
+            self.actions.up: np.array([0, -1]),
+            self.actions.right: np.array([1, 0]),
+            self.actions.down: np.array([0, 1]),
+            self.actions.left: np.array([-1, 0]),
+        }
 
-        # Get the contents of the cell in front of the agent
-        fwd_cell = self.grid.get(*fwd_pos)
-
-        # Rotate left
-        if action == self.actions.left:
-            self.agent_dir -= 1
-            if self.agent_dir < 0:
-                self.agent_dir += 4
-
-        # Rotate right
-        elif action == self.actions.right:
-            self.agent_dir = (self.agent_dir + 1) % 4
-
-        # Move forward
-        elif action == self.actions.forward:
-            if fwd_cell == None or fwd_cell.can_overlap():
-                self.agent_pos = fwd_pos
-            else:
-                if fwd_cell != None and fwd_cell.type == "goal":
-                    done = True
-                    reward = self._reward()
-                if fwd_cell != None and fwd_cell.type == "lava":
-                    done = True
-                stuck = True
-
-        # Pick up an object
-        elif action == self.actions.pickup:
-            if fwd_cell and fwd_cell.can_pickup():
-                if self.carrying is None:
-                    self.carrying = fwd_cell
-                    self.carrying.cur_pos = np.array([-1, -1])
-                    self.grid.set(*fwd_pos, None)
+        # Handle movement actions
+        if action in move_vectors:
+            # Calculate new position
+            new_pos = self.agent_pos + move_vectors[action]
+            
+            # Check if new position is valid
+            if (0 <= new_pos[0] < self.width and 
+                0 <= new_pos[1] < self.height):
+                # Get the contents of the target cell
+                target_cell = self.grid.get(*new_pos)
+                
+                if target_cell is None or target_cell.can_overlap():
+                    self.agent_pos = new_pos
+                else:
+                    if target_cell.type == "goal":
+                        done = True
+                        reward = self._reward()
+                    elif target_cell.type == "lava":
+                        done = True
+                    stuck = True
             else:
                 stuck = True
 
-        # Drop an object
-        elif action == self.actions.drop:
-            if not fwd_cell and self.carrying:
-                self.grid.set(*fwd_pos, self.carrying)
-                self.carrying.cur_pos = fwd_pos
-                self.carrying = None
-            else:
-                stuck = True
-
-        # Toggle/activate an object
-        elif action == self.actions.toggle:
-            if fwd_cell:
-                fwd_cell.toggle(self, fwd_pos)
-            else:
-                stuck = True
-
-        # Done action (not used by default)
-        elif action == self.actions.done:
+        # Stay action - do nothing
+        elif action == self.actions.stay:
             pass
+
+        # Pick up an object at current position
+        elif action == self.actions.pickup:
+            # Check all adjacent cells for pickupable objects
+            for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                adj_pos = self.agent_pos + np.array([dx, dy])
+                if (0 <= adj_pos[0] < self.width and 
+                    0 <= adj_pos[1] < self.height):
+                    adj_cell = self.grid.get(*adj_pos)
+                    if adj_cell and adj_cell.can_pickup() and self.carrying is None:
+                        self.carrying = adj_cell
+                        self.carrying.cur_pos = np.array([-1, -1])
+                        self.grid.set(*adj_pos, None)
+                        break
+            else:
+                stuck = True
+
+        # Toggle/activate an object at current position or adjacent
+        elif action == self.actions.toggle:
+            toggled = False
+            # Check current position first
+            curr_cell = self.grid.get(*self.agent_pos)
+            if curr_cell and hasattr(curr_cell, 'toggle'):
+                curr_cell.toggle(self, self.agent_pos)
+                toggled = True
+            else:
+                # Check all adjacent cells
+                for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    adj_pos = self.agent_pos + np.array([dx, dy])
+                    if (0 <= adj_pos[0] < self.width and 
+                        0 <= adj_pos[1] < self.height):
+                        adj_cell = self.grid.get(*adj_pos)
+                        if adj_cell and hasattr(adj_cell, 'toggle'):
+                            adj_cell.toggle(self, adj_pos)
+                            toggled = True
+                            break
+            if not toggled:
+                stuck = True
 
         else:
             assert False, "unknown action"

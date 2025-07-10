@@ -38,8 +38,10 @@ def convert_sparse_sr_to_dense(sr_data_timestep, height, width, gammas=[0.5, 0.9
     dense_sr = np.zeros((len(gammas), height, width))
     
     for gamma_idx, gamma in enumerate(gammas):
-        if gamma in sr_data_timestep:
-            sparse_entries = sr_data_timestep[gamma]
+        # Convert gamma to string to match data keys
+        gamma_key = str(gamma)
+        if gamma_key in sr_data_timestep:
+            sparse_entries = sr_data_timestep[gamma_key]
             for pos, value in sparse_entries:
                 x, y = pos
                 if 0 <= x < width and 0 <= y < height:

@@ -129,9 +129,11 @@ class Config:
             "n_echar": 16,
             "n_ement": 16,
             "out_channels": 32,
-            "channels_in": 8,
+            "channels_in": 9,  # 8 original channels + 1 heading direction channel
             "action_space": 7,
             "goal_space": 4,
+            "env_width": self.width,
+            "env_height": self.height,
             "hidden_size_lstm": 64,
             "fc_layer_sizes": [64, 32],
             "kernel_size": 3,
@@ -148,7 +150,7 @@ class Config:
             "n_past_max": 1,  # Maximum past episodes for sampling (matching experiment5)
             "maze_width": self.width,
             "maze_height": self.height,
-            "maze_depth": 8,
+            "maze_depth": 9,  # 8 original channels + 1 heading direction channel
         }
 
         # Training process configuration
@@ -158,6 +160,8 @@ class Config:
             "max_grad_norm": 1.0,
             "action_weight": 1.0,
             "goal_weight": 1.0,
+            "consumption_weight": 1.0,
+            "sr_weight": 1.0,
         }
 
         # Evaluation configuration

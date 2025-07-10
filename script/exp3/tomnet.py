@@ -52,21 +52,8 @@ class ResidualBlock(nn.Module):
         self.relu = nn.ReLU()
         self.out_channels = out_channels
 
-        # Skip connection adjustment if needed
-        if in_channels != out_channels:
-            self.skip_connection = nn.Conv2d(
-                in_channels, out_channels, kernel_size=1, stride=stride
-            )
-        else:
-            self.skip_connection = None
-
     def forward(self, x):
         residual = x
-
-        # Apply skip connection if channels don't match
-        if self.skip_connection is not None:
-            residual = self.skip_connection(residual)
-
         x = self.convBlock_1(x)
         x = self.convBlock_2(x)
 
@@ -150,36 +137,46 @@ class CharNet(nn.Module):
         n_past = past_trajectories.size(1)
         seq_len = past_trajectories.size(2)
 
-        # Reshape for processing
-        # (batch_size * n_past * seq_len, channels, height, width)
-        x = past_trajectories.reshape(-1, self.channels_in, 9, 9)
+        # Process each past episode and accumulate for averaging
+        e_char_past = torch.zeros(batch_size, self.n_echar).to(past_trajectories.device)
+        valid_episode_counts = torch.zeros(batch_size).to(past_trajectories.device)
 
-        # Extract spatial features
-        for layer in self.conv_layers:
-            x = layer(x)
-
-        # Global average pooling
-        x = self.global_avg_pool(
-            x
-        )  # (batch_size * n_past * seq_len, out_channels, 1, 1)
-        x = x.reshape(batch_size * n_past, seq_len, self.out_channels)
-
-        # LSTM processing for each past episode
-        episode_embeddings = []
-        for i in range(n_past):
-            start_idx = i * batch_size
-            end_idx = (i + 1) * batch_size
-            episode_data = x[start_idx:end_idx]  # (batch_size, seq_len, out_channels)
-            episode_emb = self.lstm(episode_data)  # (batch_size, hidden_size)
-            episode_embeddings.append(episode_emb)
-
-        # Stack and average episode embeddings
-        episode_embeddings = torch.stack(
-            episode_embeddings, dim=1
-        )  # (batch_size, n_past, hidden_size)
-        char_features = torch.mean(
-            episode_embeddings, dim=1
-        )  # (batch_size, hidden_size)
+        for ep_idx in range(n_past):
+            # Get episode ep_idx for all samples in batch
+            episode_batch = past_trajectories[:, ep_idx]  # (batch, seq_len, channels, height, width)
+            
+            # Check if episode is non-zero (not masked)
+            episode_mask = torch.sum(episode_batch.view(batch_size, -1), dim=1) > 0  # (batch,)
+            
+            if episode_mask.any():
+                # Reshape to (batch * seq_len, channels, height, width) for Conv2d processing
+                batch_size_local, seq_len_local, channels, height, width = episode_batch.shape
+                episode_batch = episode_batch.reshape(batch_size_local * seq_len_local, channels, height, width)
+                
+                # Process through conv layers
+                ep_x = episode_batch
+                for layer in self.conv_layers:
+                    ep_x = layer(ep_x)
+                
+                # Global average pooling
+                ep_x = self.global_avg_pool(ep_x)  # (batch * seq_len, out_channels, 1, 1)
+                ep_x = ep_x.reshape(batch_size_local, seq_len_local, self.out_channels)
+                
+                # Apply LSTM
+                ep_x = self.lstm(ep_x)  # (batch, hidden_size)
+                
+                # Get character embedding for this episode
+                ep_e_char = self.char_embedding(ep_x)  # (batch, n_echar)
+                
+                # Add to cumulative sum only for non-masked episodes
+                e_char_past += ep_e_char * episode_mask.unsqueeze(-1)
+                valid_episode_counts += episode_mask.float()
+        
+        # Average the character embeddings over valid episodes
+        valid_episode_counts = torch.maximum(
+            valid_episode_counts, torch.ones_like(valid_episode_counts)
+        )
+        char_features = e_char_past / valid_episode_counts.unsqueeze(-1)
 
         # Character embedding
         char_embedding = self.char_embedding(char_features)
@@ -188,6 +185,7 @@ class CharNet(nn.Module):
 
 
 class MentalNet(nn.Module):
+    """Simplified MentalNet that processes current state instead of trajectory"""
     def __init__(
         self,
         batch: int,
@@ -203,18 +201,16 @@ class MentalNet(nn.Module):
         self.n = residual_blocks
         self.n_ement = n_ement
         self.out_channels = out_channels
-        self.channels_in = channels_in
+        self.channels_in = channels_in + n_echar  # Current state channels + character embedding
         self.batch = batch
-        self.time_step = time_step
         self.n_echar = n_echar
-        self.hidden_size_lstm = 64
 
         # Convolutional layers for spatial feature extraction
         self.conv_layers = nn.ModuleList()
 
         # Initial convolution
         self.conv_layers.append(
-            nn.Conv2d(channels_in, out_channels, kernel_size=3, padding=1)
+            nn.Conv2d(self.channels_in, out_channels, kernel_size=3, padding=1)
         )
 
         # Residual blocks
@@ -226,59 +222,42 @@ class MentalNet(nn.Module):
         # Global average pooling
         self.global_avg_pool = nn.AdaptiveAvgPool2d((1, 1))
 
-        # LSTM for temporal processing
-        self.lstm = LSTM(out_channels, self.hidden_size_lstm)
-
-        # Mental state network
+        # Mental state network (directly from spatial features)
         self.mental_state_net = nn.Sequential(
-            nn.Linear(self.hidden_size_lstm + n_echar, self.hidden_size_lstm),
+            nn.Linear(out_channels, out_channels),
             nn.ReLU(),
-            nn.Linear(self.hidden_size_lstm, self.hidden_size_lstm),
+            nn.Linear(out_channels, out_channels),
             nn.ReLU(),
-            nn.Linear(self.hidden_size_lstm, n_ement),
+            nn.Linear(out_channels, n_ement),
         )
 
-    def forward(self, current_trajectory, character_embedding):
+    def forward(self, current_state_with_char):
         """
         Forward pass for mental state network
 
         Args:
-            current_trajectory: (batch_size, seq_len, channels, height, width)
-            character_embedding: (batch_size, n_echar)
+            current_state_with_char: (batch_size, channels_in + n_echar, height, width)
 
         Returns:
             Mental state embedding: (batch_size, n_ement)
+            Spatial features: (batch_size, out_channels, height, width)
         """
-        batch_size = current_trajectory.size(0)
-        seq_len = current_trajectory.size(1)
-
-        # Reshape for processing
-        x = current_trajectory.reshape(-1, self.channels_in, 9, 9)
-
         # Extract spatial features
+        x = current_state_with_char
         for layer in self.conv_layers:
             x = layer(x)
 
         # Store spatial features for SR prediction
-        spatial_features = x  # (batch_size * seq_len, out_channels, height, width)
+        spatial_features = x  # (batch_size, out_channels, height, width)
         
         # Global average pooling for mental state
-        x_pooled = self.global_avg_pool(x)  # (batch_size * seq_len, out_channels, 1, 1)
-        x_pooled = x_pooled.reshape(batch_size, seq_len, self.out_channels)
-
-        # LSTM processing
-        trajectory_features = self.lstm(x_pooled)  # (batch_size, hidden_size)
-
-        # Combine with character embedding
-        combined_features = torch.cat([trajectory_features, character_embedding], dim=1)
+        x_pooled = self.global_avg_pool(x)  # (batch_size, out_channels, 1, 1)
+        x_pooled = x_pooled.squeeze(-1).squeeze(-1)  # (batch_size, out_channels)
 
         # Mental state prediction
-        mental_state = self.mental_state_net(combined_features)
+        mental_state = self.mental_state_net(x_pooled)
 
-        # Get final spatial features (last timestep)
-        final_spatial_features = spatial_features[-batch_size:]  # (batch_size, out_channels, height, width)
-
-        return mental_state, final_spatial_features
+        return mental_state, spatial_features
 
 
 class PredNet(nn.Module):
@@ -408,6 +387,8 @@ class ToMnet(nn.Module):
         self.max_n_past = max_n_past
         self.use_n_past = use_n_past
         self.channels_in = channels_in
+        self.env_width = env_width
+        self.env_height = env_height
 
         # Character network - processes past episodes
         self.char_net = CharNet(
@@ -421,13 +402,13 @@ class ToMnet(nn.Module):
             use_n_past=use_n_past,
         )
 
-        # Mental state network - processes current trajectory + character embedding
+        # Mental state network - processes current state + character embedding
         self.mental_net = MentalNet(
             batch=batch,
             residual_blocks=residual_blocks,
             n_ement=n_ement,
             out_channels=out_channels,
-            channels_in=channels_in,
+            channels_in=channels_in,  # Will be adjusted inside MentalNet to channels_in + n_echar
             time_step=time_step,
             n_echar=n_echar,
         )
@@ -444,13 +425,13 @@ class ToMnet(nn.Module):
             env_height=env_height,
         )
 
-    def forward(self, past_trajectories, current_trajectory):
+    def forward(self, past_trajectories, current_state):
         """
         Forward pass for ToMnet (3-stage architecture)
 
         Args:
             past_trajectories: (batch_size, n_past, seq_len, channels, height, width)
-            current_trajectory: (batch_size, seq_len, channels, height, width)
+            current_state: (batch_size, channels, height, width) - only current state, not trajectory
 
         Returns:
             action_logits: (batch_size, action_space)
@@ -465,13 +446,25 @@ class ToMnet(nn.Module):
             character_embedding = self.char_net(past_trajectories)
         else:
             # Use zero embedding if no past trajectories
-            batch_size = current_trajectory.size(0)
+            batch_size = current_state.size(0)
             character_embedding = torch.zeros(
-                batch_size, self.n_echar, device=current_trajectory.device
+                batch_size, self.n_echar, device=current_state.device
             )
 
-        # Mental state network - processes current trajectory + character embedding
-        mental_state, spatial_features = self.mental_net(current_trajectory, character_embedding)
+        # Reshape character embedding to spatial format and concatenate with current state
+        batch_size = character_embedding.size(0)
+        e_char_spatial = character_embedding.unsqueeze(2).unsqueeze(3)  # (batch, n_echar, 1, 1)
+        e_char_spatial = e_char_spatial.expand(
+            batch_size, self.n_echar, self.env_height, self.env_width
+        )  # (batch, n_echar, height, width)
+        
+        # Concatenate current state with character embedding
+        current_state_with_char = torch.cat(
+            [current_state, e_char_spatial], dim=1
+        )  # (batch, channels + n_echar, height, width)
+
+        # Mental state network - processes current state + character embedding
+        mental_state, spatial_features = self.mental_net(current_state_with_char)
 
         # Prediction network - processes mental state + character embedding + spatial features
         action_logits, goal_logits, consumption_logits, sr_pred = self.pred_net(mental_state, character_embedding, spatial_features)

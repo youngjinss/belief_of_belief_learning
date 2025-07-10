@@ -288,6 +288,7 @@ class PredNet(nn.Module):
         n_ement: int,
         n_echar: int,
         action_space: int = 7,
+        out_channels: int = 64,
         goal_space: int = 4,
         env_width: int = 9,
         env_height: int = 9,
@@ -304,40 +305,40 @@ class PredNet(nn.Module):
 
         # Action prediction network
         self.action_predictor = nn.Sequential(
-            nn.Linear(n_ement + n_echar, 64),
+            nn.Linear(n_ement + n_echar, out_channels),
             nn.ReLU(),
-            nn.Linear(64, 64),
+            nn.Linear(out_channels, out_channels),
             nn.ReLU(),
-            nn.Linear(64, action_space),
+            nn.Linear(out_channels, action_space),
         )
 
         # Goal prediction network
         self.goal_predictor = nn.Sequential(
-            nn.Linear(n_ement + n_echar, 64),
+            nn.Linear(n_ement + n_echar, out_channels),
             nn.ReLU(),
-            nn.Linear(64, 64),
+            nn.Linear(out_channels, out_channels),
             nn.ReLU(),
-            nn.Linear(64, goal_space),
+            nn.Linear(out_channels, goal_space),
         )
 
         # Consumption prediction network (8 outputs: 4 keys + 4 doors)
         self.consumption_predictor = nn.Sequential(
-            nn.Linear(n_ement + n_echar, 64),
+            nn.Linear(n_ement + n_echar, out_channels),
             nn.ReLU(),
-            nn.Linear(64, 64),
+            nn.Linear(out_channels, out_channels),
             nn.ReLU(),
-            nn.Linear(64, 8),  # 4 keys + 4 doors
+            nn.Linear(out_channels, 8),  # 4 keys + 4 doors
         )
 
         # SR prediction network using spatial convolutions (matching experiment 5)
         # Uses spatial convolutional layers to maintain spatial structure
         self.conv_sr = nn.Conv2d(
-            in_channels=32,  # This should match out_channels from MentalNet
-            out_channels=32,
+            in_channels=out_channels,  # This should match out_channels from MentalNet
+            out_channels=out_channels,
             kernel_size=1
         )
         self.conv_sr_out = nn.Conv2d(
-            in_channels=32,
+            in_channels=out_channels,
             out_channels=3,  # 3 discount factors
             kernel_size=1
         )
@@ -437,6 +438,7 @@ class ToMnet(nn.Module):
             n_ement=n_ement,
             n_echar=n_echar,
             action_space=action_space,
+            out_channels=out_channels,
             goal_space=goal_space,
             env_width=env_width,
             env_height=env_height,

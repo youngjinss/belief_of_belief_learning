@@ -148,6 +148,7 @@ class Config:
             "max_n_past": 1,  # Maximum past episodes (matching experiment5)
             "n_past_min": 1,  # Minimum past episodes (matching experiment5)
             "n_past_max": 1,  # Maximum past episodes for sampling (matching experiment5)
+            "rank_threshold": 4,  # How many top ranks to consider for matching (1=only highest, 2=top 2, etc.)
             "maze_width": self.width,
             "maze_height": self.height,
             "maze_depth": 9,  # 8 original channels + 1 heading direction channel
@@ -453,6 +454,8 @@ class Config:
             self.data_config["n_past_min"] = args.n_past_min
         if hasattr(args, "n_past_max") and args.n_past_max is not None:
             self.data_config["n_past_max"] = args.n_past_max
+        if hasattr(args, "rank_threshold") and args.rank_threshold is not None:
+            self.data_config["rank_threshold"] = args.rank_threshold
 
         # Training process configuration
         if (

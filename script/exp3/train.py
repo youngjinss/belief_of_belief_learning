@@ -140,19 +140,27 @@ class EarlyStopping:
 
 
 def generate_past_episodes_from_batch(
-    trajectories, goals, batch_size, n_past_min=1, n_past_max=5, max_n_past=5
+    trajectories,
+    goals,
+    batch_size,
+    n_past_min=1,
+    n_past_max=5,
+    max_n_past=5,
+    rank_threshold=1,
 ):
     """
     Generate past episodes by randomly sampling from other trajectories in the batch
-    with the same goal
+    with the same goal, using fully vectorized operations for efficiency
+    (Adapted from experiment 5 for exp3 tensor format)
 
     Args:
         trajectories: Batch of trajectories [batch_size, seq_len, channels, height, width]
-        goals: Batch of goal labels [batch_size]
+        goals: Batch of goal labels [batch_size] or goal ranks [batch_size, 4]
         batch_size: Size of current batch
         n_past_min: Minimum number of past episodes to sample
         n_past_max: Maximum number of past episodes to sample
         max_n_past: Maximum number of past episodes for consistent tensor shape
+        rank_threshold: How many top ranks to consider for matching (1=only highest, 2=top 2, etc.)
 
     Returns:
         past_episodes_batch: [batch_size, max_n_past, seq_len, channels, height, width]
@@ -167,46 +175,83 @@ def generate_past_episodes_from_batch(
         device=device,
     )
 
-    # Generate random n_past values for all samples
+    # Generate random n_past values for all samples at once
     n_past_values = torch.randint(
         n_past_min, n_past_max + 1, (batch_size,), device=device
     )
 
-    # Create goal similarity matrix
-    same_goal_mask = goals.unsqueeze(1) == goals.unsqueeze(
-        0
-    )  # [batch_size, batch_size]
-    same_goal_mask.fill_diagonal_(False)  # Exclude self-matches
+    # Create goal similarity matrix (batch_size x batch_size)
+    # same_goal_mask[i, j] = True if sample i and j have the same goal/rank (within threshold)
+    if goals.dim() > 1:  # Handle goal_ranks (multi-dimensional)
+        # For goal ranks, use rank_threshold to limit comparison
+        # goals shape: [batch_size, 4] for goal ranks
 
-    # For each sample, randomly select past episodes
-    for i in range(batch_size):
-        n_past = n_past_values[i].item()
+        if rank_threshold < 4:
+            # Create vectorized comparison using only top ranks for efficiency
+            # Find which goals have ranks <= rank_threshold for all samples
+            top_goals_mask = goals <= rank_threshold  # [batch_size, 4]
 
-        # Find indices of samples with same goal
-        same_goal_indices = torch.nonzero(same_goal_mask[i], as_tuple=False).squeeze(1)
+            # Vectorized comparison: check if same goals are in top ranks
+            # Expand dimensions for broadcasting: [batch_size, 1, 4] and [1, batch_size, 4]
+            top_goals_i = top_goals_mask.unsqueeze(1)  # [batch_size, 1, 4]
+            top_goals_j = top_goals_mask.unsqueeze(0)  # [1, batch_size, 4]
 
-        if len(same_goal_indices) > 0:
-            # Randomly select n_past episodes from same goal samples
-            if len(same_goal_indices) >= n_past:
-                selected_indices = same_goal_indices[
-                    torch.randperm(len(same_goal_indices), device=device)[:n_past]
+            # Check if all 4 positions match (same top goals)
+            same_goal_mask = torch.all(
+                top_goals_i == top_goals_j, dim=2
+            )  # [batch_size, batch_size]
+        else:
+            # Use full rank comparison (rank_threshold >= 4)
+            # Vectorized comparison of full rank vectors
+            goals_i = goals.unsqueeze(1)  # [batch_size, 1, 4]
+            goals_j = goals.unsqueeze(0)  # [1, batch_size, 4]
+            same_goal_mask = torch.all(
+                goals_i == goals_j, dim=2
+            )  # [batch_size, batch_size]
+    else:  # Handle single goal values
+        goals_expanded = goals.unsqueeze(1)  # [batch_size, 1]
+        same_goal_mask = goals_expanded == goals.unsqueeze(
+            0
+        )  # [batch_size, batch_size]
+
+    # Exclude self-matches by setting diagonal to False
+    same_goal_mask.fill_diagonal_(False)
+
+    # Create random sampling matrix for all samples at once
+    # For each sample, we create random indices for selecting past episodes
+    rand_matrix = torch.rand(batch_size, batch_size, device=device)
+
+    # Mask out invalid sources (different goals or self)
+    rand_matrix = rand_matrix * same_goal_mask.float()
+
+    # For each sample, sort the random values to get sampling order
+    sorted_vals, sorted_indices = torch.sort(rand_matrix, dim=1, descending=True)
+
+    # Process all samples in parallel
+    for ep_idx in range(max_n_past):
+        # Create mask for samples that need this episode
+        needs_episode = n_past_values > ep_idx
+
+        if needs_episode.any():
+            # Make sure we don't exceed batch dimension
+            effective_ep_idx = min(ep_idx, batch_size - 1)
+
+            # Get the source indices for this episode position
+            source_indices = sorted_indices[needs_episode, effective_ep_idx]
+
+            # Check if source is valid (non-zero in sorted_vals means same goal)
+            valid_sources = sorted_vals[needs_episode, effective_ep_idx] > 0
+
+            # Create indices for assignment
+            target_indices = torch.where(needs_episode)[0]
+            valid_targets = target_indices[valid_sources]
+            valid_sources_idx = source_indices[valid_sources]
+
+            # Vectorized copy of trajectories
+            if len(valid_targets) > 0:
+                past_episodes_batch[valid_targets, ep_idx] = trajectories[
+                    valid_sources_idx
                 ]
-            else:
-                # If not enough same goal samples, repeat some
-                selected_indices = same_goal_indices[
-                    torch.randperm(len(same_goal_indices), device=device)
-                ]
-                while len(selected_indices) < n_past:
-                    additional = same_goal_indices[
-                        torch.randperm(len(same_goal_indices), device=device)
-                    ]
-                    selected_indices = torch.cat([selected_indices, additional])
-                selected_indices = selected_indices[:n_past]
-
-            # Fill past episodes (ensure we don't exceed max_n_past)
-            for j, idx in enumerate(selected_indices):
-                if j < max_n_past:  # Ensure we don't exceed the allocated tensor size
-                    past_episodes_batch[i, j] = trajectories[idx]
 
     return past_episodes_batch
 
@@ -225,6 +270,7 @@ def prepare_data_for_training(games, max_trajectory_length=100):
     trajectories = []
     actions = []
     goals = []
+    goal_ranks = []
     goal_rewards = []
     consumption_labels = []
     sr_labels = []
@@ -235,6 +281,7 @@ def prepare_data_for_training(games, max_trajectory_length=100):
         trajectory = game["trajectory_tensor"]  # [seq_len, channels, height, width]
         action_list = game["actions"]
         goal_tensor = game["goal_tensor"]  # [4] one-hot encoded
+        goal_rank = game["goal_rank"]  # [rank1, rank2, rank3, rank4]
         
         # Extract SR and consumption data
         game_consumption = game.get("consumption_labels", np.zeros(8))  # 8 = 4 keys + 4 doors
@@ -283,6 +330,7 @@ def prepare_data_for_training(games, max_trajectory_length=100):
         trajectories.append(trajectory)
         actions.append(action_list)
         goals.append(np.argmax(goal_tensor))  # Convert one-hot to index
+        goal_ranks.append(goal_rank)  # Keep original rank array
         goal_rewards.append(game["goal_rewards"])
         consumption_labels.append(game_consumption)
         sr_labels.append(sr_dense)
@@ -291,6 +339,7 @@ def prepare_data_for_training(games, max_trajectory_length=100):
     trajectories = torch.tensor(np.array(trajectories), dtype=torch.float32)
     actions = torch.tensor(np.array(actions), dtype=torch.long)
     goals = torch.tensor(np.array(goals), dtype=torch.long)
+    goal_ranks = torch.tensor(np.array(goal_ranks), dtype=torch.long)
     goal_rewards = torch.tensor(np.array(goal_rewards), dtype=torch.float32)
     consumption_labels = torch.tensor(np.array(consumption_labels), dtype=torch.float32)
     sr_labels = torch.tensor(np.array(sr_labels), dtype=torch.float32)
@@ -299,6 +348,7 @@ def prepare_data_for_training(games, max_trajectory_length=100):
     print(f"  Trajectories: {trajectories.shape}")
     print(f"  Actions: {actions.shape}")
     print(f"  Goals: {goals.shape}")
+    print(f"  Goal ranks: {goal_ranks.shape}")
     print(f"  Goal rewards: {goal_rewards.shape}")
     print(f"  Consumption labels: {consumption_labels.shape}")
     print(f"  SR labels: {sr_labels.shape}")
@@ -307,6 +357,7 @@ def prepare_data_for_training(games, max_trajectory_length=100):
         "trajectories": trajectories,
         "actions": actions,
         "goals": goals,
+        "goal_ranks": goal_ranks,
         "goal_rewards": goal_rewards,
         "consumption_labels": consumption_labels,
         "sr_labels": sr_labels,
@@ -349,11 +400,12 @@ def train_epoch(
 
     for batch_idx, batch in enumerate(train_loader):
         # Unpack all data including new SR and consumption labels
-        trajectories, actions, goals, goal_rewards, consumption_labels, sr_labels = batch
+        trajectories, actions, goals, goal_ranks, goal_rewards, consumption_labels, sr_labels = batch
 
         trajectories = trajectories.to(device)
         actions = actions.to(device)
         goals = goals.to(device)
+        goal_ranks = goal_ranks.to(device)
         consumption_labels = consumption_labels.to(device)
         sr_labels = sr_labels.to(device)
 
@@ -361,7 +413,11 @@ def train_epoch(
 
         # Generate past episodes from batch
         past_episodes = generate_past_episodes_from_batch(
-            trajectories, goals, batch_size, max_n_past=max_n_past
+            trajectories, goal_ranks, batch_size, 
+            n_past_min=data_config.get("n_past_min", 1),
+            n_past_max=data_config.get("n_past_max", 5),
+            max_n_past=max_n_past, 
+            rank_threshold=data_config.get("rank_threshold", 1)
         )
 
         # Use trajectory up to previous timestep as input to MentalNet
@@ -464,11 +520,12 @@ def validate_epoch(model, val_loader, loss_fn, device, max_n_past=5, data_config
     with torch.no_grad():
         for batch_idx, batch in enumerate(val_loader):
             # Unpack all data including new SR and consumption labels
-            trajectories, actions, goals, goal_rewards, consumption_labels, sr_labels = batch
+            trajectories, actions, goals, goal_ranks, goal_rewards, consumption_labels, sr_labels = batch
 
             trajectories = trajectories.to(device)
             actions = actions.to(device)
             goals = goals.to(device)
+            goal_ranks = goal_ranks.to(device)
             consumption_labels = consumption_labels.to(device)
             sr_labels = sr_labels.to(device)
 
@@ -476,7 +533,11 @@ def validate_epoch(model, val_loader, loss_fn, device, max_n_past=5, data_config
 
             # Generate past episodes from batch
             past_episodes = generate_past_episodes_from_batch(
-                trajectories, goals, batch_size, max_n_past=max_n_past
+                trajectories, goal_ranks, batch_size, 
+                n_past_min=data_config.get("n_past_min", 1),
+                n_past_max=data_config.get("n_past_max", 5),
+                max_n_past=max_n_past, 
+                rank_threshold=data_config.get("rank_threshold", 1)
             )
 
             # Use trajectory up to previous timestep as input to MentalNet
@@ -701,6 +762,7 @@ def train_tomnet(
         data["trajectories"], 
         data["actions"], 
         data["goals"], 
+        data["goal_ranks"],
         data["goal_rewards"],
         data["consumption_labels"],
         data["sr_labels"]
@@ -974,6 +1036,9 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--n_past_max", type=int, help="Maximum number of past episodes for sampling"
+    )
+    parser.add_argument(
+        "--rank_threshold", type=int, help="How many top ranks to consider for matching (1=only highest, 2=top 2, etc.)"
     )
 
     # Training process

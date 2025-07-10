@@ -97,7 +97,7 @@ class CharNet(nn.Module):
         self.channels_in = channels_in
         self.batch = batch
         self.time_step = time_step
-        self.hidden_size_lstm = 64  # Fixed like experiment 5
+        self.hidden_size_lstm = hidden_size_lstm  # Fixed like experiment 5
         self.max_n_past = max_n_past
         self.use_n_past = use_n_past
 

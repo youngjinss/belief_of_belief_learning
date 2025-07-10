@@ -252,31 +252,41 @@ class MentalNet(nn.Module):
             nn.Linear(out_channels, n_ement),
         )
 
-    def forward(self, current_state_with_char):
+    def forward(self, recent_trajectory_with_char):
         """
         Forward pass for mental state network
 
         Args:
-            current_state_with_char: (batch_size, channels_in + n_echar, height, width)
+            recent_trajectory_with_char: (batch_size, seq_len, channels_in + n_echar, height, width)
 
         Returns:
             Mental state embedding: (batch_size, n_ement)
             Spatial features: (batch_size, out_channels, height, width)
         """
-        # Extract spatial features
-        x = current_state_with_char
+        batch_size, seq_len, channels, height, width = recent_trajectory_with_char.shape
+        
+        # Reshape to process all timesteps through conv layers
+        x = recent_trajectory_with_char.view(batch_size * seq_len, channels, height, width)
+        
+        # Extract spatial features through conv layers
         for layer in self.conv_layers:
             x = layer(x)
 
-        # Store spatial features for SR prediction
-        spatial_features = x  # (batch_size, out_channels, height, width)
+        # Reshape back to sequence format
+        _, out_channels, out_height, out_width = x.shape
+        x = x.view(batch_size, seq_len, out_channels, out_height, out_width)
         
-        # Global average pooling for mental state
-        x_pooled = self.global_avg_pool(x)  # (batch_size, out_channels, 1, 1)
-        x_pooled = x_pooled.squeeze(-1).squeeze(-1)  # (batch_size, out_channels)
-
+        # Global average pooling over spatial dimensions for each timestep
+        x_pooled = x.mean(dim=[3, 4])  # (batch_size, seq_len, out_channels)
+        
+        # Use the last timestep for mental state prediction
+        final_features = x_pooled[:, -1, :]  # (batch_size, out_channels)
+        
         # Mental state prediction
-        mental_state = self.mental_state_net(x_pooled)
+        mental_state = self.mental_state_net(final_features)
+        
+        # Return spatial features from last timestep for SR prediction
+        spatial_features = x[:, -1, :, :, :]  # (batch_size, out_channels, height, width)
 
         return mental_state, spatial_features
 
@@ -449,13 +459,14 @@ class ToMnet(nn.Module):
             env_height=env_height,
         )
 
-    def forward(self, past_trajectories, current_state):
+    def forward(self, past_trajectories, recent_trajectory, current_state):
         """
         Forward pass for ToMnet (3-stage architecture)
 
         Args:
-            past_trajectories: (batch_size, n_past, seq_len, channels, height, width)
-            current_state: (batch_size, channels, height, width) - only current state, not trajectory
+            past_trajectories: (batch_size, n_past, seq_len, channels, height, width) - for CharNet
+            recent_trajectory: (batch_size, seq_len, channels, height, width) - for MentalNet
+            current_state: (batch_size, channels, height, width) - for PredNet
 
         Returns:
             action_logits: (batch_size, action_space)
@@ -465,7 +476,7 @@ class ToMnet(nn.Module):
             character_embedding: (batch_size, n_echar)
             mental_state: (batch_size, n_ement)
         """
-        # Character network - processes past episodes
+        # 1. Character network - processes past episodes
         if self.use_n_past and past_trajectories is not None:
             character_embedding = self.char_net(past_trajectories)
         else:
@@ -475,22 +486,24 @@ class ToMnet(nn.Module):
                 batch_size, self.n_echar, device=current_state.device
             )
 
-        # Reshape character embedding to spatial format and concatenate with current state
-        batch_size = character_embedding.size(0)
-        e_char_spatial = character_embedding.unsqueeze(2).unsqueeze(3)  # (batch, n_echar, 1, 1)
-        e_char_spatial = e_char_spatial.expand(
-            batch_size, self.n_echar, self.env_height, self.env_width
-        )  # (batch, n_echar, height, width)
+        # 2. Mental state network - processes recent_trajectory + character embedding
+        batch_size, seq_len, channels, height, width = recent_trajectory.shape
         
-        # Concatenate current state with character embedding
-        current_state_with_char = torch.cat(
-            [current_state, e_char_spatial], dim=1
-        )  # (batch, channels + n_echar, height, width)
+        # Reshape character embedding to spatial format for trajectory concatenation
+        e_char_spatial = character_embedding.unsqueeze(1).unsqueeze(3).unsqueeze(4)  # (batch, 1, n_echar, 1, 1)
+        e_char_spatial = e_char_spatial.expand(
+            batch_size, seq_len, self.n_echar, height, width
+        )  # (batch, seq_len, n_echar, height, width)
+        
+        # Concatenate recent_trajectory with character embedding
+        recent_trajectory_with_char = torch.cat(
+            [recent_trajectory, e_char_spatial], dim=2
+        )  # (batch, seq_len, channels + n_echar, height, width)
 
-        # Mental state network - processes current state + character embedding
-        mental_state, spatial_features = self.mental_net(current_state_with_char)
+        # Process through MentalNet
+        mental_state, spatial_features = self.mental_net(recent_trajectory_with_char)
 
-        # Prediction network - processes mental state + character embedding + spatial features
+        # 3. Prediction network - processes current_state + character embedding + mental state
         action_logits, goal_logits, consumption_logits, sr_pred = self.pred_net(mental_state, character_embedding, spatial_features)
 
         return action_logits, goal_logits, consumption_logits, sr_pred, character_embedding, mental_state

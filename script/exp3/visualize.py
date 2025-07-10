@@ -844,7 +844,7 @@ if __name__ == "__main__":
         action="store_true",
         help="Override config with command line arguments",
     )
-    parser.add_argument("--results_dir", type=str, help="Directory containing results")
+    parser.add_argument("--result_dir", type=str, help="Directory containing results")
     parser.add_argument("--plot_dir", type=str, help="Directory to save plots")
     parser.add_argument(
         "--experiment_no", type=int, default=3, help="Experiment number"
@@ -865,7 +865,7 @@ if __name__ == "__main__":
     if args.config_override:
         config.update_from_args(args)
 
-    results_dir = args.results_dir or config.result_dir
+    results_dir = args.result_dir or config.result_dir
     plot_dir = args.plot_dir or config.plot_dir
     experiment_no = args.experiment_no or config.experiment_no
 

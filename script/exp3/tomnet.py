@@ -246,8 +246,8 @@ class MentalNet(nn.Module):
         self.out_channels = out_channels
         self.original_channels_in = channels_in  # This is current_state_channels (8)
         self.channels_in = (
-            channels_in + n_echar
-        )  # Current state channels + character embedding
+            9 + n_echar
+        )  # Recent trajectory channels (9) + character embedding
         self.batch = batch
         self.n_echar = n_echar
 

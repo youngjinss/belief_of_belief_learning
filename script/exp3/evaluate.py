@@ -171,16 +171,16 @@ def evaluate_model_with_n_past(
                     :, 0
                 ]  # Target action for each sliced trajectory
 
-                    # Model forward pass (model returns 6 outputs)
-                    action_logits, _, _, _, _, _ = model(
-                        past_episodes, recent_trajectory, current_state
-                    )
+                # Model forward pass (model returns 6 outputs)
+                action_logits, _, _, _, _, _ = model(
+                    past_episodes, recent_trajectory, current_state
+                )
 
-                    # Get predictions
-                    _, predicted = torch.max(action_logits, 1)
+                # Get predictions
+                _, predicted = torch.max(action_logits, 1)
 
-                    all_predictions.extend(predicted.cpu().numpy())
-                    all_targets.extend(action_targets.cpu().numpy())
+                all_predictions.extend(predicted.cpu().numpy())
+                all_targets.extend(action_targets.cpu().numpy())
 
         # Calculate metrics
         accuracy = accuracy_score(all_targets, all_predictions)
@@ -746,26 +746,26 @@ def analyze_action_likelihood(
                 batch_indices, effective_lengths, :current_state_channels
             ]
 
-                # Get action targets - use actions[:, 0] for trajectory slicing
-                action_targets = actions[
-                    :, 0
-                ]  # Target action for each sliced trajectory
+            # Get action targets - use actions[:, 0] for trajectory slicing
+            action_targets = actions[
+                :, 0
+            ]  # Target action for each sliced trajectory
 
-                # Model forward pass (model returns 6 outputs)
-                action_logits, _, _, _, _, _ = model(
-                    past_episodes, recent_trajectory, current_state
-                )
-                probabilities = F.softmax(action_logits, dim=1)
+            # Model forward pass (model returns 6 outputs)
+            action_logits, _, _, _, _, _ = model(
+                past_episodes, recent_trajectory, current_state
+            )
+            probabilities = F.softmax(action_logits, dim=1)
 
-                for i in range(len(action_targets)):
-                    if sample_count >= n_samples:
-                        break
+            for i in range(len(action_targets)):
+                if sample_count >= n_samples:
+                    break
 
-                    action = action_targets[i].item()
-                    if action < 7:  # Ensure valid action
-                        likelihood = probabilities[i, action].item()
-                        action_likelihoods[action].append(likelihood)
-                    sample_count += 1
+                action = action_targets[i].item()
+                if action < 7:  # Ensure valid action
+                    likelihood = probabilities[i, action].item()
+                    action_likelihoods[action].append(likelihood)
+                sample_count += 1
 
     # Save analysis
     os.makedirs(output_dir, exist_ok=True)

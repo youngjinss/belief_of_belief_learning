@@ -17,7 +17,11 @@ RESULTS_DIR="$BASE_DIR/results/exp3"
 LOG_DIR="$BASE_DIR/log/exp3"
 
 # Create timestamp for this run
-TIMESTAMP=$(date '+%Y%m%d_%H%M%S')
+if [ -n "$2" ]; then
+    TIMESTAMP="$2"
+else
+    TIMESTAMP=$(date '+%Y%m%d_%H%M%S')
+fi
 RUN_LOG_DIR="$LOG_DIR/$TIMESTAMP"
 RESULTS_DIR="$RESULTS_DIR/$TIMESTAMP"
 
@@ -170,6 +174,8 @@ run_evaluation() {
     cd "$SCRIPTS_DIR"
     python evaluate.py --config_override --test_data_dir "$TEST_DATA_DIR" --result_dir "$RESULTS_DIR" --model_path "$RESULTS_DIR/best_model.pth" --save_predictions --plot_type "all" > "$RUN_LOG_DIR/evaluation.log" 2>&1
 
+    # python script/exp3/evaluate.py --config_override --test_data_dir "./data/exp3/test" --result_dir "./results/exp3/20250711_192952" --model_path "./results/exp3/20250711_192952/best_model.pth" --save_predictions --plot_type "all"
+
     log_step "Evaluation completed"
     
     # Log evaluation summary if available
@@ -199,6 +205,8 @@ run_visualization() {
     
     cd "$SCRIPTS_DIR"
     python visualize.py --config_override --result_dir "$RESULTS_DIR" --plot_dir "$RESULTS_DIR/plots" --plot_type "all"  > "$RUN_LOG_DIR/visualization.log" 2>&1
+
+    # python script/exp3/visualize.py --config_override --result_dir "./results/exp3/20250711_192952"  --plot_dir "./results/exp3/20250711_192952/plots" --plot_type "all"
 
     log_step "Visualization completed"
     

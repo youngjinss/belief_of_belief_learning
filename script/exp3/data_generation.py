@@ -197,23 +197,39 @@ class DataReader:
         # Convert maze to numpy array
         maze = np.array(maze, dtype=np.int32)
 
-        # Determine consumed goal from goal rank
-        consumed_goal = None
+        # Determine intended goal from goal rank (whispered goal)
+        intended_goal = None
         if goal_rank:
             try:
                 highest_rank_idx = goal_rank.index(1)  # Find index of rank 1 (highest)
                 goal_symbols = ["A", "B", "C", "D"]
-                consumed_goal = goal_symbols[highest_rank_idx]
+                intended_goal = goal_symbols[highest_rank_idx]
             except ValueError:
-                consumed_goal = "A"  # Default fallback
+                intended_goal = "A"  # Default fallback
+
+        # Determine actual consumed goal from consumption labels
+        # consumption_labels: [key_A, key_B, key_C, key_D, door_A, door_B, door_C, door_D]
+        consumed_goal = None
+        if consumption_labels is not None:
+            # Check which doors were opened (indices 4-7)
+            door_indices = [4, 5, 6, 7]
+            goal_symbols = ["A", "B", "C", "D"]
+            for i, door_idx in enumerate(door_indices):
+                if consumption_labels[door_idx] > 0:
+                    consumed_goal = goal_symbols[i]
+                    break
+        
+        # If no door was opened, default to intended goal
+        if consumed_goal is None:
+            consumed_goal = intended_goal
 
         # Create trajectory tensor
         trajectory_tensor = self._create_trajectory_tensor(
             maze, positions, actions, interactions, trajectory_length
         )
 
-        # Create goal tensor
-        goal_tensor = self._create_goal_tensor(consumed_goal)
+        # Create goal tensor based on intended goal (for training whispered goal prediction)
+        goal_tensor = self._create_goal_tensor(intended_goal)
 
         return {
             "maze": maze,
@@ -226,9 +242,10 @@ class DataReader:
             "actions": actions,
             "positions": positions,
             "interactions": interactions,
-            "consumed_goal": consumed_goal,
+            "intended_goal": intended_goal,  # The whispered/intended goal
+            "consumed_goal": consumed_goal,   # The actual goal reached
             "trajectory_tensor": trajectory_tensor,
-            "goal_tensor": goal_tensor,
+            "goal_tensor": goal_tensor,       # One-hot encoding of intended goal
             "filename": filename,
         }
 

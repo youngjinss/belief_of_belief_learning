@@ -335,7 +335,10 @@ def prepare_data_for_training(games, max_trajectory_length=100):
 
         trajectories.append(trajectory)
         actions.append(action_list)
-        goals.append(np.argmax(goal_tensor))  # Convert one-hot to index
+        # Use argmax of goal_rank to get the intended goal (rank 1 = highest preference)
+        # goal_rank is [rank1, rank2, rank3, rank4] where 1 is highest preference
+        intended_goal_idx = goal_rank.index(1) if 1 in goal_rank else 0
+        goals.append(intended_goal_idx)  # This is the whispered/intended goal
         goal_ranks.append(goal_rank)  # Keep original rank array
         goal_rewards.append(game["goal_rewards"])
         consumption_labels.append(game_consumption)

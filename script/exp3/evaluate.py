@@ -471,10 +471,23 @@ def evaluate_n_past_experiment(
     from visualize import (
         plot_accuracy_by_n_past,
         plot_accuracy_heatmap_by_n_past,
+        plot_character_embeddings,
+        create_additional_visualizations,
     )
 
     plot_accuracy_by_n_past(results_by_n_past, output_dir)
     plot_accuracy_heatmap_by_n_past(results_by_n_past, output_dir)
+    
+    # Create character embeddings visualization
+    print("Creating character embeddings visualization...")
+    plot_character_embeddings(
+        model,
+        test_loader,
+        device,
+        output_dir,
+        experiment_no=config.experiment_no if config else 3,
+        n_samples=1000,
+    )
 
     print(f"Visualizations saved to: {output_dir}")
 
@@ -643,6 +656,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--save_predictions", action="store_true", help="Save predictions to file"
     )
+    parser.add_argument(
+        "--plot_type",
+        type=str,
+        choices=["basic", "embeddings", "n_past", "all"],
+        default="basic",
+        help="Type of visualization to create",
+    )
 
     args = parser.parse_args()
 
@@ -660,6 +680,46 @@ if __name__ == "__main__":
         results_dir=args.result_dir,
     )
     print("Evaluation completed successfully!")
+    
+    # Create additional visualizations if requested
+    if args.plot_type in ["embeddings", "all"]:
+        print("Creating additional visualizations...")
+        from visualize import plot_character_embeddings
+        
+        # Load model and test data for visualization
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        model_path = args.model_path or os.path.join(config.model_dir, "best_model.pth")
+        model_kwargs = config.get_model_kwargs()
+        model = load_model(model_path, device, model_kwargs)
+        
+        # Load test data
+        data_reader = DataReader()
+        test_games = data_reader.ReadAllGames(args.test_data_dir or config.test_data_dir)
+        data_config = config.get_data_config()
+        test_data = prepare_data_for_training(
+            test_games, 
+            min_timestep=6,
+            max_trajectory_length=data_config["max_moves"]
+        )
+        test_dataset = TensorDataset(
+            test_data["trajectories"], test_data["actions"], test_data["goals"]
+        )
+        test_loader = DataLoader(
+            test_dataset, 
+            batch_size=config.evaluation_config["batch_size"], 
+            shuffle=False
+        )
+        
+        # Plot character embeddings
+        plot_character_embeddings(
+            model,
+            test_loader,
+            device,
+            args.result_dir or config.result_dir,
+            experiment_no=config.experiment_no,
+            n_samples=args.n_samples,
+        )
+        print("Additional visualizations completed!")
 
     # Print summary
     print("\n" + "=" * 50)

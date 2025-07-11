@@ -504,11 +504,11 @@ def evaluate_keydoor_model(
     if len(test_games) == 0:
         raise ValueError(f"No test games found in {test_data_dir}")
 
-    # Prepare test data using trajectory slicing (like training)
+    # Prepare test data using trajectory slicing (exactly like training)
     test_data = prepare_data_for_training(
         test_games,
         min_timestep=6,  # Same as training
-        max_trajectory_length=data_config["max_moves"],
+        max_trajectory_length=data_config["time_step"],  # Use time_step (20) not max_moves (50)
     )
 
     # Create test dataset and loader with all required data including goal_ranks
@@ -704,7 +704,7 @@ def analyze_action_likelihood(
         test_data = prepare_data_for_training(
             test_games,
             min_timestep=6,  # Same as training
-            max_trajectory_length=data_config["max_moves"],
+            max_trajectory_length=data_config["time_step"],  # Use time_step (20) not max_moves (50)
         )
         test_dataset = TensorDataset(
             test_data["trajectories"],

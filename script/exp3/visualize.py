@@ -1032,7 +1032,7 @@ if __name__ == "__main__":
                 if test_games:
                     data_config = config.get_data_config()
                     test_data = prepare_data_for_training(
-                        test_games, min_timestep=6, max_trajectory_length=data_config["max_moves"]
+                        test_games, min_timestep=6, max_trajectory_length=data_config["time_step"]
                     )
                     test_dataset = TensorDataset(
                         test_data["trajectories"],

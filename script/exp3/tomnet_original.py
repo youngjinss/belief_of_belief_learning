@@ -343,7 +343,7 @@ class PredNet(nn.Module):
         # Input channels: current_state + mental_state + character_embedding
         # We'll spatially broadcast mental_state and character_embedding
         input_channels = current_state_channels + n_ement + n_echar
-        
+
         # Shared torso - processes current state + mental state + character embedding
         self.conv_1 = nn.Conv2d(
             in_channels=input_channels,
@@ -352,7 +352,7 @@ class PredNet(nn.Module):
             stride=1,
             padding=1,
         )
-        
+
         self.res_blocks = nn.ModuleList()
         for _ in range(self.n):
             self.res_blocks.append(
@@ -380,7 +380,7 @@ class PredNet(nn.Module):
         # Action prediction head (following experiment5 structure)
         self.fc3_action = nn.Linear(out_channels, action_space)
 
-        # Goal prediction head 
+        # Goal prediction head
         self.fc3_goal = nn.Linear(out_channels, goal_space)
 
         # Consumption prediction head (8 outputs: 4 keys + 4 doors)
@@ -417,68 +417,82 @@ class PredNet(nn.Module):
         """
         # Following experiment5 approach: combine inputs -> shared torso -> predictions
         batch_size, _, height, width = current_state.shape
-        
+
         # Spatially broadcast mental_state and character_embedding (following experiment5 pattern)
         # mental_state: (batch_size, n_ement) -> (batch_size, n_ement, height, width)
-        mental_state_spatial = mental_state.unsqueeze(2).unsqueeze(3)  # (batch_size, n_ement, 1, 1)
+        mental_state_spatial = mental_state.unsqueeze(2).unsqueeze(
+            3
+        )  # (batch_size, n_ement, 1, 1)
         mental_state_spatial = mental_state_spatial.expand(
             batch_size, self.n_ement, height, width
         )  # (batch_size, n_ement, height, width)
-        
+
         # character_embedding: (batch_size, n_echar) -> (batch_size, n_echar, height, width)
-        character_embedding_spatial = character_embedding.unsqueeze(2).unsqueeze(3)  # (batch_size, n_echar, 1, 1)
+        character_embedding_spatial = character_embedding.unsqueeze(2).unsqueeze(
+            3
+        )  # (batch_size, n_echar, 1, 1)
         character_embedding_spatial = character_embedding_spatial.expand(
             batch_size, self.n_echar, height, width
         )  # (batch_size, n_echar, height, width)
-        
+
         # Concatenate all inputs (following experiment5 structure)
         # current_state: (batch_size, current_state_channels, height, width)
         # mental_state_spatial: (batch_size, n_ement, height, width)
         # character_embedding_spatial: (batch_size, n_echar, height, width)
-        x = torch.cat([current_state, mental_state_spatial, character_embedding_spatial], dim=1)
-        
+        x = torch.cat(
+            [current_state, mental_state_spatial, character_embedding_spatial], dim=1
+        )
+
         # Shared torso (following experiment5 structure)
         x = self.conv_1(x)
-        
+
         for i in range(self.n):
             x = self.res_blocks[i](x)
-        
+
         x = self.conv_2(x)
         x = F.relu(x)
-        
+
         # Store spatial features for SR prediction (following experiment5)
         spatial_features = x
-        
+
         # Global pooling for action and consumption predictions (following experiment5)
         x_pooled = torch.mean(x, [2, 3])  # (batch_size, out_channels)
-        
+
         # Shared feature extraction (following experiment5 structure)
         x_pooled = self.fc1(x_pooled)
         x_pooled = F.relu(x_pooled)
-        
+
         x_pooled = self.fc2(x_pooled)
         x_pooled = F.relu(x_pooled)
-        
+
         # Action prediction (following experiment5 structure)
         action_logits = self.fc3_action(x_pooled)
-        
-        # Goal prediction 
+
+        # Goal prediction
         goal_logits = self.fc3_goal(x_pooled)
-        
+
         # Consumption prediction (raw logits - sigmoid applied in loss function)
         consumption_logits = self.fc3_consumption(x_pooled)
-        
+
         # SR prediction (using spatial features, following experiment5)
-        sr_features = self.conv_sr(spatial_features)  # (batch_size, out_channels, height, width)
+        sr_features = self.conv_sr(
+            spatial_features
+        )  # (batch_size, out_channels, height, width)
         sr_features = F.relu(sr_features)
         sr_pred = self.conv_sr_out(sr_features)  # (batch_size, 3, height, width)
-        
+
         # Apply softmax to each SR channel independently (following experiment5)
         batch_size, channels, height, width = sr_pred.shape
-        sr_pred = sr_pred.view(batch_size, channels, -1)  # (batch_size, 3, spatial_size)
-        sr_pred = F.softmax(sr_pred, dim=2)  # Normalize across spatial locations for each gamma
-        sr_pred = sr_pred.view(batch_size, channels, height, width)  # Back to spatial format
-        
+        sr_pred = sr_pred.view(
+            batch_size, channels, -1
+        )  # (batch_size, 3, spatial_size)
+        sr_pred = F.softmax(
+            sr_pred, dim=2
+        )  # Normalize across spatial locations for each gamma
+        sr_pred = sr_pred.view(
+            batch_size, channels, height, width
+        )  # Back to spatial format
+
         return action_logits, goal_logits, consumption_logits, sr_pred
 
 
@@ -770,7 +784,7 @@ def create_model(config):
         ToMnet model
     """
     # Handle both Config object and dictionary
-    if hasattr(config, 'get_model_kwargs'):
+    if hasattr(config, "get_model_kwargs"):
         # Config object
         model_kwargs = config.get_model_kwargs()
         model = ToMnet(**model_kwargs)

@@ -171,20 +171,34 @@ def evaluate_model(
                     max_n_past=data_config.get("max_n_past", 1) if data_config else 1,
                 )
 
-                # Get current trajectory for MentalNet processing
-                current_timestep = data_config["time_step"] if data_config else 20
-                recent_trajectory = trajectories[:, :current_timestep]
-
-                # Extract current state for PredNet
-                current_state = trajectories[
-                    :, current_timestep - 1
-                ]  # [batch, channels, height, width]
-
-                # Get action targets
-                if current_timestep < actions.size(1):
-                    action_targets = actions[:, current_timestep]
-                else:
-                    action_targets = actions[:, -1]
+                # With trajectory slicing, we use dynamic timesteps
+                # Each sample has a different effective length, stored in actions[:,0]
+                
+                # For trajectory slicing, use the action at index 0 (the target action for this slice)
+                action_targets = actions[:, 0]  # Target action for each sliced trajectory
+                
+                # Find the effective length for each sample (remove padding)
+                effective_lengths = []
+                for b in range(batch_size):
+                    # Find where padding starts (all zeros)
+                    traj_sample = trajectories[b]  # [seq_len, channels, height, width]
+                    non_zero_timesteps = 0
+                    for t in range(traj_sample.size(0)):
+                        if traj_sample[t].sum() > 0:  # Non-zero timestep
+                            non_zero_timesteps = t + 1
+                    effective_lengths.append(max(1, non_zero_timesteps - 1))  # -1 because we predict next action
+                
+                # Use full trajectory for MentalNet (up to effective length)
+                recent_trajectory = trajectories  # [batch_size, seq_len, channels, height, width]
+                
+                # Extract current state for PredNet (last non-padded timestep)
+                current_state_channels = 8  # Assuming 8 channels for current state
+                current_state = torch.zeros(batch_size, current_state_channels, 
+                                           trajectories.size(3), trajectories.size(4), device=device)
+                
+                for b in range(batch_size):
+                    last_timestep = max(0, effective_lengths[b] - 1)
+                    current_state[b] = trajectories[b, last_timestep, :current_state_channels]
 
                 # Model forward pass (model returns 6 outputs)
                 (
@@ -322,8 +336,12 @@ def evaluate_keydoor_model(
     if len(test_games) == 0:
         raise ValueError(f"No test games found in {test_data_dir}")
 
-    # Prepare test data
-    test_data = prepare_data_for_training(test_games, data_config["max_moves"])
+    # Prepare test data using trajectory slicing (like training)
+    test_data = prepare_data_for_training(
+        test_games, 
+        min_timestep=6,  # Same as training
+        max_trajectory_length=data_config["max_moves"]
+    )
 
     # Create test dataset and loader
     test_dataset = TensorDataset(
@@ -466,7 +484,11 @@ def analyze_action_likelihood(
         # Load test data
         data_reader = DataReader()
         test_games = data_reader.ReadAllGames(config.test_data_dir)
-        test_data = prepare_data_for_training(test_games, data_config["max_moves"])
+        test_data = prepare_data_for_training(
+            test_games, 
+            min_timestep=6,  # Same as training
+            max_trajectory_length=data_config["max_moves"]
+        )
         test_dataset = TensorDataset(
             test_data["trajectories"], test_data["actions"], test_data["goals"]
         )

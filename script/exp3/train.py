@@ -255,12 +255,13 @@ def generate_past_episodes_from_batch(
     return past_episodes_batch
 
 
-def prepare_data_for_training(games, max_trajectory_length=100):
+def prepare_data_for_training(games, min_timestep=6, max_trajectory_length=100):
     """
-    Prepare game data for training
+    Prepare game data for training using trajectory slicing (like experiment 5)
 
     Args:
         games: List of game data from DataReader
+        min_timestep: Minimum timestep to start slicing from
         max_trajectory_length: Maximum length of trajectory to use
 
     Returns:
@@ -274,7 +275,7 @@ def prepare_data_for_training(games, max_trajectory_length=100):
     consumption_labels = []
     sr_labels = []
 
-    print(f"Preparing data from {len(games)} games...")
+    print(f"Preparing data from {len(games)} games using trajectory slicing...")
 
     for game in games:
         trajectory = game["trajectory_tensor"]  # [seq_len, channels, height, width]
@@ -311,35 +312,45 @@ def prepare_data_for_training(games, max_trajectory_length=100):
                 [trajectory, heading_channel], axis=1
             )  # Now 9 channels
 
-        # Pad if necessary
-        if seq_len < max_trajectory_length:
-            padding = np.zeros((max_trajectory_length - seq_len, *trajectory.shape[1:]))
-            trajectory = np.concatenate([trajectory, padding], axis=0)
-            action_list = action_list + [0] * (max_trajectory_length - len(action_list))
-
-        # Process SR data per timestep (use final timestep SR)
-        # Get the last timestep's SR data or create zeros
-        height, width = trajectory.shape[2], trajectory.shape[3]
-        final_timestep = seq_len - 1
-
-        if final_timestep in game_sr_data:
-            sr_data_final = game_sr_data[final_timestep]
-            # Convert sparse SR to dense format (3, height, width) for 3 gammas
-            sr_dense = convert_sparse_sr_to_dense(sr_data_final, height, width)
-        else:
-            # Create zero SR if no data available
-            sr_dense = np.zeros((3, height, width))
-
-        trajectories.append(trajectory)
-        actions.append(action_list)
-        # Use argmax of goal_rank to get the intended goal (rank 1 = highest preference)
-        # goal_rank is [rank1, rank2, rank3, rank4] where 1 is highest preference
+        # Get intended goal from goal_rank
         intended_goal_idx = goal_rank.index(1) if 1 in goal_rank else 0
-        goals.append(intended_goal_idx)  # This is the whispered/intended goal
-        goal_ranks.append(goal_rank)  # Keep original rank array
-        goal_rewards.append(game["goal_rewards"])
-        consumption_labels.append(game_consumption)
-        sr_labels.append(sr_dense)
+
+        # TRAJECTORY SLICING: Create multiple samples per game (like experiment 5)
+        for i in range(min_timestep, seq_len):
+            # Slice trajectory up to timestep i
+            trajectory_slice = trajectory[:i]  # [i, channels, height, width]
+            
+            # Pad trajectory slice to consistent length for batching
+            if i < max_trajectory_length:
+                padding = np.zeros((max_trajectory_length - i, *trajectory.shape[1:]))
+                trajectory_padded = np.concatenate([trajectory_slice, padding], axis=0)
+            else:
+                trajectory_padded = trajectory_slice
+            
+            # Current state at timestep i-1 (what agent sees before taking action)
+            current_timestep = i - 1
+            
+            # Action at timestep i (what we want to predict)
+            if i < len(action_list):
+                action_target = action_list[i]
+            else:
+                continue  # Skip if no action available
+            
+            # Process SR data for this timestep
+            if current_timestep in game_sr_data:
+                sr_data_timestep = game_sr_data[current_timestep]
+                sr_dense = convert_sparse_sr_to_dense(sr_data_timestep, height, width)
+            else:
+                sr_dense = np.zeros((3, height, width))
+
+            # Add this training sample
+            trajectories.append(trajectory_padded)
+            actions.append([action_target] + [0] * (max_trajectory_length - 1))  # Pad actions too
+            goals.append(intended_goal_idx)
+            goal_ranks.append(goal_rank)
+            goal_rewards.append(game["goal_rewards"])
+            consumption_labels.append(game_consumption)
+            sr_labels.append(sr_dense)
 
     # Convert to tensors
     trajectories = torch.tensor(np.array(trajectories), dtype=torch.float32)
@@ -850,8 +861,12 @@ def train_tomnet(
     if len(games) == 0:
         raise ValueError(f"No games found in {data_dir}")
 
-    # Prepare data
-    data = prepare_data_for_training(games, time_step)
+    # Prepare data using trajectory slicing
+    data = prepare_data_for_training(
+        games, 
+        min_timestep=6,  # Start slicing from timestep 6
+        max_trajectory_length=time_step
+    )
 
     # Create datasets with all data including SR and consumption labels
     dataset = TensorDataset(

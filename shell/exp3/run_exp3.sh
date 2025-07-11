@@ -19,6 +19,7 @@ LOG_DIR="$BASE_DIR/log/exp3"
 # Create timestamp for this run
 TIMESTAMP=$(date '+%Y%m%d_%H%M%S')
 RUN_LOG_DIR="$LOG_DIR/$TIMESTAMP"
+RESULTS_DIR="$RESULTS_DIR/$TIMESTAMP"
 
 # Create directories
 mkdir -p "$TRAIN_DATA_DIR" "$TEST_DATA_DIR" "$RESULTS_DIR" "$LOG_DIR" "$RUN_LOG_DIR"

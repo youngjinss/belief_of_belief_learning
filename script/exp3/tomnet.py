@@ -322,13 +322,13 @@ class MentalNet(nn.Module):
         self.action_space = 7    # Number of possible actions
         self.input_channels = self.state_channels + 1  # State + spatialized action
         
-        # Paper spec: 32 channels throughout
-        self.resnet_channels = 32
+        # Use configurable n_ement channels throughout
+        self.resnet_channels = n_ement
         
-        # Paper spec: output is spatial mental state embedding (32 channels)
-        self.output_channels = 32
+        # Output is spatial mental state embedding (n_ement channels)
+        self.output_channels = n_ement
         
-        # Initial conv layer to get to 32 channels
+        # Initial conv layer to get to n_ement channels
         self.input_conv = nn.Conv2d(
             self.input_channels, 
             self.resnet_channels, 
@@ -337,7 +337,7 @@ class MentalNet(nn.Module):
         )
         self.input_bn = nn.BatchNorm2d(self.resnet_channels)
         
-        # Paper spec: 5-layer ResNet with 32 channels, ReLU, BatchNorm
+        # Paper spec: 5-layer ResNet with n_ement channels, ReLU, BatchNorm
         self.resnet_layers = nn.ModuleList()
         for _ in range(5):  # Exactly 5 layers as specified
             self.resnet_layers.append(
@@ -349,7 +349,7 @@ class MentalNet(nn.Module):
                 )
             )
         
-        # Paper spec: Convolutional LSTM with 32 channels
+        # Paper spec: Convolutional LSTM with n_ement channels
         self.conv_lstm = ConvLSTM2d(
             input_channels=self.resnet_channels,
             hidden_channels=self.resnet_channels,
@@ -357,7 +357,7 @@ class MentalNet(nn.Module):
             padding=1
         )
         
-        # Paper spec: 1-layer convnet with 32 channels for final output
+        # Paper spec: 1-layer convnet with n_ement channels for final output
         self.output_conv = nn.Conv2d(
             self.resnet_channels,
             self.output_channels,
@@ -498,6 +498,7 @@ class PredNet(nn.Module):
         # Determine input channels based on architecture
         if use_mentalnet:
             # Original 3-stage: current_state + mental_state + character_embedding
+            # MentalNet outputs n_ement channels (spatial)
             input_channels = current_state_channels + n_ement + n_echar
         else:
             # Fixed 2-stage: current_state + character_embedding (like experiment5)

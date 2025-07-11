@@ -314,6 +314,9 @@ def prepare_data_for_training(games, min_timestep=6, max_trajectory_length=100):
 
         # Get intended goal from goal_rank
         intended_goal_idx = goal_rank.index(1) if 1 in goal_rank else 0
+        
+        # Get height and width from trajectory
+        height, width = trajectory.shape[2], trajectory.shape[3]
 
         # TRAJECTORY SLICING: Create multiple samples per game (like experiment 5)
         for i in range(min_timestep, seq_len):

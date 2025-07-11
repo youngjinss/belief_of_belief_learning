@@ -71,7 +71,21 @@ def load_model(model_path, device, model_kwargs):
     
     print(f"Model configuration: use_mentalnet={model_kwargs.get('use_mentalnet', False)}")
     model = create_model(model_kwargs)
-    model.load_state_dict(torch.load(model_path, map_location=device))
+    
+    # Load checkpoint
+    checkpoint = torch.load(model_path, map_location=device)
+    
+    # Handle different checkpoint formats
+    if 'model_state_dict' in checkpoint:
+        # Checkpoint format with optimizer state
+        model.load_state_dict(checkpoint['model_state_dict'])
+    elif isinstance(checkpoint, dict) and 'model_state_dict' not in checkpoint:
+        # Direct state dict format
+        model.load_state_dict(checkpoint)
+    else:
+        # Fallback: assume it's a direct state dict
+        model.load_state_dict(checkpoint)
+    
     model.to(device)
     model.eval()
     return model

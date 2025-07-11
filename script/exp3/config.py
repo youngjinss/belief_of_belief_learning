@@ -546,6 +546,47 @@ class Config:
         if self.max_steps <= 0:
             raise ValueError(f"Max steps must be positive: {self.max_steps}")
 
+    def get_goal_config(self):
+        """Get goal configuration for visualization"""
+        return {
+            'num_goals': self.model_config.get('goal_space', 4),
+            'goal_colors': ["red", "green", "blue", "yellow"],
+            'goal_names': ["Goal A (Red)", "Goal B (Green)", "Goal C (Blue)", "Goal D (Yellow)"]
+        }
+    
+    def get_action_config(self):
+        """Get action configuration for visualization"""
+        return {
+            'num_actions': self.model_config.get('action_space', 7),
+            'action_names': ["Up", "Right", "Down", "Left", "Stay", "Pickup", "Toggle"]
+        }
+    
+    def get_history_config(self):
+        """Get history file configuration"""
+        return {
+            'history_files': [
+                "training_history.json",
+                "history.json",
+                "train_history.json"
+            ]
+        }
+    
+    def get_prediction_config(self):
+        """Get prediction file configuration"""
+        return {
+            'prediction_files': [
+                "predictions.pkl",
+                "test_predictions.pkl",
+                "eval_predictions.pkl"
+            ]
+        }
+    
+    def get_n_past_config(self):
+        """Get N_past evaluation configuration"""
+        return {
+            'n_past_results_file': "n_past_evaluation_results.json"
+        }
+
     def __str__(self):
         """String representation of configuration"""
         return f"""KeyDoor Experiment Configuration:

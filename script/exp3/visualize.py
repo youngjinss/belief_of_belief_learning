@@ -8,7 +8,8 @@ import seaborn as sns
 from sklearn.metrics import confusion_matrix
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
-import torchgen
+import torch
+import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
 
 from config import Config
@@ -137,8 +138,10 @@ def plot_accuracy_heatmap_by_n_past(results_by_n_past, output_dir=None):
 
     # Extract data and calculate per-action accuracy
     n_past_values = sorted(results_by_n_past.keys())
-    # KeyDoor has 7 actions: up, right, down, left, stay, pickup, toggle
-    action_names = ["Up", "Right", "Down", "Left", "Stay", "Pickup", "Toggle"]
+    # Get action information from config
+    action_config = config.get_action_config()
+    num_actions = action_config.get('num_actions', 7)
+    action_names = action_config.get('action_names', ["Up", "Right", "Down", "Left", "Stay", "Pickup", "Toggle"][:num_actions])
 
     accuracy_matrix = []
 
@@ -150,7 +153,7 @@ def plot_accuracy_heatmap_by_n_past(results_by_n_past, output_dir=None):
 
             # Calculate per-action accuracy
             action_accuracies = []
-            for action in range(7):  # 7 actions in KeyDoor
+            for action in range(num_actions):
                 action_mask = np.array(targets) == action
                 if np.sum(action_mask) > 0:
                     action_acc = np.mean(np.array(predictions)[action_mask] == action)
@@ -163,7 +166,7 @@ def plot_accuracy_heatmap_by_n_past(results_by_n_past, output_dir=None):
             # If detailed predictions not available, use overall accuracy for all actions
             overall_accuracy = results_by_n_past[n_past]["accuracy"]
             # Use the same accuracy for all actions (not ideal but prevents crash)
-            action_accuracies = [overall_accuracy / 7.0] * 7  # Distribute equally
+            action_accuracies = [overall_accuracy / num_actions] * num_actions  # Distribute equally
             accuracy_matrix.append(action_accuracies)
             
             # Only print warning once
@@ -207,15 +210,21 @@ def plot_accuracy_heatmap_by_n_past(results_by_n_past, output_dir=None):
     plt.show()
 
 
-def plot_training_curves(history_path, output_dir, experiment_no=3):
+def plot_training_curves(history_path, output_dir, config=None, experiment_no=None):
     """
     Plot training curves from training history
 
     Args:
         history_path: Path to training history JSON file
         output_dir: Directory to save plots
-        experiment_no: Experiment number
+        config: Configuration object containing experiment settings
+        experiment_no: Experiment number (defaults to config.experiment_no)
     """
+    if config is None:
+        config = Config()
+    
+    if experiment_no is None:
+        experiment_no = config.experiment_no
     plt.style.use("seaborn-v0_8")
 
     # Load training history
@@ -486,15 +495,22 @@ def plot_training_curves(history_path, output_dir, experiment_no=3):
             print(f"Best validation SR loss: {min(history['val_sr_loss']):.4f}")
 
 
-def plot_confusion_matrix(predictions_path, output_dir, experiment_no=3):
+def plot_confusion_matrix(predictions_path, output_dir, config=None, experiment_no=None):
     """
     Plot confusion matrix from predictions
 
     Args:
         predictions_path: Path to predictions pickle file
         output_dir: Directory to save plots
-        experiment_no: Experiment number
+        config: Configuration object containing experiment settings
+        experiment_no: Experiment number (defaults to config.experiment_no)
     """
+    if config is None:
+        config = Config()
+    
+    if experiment_no is None:
+        experiment_no = config.experiment_no
+        
     plt.style.use("seaborn-v0_8")
 
     # Load predictions
@@ -511,8 +527,9 @@ def plot_confusion_matrix(predictions_path, output_dir, experiment_no=3):
     # Create confusion matrix
     cm = confusion_matrix(targets, predictions)
 
-    # KeyDoor action names
-    action_names = ["Left", "Right", "Forward", "Pick_up", "Drop", "Toggle", "Done"]
+    # Get action information from config
+    action_config = config.get_action_config()
+    action_names = action_config.get('action_names', ["Left", "Right", "Forward", "Pick_up", "Drop", "Toggle", "Done"])
 
     # Plot confusion matrix
     fig, ax = plt.subplots(figsize=(10, 8))
@@ -559,15 +576,22 @@ def plot_confusion_matrix(predictions_path, output_dir, experiment_no=3):
             print(f"{action:8s}: Precision={precision:.3f}, Recall={recall:.3f}")
 
 
-def plot_action_likelihood(predictions_path, output_dir, experiment_no=3):
+def plot_action_likelihood(predictions_path, output_dir, config=None, experiment_no=None):
     """
     Plot action likelihood distributions
 
     Args:
         predictions_path: Path to predictions pickle file
         output_dir: Directory to save plots
-        experiment_no: Experiment number
+        config: Configuration object containing experiment settings
+        experiment_no: Experiment number (defaults to config.experiment_no)
     """
+    if config is None:
+        config = Config()
+    
+    if experiment_no is None:
+        experiment_no = config.experiment_no
+        
     plt.style.use("seaborn-v0_8")
 
     # Load predictions
@@ -581,8 +605,9 @@ def plot_action_likelihood(predictions_path, output_dir, experiment_no=3):
     targets = np.array(predictions_data["targets"])
     probabilities = np.array(predictions_data["probabilities"])
 
-    # KeyDoor action names
-    action_names = ["Left", "Right", "Forward", "Pick_up", "Drop", "Toggle", "Done"]
+    # Get action information from config
+    action_config = config.get_action_config()
+    action_names = action_config.get('action_names', ["Left", "Right", "Forward", "Pick_up", "Drop", "Toggle", "Done"])
 
     # Create figure with subplots
     fig, axes = plt.subplots(2, 4, figsize=(16, 8))
@@ -591,7 +616,8 @@ def plot_action_likelihood(predictions_path, output_dir, experiment_no=3):
         fontsize=16,
     )
 
-    for action in range(7):  # 7 actions in KeyDoor
+    num_actions = len(action_names)
+    for action in range(num_actions):
         row = action // 4
         col = action % 4
         ax = axes[row, col]
@@ -646,7 +672,7 @@ def plot_action_likelihood(predictions_path, output_dir, experiment_no=3):
 
 
 def plot_character_embeddings(
-    model, test_loader, device, output_dir, experiment_no=3, n_samples=1000
+    model, test_loader, device, output_dir, config=None, experiment_no=None, n_samples=None
 ):
     """
     Plot character embeddings using PCA and t-SNE
@@ -656,9 +682,15 @@ def plot_character_embeddings(
         test_loader: Test data loader
         device: Computing device
         output_dir: Directory to save plots
-        experiment_no: Experiment number
-        n_samples: Number of samples to visualize
+        config: Configuration object containing experiment settings
+        experiment_no: Experiment number (defaults to config.experiment_no)
+        n_samples: Number of samples to visualize (None for all samples)
     """
+    if config is None:
+        config = Config()
+    
+    if experiment_no is None:
+        experiment_no = config.experiment_no
     plt.style.use("seaborn-v0_8")
 
     model.eval()
@@ -666,11 +698,14 @@ def plot_character_embeddings(
     goal_labels = []
 
     sample_count = 0
-    print(f"Starting character embedding extraction for {n_samples} samples...")
+    if n_samples is None:
+        print("Starting character embedding extraction for all test samples...")
+    else:
+        print(f"Starting character embedding extraction for {n_samples} samples...")
 
     with torch.no_grad():
         for batch_idx, batch in enumerate(test_loader):
-            if sample_count >= n_samples:
+            if n_samples is not None and sample_count >= n_samples:
                 break
 
             # Unpack all data including goal_ranks (matching evaluation/training)
@@ -724,9 +759,11 @@ def plot_character_embeddings(
         f"KeyDoor: Character Embeddings (Experiment {experiment_no})", fontsize=16
     )
 
-    # Goal colors for KeyDoor (4 goals: A, B, C, D)
-    goal_colors = ["red", "green", "blue", "yellow"]
-    goal_names = ["Goal A (Red)", "Goal B (Green)", "Goal C (Blue)", "Goal D (Yellow)"]
+    # Get goal information from config
+    goal_config = config.get_goal_config()
+    num_goals = goal_config.get('num_goals', 4)
+    goal_colors = goal_config.get('goal_colors', ["red", "green", "blue", "yellow"][:num_goals])
+    goal_names = goal_config.get('goal_names', [f"Goal {chr(65+i)}" for i in range(num_goals)])
 
     # PCA visualization
     if embeddings.shape[1] > 2:
@@ -734,7 +771,7 @@ def plot_character_embeddings(
             pca = PCA(n_components=2)
             embeddings_pca = pca.fit_transform(embeddings)
 
-            for goal in range(4):
+            for goal in range(num_goals):
                 mask = goal_labels == goal
                 if np.sum(mask) > 0:
                     ax1.scatter(
@@ -762,7 +799,7 @@ def plot_character_embeddings(
             )
     else:
         # For 2D embeddings, plot directly
-        for goal in range(4):
+        for goal in range(num_goals):
             mask = goal_labels == goal
             if np.sum(mask) > 0:
                 ax1.scatter(
@@ -787,7 +824,7 @@ def plot_character_embeddings(
             )  # Limit for performance
             goals_tsne = goal_labels[:1000]
 
-            for goal in range(4):
+            for goal in range(num_goals):
                 mask = goals_tsne == goal
                 if np.sum(mask) > 0:
                     ax2.scatter(
@@ -845,14 +882,14 @@ def plot_character_embeddings(
     print(f"Embedding dimension: {embeddings.shape[1]}")
 
     # Per-goal statistics
-    for goal in range(4):
+    for goal in range(num_goals):
         mask = goal_labels == goal
         count = np.sum(mask)
         print(f"{goal_names[goal]}: {count} samples")
 
 
 def create_additional_visualizations(
-    model, test_loader, output_dir, experiment_no, device, save_plots=True, config=None
+    model, test_loader, output_dir, device, config=None, experiment_no=None, save_plots=True
 ):
     """
     Create additional visualizations for KeyDoor experiment
@@ -861,13 +898,16 @@ def create_additional_visualizations(
         model: Trained ToMnet model
         test_loader: Test data loader
         output_dir: Directory to save plots
-        experiment_no: Experiment number
         device: Computing device
-        save_plots: Whether to save plots
         config: Configuration object
+        experiment_no: Experiment number (defaults to config.experiment_no)
+        save_plots: Whether to save plots
     """
     if config is None:
         config = Config()
+    
+    if experiment_no is None:
+        experiment_no = config.experiment_no
 
     print("Creating additional KeyDoor visualizations...")
 
@@ -880,8 +920,9 @@ def create_additional_visualizations(
         test_loader,
         device,
         output_dir,
+        config,
         experiment_no,
-        n_samples=config.evaluation_config.get("n_samples", 1000),
+        n_samples=None,
     )
 
     print("Additional visualizations completed!")
@@ -917,9 +958,9 @@ if __name__ == "__main__":
     if args.config_override:
         config.update_from_args(args)
 
-    results_dir = args.result_dir or config.result_dir
-    plot_dir = args.plot_dir or config.plot_dir
-    experiment_no = args.experiment_no or config.experiment_no
+    results_dir = args.result_dir or getattr(config, 'result_dir', 'results/exp3')
+    plot_dir = args.plot_dir or getattr(config, 'plot_dir', 'results/exp3/plots')
+    experiment_no = args.experiment_no or getattr(config, 'experiment_no', 3)
 
     # Create plot directory
     os.makedirs(plot_dir, exist_ok=True)
@@ -930,10 +971,12 @@ if __name__ == "__main__":
 
     # Plot training curves
     if args.plot_type in ["training", "all"]:
-        history_files = [
+        # Get history file paths from config
+        history_config = config.get_history_config()
+        history_files = history_config.get('history_files', [
             os.path.join(results_dir, "training_history.json"),
             os.path.join(results_dir, f"exp{experiment_no}_*/training_history.json"),
-        ]
+        ])
 
         import glob
 
@@ -941,15 +984,17 @@ if __name__ == "__main__":
             matching_files = glob.glob(pattern)
             for history_file in matching_files:
                 if os.path.exists(history_file):
-                    plot_training_curves(history_file, plot_dir, experiment_no)
+                    plot_training_curves(history_file, plot_dir, config, experiment_no)
                     break
 
     # Plot confusion matrix
     if args.plot_type in ["confusion", "all"]:
-        pred_files = [
+        # Get prediction file paths from config
+        pred_config = config.get_prediction_config()
+        pred_files = pred_config.get('prediction_files', [
             os.path.join(results_dir, "predictions.pkl"),
             os.path.join(results_dir, f"exp{experiment_no}_*/predictions.pkl"),
-        ]
+        ])
 
         import glob
 
@@ -957,15 +1002,17 @@ if __name__ == "__main__":
             matching_files = glob.glob(pattern)
             for pred_file in matching_files:
                 if os.path.exists(pred_file):
-                    plot_confusion_matrix(pred_file, plot_dir, experiment_no)
+                    plot_confusion_matrix(pred_file, plot_dir, config, experiment_no)
                     break
 
     # Plot action likelihood
     if args.plot_type in ["likelihood", "all"]:
-        pred_files = [
+        # Get prediction file paths from config
+        pred_config = config.get_prediction_config()
+        pred_files = pred_config.get('prediction_files', [
             os.path.join(results_dir, "predictions.pkl"),
             os.path.join(results_dir, f"exp{experiment_no}_*/predictions.pkl"),
-        ]
+        ])
 
         import glob
 
@@ -973,12 +1020,13 @@ if __name__ == "__main__":
             matching_files = glob.glob(pattern)
             for pred_file in matching_files:
                 if os.path.exists(pred_file):
-                    plot_action_likelihood(pred_file, plot_dir, experiment_no)
+                    plot_action_likelihood(pred_file, plot_dir, config, experiment_no)
                     break
 
     # Plot N_past results
     if args.plot_type in ["n_past", "all"]:
-        n_past_file = os.path.join(results_dir, "n_past_evaluation_results.json")
+        n_past_config = config.get_n_past_config()
+        n_past_file = n_past_config.get('n_past_results_file', os.path.join(results_dir, "n_past_evaluation_results.json"))
         if os.path.exists(n_past_file):
             with open(n_past_file, "r") as f:
                 n_past_results = json.load(f)
@@ -1014,9 +1062,25 @@ if __name__ == "__main__":
         import torch
         
         device = "cuda" if torch.cuda.is_available() else "cpu"
-        model_path = os.path.join(results_dir, "best_model.pth")
+        # Get model paths from config
+        model_config = config.get_model_config()
+        possible_model_paths = model_config.get('possible_model_paths', [
+            os.path.join(results_dir, "best_model.pth"),
+            os.path.join(results_dir, "model.pth"),
+            os.path.join(results_dir, "figure5_goal_directed_alpha0.01_model.pth"),
+        ])
         
-        if os.path.exists(model_path):
+        # Add any additional model paths from config
+        if 'additional_model_paths' in model_config:
+            possible_model_paths.extend(model_config['additional_model_paths'])
+        
+        model_path = None
+        for path in possible_model_paths:
+            if os.path.exists(path):
+                model_path = path
+                break
+        
+        if model_path and os.path.exists(model_path):
             model_kwargs = config.get_model_kwargs()
             model = load_model(model_path, device, model_kwargs)
             
@@ -1030,11 +1094,14 @@ if __name__ == "__main__":
             )
             
             # Try to find test data directory
-            test_data_dirs = [
+            data_config = config.get_data_config()
+            test_data_dirs = data_config.get('test_data_dirs', [
                 os.path.join(os.path.dirname(results_dir), "test"),
-                config.test_data_dir,
+                config.test_data_dir if hasattr(config, 'test_data_dir') else None,
                 os.path.join(results_dir, "test")
-            ]
+            ])
+            # Filter out None values
+            test_data_dirs = [d for d in test_data_dirs if d is not None]
             
             test_data_dir = None
             for tdd in test_data_dirs:
@@ -1062,8 +1129,8 @@ if __name__ == "__main__":
                     
                     # Create character embeddings plot
                     plot_character_embeddings(
-                        model, test_loader, device, plot_dir, experiment_no,
-                        n_samples=config.evaluation_config.get("n_samples", 1000)
+                        model, test_loader, device, plot_dir, config, experiment_no,
+                        n_samples=None
                     )
                     print("Character embedding visualization completed!")
                 else:

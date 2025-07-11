@@ -4,14 +4,20 @@ import torch.nn.functional as F
 import numpy as np
 
 """
-ToMnet architecture for KeyDoor environment (experiment 3)
-Adapted from ToMnetF experiment5 for KeyDoor environment
+ToMnet architecture for KeyDoor environment (experiment 3) - FIXED VERSION
+Following experiment5's efficient 2-stage architecture to resolve information bottleneck
+
+Key changes from original:
+1. Bypasses MentalNet bottleneck - direct CharNet → PredNet architecture
+2. PredNet gets direct access to current_state + character_embedding (like experiment5)
+3. Preserves all spatial information for better action prediction
+4. Compatible with existing training infrastructure
 
 Channel structure (9 channels total):
 - Channels 0-7: Original game state channels (walls, keys, doors, agent position, etc.)
 - Channel 8: Agent heading direction (0=north, 1=east, 2=south, 3=west)
 
-@author: Based on ToMnetF implementation, adapted for KeyDoor
+@author: Based on ToMnetF experiment5, adapted for KeyDoor environment
 """
 
 
@@ -224,99 +230,10 @@ class CharNet(nn.Module):
             return self.default_embedding.unsqueeze(0).expand(batch_size, -1)
 
 
-class MentalNet(nn.Module):
-    """Simplified MentalNet that processes current state instead of trajectory"""
-
-    def __init__(
-        self,
-        batch: int,
-        residual_blocks: int,
-        n_ement: int,
-        out_channels: int,
-        channels_in: int,
-        time_step: int,
-        n_echar: int,
-    ):
-        super(MentalNet, self).__init__()
-
-        self.n = residual_blocks
-        self.n_ement = n_ement
-        self.out_channels = out_channels
-        self.original_channels_in = channels_in  # This is current_state_channels (8)
-        self.channels_in = (
-            channels_in + n_echar
-        )  # Recent trajectory channels (8) + character embedding
-        self.batch = batch
-        self.n_echar = n_echar
-
-        # Convolutional layers for spatial feature extraction
-        self.conv_layers = nn.ModuleList()
-
-        # Initial convolution
-        self.conv_layers.append(
-            nn.Conv2d(self.channels_in, out_channels, kernel_size=3, padding=1)
-        )
-
-        # Residual blocks
-        for _ in range(residual_blocks):
-            self.conv_layers.append(
-                ResidualBlock(out_channels, out_channels, kernel_size=3, padding=1)
-            )
-
-        # Global average pooling
-        self.global_avg_pool = nn.AdaptiveAvgPool2d((1, 1))
-
-        # Mental state network (directly from spatial features)
-        self.mental_state_net = nn.Sequential(
-            nn.Linear(out_channels, out_channels),
-            nn.ReLU(),
-            nn.Linear(out_channels, out_channels),
-            nn.ReLU(),
-            nn.Linear(out_channels, n_ement),
-        )
-
-    def forward(self, recent_trajectory_with_char):
-        """
-        Forward pass for mental state network
-
-        Args:
-            recent_trajectory_with_char: (batch_size, seq_len, channels_in + n_echar, height, width)
-
-        Returns:
-            Mental state embedding: (batch_size, n_ement)
-        """
-        batch_size, seq_len, channels, height, width = recent_trajectory_with_char.shape
-
-        # Reshape to process all timesteps through conv layers
-        x = recent_trajectory_with_char.contiguous().view(
-            batch_size * seq_len, channels, height, width
-        )
-
-        # Extract spatial features through conv layers
-        for layer in self.conv_layers:
-            x = layer(x)
-
-        # Reshape back to sequence format
-        _, out_channels, out_height, out_width = x.shape
-        x = x.view(batch_size, seq_len, out_channels, out_height, out_width)
-
-        # Global average pooling over spatial dimensions for each timestep
-        x_pooled = x.mean(dim=[3, 4])  # (batch_size, seq_len, out_channels)
-
-        # Use the last timestep for mental state prediction
-        final_features = x_pooled[:, -1, :]  # (batch_size, out_channels)
-
-        # Mental state prediction
-        mental_state = self.mental_state_net(final_features)
-
-        return mental_state
-
-
 class PredNet(nn.Module):
     def __init__(
         self,
         batch: int,
-        n_ement: int,
         n_echar: int,
         current_state_channels: int,
         residual_blocks: int,
@@ -329,7 +246,6 @@ class PredNet(nn.Module):
         super(PredNet, self).__init__()
 
         self.batch = batch
-        self.n_ement = n_ement
         self.n_echar = n_echar
         self.current_state_channels = current_state_channels
         self.action_space = action_space
@@ -340,11 +256,10 @@ class PredNet(nn.Module):
         self.n = residual_blocks
 
         # Following experiment5 "Shared torso" approach
-        # Input channels: current_state + mental_state + character_embedding
-        # We'll spatially broadcast mental_state and character_embedding
-        input_channels = current_state_channels + n_ement + n_echar
+        # Input channels: current_state + character_embedding (like experiment5)
+        input_channels = current_state_channels + n_echar
         
-        # Shared torso - processes current state + mental state + character embedding
+        # Shared torso - processes current state + character embedding (following experiment5)
         self.conv_1 = nn.Conv2d(
             in_channels=input_channels,
             out_channels=out_channels,
@@ -400,14 +315,12 @@ class PredNet(nn.Module):
             kernel_size=1,
         )
 
-    def forward(self, mental_state, character_embedding, current_state):
+    def forward(self, mixed_data):
         """
         Forward pass for prediction network (following experiment5 approach)
 
         Args:
-            mental_state: (batch_size, n_ement)
-            character_embedding: (batch_size, n_echar)
-            current_state: (batch_size, current_state_channels, height, width)
+            mixed_data: (batch_size, current_state_channels + n_echar, height, width)
 
         Returns:
             action_logits: (batch_size, action_space)
@@ -415,30 +328,11 @@ class PredNet(nn.Module):
             consumption_logits: (batch_size, 8)
             sr_pred: (batch_size, 3, env_height, env_width)
         """
-        # Following experiment5 approach: combine inputs -> shared torso -> predictions
-        batch_size, _, height, width = current_state.shape
-        
-        # Spatially broadcast mental_state and character_embedding (following experiment5 pattern)
-        # mental_state: (batch_size, n_ement) -> (batch_size, n_ement, height, width)
-        mental_state_spatial = mental_state.unsqueeze(2).unsqueeze(3)  # (batch_size, n_ement, 1, 1)
-        mental_state_spatial = mental_state_spatial.expand(
-            batch_size, self.n_ement, height, width
-        )  # (batch_size, n_ement, height, width)
-        
-        # character_embedding: (batch_size, n_echar) -> (batch_size, n_echar, height, width)
-        character_embedding_spatial = character_embedding.unsqueeze(2).unsqueeze(3)  # (batch_size, n_echar, 1, 1)
-        character_embedding_spatial = character_embedding_spatial.expand(
-            batch_size, self.n_echar, height, width
-        )  # (batch_size, n_echar, height, width)
-        
-        # Concatenate all inputs (following experiment5 structure)
-        # current_state: (batch_size, current_state_channels, height, width)
-        # mental_state_spatial: (batch_size, n_ement, height, width)
-        # character_embedding_spatial: (batch_size, n_echar, height, width)
-        x = torch.cat([current_state, mental_state_spatial, character_embedding_spatial], dim=1)
+        # Following experiment5 approach: mixed data -> shared torso -> predictions
+        batch_size, _, height, width = mixed_data.shape
         
         # Shared torso (following experiment5 structure)
-        x = self.conv_1(x)
+        x = self.conv_1(mixed_data)
         
         for i in range(self.n):
             x = self.res_blocks[i](x)
@@ -488,10 +382,10 @@ class ToMnet(nn.Module):
         batch: int = 32,
         residual_blocks: int = 3,
         n_echar: int = 64,
-        n_ement: int = 64,
+        n_ement: int = 64,  # Keep for compatibility, but not used
         out_channels: int = 32,
         channels_in: int = 9,  # 8 original channels + 1 heading direction channel (for CharNet)
-        current_state_channels: int = 8,  # For MentalNet (without heading direction)
+        current_state_channels: int = 8,  # For PredNet (without heading direction)
         time_step: int = 500,
         action_space: int = 7,
         goal_space: int = 4,
@@ -505,17 +399,18 @@ class ToMnet(nn.Module):
 
         self.batch = batch
         self.n_echar = n_echar
-        self.n_ement = n_ement
+        self.n_ement = n_ement  # Keep for compatibility
         self.time_step = time_step
         self.action_space = action_space
         self.goal_space = goal_space
         self.max_n_past = max_n_past
         self.use_n_past = use_n_past
         self.channels_in = channels_in
+        self.current_state_channels = current_state_channels
         self.env_width = env_width
         self.env_height = env_height
 
-        # Character network - processes past episodes
+        # Character network - processes past episodes (same as experiment5)
         self.char_net = CharNet(
             batch=batch,
             residual_blocks=residual_blocks,
@@ -528,21 +423,9 @@ class ToMnet(nn.Module):
             hidden_size_lstm=hidden_size_lstm,
         )
 
-        # Mental state network - processes current state + character embedding
-        self.mental_net = MentalNet(
-            batch=batch,
-            residual_blocks=residual_blocks,
-            n_ement=n_ement,
-            out_channels=out_channels,
-            channels_in=current_state_channels,  # Use current_state_channels for MentalNet
-            time_step=time_step,
-            n_echar=n_echar,
-        )
-
-        # Prediction network - processes mental state + character embedding + current state
+        # Prediction network - processes current_state + character_embedding directly (like experiment5)
         self.pred_net = PredNet(
             batch=batch,
-            n_ement=n_ement,
             n_echar=n_echar,
             current_state_channels=current_state_channels,
             residual_blocks=residual_blocks,
@@ -555,11 +438,11 @@ class ToMnet(nn.Module):
 
     def forward(self, past_trajectories, recent_trajectory, current_state):
         """
-        Forward pass for ToMnet (3-stage architecture)
+        Forward pass for ToMnet (FIXED: following experiment5 2-stage architecture)
 
         Args:
             past_trajectories: (batch_size, n_past, seq_len, channels, height, width) - for CharNet
-            recent_trajectory: (batch_size, seq_len, channels, height, width) - for MentalNet
+            recent_trajectory: (batch_size, seq_len, channels, height, width) - unused (for compatibility)
             current_state: (batch_size, channels, height, width) - for PredNet
 
         Returns:
@@ -568,9 +451,9 @@ class ToMnet(nn.Module):
             consumption_logits: (batch_size, 8)
             sr_pred: (batch_size, 3, env_height, env_width)
             character_embedding: (batch_size, n_echar)
-            mental_state: (batch_size, n_ement)
+            mental_state: (batch_size, n_ement) - dummy for compatibility
         """
-        # 1. Character network - processes past episodes
+        # 1. Character network - processes past episodes (same as experiment5)
         if self.use_n_past and past_trajectories is not None:
             character_embedding = self.char_net(past_trajectories)
         else:
@@ -580,29 +463,27 @@ class ToMnet(nn.Module):
                 batch_size, self.n_echar, device=current_state.device
             )
 
-        # 2. Mental state network - processes recent_trajectory + character embedding
-        batch_size, seq_len, channels, height, width = recent_trajectory.shape
-
-        # Reshape character embedding to spatial format for trajectory concatenation
-        e_char_spatial = (
-            character_embedding.unsqueeze(1).unsqueeze(3).unsqueeze(4)
-        )  # (batch, 1, n_echar, 1, 1)
+        # 2. Direct access approach like experiment5 - BYPASS MentalNet bottleneck
+        # Extract only the relevant channels from current_state for PredNet
+        current_state_for_pred = current_state[:, :self.current_state_channels]  # Take first 8 channels
+        
+        # Reshape character embedding to spatial format (following experiment5 pattern)
+        batch_size, _, height, width = current_state_for_pred.shape
+        e_char_spatial = character_embedding.unsqueeze(2).unsqueeze(3)  # (batch, n_echar, 1, 1)
         e_char_spatial = e_char_spatial.expand(
-            batch_size, seq_len, self.n_echar, height, width
-        )  # (batch, seq_len, n_echar, height, width)
+            batch_size, self.n_echar, height, width
+        )  # (batch, n_echar, height, width)
 
-        # Concatenate recent_trajectory with character embedding
-        recent_trajectory_with_char = torch.cat(
-            [recent_trajectory, e_char_spatial], dim=2
-        )  # (batch, seq_len, channels + n_echar, height, width)
+        # Concatenate current_state with character embedding (following experiment5)
+        # current_state_for_pred: (batch_size, current_state_channels, height, width)
+        # e_char_spatial: (batch_size, n_echar, height, width)
+        mixed_data = torch.cat([current_state_for_pred, e_char_spatial], dim=1)  # (batch, channels + n_echar, height, width)
 
-        # Process through MentalNet
-        mental_state = self.mental_net(recent_trajectory_with_char)
+        # 3. PredNet processes mixed data directly (following experiment5 pattern)
+        action_logits, goal_logits, consumption_logits, sr_pred = self.pred_net(mixed_data)
 
-        # 3. Prediction network - processes current_state + character embedding + mental state
-        action_logits, goal_logits, consumption_logits, sr_pred = self.pred_net(
-            mental_state, character_embedding, current_state
-        )
+        # Create dummy mental_state for compatibility with existing training code
+        mental_state = torch.zeros(batch_size, self.n_ement, device=current_state.device)
 
         return (
             action_logits,
@@ -619,7 +500,7 @@ class ToMnet(nn.Module):
 
         Args:
             past_trajectories: Past episode trajectories
-            recent_trajectory: Recent trajectory for MentalNet
+            recent_trajectory: Recent trajectory (unused, for compatibility)
             current_state: Current state for PredNet
 
         Returns:
@@ -637,7 +518,7 @@ class ToMnet(nn.Module):
 
         Args:
             past_trajectories: Past episode trajectories
-            recent_trajectory: Recent trajectory for MentalNet
+            recent_trajectory: Recent trajectory (unused, for compatibility)
             current_state: Current state for PredNet
 
         Returns:
@@ -668,27 +549,18 @@ class ToMnet(nn.Module):
 
     def get_mental_state(self, recent_trajectory, character_embedding):
         """
-        Get mental state from recent trajectory and character embedding
+        Get mental state - returns dummy for compatibility
 
         Args:
-            recent_trajectory: Recent trajectory for MentalNet
-            character_embedding: Character embedding
+            recent_trajectory: Recent trajectory (unused)
+            character_embedding: Character embedding (unused)
 
         Returns:
-            Mental state embedding
+            Dummy mental state embedding
         """
         with torch.no_grad():
-            # Need to concatenate trajectory with character embedding like in forward()
-            batch_size, seq_len, channels, height, width = recent_trajectory.shape
-            e_char_spatial = character_embedding.unsqueeze(1).unsqueeze(3).unsqueeze(4)
-            e_char_spatial = e_char_spatial.expand(
-                batch_size, seq_len, self.n_echar, height, width
-            )
-            recent_trajectory_with_char = torch.cat(
-                [recent_trajectory, e_char_spatial], dim=2
-            )
-            mental_state, _ = self.mental_net(recent_trajectory_with_char)
-            return mental_state
+            batch_size = 1 if recent_trajectory is None else recent_trajectory.size(0)
+            return torch.zeros(batch_size, self.n_ement)
 
 
 class ToMnetLoss(nn.Module):
@@ -812,6 +684,7 @@ if __name__ == "__main__":
         "n_ement": 64,
         "out_channels": 32,
         "channels_in": 9,  # 8 original channels + 1 heading direction channel
+        "current_state_channels": 8,  # For PredNet
         "time_step": 100,
         "action_space": 7,
         "goal_space": 4,
@@ -821,7 +694,7 @@ if __name__ == "__main__":
 
     # Create model
     model = create_model(config)
-    print(f"Model created with {count_parameters(model)} parameters")
+    print(f"FIXED Model created with {count_parameters(model)} parameters")
 
     # Example input shapes
     batch_size = 8
@@ -836,10 +709,11 @@ if __name__ == "__main__":
         batch_size, n_past, seq_len, channels, height, width
     )
     current_trajectory = torch.randn(batch_size, seq_len, channels, height, width)
+    current_state = torch.randn(batch_size, channels, height, width)
 
     # Forward pass
     action_logits, goal_logits, consumption_logits, sr_pred, char_emb, mental_state = (
-        model(past_trajectories, current_trajectory)
+        model(past_trajectories, current_trajectory, current_state)
     )
 
     print(f"Action logits shape: {action_logits.shape}")

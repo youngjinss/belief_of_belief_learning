@@ -162,7 +162,7 @@ class CharNet(nn.Module):
                 batch_size_local, seq_len_local, channels, height, width = (
                     episode_batch.shape
                 )
-                episode_batch = episode_batch.reshape(
+                episode_batch = episode_batch.contiguous().view(
                     batch_size_local * seq_len_local, channels, height, width
                 )
 
@@ -181,7 +181,7 @@ class CharNet(nn.Module):
                     for i in range(self.n):
                         ep_x = self.past_res_blocks[i](ep_x)
 
-                    # Reshape back to (batch, seq_len, height, width, out_channels)
+                    # Reshape back to (batch, seq_len, out_channels, height, width)
                     _, out_channels, out_height, out_width = ep_x.shape
                     ep_x = ep_x.view(
                         batch_size_local,
@@ -190,12 +190,10 @@ class CharNet(nn.Module):
                         out_height,
                         out_width,
                     )
-                    ep_x = ep_x.permute(
-                        0, 1, 3, 4, 2
-                    )  # (batch, seq_len, height, width, out_channels)
+                    # Keep in (batch, seq_len, out_channels, height, width) format for efficient processing
 
                     # Average over spatial dimensions
-                    ep_x = torch.mean(ep_x, [2, 3])  # (batch, seq_len, out_channels)
+                    ep_x = torch.mean(ep_x, [3, 4])  # (batch, seq_len, out_channels)
 
                     # Apply LSTM
                     ep_x = self.past_lstm(ep_x)
@@ -246,8 +244,8 @@ class MentalNet(nn.Module):
         self.out_channels = out_channels
         self.original_channels_in = channels_in  # This is current_state_channels (8)
         self.channels_in = (
-            9 + n_echar
-        )  # Recent trajectory channels (9) + character embedding
+            channels_in + n_echar
+        )  # Recent trajectory channels (8) + character embedding
         self.batch = batch
         self.n_echar = n_echar
 
@@ -286,12 +284,11 @@ class MentalNet(nn.Module):
 
         Returns:
             Mental state embedding: (batch_size, n_ement)
-            Spatial features: (batch_size, out_channels, height, width)
         """
         batch_size, seq_len, channels, height, width = recent_trajectory_with_char.shape
 
         # Reshape to process all timesteps through conv layers
-        x = recent_trajectory_with_char.view(
+        x = recent_trajectory_with_char.contiguous().view(
             batch_size * seq_len, channels, height, width
         )
 
@@ -312,12 +309,7 @@ class MentalNet(nn.Module):
         # Mental state prediction
         mental_state = self.mental_state_net(final_features)
 
-        # Return spatial features from last timestep for SR prediction
-        spatial_features = x[
-            :, -1, :, :, :
-        ]  # (batch_size, out_channels, height, width)
-
-        return mental_state, spatial_features
+        return mental_state
 
 
 class PredNet(nn.Module):
@@ -326,6 +318,8 @@ class PredNet(nn.Module):
         batch: int,
         n_ement: int,
         n_echar: int,
+        current_state_channels: int,
+        residual_blocks: int,
         action_space: int = 7,
         out_channels: int = 64,
         goal_space: int = 4,
@@ -337,42 +331,66 @@ class PredNet(nn.Module):
         self.batch = batch
         self.n_ement = n_ement
         self.n_echar = n_echar
+        self.current_state_channels = current_state_channels
         self.action_space = action_space
         self.goal_space = goal_space
         self.env_width = env_width
         self.env_height = env_height
+        self.out_channels = out_channels
+        self.n = residual_blocks
 
-        # Action prediction network
-        self.action_predictor = nn.Sequential(
-            nn.Linear(n_ement + n_echar, out_channels),
-            nn.ReLU(),
-            nn.Linear(out_channels, out_channels),
-            nn.ReLU(),
-            nn.Linear(out_channels, action_space),
+        # Following experiment5 "Shared torso" approach
+        # Input channels: current_state + mental_state + character_embedding
+        # We'll spatially broadcast mental_state and character_embedding
+        input_channels = current_state_channels + n_ement + n_echar
+        
+        # Shared torso - processes current state + mental state + character embedding
+        self.conv_1 = nn.Conv2d(
+            in_channels=input_channels,
+            out_channels=out_channels,
+            kernel_size=3,
+            stride=1,
+            padding=1,
+        )
+        
+        self.res_blocks = nn.ModuleList()
+        for _ in range(self.n):
+            self.res_blocks.append(
+                ResidualBlock(
+                    in_channels=out_channels,
+                    out_channels=out_channels,
+                    kernel_size=3,
+                    padding=1,
+                    stride=1,
+                )
+            )
+
+        self.conv_2 = nn.Conv2d(
+            in_channels=out_channels,
+            out_channels=out_channels,
+            kernel_size=3,
+            stride=1,
+            padding=1,
         )
 
-        # Goal prediction network
-        self.goal_predictor = nn.Sequential(
-            nn.Linear(n_ement + n_echar, out_channels),
-            nn.ReLU(),
-            nn.Linear(out_channels, out_channels),
-            nn.ReLU(),
-            nn.Linear(out_channels, goal_space),
-        )
+        # Shared feature extraction (following experiment5 structure)
+        self.fc1 = nn.Linear(out_channels, out_channels)
+        self.fc2 = nn.Linear(out_channels, out_channels)
 
-        # Consumption prediction network (8 outputs: 4 keys + 4 doors)
-        self.consumption_predictor = nn.Sequential(
-            nn.Linear(n_ement + n_echar, out_channels),
-            nn.ReLU(),
-            nn.Linear(out_channels, out_channels),
-            nn.ReLU(),
-            nn.Linear(out_channels, 8),  # 4 keys + 4 doors
-        )
+        # Action prediction head (following experiment5 structure)
+        self.fc3_action = nn.Linear(out_channels, action_space)
 
-        # SR prediction network using spatial convolutions (matching experiment 5)
-        # Uses spatial convolutional layers to maintain spatial structure
+        # Goal prediction head 
+        self.fc3_goal = nn.Linear(out_channels, goal_space)
+
+        # Consumption prediction head (8 outputs: 4 keys + 4 doors)
+        # Each output represents p(c_k) for object k being consumed
+        self.fc3_consumption = nn.Linear(out_channels, 8)
+
+        # SR prediction heads for different discount factors (following experiment5)
+        # Output spatial grids for 3 different gammas
         self.conv_sr = nn.Conv2d(
-            in_channels=out_channels,  # This should match out_channels from MentalNet
+            in_channels=out_channels,
             out_channels=out_channels,
             kernel_size=1,
         )
@@ -382,14 +400,14 @@ class PredNet(nn.Module):
             kernel_size=1,
         )
 
-    def forward(self, mental_state, character_embedding, spatial_features):
+    def forward(self, mental_state, character_embedding, current_state):
         """
-        Forward pass for prediction network
+        Forward pass for prediction network (following experiment5 approach)
 
         Args:
             mental_state: (batch_size, n_ement)
             character_embedding: (batch_size, n_echar)
-            spatial_features: (batch_size, out_channels, height, width)
+            current_state: (batch_size, current_state_channels, height, width)
 
         Returns:
             action_logits: (batch_size, action_space)
@@ -397,33 +415,70 @@ class PredNet(nn.Module):
             consumption_logits: (batch_size, 8)
             sr_pred: (batch_size, 3, env_height, env_width)
         """
-        # Combine mental state and character embedding
-        combined = torch.cat([mental_state, character_embedding], dim=1)
-
-        # Predict actions, goals, and consumption
-        action_logits = self.action_predictor(combined)
-        goal_logits = self.goal_predictor(combined)
-        consumption_logits = self.consumption_predictor(combined)
-
-        # Predict SR maps using spatial convolutions (matching experiment 5)
-        sr_features = self.conv_sr(
-            spatial_features
-        )  # (batch_size, out_channels, height, width)
+        # Following experiment5 approach: combine inputs -> shared torso -> predictions
+        batch_size, _, height, width = current_state.shape
+        
+        # Spatially broadcast mental_state and character_embedding (following experiment5 pattern)
+        # mental_state: (batch_size, n_ement) -> (batch_size, n_ement, height, width)
+        mental_state_spatial = mental_state.unsqueeze(2).unsqueeze(3)  # (batch_size, n_ement, 1, 1)
+        mental_state_spatial = mental_state_spatial.expand(
+            batch_size, self.n_ement, height, width
+        )  # (batch_size, n_ement, height, width)
+        
+        # character_embedding: (batch_size, n_echar) -> (batch_size, n_echar, height, width)
+        character_embedding_spatial = character_embedding.unsqueeze(2).unsqueeze(3)  # (batch_size, n_echar, 1, 1)
+        character_embedding_spatial = character_embedding_spatial.expand(
+            batch_size, self.n_echar, height, width
+        )  # (batch_size, n_echar, height, width)
+        
+        # Concatenate all inputs (following experiment5 structure)
+        # current_state: (batch_size, current_state_channels, height, width)
+        # mental_state_spatial: (batch_size, n_ement, height, width)
+        # character_embedding_spatial: (batch_size, n_echar, height, width)
+        x = torch.cat([current_state, mental_state_spatial, character_embedding_spatial], dim=1)
+        
+        # Shared torso (following experiment5 structure)
+        x = self.conv_1(x)
+        
+        for i in range(self.n):
+            x = self.res_blocks[i](x)
+        
+        x = self.conv_2(x)
+        x = F.relu(x)
+        
+        # Store spatial features for SR prediction (following experiment5)
+        spatial_features = x
+        
+        # Global pooling for action and consumption predictions (following experiment5)
+        x_pooled = torch.mean(x, [2, 3])  # (batch_size, out_channels)
+        
+        # Shared feature extraction (following experiment5 structure)
+        x_pooled = self.fc1(x_pooled)
+        x_pooled = F.relu(x_pooled)
+        
+        x_pooled = self.fc2(x_pooled)
+        x_pooled = F.relu(x_pooled)
+        
+        # Action prediction (following experiment5 structure)
+        action_logits = self.fc3_action(x_pooled)
+        
+        # Goal prediction 
+        goal_logits = self.fc3_goal(x_pooled)
+        
+        # Consumption prediction (raw logits - sigmoid applied in loss function)
+        consumption_logits = self.fc3_consumption(x_pooled)
+        
+        # SR prediction (using spatial features, following experiment5)
+        sr_features = self.conv_sr(spatial_features)  # (batch_size, out_channels, height, width)
         sr_features = F.relu(sr_features)
         sr_pred = self.conv_sr_out(sr_features)  # (batch_size, 3, height, width)
-
-        # Apply softmax to each SR channel independently to get probability distributions
+        
+        # Apply softmax to each SR channel independently (following experiment5)
         batch_size, channels, height, width = sr_pred.shape
-        sr_pred = sr_pred.view(
-            batch_size, channels, -1
-        )  # (batch_size, 3, spatial_size)
-        sr_pred = F.softmax(
-            sr_pred, dim=2
-        )  # Normalize across spatial locations for each gamma
-        sr_pred = sr_pred.view(
-            batch_size, channels, height, width
-        )  # Back to spatial format
-
+        sr_pred = sr_pred.view(batch_size, channels, -1)  # (batch_size, 3, spatial_size)
+        sr_pred = F.softmax(sr_pred, dim=2)  # Normalize across spatial locations for each gamma
+        sr_pred = sr_pred.view(batch_size, channels, height, width)  # Back to spatial format
+        
         return action_logits, goal_logits, consumption_logits, sr_pred
 
 
@@ -484,11 +539,13 @@ class ToMnet(nn.Module):
             n_echar=n_echar,
         )
 
-        # Prediction network - processes mental state + character embedding
+        # Prediction network - processes mental state + character embedding + current state
         self.pred_net = PredNet(
             batch=batch,
             n_ement=n_ement,
             n_echar=n_echar,
+            current_state_channels=current_state_channels,
+            residual_blocks=residual_blocks,
             action_space=action_space,
             out_channels=out_channels,
             goal_space=goal_space,
@@ -540,11 +597,11 @@ class ToMnet(nn.Module):
         )  # (batch, seq_len, channels + n_echar, height, width)
 
         # Process through MentalNet
-        mental_state, spatial_features = self.mental_net(recent_trajectory_with_char)
+        mental_state = self.mental_net(recent_trajectory_with_char)
 
         # 3. Prediction network - processes current_state + character embedding + mental state
         action_logits, goal_logits, consumption_logits, sr_pred = self.pred_net(
-            mental_state, character_embedding, spatial_features
+            mental_state, character_embedding, current_state
         )
 
         return (
@@ -712,23 +769,30 @@ def create_model(config):
     Returns:
         ToMnet model
     """
-    model = ToMnet(
-        batch=config.get("batch", 32),
-        residual_blocks=config.get("residual_blocks", 3),
-        n_echar=config.get("n_echar", 64),
-        n_ement=config.get("n_ement", 64),
-        out_channels=config.get("out_channels", 32),
-        channels_in=config.get("channels_in", 8),
-        current_state_channels=config.get("current_state_channels", 8),
-        time_step=config.get("time_step", 500),
-        action_space=config.get("action_space", 7),
-        goal_space=config.get("goal_space", 4),
-        max_n_past=config.get("max_n_past", 10),
-        use_n_past=config.get("use_n_past", True),
-        env_width=config.get("env_width", 9),
-        env_height=config.get("env_height", 9),
-        hidden_size_lstm=config.get("hidden_size_lstm", 64),
-    )
+    # Handle both Config object and dictionary
+    if hasattr(config, 'get_model_kwargs'):
+        # Config object
+        model_kwargs = config.get_model_kwargs()
+        model = ToMnet(**model_kwargs)
+    else:
+        # Dictionary
+        model = ToMnet(
+            batch=config.get("batch", 32),
+            residual_blocks=config.get("residual_blocks", 3),
+            n_echar=config.get("n_echar", 64),
+            n_ement=config.get("n_ement", 64),
+            out_channels=config.get("out_channels", 32),
+            channels_in=config.get("channels_in", 8),
+            current_state_channels=config.get("current_state_channels", 8),
+            time_step=config.get("time_step", 500),
+            action_space=config.get("action_space", 7),
+            goal_space=config.get("goal_space", 4),
+            max_n_past=config.get("max_n_past", 10),
+            use_n_past=config.get("use_n_past", True),
+            env_width=config.get("env_width", 9),
+            env_height=config.get("env_height", 9),
+            hidden_size_lstm=config.get("hidden_size_lstm", 64),
+        )
 
     return model
 

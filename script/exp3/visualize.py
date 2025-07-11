@@ -710,7 +710,8 @@ def plot_character_embeddings(
     with torch.no_grad():
         for batch_idx, batch in enumerate(test_loader):
             batch_count += 1
-            print(f"Processing batch {batch_idx + 1}/{len(test_loader)}, current sample count: {sample_count}")
+            if batch_idx % 50 == 0:  # Print every 50 batches instead of every batch
+                print(f"Processing batch {batch_idx + 1}/{len(test_loader)}, current sample count: {sample_count}")
             
             if n_samples is not None and sample_count >= n_samples:
                 print(f"Reached target sample count of {n_samples}, stopping...")
@@ -732,12 +733,9 @@ def plot_character_embeddings(
                 goal_ranks = goal_ranks.to(device)
 
                 batch_size = trajectories.size(0)
-                print(f"  Batch size: {batch_size}, trajectories shape: {trajectories.shape}")
-                print(f"  Goals shape: {goals.shape}, goal_ranks shape: {goal_ranks.shape}")
 
                 # Use KeyDoor exp3 native logic with goal_ranks (don't force exp5 compatibility)
                 n_past_config = config.get_n_past_evaluation_config()
-                print(f"  N_past config: {n_past_config}")
                 
                 past_episodes = generate_past_episodes_from_batch(
                     trajectories=trajectories,
@@ -748,25 +746,21 @@ def plot_character_embeddings(
                     max_n_past=n_past_config['n_past_max'],
                     rank_threshold=1,  # KeyDoor exp3 parameter
                 )
-                print(f"  Past episodes shape: {past_episodes.shape}")
 
                 # Use KeyDoor exp3 native character embedding method
                 try:
                     char_embeddings = model.get_character_embedding(past_episodes)  # Native exp3 method
-                    print(f"  Character embeddings shape: {char_embeddings.shape}")
 
                     embeddings.extend(char_embeddings.cpu().numpy())
                     goal_labels.extend(goals.cpu().numpy())
 
                     sample_count += len(goals)
                     successful_batches += 1
-                    print(f"  Successfully processed {len(goals)} samples, total: {sample_count}")
                 except Exception as e:
                     print(f"  Error getting character embeddings: {e}")
                     failed_batches += 1
                     continue
             else:
-                print(f"  Batch {batch_idx} has insufficient elements: {len(batch)} (expected 7 for KeyDoor exp3)")
                 failed_batches += 1
                 continue
 
@@ -814,6 +808,12 @@ def plot_character_embeddings(
             embeddings_pca = pca.fit_transform(embeddings)
             print(f"  PCA output shape: {embeddings_pca.shape}")
             print(f"  Explained variance ratio: PC1={pca.explained_variance_ratio_[0]:.4f}, PC2={pca.explained_variance_ratio_[1]:.4f}")
+            
+            # Check for problematic variance (all embeddings are identical)
+            if pca.explained_variance_ratio_[0] > 0.99 and pca.explained_variance_ratio_[1] < 0.01:
+                print(f"  WARNING: Character embeddings show no meaningful variance!")
+                print(f"  This suggests all embeddings are identical or nearly identical.")
+                print(f"  The character network may not be learning goal-specific representations.")
 
             # Get unique goals present in the data (aligned with exp5 logic)
             unique_goals = np.unique(goal_labels)
@@ -881,13 +881,13 @@ def plot_character_embeddings(
             print(f"\nt-SNE Analysis:")
             print(f"  Total available embeddings: {len(embeddings)}")
             
-            # Limit to 1000 samples for performance
-            n_tsne_samples = min(1000, len(embeddings))
-            embeddings_for_tsne = embeddings[:n_tsne_samples]
-            goals_tsne = goal_labels[:n_tsne_samples]
+            # Use all available samples for t-SNE (no limit)
+            embeddings_for_tsne = embeddings
+            goals_tsne = goal_labels
             
-            print(f"  Using {n_tsne_samples} samples for t-SNE")
+            print(f"  Using all {len(embeddings)} samples for t-SNE")
             print(f"  t-SNE input shape: {embeddings_for_tsne.shape}")
+            print(f"  WARNING: t-SNE with {len(embeddings)} samples may take several minutes to compute...")
             
             tsne = TSNE(n_components=2, random_state=42)
             embeddings_tsne = tsne.fit_transform(embeddings_for_tsne)
@@ -981,7 +981,7 @@ def plot_character_embeddings(
             
         print(f"\nVisualization summary:")
         print(f"  PCA: Used {len(embeddings)} samples")
-        print(f"  t-SNE: {'Used ' + str(min(1000, len(embeddings))) + ' samples' if len(embeddings) > 50 else 'Insufficient samples (' + str(len(embeddings)) + ' < 50)'}")
+        print(f"  t-SNE: {'Used ' + str(len(embeddings)) + ' samples' if len(embeddings) > 50 else 'Insufficient samples (' + str(len(embeddings)) + ' < 50)'}")
     else:
         print("\nNo samples available for analysis!")
 

@@ -678,25 +678,19 @@ def plot_character_embeddings(
 
                 batch_size = trajectories.size(0)
                 print(
-                    f"Processing batch {batch_idx}: batch_size={batch_size}, trajectories.shape={trajectories.shape}"
-                )
 
                 # Generate past episodes using goal_ranks (same as training/evaluation)
                 past_episodes = generate_past_episodes_from_batch(
                     trajectories, goal_ranks, batch_size, 1, 1, 1, rank_threshold=1
                 )
-                print(f"Generated past_episodes.shape={past_episodes.shape}")
-
                 # Get character embeddings using the model's method
                 try:
                     char_embeddings = model.get_character_embedding(past_episodes)
-                    print(f"Character embeddings.shape={char_embeddings.shape}")
 
                     embeddings.extend(char_embeddings.cpu().numpy())
                     goal_labels.extend(goals.cpu().numpy())
 
                     sample_count += len(goals)
-                    print(f"Total samples processed: {sample_count}")
                 except Exception as e:
                     print(f"Error getting character embeddings: {e}")
                     continue

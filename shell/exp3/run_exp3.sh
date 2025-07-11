@@ -168,7 +168,7 @@ run_evaluation() {
     log_step "Logging evaluation output to: $RUN_LOG_DIR/evaluation.log"
     
     cd "$SCRIPTS_DIR"
-    python evaluate.py --config_override --test_data_dir "$TEST_DATA_DIR" --result_dir "$RESULTS_DIR" --model_path "$RESULTS_DIR/best_model.pth" > "$RUN_LOG_DIR/evaluation.log" 2>&1
+    python evaluate.py --config_override --test_data_dir "$TEST_DATA_DIR" --result_dir "$RESULTS_DIR" --model_path "$RESULTS_DIR/best_model.pth" --save_predictions --env_size "9x9" > "$RUN_LOG_DIR/evaluation.log" 2>&1
     
     log_step "Evaluation completed"
     
@@ -187,9 +187,9 @@ run_visualization() {
         return 0
     fi
     
-    # Check if visualization already completed
-    if [ -f "$RESULTS_DIR/training_curves.png" ]; then
-        log_step "Visualization skipped - training_curves.png already exists"
+    # Check if visualization already completed (check for plot directory)
+    if [ -d "$RESULTS_DIR/plots" ] && [ "$(ls -A $RESULTS_DIR/plots/*.png 2>/dev/null | wc -l)" -gt 0 ]; then
+        log_step "Visualization skipped - plots already exist in $RESULTS_DIR/plots"
         return 0
     fi
     
@@ -197,9 +197,15 @@ run_visualization() {
     log_step "Logging visualization output to: $RUN_LOG_DIR/visualization.log"
     
     cd "$SCRIPTS_DIR"
-    python visualize.py --config_override --result_dir "$RESULTS_DIR" --plot_type "all" > "$RUN_LOG_DIR/visualization.log" 2>&1
+    python visualize.py --config_override --result_dir "$RESULTS_DIR" --plot_dir "$RESULTS_DIR/plots" --plot_type "all" --env_size "9x9" > "$RUN_LOG_DIR/visualization.log" 2>&1
     
     log_step "Visualization completed"
+    
+    # Log visualization summary if available
+    if [ -f "$RUN_LOG_DIR/visualization.log" ]; then
+        log_step "Visualization summary:"
+        grep -i "completed\|saved\|error" "$RUN_LOG_DIR/visualization.log" | tail -5 || true
+    fi
 }
 
 # Function to check KeyDoor experiment implementation

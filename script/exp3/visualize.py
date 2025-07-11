@@ -894,6 +894,7 @@ if __name__ == "__main__":
         default="all",
         help="Type of plot to create",
     )
+    parser.add_argument("--env_size", type=str, choices=["3x3", "5x5", "9x9", "11x11"], help="Environment size")
 
     args = parser.parse_args()
 

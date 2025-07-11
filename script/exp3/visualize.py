@@ -144,20 +144,33 @@ def plot_accuracy_heatmap_by_n_past(results_by_n_past, output_dir=None):
     accuracy_matrix = []
 
     for n_past in n_past_values:
-        predictions = results_by_n_past[n_past]["predictions"]
-        targets = results_by_n_past[n_past]["targets"]
+        # Check if detailed predictions and targets are available
+        if "predictions" in results_by_n_past[n_past] and "targets" in results_by_n_past[n_past]:
+            predictions = results_by_n_past[n_past]["predictions"]
+            targets = results_by_n_past[n_past]["targets"]
 
-        # Calculate per-action accuracy
-        action_accuracies = []
-        for action in range(7):  # 7 actions in KeyDoor
-            action_mask = np.array(targets) == action
-            if np.sum(action_mask) > 0:
-                action_acc = np.mean(np.array(predictions)[action_mask] == action)
-                action_accuracies.append(action_acc)
-            else:
-                action_accuracies.append(0.0)
+            # Calculate per-action accuracy
+            action_accuracies = []
+            for action in range(7):  # 7 actions in KeyDoor
+                action_mask = np.array(targets) == action
+                if np.sum(action_mask) > 0:
+                    action_acc = np.mean(np.array(predictions)[action_mask] == action)
+                    action_accuracies.append(action_acc)
+                else:
+                    action_accuracies.append(0.0)
 
-        accuracy_matrix.append(action_accuracies)
+            accuracy_matrix.append(action_accuracies)
+        else:
+            # If detailed predictions not available, use overall accuracy for all actions
+            overall_accuracy = results_by_n_past[n_past]["accuracy"]
+            # Use the same accuracy for all actions (not ideal but prevents crash)
+            action_accuracies = [overall_accuracy / 7.0] * 7  # Distribute equally
+            accuracy_matrix.append(action_accuracies)
+            
+            # Only print warning once
+            if n_past == n_past_values[0]:
+                print("Warning: N_past results don't contain detailed predictions/targets.")
+                print("Using overall accuracy distributed across all actions for heatmap.")
 
     accuracy_matrix = np.array(accuracy_matrix)
 
@@ -979,7 +992,18 @@ if __name__ == "__main__":
                 results_by_n_past[int(key)] = value
 
             plot_accuracy_by_n_past(results_by_n_past, plot_dir)
-            plot_accuracy_heatmap_by_n_past(results_by_n_past, plot_dir)
+            
+            # Only create heatmap if detailed predictions are available
+            has_predictions = False
+            for n_past, metrics in results_by_n_past.items():
+                if "predictions" in metrics and "targets" in metrics:
+                    has_predictions = True
+                    break
+            
+            if has_predictions:
+                plot_accuracy_heatmap_by_n_past(results_by_n_past, plot_dir)
+            else:
+                print("Skipping accuracy heatmap - detailed predictions not available in N_past results")
 
     # Plot character embeddings
     if args.plot_type in ["embeddings", "all"]:

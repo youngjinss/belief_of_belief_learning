@@ -351,6 +351,7 @@ def evaluate_keydoor_model(
     model_path=None,
     test_data_dir=None,
     results_dir=None,
+    plot_type="basic",
 ):
     """
     Perform evaluation on KeyDoor ToMnet model
@@ -360,6 +361,7 @@ def evaluate_keydoor_model(
         model_path: Path to trained model
         test_data_dir: Directory containing test data
         results_dir: Directory to save results
+        plot_type: Type of evaluation to perform ("basic", "n_past", "embeddings", "all")
     """
     if config is None:
         config = Config()
@@ -396,11 +398,11 @@ def evaluate_keydoor_model(
     print(f"Device: {device}")
     print("-" * 60)
 
-    # Load model
+    # Load model ONCE
     model = load_model(model_path, device, model_kwargs)
     print(f"Model loaded successfully")
 
-    # Load test data
+    # Load test data ONCE
     print("Loading test data...")
     # Create DataReader with correct dimensions based on environment size
     data_reader = DataReader(
@@ -456,6 +458,29 @@ def evaluate_keydoor_model(
     with open(results_path, "w") as f:
         json.dump(metrics, f, indent=2)
     print(f"Results saved to: {results_path}")
+
+    # Run N_past evaluation if requested (using same model and test_loader)
+    if plot_type in ["n_past", "all"]:
+        print("Running N_past evaluation...")
+        evaluate_n_past_experiment(
+            model, test_loader, results_dir, data_config, config
+        )
+        print("N_past evaluation completed!")
+
+    # Create character embeddings if requested (using same model and test_loader)
+    if plot_type in ["embeddings", "all"]:
+        print("Creating character embedding visualizations...")
+        from visualize import plot_character_embeddings
+        
+        plot_character_embeddings(
+            model,
+            test_loader,
+            device,
+            results_dir,
+            experiment_no=config.experiment_no,
+            n_samples=config.evaluation_config.get("n_samples", 1000),
+        )
+        print("Character embedding visualization completed!")
 
     return metrics
 
@@ -728,97 +753,15 @@ if __name__ == "__main__":
     if args.config_override:
         config.update_from_args(args)
 
-    # Run evaluation
+    # Run evaluation (now handles n_past and embeddings internally)
     results = evaluate_keydoor_model(
         config=config,
         model_path=args.model_path,
         test_data_dir=args.test_data_dir,
         results_dir=args.result_dir,
+        plot_type=args.plot_type,
     )
     print("Evaluation completed successfully!")
-
-    # Run N_past evaluation if requested
-    if args.plot_type in ["n_past", "all"]:
-        print("Running N_past evaluation...")
-        # Load model and test data for N_past evaluation
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        model_path = args.model_path or os.path.join(config.model_dir, "best_model.pth")
-        model_kwargs = config.get_model_kwargs()
-        model = load_model(model_path, device, model_kwargs)
-        
-        # Load test data
-        data_reader = DataReader(
-            time_step=config.get_data_config().get("time_step", 500),
-            w=config.width,
-            h=config.height,
-            d=config.get_data_config().get("maze_depth", 9),
-            experiment_no=config.experiment_no
-        )
-        test_games = data_reader.ReadAllGames(
-            args.test_data_dir or config.test_data_dir
-        )
-        data_config = config.get_data_config()
-        test_data = prepare_data_for_training(
-            test_games, min_timestep=6, max_trajectory_length=data_config["max_moves"]
-        )
-        test_dataset = TensorDataset(
-            test_data["trajectories"], test_data["actions"], test_data["goals"]
-        )
-        test_loader = DataLoader(
-            test_dataset, batch_size=config.evaluation_config["batch_size"], shuffle=False
-        )
-        
-        # Run N_past evaluation
-        evaluate_n_past_experiment(
-            model, test_loader, args.result_dir or config.result_dir, data_config, config
-        )
-        print("N_past evaluation completed!")
-
-    # Create additional visualizations if requested
-    if args.plot_type in ["embeddings", "all"]:
-        print("Creating additional visualizations...")
-        from visualize import plot_character_embeddings
-
-        # Load model and test data for visualization
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        model_path = args.model_path or os.path.join(config.model_dir, "best_model.pth")
-        model_kwargs = config.get_model_kwargs()
-        model = load_model(model_path, device, model_kwargs)
-
-        # Load test data
-        data_reader = DataReader(
-            time_step=data_config.get("time_step", 500),
-            w=config.width,
-            h=config.height,
-            d=data_config.get("maze_depth", 9),
-            experiment_no=config.experiment_no
-        )
-        test_games = data_reader.ReadAllGames(
-            args.test_data_dir or config.test_data_dir
-        )
-        data_config = config.get_data_config()
-        test_data = prepare_data_for_training(
-            test_games, min_timestep=6, max_trajectory_length=data_config["max_moves"]
-        )
-        test_dataset = TensorDataset(
-            test_data["trajectories"], test_data["actions"], test_data["goals"]
-        )
-        test_loader = DataLoader(
-            test_dataset,
-            batch_size=config.evaluation_config["batch_size"],
-            shuffle=False,
-        )
-
-        # Plot character embeddings
-        plot_character_embeddings(
-            model,
-            test_loader,
-            device,
-            args.result_dir or config.result_dir,
-            experiment_no=config.experiment_no,
-            n_samples=args.n_samples,
-        )
-        print("Additional visualizations completed!")
 
     # Print summary
     print("\n" + "=" * 50)

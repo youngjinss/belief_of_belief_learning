@@ -125,7 +125,7 @@ class Config:
 
         # Model architecture
         self.model_config = {
-            "use_mentalnet": False,  # False: experiment5-style (CharNet→PredNet), True: original 3-stage (CharNet→MentalNet→PredNet)
+            "use_mentalnet": True,  # False: experiment5-style (CharNet→PredNet), True: original 3-stage (CharNet→MentalNet→PredNet)
             "residual_blocks": 5,
             "n_echar": 16,
             "n_ement": 32,

@@ -209,6 +209,7 @@ def evaluate_model(
     data_config=None,
     save_predictions=False,
     output_dir=None,
+    model_kwargs=None,
 ):
     """
     Evaluate model performance
@@ -266,6 +267,25 @@ def evaluate_model(
             action_targets = actions[
                 :, 0
             ]  # Target action for each sliced trajectory
+            
+            # DEBUG: Check action target range and values
+            if batch_idx == 0:  # Only print for first batch to avoid spam
+                print(f"DEBUG: action_targets range: {action_targets.min().item()} to {action_targets.max().item()}")
+                print(f"DEBUG: unique actions in batch: {torch.unique(action_targets).cpu().numpy()}")
+                print(f"DEBUG: action_targets shape: {action_targets.shape}")
+                print(f"DEBUG: first 10 action_targets: {action_targets[:10].cpu().numpy()}")
+                print(f"DEBUG: goals shape: {goals.shape}")
+                print(f"DEBUG: first 10 goals: {goals[:10].cpu().numpy()}")
+                
+                # Check if actions are incorrectly using goal values
+                if action_targets.max().item() < 7 and action_targets.max().item() <= 4:
+                    print("🚨 WARNING: Actions appear to be in range 0-3/4, should be 0-6!")
+                    print("   This suggests actions might be confused with goals or the environment")
+                    print("   isn't generating the full action space (stay, pickup, toggle)")
+                    
+                # Check model output dimensions
+                print(f"DEBUG: Model action_space config: {model_kwargs.get('action_space', 'Unknown')}")
+                print(f"DEBUG: Model goal_space config: {model_kwargs.get('goal_space', 'Unknown')}")
 
             # Fully vectorized: Find the effective length for each sample (remove padding)
             # Sum over spatial dimensions for each timestep: [batch_size, seq_len]
@@ -330,6 +350,17 @@ def evaluate_model(
                 mental_state,
             ) = model(past_episodes, recent_trajectory, current_state)
 
+            # DEBUG: Check model output dimensions
+            if batch_idx == 0:
+                print(f"DEBUG: action_logits shape: {action_logits.shape}")
+                print(f"DEBUG: goal_logits shape: {goal_logits.shape}")
+                print(f"DEBUG: Expected action_logits shape: (batch_size, 7)")
+                print(f"DEBUG: Expected goal_logits shape: (batch_size, 4)")
+                
+                if action_logits.shape[1] != 7:
+                    print(f"🚨 ERROR: Model outputs {action_logits.shape[1]} actions, expected 7!")
+                    print("   This could explain why we're getting wrong predictions")
+
             # Get predictions
             probabilities = F.softmax(action_logits, dim=1)
             _, predicted = torch.max(action_logits, 1)
@@ -348,7 +379,15 @@ def evaluate_model(
     precision, recall, f1, _ = precision_recall_fscore_support(
         targets, predictions, average="weighted"
     )
-    conf_matrix = confusion_matrix(targets, predictions)
+    
+    # DEBUG: Check target and prediction ranges
+    print(f"DEBUG: targets range: {targets.min()} to {targets.max()}")
+    print(f"DEBUG: predictions range: {predictions.min()} to {predictions.max()}")
+    print(f"DEBUG: unique targets: {np.unique(targets)}")
+    print(f"DEBUG: unique predictions: {np.unique(predictions)}")
+    
+    # Force confusion matrix to be 7x7 for KeyDoor (actions 0-6)
+    conf_matrix = confusion_matrix(targets, predictions, labels=list(range(7)))
 
     # Action-wise accuracy - KeyDoor has 7 actions
     action_accuracy = {}
@@ -497,6 +536,7 @@ def evaluate_keydoor_model(
         data_config=data_config,
         save_predictions=eval_config["save_predictions"],
         output_dir=results_dir,
+        model_kwargs=model_kwargs,
     )
 
     print(f"Evaluation completed!")

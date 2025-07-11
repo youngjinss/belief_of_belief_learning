@@ -651,7 +651,7 @@ def plot_character_embeddings(
 
     model.eval()
     embeddings = []
-    goals = []
+    goal_labels = []
 
     sample_count = 0
     print(f"Starting character embedding extraction for {n_samples} samples...")
@@ -661,19 +661,29 @@ def plot_character_embeddings(
             if sample_count >= n_samples:
                 break
 
-            if len(batch) >= 3:
-                trajectories, actions, batch_goals = batch[:3]
+            # Unpack all data including goal_ranks (matching evaluation/training)
+            if len(batch) >= 7:
+                (
+                    trajectories,
+                    actions,
+                    goals,
+                    goal_ranks,
+                    goal_rewards,
+                    consumption_labels,
+                    sr_labels,
+                ) = batch
                 trajectories = trajectories.to(device)
-                batch_goals = batch_goals.to(device)
+                goals = goals.to(device) 
+                goal_ranks = goal_ranks.to(device)
 
                 batch_size = trajectories.size(0)
                 print(
                     f"Processing batch {batch_idx}: batch_size={batch_size}, trajectories.shape={trajectories.shape}"
                 )
 
-                # Generate past episodes
+                # Generate past episodes using goal_ranks (same as training/evaluation)
                 past_episodes = generate_past_episodes_from_batch(
-                    trajectories, batch_goals, batch_size, 1, 1, 1
+                    trajectories, goal_ranks, batch_size, 1, 1, 1, rank_threshold=1
                 )
                 print(f"Generated past_episodes.shape={past_episodes.shape}")
 
@@ -683,9 +693,9 @@ def plot_character_embeddings(
                     print(f"Character embeddings.shape={char_embeddings.shape}")
 
                     embeddings.extend(char_embeddings.cpu().numpy())
-                    goals.extend(batch_goals.cpu().numpy())
+                    goal_labels.extend(goals.cpu().numpy())
 
-                    sample_count += len(batch_goals)
+                    sample_count += len(goals)
                     print(f"Total samples processed: {sample_count}")
                 except Exception as e:
                     print(f"Error getting character embeddings: {e}")
@@ -702,7 +712,7 @@ def plot_character_embeddings(
         return
 
     embeddings = np.array(embeddings)
-    goals = np.array(goals)
+    goal_labels = np.array(goal_labels)
 
     # Create subplots
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
@@ -721,7 +731,7 @@ def plot_character_embeddings(
             embeddings_pca = pca.fit_transform(embeddings)
 
             for goal in range(4):
-                mask = goals == goal
+                mask = goal_labels == goal
                 if np.sum(mask) > 0:
                     ax1.scatter(
                         embeddings_pca[mask, 0],
@@ -749,7 +759,7 @@ def plot_character_embeddings(
     else:
         # For 2D embeddings, plot directly
         for goal in range(4):
-            mask = goals == goal
+            mask = goal_labels == goal
             if np.sum(mask) > 0:
                 ax1.scatter(
                     embeddings[mask, 0],
@@ -771,7 +781,7 @@ def plot_character_embeddings(
             embeddings_tsne = tsne.fit_transform(
                 embeddings[:1000]
             )  # Limit for performance
-            goals_tsne = goals[:1000]
+            goals_tsne = goal_labels[:1000]
 
             for goal in range(4):
                 mask = goals_tsne == goal
@@ -832,7 +842,7 @@ def plot_character_embeddings(
 
     # Per-goal statistics
     for goal in range(4):
-        mask = goals == goal
+        mask = goal_labels == goal
         count = np.sum(mask)
         print(f"{goal_names[goal]}: {count} samples")
 
@@ -1025,7 +1035,13 @@ if __name__ == "__main__":
                         test_games, min_timestep=6, max_trajectory_length=data_config["max_moves"]
                     )
                     test_dataset = TensorDataset(
-                        test_data["trajectories"], test_data["actions"], test_data["goals"]
+                        test_data["trajectories"],
+                        test_data["actions"],
+                        test_data["goals"],
+                        test_data["goal_ranks"],
+                        test_data["goal_rewards"],
+                        test_data["consumption_labels"],
+                        test_data["sr_labels"],
                     )
                     test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
                     

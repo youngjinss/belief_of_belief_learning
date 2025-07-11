@@ -108,32 +108,68 @@ def evaluate_model_with_n_past(
 
         with torch.no_grad():
             for _, batch in enumerate(test_loader):
-                if len(batch) >= 3:
-                    trajectories, actions, goals = batch[:3]
-                    trajectories = trajectories.to(device)
-                    actions = actions.to(device)
-                    goals = goals.to(device)
+                # Unpack all data including goal_ranks
+                (
+                    trajectories,
+                    actions,
+                    goals,
+                    goal_ranks,
+                    goal_rewards,
+                    consumption_labels,
+                    sr_labels,
+                ) = batch
+                trajectories = trajectories.to(device)
+                actions = actions.to(device)
+                goals = goals.to(device)
+                goal_ranks = goal_ranks.to(device)
 
-                    batch_size = trajectories.size(0)
+                batch_size = trajectories.size(0)
 
-                    # Generate past episodes with fixed n_past using actual goals
-                    past_episodes = generate_past_episodes_from_batch(
-                        trajectories, goals, batch_size, n_past, n_past, n_past_max
-                    )
+                # Generate past episodes with fixed n_past using goal_ranks
+                past_episodes = generate_past_episodes_from_batch(
+                    trajectories,
+                    goal_ranks,  # Use goal_ranks to match training
+                    batch_size,
+                    n_past,
+                    n_past,
+                    n_past_max,
+                    rank_threshold=data_config.get("rank_threshold", 1) if data_config else 1,
+                )
 
-                    # Get current trajectory for MentalNet processing
-                    current_timestep = data_config["time_step"] if data_config else 20
-                    recent_trajectory = trajectories[:, :current_timestep]
+                # Use dynamic trajectory slicing (same as training/main evaluation)
+                # Find the effective length for each sample
+                traj_sums = trajectories.sum(dim=(2, 3, 4))
+                non_zero_mask = traj_sums > 0
+                seq_indices = (
+                    torch.arange(trajectories.size(1), device=trajectories.device)
+                    .unsqueeze(0)
+                    .expand(batch_size, -1)
+                )
+                masked_indices = torch.where(
+                    non_zero_mask,
+                    seq_indices,
+                    torch.tensor(-1, device=trajectories.device),
+                )
+                effective_lengths = masked_indices.max(dim=1)[0].clamp(min=0)
 
-                    # Extract current state for PredNet
-                    current_state = trajectories[
-                        :, current_timestep - 1
-                    ]  # [batch, channels, height, width]
+                # Use trajectory without heading for MentalNet
+                current_state_channels = (
+                    data_config.get("current_state_channels", 8) if data_config else 8
+                )
+                recent_trajectory = trajectories[
+                    :, :, :current_state_channels
+                ]
 
-                    # Get action targets - use actions[:, 0] for trajectory slicing
-                    action_targets = actions[
-                        :, 0
-                    ]  # Target action for each sliced trajectory
+                # Extract current state using advanced indexing
+                batch_indices = torch.arange(batch_size, device=trajectories.device)
+                current_state = trajectories[
+                    batch_indices, effective_lengths, :current_state_channels
+                ]
+
+                # Get action targets - use actions[:, 0] for trajectory slicing
+                action_targets = actions[
+                    :, 0
+                ]  # Target action for each sliced trajectory
 
                     # Model forward pass (model returns 6 outputs)
                     action_logits, _, _, _, _, _ = model(
@@ -195,100 +231,112 @@ def evaluate_model(
 
     with torch.no_grad():
         for batch_idx, batch in enumerate(test_loader):
-            if len(batch) >= 3:
-                trajectories, actions, goals = batch[:3]
-                trajectories = trajectories.to(device)
-                actions = actions.to(device)
-                goals = goals.to(device)
+            # Unpack all data including goal_ranks
+            (
+                trajectories,
+                actions,
+                goals,
+                goal_ranks,
+                goal_rewards,
+                consumption_labels,
+                sr_labels,
+            ) = batch
+            trajectories = trajectories.to(device)
+            actions = actions.to(device)
+            goals = goals.to(device)
+            goal_ranks = goal_ranks.to(device)
 
-                batch_size = trajectories.size(0)
+            batch_size = trajectories.size(0)
 
-                # Generate past episodes for proper evaluation
-                past_episodes = generate_past_episodes_from_batch(
-                    trajectories,
-                    goals,
-                    batch_size,
-                    n_past_min=data_config.get("n_past_min", 1) if data_config else 1,
-                    n_past_max=data_config.get("n_past_max", 1) if data_config else 1,
-                    max_n_past=data_config.get("max_n_past", 1) if data_config else 1,
-                )
+            # Generate past episodes using goal_ranks (same as training)
+            past_episodes = generate_past_episodes_from_batch(
+                trajectories,
+                goal_ranks,  # Use goal_ranks instead of goals to match training
+                batch_size,
+                n_past_min=data_config.get("n_past_min", 1) if data_config else 1,
+                n_past_max=data_config.get("n_past_max", 1) if data_config else 1,
+                max_n_past=data_config.get("max_n_past", 1) if data_config else 1,
+                rank_threshold=data_config.get("rank_threshold", 1) if data_config else 1,
+            )
 
-                # With trajectory slicing, we use dynamic timesteps
-                # Each sample has a different effective length, stored in actions[:,0]
+            # With trajectory slicing, we use dynamic timesteps
+            # Each sample has a different effective length, stored in actions[:,0]
 
-                # For trajectory slicing, use the action at index 0 (the target action for this slice)
-                action_targets = actions[
-                    :, 0
-                ]  # Target action for each sliced trajectory
+            # For trajectory slicing, use the action at index 0 (the target action for this slice)
+            action_targets = actions[
+                :, 0
+            ]  # Target action for each sliced trajectory
 
-                # Fully vectorized: Find the effective length for each sample (remove padding)
-                # Sum over spatial dimensions for each timestep: [batch_size, seq_len]
-                traj_sums = trajectories.sum(
-                    dim=(2, 3, 4)
-                )  # Sum over channels, height, width
-                # Find last non-zero timestep for each batch sample
-                non_zero_mask = traj_sums > 0  # [batch_size, seq_len]
-                # Get the last True index for each batch sample using vectorized operation
-                # Create sequence indices and mask them on the same device
-                seq_indices = (
-                    torch.arange(trajectories.size(1), device=trajectories.device)
-                    .unsqueeze(0)
-                    .expand(batch_size, -1)
-                )
-                masked_indices = torch.where(
-                    non_zero_mask,
-                    seq_indices,
-                    torch.tensor(-1, device=trajectories.device),
-                )
-                # Find the maximum index for each batch (last non-zero timestep)
-                effective_lengths = masked_indices.max(dim=1)[0].clamp(min=0).tolist()
-                # Apply max(1, length) constraint
-                effective_lengths = [max(1, length) for length in effective_lengths]
+            # Fully vectorized: Find the effective length for each sample (remove padding)
+            # Sum over spatial dimensions for each timestep: [batch_size, seq_len]
+            traj_sums = trajectories.sum(
+                dim=(2, 3, 4)
+            )  # Sum over channels, height, width
+            # Find last non-zero timestep for each batch sample
+            non_zero_mask = traj_sums > 0  # [batch_size, seq_len]
+            # Get the last True index for each batch sample using vectorized operation
+            # Create sequence indices and mask them on the same device
+            seq_indices = (
+                torch.arange(trajectories.size(1), device=trajectories.device)
+                .unsqueeze(0)
+                .expand(batch_size, -1)
+            )
+            masked_indices = torch.where(
+                non_zero_mask,
+                seq_indices,
+                torch.tensor(-1, device=trajectories.device),
+            )
+            # Find the maximum index for each batch (last non-zero timestep)
+            effective_lengths = masked_indices.max(dim=1)[0].clamp(min=0).tolist()
+            # Apply max(1, length) constraint
+            effective_lengths = [max(1, length) for length in effective_lengths]
 
-                # Use full trajectory for MentalNet (up to effective length)
-                recent_trajectory = (
-                    trajectories  # [batch_size, seq_len, channels, height, width]
-                )
+            # Use trajectory without heading direction for MentalNet (first 8 channels only)
+            current_state_channels = (
+                data_config.get("current_state_channels", 8) if data_config else 8
+            )
+            recent_trajectory = trajectories[
+                :, :, :current_state_channels
+            ]  # [batch_size, seq_len, 8, height, width]
 
-                # Extract current state for PredNet (last non-padded timestep)
-                current_state_channels = 8  # Assuming 8 channels for current state
-                current_state = torch.zeros(
-                    batch_size,
-                    current_state_channels,
-                    trajectories.size(3),
-                    trajectories.size(4),
-                    device=device,
-                )
+            # Extract current state for PredNet (last non-padded timestep)
+            current_state = torch.zeros(
+                batch_size,
+                current_state_channels,
+                trajectories.size(3),
+                trajectories.size(4),
+                device=device,
+            )
 
-                # Vectorized: Extract current state using advanced indexing on the same device
-                batch_indices = torch.arange(batch_size, device=trajectories.device)
-                last_timesteps = torch.tensor(
-                    [max(0, length - 1) for length in effective_lengths],
-                    device=trajectories.device,
-                )
+            # Vectorized: Extract current state using advanced indexing on the same device
+            batch_indices = torch.arange(batch_size, device=trajectories.device)
+            last_timesteps = torch.tensor(
+                [max(0, length - 1) for length in effective_lengths],
+                device=trajectories.device,
+            )
 
-                # Extract current state using advanced indexing
-                current_state = trajectories[
-                    batch_indices, last_timesteps, :current_state_channels
-                ]
+            # Extract current state using advanced indexing
+            current_state = trajectories[
+                batch_indices, last_timesteps, :current_state_channels
+            ]
 
-                # Model forward pass (model returns 6 outputs)
-                (
-                    action_logits,
-                    goal_logits,
-                    consumption_logits,
-                    sr_pred,
-                    char_emb,
-                    mental_state,
-                ) = model(past_episodes, recent_trajectory, current_state)
+            # Model forward pass (model returns 6 outputs)
+            (
+                action_logits,
+                goal_logits,
+                consumption_logits,
+                sr_pred,
+                char_emb,
+                mental_state,
+            ) = model(past_episodes, recent_trajectory, current_state)
 
-                # Get predictions
-                probabilities = F.softmax(action_logits, dim=1)
-                _, predicted = torch.max(action_logits, 1)
+            # Get predictions
+            probabilities = F.softmax(action_logits, dim=1)
+            _, predicted = torch.max(action_logits, 1)
 
-                all_predictions.extend(predicted.cpu().numpy())
-                all_targets.extend(action_targets.cpu().numpy())
-                all_probabilities.extend(probabilities.cpu().numpy())
+            all_predictions.extend(predicted.cpu().numpy())
+            all_targets.extend(action_targets.cpu().numpy())
+            all_probabilities.extend(probabilities.cpu().numpy())
 
     # Convert to numpy arrays
     predictions = np.array(all_predictions)
@@ -424,9 +472,15 @@ def evaluate_keydoor_model(
         max_trajectory_length=data_config["max_moves"],
     )
 
-    # Create test dataset and loader
+    # Create test dataset and loader with all required data including goal_ranks
     test_dataset = TensorDataset(
-        test_data["trajectories"], test_data["actions"], test_data["goals"]
+        test_data["trajectories"],
+        test_data["actions"],
+        test_data["goals"],
+        test_data["goal_ranks"],
+        test_data["goal_rewards"],
+        test_data["consumption_labels"],
+        test_data["sr_labels"],
     )
     test_loader = DataLoader(
         test_dataset, batch_size=eval_config["batch_size"], shuffle=False
@@ -613,7 +667,13 @@ def analyze_action_likelihood(
             max_trajectory_length=data_config["max_moves"],
         )
         test_dataset = TensorDataset(
-            test_data["trajectories"], test_data["actions"], test_data["goals"]
+            test_data["trajectories"],
+            test_data["actions"],
+            test_data["goals"],
+            test_data["goal_ranks"],
+            test_data["goal_rewards"],
+            test_data["consumption_labels"],
+            test_data["sr_labels"],
         )
         test_loader = DataLoader(
             test_dataset,
@@ -630,32 +690,61 @@ def analyze_action_likelihood(
             if sample_count >= n_samples:
                 break
 
-            if len(batch) >= 3:
-                trajectories, actions, goals = batch[:3]
-                trajectories = trajectories.to(device)
-                actions = actions.to(device)
-                goals = goals.to(device)
+            # Unpack all data including goal_ranks
+            (
+                trajectories,
+                actions,
+                goals,
+                goal_ranks,
+                goal_rewards,
+                consumption_labels,
+                sr_labels,
+            ) = batch
+            trajectories = trajectories.to(device)
+            actions = actions.to(device)
+            goals = goals.to(device)
+            goal_ranks = goal_ranks.to(device)
 
-                batch_size = trajectories.size(0)
+            batch_size = trajectories.size(0)
 
-                # Generate past episodes
-                past_episodes = generate_past_episodes_from_batch(
-                    trajectories,
-                    goals,
-                    batch_size,
-                    n_past_min=data_config.get("n_past_min", 1),
-                    n_past_max=data_config.get("n_past_max", 1),
-                    max_n_past=data_config.get("max_n_past", 1),
-                )
+            # Generate past episodes using goal_ranks
+            past_episodes = generate_past_episodes_from_batch(
+                trajectories,
+                goal_ranks,  # Use goal_ranks to match training
+                batch_size,
+                n_past_min=data_config.get("n_past_min", 1),
+                n_past_max=data_config.get("n_past_max", 1),
+                max_n_past=data_config.get("max_n_past", 1),
+                rank_threshold=data_config.get("rank_threshold", 1),
+            )
 
-                # Get current trajectory
-                current_timestep = data_config["time_step"]
-                recent_trajectory = trajectories[:, :current_timestep]
+            # Use dynamic trajectory slicing (same as training)
+            # Find the effective length for each sample
+            traj_sums = trajectories.sum(dim=(2, 3, 4))
+            non_zero_mask = traj_sums > 0
+            seq_indices = (
+                torch.arange(trajectories.size(1), device=trajectories.device)
+                .unsqueeze(0)
+                .expand(batch_size, -1)
+            )
+            masked_indices = torch.where(
+                non_zero_mask,
+                seq_indices,
+                torch.tensor(-1, device=trajectories.device),
+            )
+            effective_lengths = masked_indices.max(dim=1)[0].clamp(min=0)
 
-                # Extract current state for PredNet
-                current_state = trajectories[
-                    :, current_timestep - 1
-                ]  # [batch, channels, height, width]
+            # Use trajectory without heading for MentalNet
+            current_state_channels = data_config.get("current_state_channels", 8)
+            recent_trajectory = trajectories[
+                :, :, :current_state_channels
+            ]
+
+            # Extract current state using advanced indexing
+            batch_indices = torch.arange(batch_size, device=trajectories.device)
+            current_state = trajectories[
+                batch_indices, effective_lengths, :current_state_channels
+            ]
 
                 # Get action targets - use actions[:, 0] for trajectory slicing
                 action_targets = actions[

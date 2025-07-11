@@ -4,14 +4,12 @@ import torch.nn.functional as F
 import numpy as np
 
 """
-ToMnet architecture for KeyDoor environment (experiment 3) - FIXED VERSION
-Following experiment5's efficient 2-stage architecture to resolve information bottleneck
+Integrated ToMnet architecture for KeyDoor environment (experiment 3)
+Supports both original 3-stage and fixed 2-stage architectures via config flag
 
-Key changes from original:
-1. Bypasses MentalNet bottleneck - direct CharNet → PredNet architecture
-2. PredNet gets direct access to current_state + character_embedding (like experiment5)
-3. Preserves all spatial information for better action prediction
-4. Compatible with existing training infrastructure
+Architectures:
+- use_mentalnet=False: experiment5-style (CharNet → PredNet) - bypasses bottleneck
+- use_mentalnet=True: original 3-stage (CharNet → MentalNet → PredNet) - with bottleneck
 
 Channel structure (9 channels total):
 - Channels 0-7: Original game state channels (walls, keys, doors, agent position, etc.)
@@ -103,12 +101,12 @@ class CharNet(nn.Module):
         self.channels_in = channels_in
         self.batch = batch
         self.time_step = time_step
-        self.hidden_size_lstm = hidden_size_lstm  # Fixed like experiment 5
+        self.hidden_size_lstm = hidden_size_lstm
         self.max_n_past = max_n_past
         self.use_n_past = use_n_past
 
         if self.use_n_past:
-            # Past episode processing architecture - following experiment 5 exactly
+            # Past episode processing architecture
             self.past_conv_1 = nn.Conv2d(
                 in_channels=channels_in,
                 out_channels=out_channels,
@@ -137,7 +135,7 @@ class CharNet(nn.Module):
 
     def forward(self, past_trajectories):
         """
-        Forward pass for character network - following experiment 5 exactly
+        Forward pass for character network
 
         Args:
             past_trajectories: (batch_size, n_past, seq_len, channels, height, width)
@@ -196,7 +194,6 @@ class CharNet(nn.Module):
                         out_height,
                         out_width,
                     )
-                    # Keep in (batch, seq_len, out_channels, height, width) format for efficient processing
 
                     # Average over spatial dimensions
                     ep_x = torch.mean(ep_x, [3, 4])  # (batch, seq_len, out_channels)
@@ -230,10 +227,250 @@ class CharNet(nn.Module):
             return self.default_embedding.unsqueeze(0).expand(batch_size, -1)
 
 
+class ConvLSTM2d(nn.Module):
+    """Convolutional LSTM implementation"""
+    
+    def __init__(self, input_channels, hidden_channels, kernel_size=3, padding=1):
+        super(ConvLSTM2d, self).__init__()
+        
+        self.input_channels = input_channels
+        self.hidden_channels = hidden_channels
+        self.kernel_size = kernel_size
+        self.padding = padding
+        
+        # Gates: input, forget, output, candidate
+        self.conv_gates = nn.Conv2d(
+            input_channels + hidden_channels,
+            4 * hidden_channels,
+            kernel_size=kernel_size,
+            padding=padding
+        )
+        
+    def forward(self, x, hidden_state=None):
+        """
+        Vectorized ConvLSTM forward pass
+        
+        Args:
+            x: Input tensor (batch_size, seq_len, channels, height, width)
+            hidden_state: Tuple of (h, c) or None
+            
+        Returns:
+            output: (batch_size, seq_len, hidden_channels, height, width)
+            (h, c): Final hidden and cell states
+        """
+        batch_size, seq_len, _, height, width = x.size()
+        
+        if hidden_state is None:
+            h = torch.zeros(batch_size, self.hidden_channels, height, width, device=x.device)
+            c = torch.zeros(batch_size, self.hidden_channels, height, width, device=x.device)
+        else:
+            h, c = hidden_state
+            
+        # Initialize output storage
+        outputs = torch.zeros(batch_size, seq_len, self.hidden_channels, height, width, device=x.device)
+        
+        # Process each timestep (minimal sequential processing for LSTM dependencies)
+        for t in range(seq_len):
+            x_t = x[:, t]  # (batch_size, input_channels, height, width)
+            
+            # Combine input and previous hidden state
+            combined = torch.cat([x_t, h], dim=1)
+            
+            # Compute all gates in one pass
+            gates = self.conv_gates(combined)
+            
+            # Split gates efficiently
+            i_gate, f_gate, o_gate, g_gate = torch.split(gates, self.hidden_channels, dim=1)
+            
+            # Apply activations (vectorized)
+            i_gate = torch.sigmoid(i_gate)
+            f_gate = torch.sigmoid(f_gate)
+            o_gate = torch.sigmoid(o_gate)
+            g_gate = torch.tanh(g_gate)
+            
+            # Update cell and hidden states (vectorized)
+            c = f_gate * c + i_gate * g_gate
+            h = o_gate * torch.tanh(c)
+            
+            # Store output
+            outputs[:, t] = h
+            
+        return outputs, (h, c)
+
+
+class MentalNet(nn.Module):
+    """MentalNet following the exact paper specification"""
+
+    def __init__(
+        self,
+        batch: int,
+        residual_blocks: int,
+        n_ement: int,
+        out_channels: int,
+        channels_in: int,
+        time_step: int,
+        n_echar: int,
+    ):
+        super(MentalNet, self).__init__()
+
+        self.batch = batch
+        self.time_step = time_step
+        self.n_echar = n_echar
+        
+        # Paper spec: state channels (8) + action channel (1) = 9 total input channels
+        self.state_channels = 8  # State without heading direction
+        self.action_space = 7    # Number of possible actions
+        self.input_channels = self.state_channels + 1  # State + spatialized action
+        
+        # Paper spec: 32 channels throughout
+        self.resnet_channels = 32
+        
+        # Paper spec: output is spatial mental state embedding (32 channels)
+        self.output_channels = 32
+        
+        # Initial conv layer to get to 32 channels
+        self.input_conv = nn.Conv2d(
+            self.input_channels, 
+            self.resnet_channels, 
+            kernel_size=3, 
+            padding=1
+        )
+        self.input_bn = nn.BatchNorm2d(self.resnet_channels)
+        
+        # Paper spec: 5-layer ResNet with 32 channels, ReLU, BatchNorm
+        self.resnet_layers = nn.ModuleList()
+        for _ in range(5):  # Exactly 5 layers as specified
+            self.resnet_layers.append(
+                ResidualBlock(
+                    in_channels=self.resnet_channels,
+                    out_channels=self.resnet_channels,
+                    kernel_size=3,
+                    padding=1
+                )
+            )
+        
+        # Paper spec: Convolutional LSTM with 32 channels
+        self.conv_lstm = ConvLSTM2d(
+            input_channels=self.resnet_channels,
+            hidden_channels=self.resnet_channels,
+            kernel_size=3,
+            padding=1
+        )
+        
+        # Paper spec: 1-layer convnet with 32 channels for final output
+        self.output_conv = nn.Conv2d(
+            self.resnet_channels,
+            self.output_channels,
+            kernel_size=3,
+            padding=1
+        )
+
+    def spatialize_action(self, action_indices, height, width):
+        """
+        Convert action indices to spatial representation
+        
+        Args:
+            action_indices: (batch_size,) - action indices for each sample
+            height, width: spatial dimensions
+            
+        Returns:
+            Spatialized actions: (batch_size, 1, height, width)
+        """
+        batch_size = action_indices.size(0)
+        device = action_indices.device
+        
+        # Create spatial action maps
+        # Each action gets a unique value across the entire spatial map
+        action_maps = torch.zeros(batch_size, 1, height, width, device=device)
+        
+        for i in range(batch_size):
+            action_idx = action_indices[i].item()
+            # Normalize action index to [0, 1] range
+            action_value = action_idx / (self.action_space - 1) if self.action_space > 1 else 0
+            action_maps[i, 0] = action_value
+            
+        return action_maps
+
+    def forward(self, recent_trajectory, recent_actions):
+        """
+        Forward pass following paper specification
+        
+        Args:
+            recent_trajectory: (batch_size, seq_len, channels, height, width) - full trajectory
+            recent_actions: (batch_size, seq_len) - actions taken at each timestep
+            
+        Returns:
+            Mental state embedding: (batch_size, output_channels, height, width) - SPATIAL output
+        """
+        batch_size, seq_len, channels, height, width = recent_trajectory.shape
+        
+        # Extract state channels (first 8 channels, excluding heading direction)
+        states = recent_trajectory[:, :, :self.state_channels]  # (batch_size, seq_len, 8, height, width)
+        
+        # Check if trajectory is empty (query state is initial state)
+        trajectory_sum = torch.sum(states, dim=(2, 3, 4))  # (batch_size, seq_len)
+        is_empty = torch.all(trajectory_sum == 0, dim=1)  # (batch_size,)
+        
+        if torch.all(is_empty):
+            # Return zero vector for empty trajectories
+            return torch.zeros(batch_size, self.output_channels, height, width, device=recent_trajectory.device)
+        
+        # Pre-process each timestep: spatialize action + concatenate with state
+        processed_timesteps = []
+        
+        for t in range(seq_len):
+            state_t = states[:, t]  # (batch_size, 8, height, width)
+            action_t = recent_actions[:, t]  # (batch_size,)
+            
+            # Spatialize action
+            action_spatial_t = self.spatialize_action(action_t, height, width)  # (batch_size, 1, height, width)
+            
+            # Concatenate state and spatialized action
+            combined_t = torch.cat([state_t, action_spatial_t], dim=1)  # (batch_size, 9, height, width)
+            
+            processed_timesteps.append(combined_t)
+        
+        # Stack timesteps
+        processed_trajectory = torch.stack(processed_timesteps, dim=1)  # (batch_size, seq_len, 9, height, width)
+        
+        # Pass through initial conv to get to 32 channels
+        # Reshape for processing
+        trajectory_flat = processed_trajectory.view(batch_size * seq_len, self.input_channels, height, width)
+        
+        # Initial conv + batch norm + ReLU
+        x = self.input_conv(trajectory_flat)
+        x = self.input_bn(x)
+        x = F.relu(x)
+        
+        # Pass through 5-layer ResNet with 32 channels, ReLU, BatchNorm
+        for resnet_layer in self.resnet_layers:
+            x = resnet_layer(x)
+        
+        # Reshape back to sequence format for ConvLSTM
+        x = x.view(batch_size, seq_len, self.resnet_channels, height, width)
+        
+        # Feed into convolutional LSTM with 32 channels
+        lstm_output, (final_h, final_c) = self.conv_lstm(x)
+        
+        # Use final hidden state from LSTM
+        final_features = final_h  # (batch_size, 32, height, width)
+        
+        # LSTM output through 1-layer convnet with 32 channels
+        mental_state = self.output_conv(final_features)  # (batch_size, 32, height, width)
+        
+        # Handle empty trajectories - set their output to zero
+        for i in range(batch_size):
+            if is_empty[i]:
+                mental_state[i] = 0
+        
+        return mental_state
+
+
 class PredNet(nn.Module):
     def __init__(
         self,
         batch: int,
+        n_ement: int,
         n_echar: int,
         current_state_channels: int,
         residual_blocks: int,
@@ -242,10 +479,12 @@ class PredNet(nn.Module):
         goal_space: int = 4,
         env_width: int = 9,
         env_height: int = 9,
+        use_mentalnet: bool = False,
     ):
         super(PredNet, self).__init__()
 
         self.batch = batch
+        self.n_ement = n_ement
         self.n_echar = n_echar
         self.current_state_channels = current_state_channels
         self.action_space = action_space
@@ -254,12 +493,17 @@ class PredNet(nn.Module):
         self.env_height = env_height
         self.out_channels = out_channels
         self.n = residual_blocks
+        self.use_mentalnet = use_mentalnet
 
-        # Following experiment5 "Shared torso" approach
-        # Input channels: current_state + character_embedding (like experiment5)
-        input_channels = current_state_channels + n_echar
-        
-        # Shared torso - processes current state + character embedding (following experiment5)
+        # Determine input channels based on architecture
+        if use_mentalnet:
+            # Original 3-stage: current_state + mental_state + character_embedding
+            input_channels = current_state_channels + n_ement + n_echar
+        else:
+            # Fixed 2-stage: current_state + character_embedding (like experiment5)
+            input_channels = current_state_channels + n_echar
+
+        # Shared torso - processes input data
         self.conv_1 = nn.Conv2d(
             in_channels=input_channels,
             out_channels=out_channels,
@@ -267,7 +511,7 @@ class PredNet(nn.Module):
             stride=1,
             padding=1,
         )
-        
+
         self.res_blocks = nn.ModuleList()
         for _ in range(self.n):
             self.res_blocks.append(
@@ -288,22 +532,20 @@ class PredNet(nn.Module):
             padding=1,
         )
 
-        # Shared feature extraction (following experiment5 structure)
+        # Shared feature extraction
         self.fc1 = nn.Linear(out_channels, out_channels)
         self.fc2 = nn.Linear(out_channels, out_channels)
 
-        # Action prediction head (following experiment5 structure)
+        # Action prediction head
         self.fc3_action = nn.Linear(out_channels, action_space)
 
-        # Goal prediction head 
+        # Goal prediction head
         self.fc3_goal = nn.Linear(out_channels, goal_space)
 
         # Consumption prediction head (8 outputs: 4 keys + 4 doors)
-        # Each output represents p(c_k) for object k being consumed
         self.fc3_consumption = nn.Linear(out_channels, 8)
 
-        # SR prediction heads for different discount factors (following experiment5)
-        # Output spatial grids for 3 different gammas
+        # SR prediction heads for different discount factors
         self.conv_sr = nn.Conv2d(
             in_channels=out_channels,
             out_channels=out_channels,
@@ -315,74 +557,109 @@ class PredNet(nn.Module):
             kernel_size=1,
         )
 
-    def forward(self, mixed_data):
+    def forward(self, mental_state, character_embedding, current_state):
         """
-        Forward pass for prediction network (following experiment5 approach)
+        Forward pass for prediction network (original 3-stage architecture)
+
+        Args:
+            mental_state: (batch_size, n_ement, height, width) - spatial mental state from MentalNet
+            character_embedding: (batch_size, n_echar)
+            current_state: (batch_size, current_state_channels, height, width)
+
+        Returns:
+            action_logits, goal_logits, consumption_logits, sr_pred
+        """
+        batch_size, _, height, width = current_state.shape
+
+        # Handle spatial mental state (already spatial from MentalNet)
+        if mental_state.dim() == 4:
+            # Mental state is already spatial (batch_size, n_ement, height, width)
+            mental_state_spatial = mental_state
+        else:
+            # Fallback: broadcast mental_state if it's 1D
+            mental_state_spatial = (
+                mental_state.unsqueeze(2)
+                .unsqueeze(3)
+                .expand(batch_size, self.n_ement, height, width)
+            )
+        
+        # Spatially broadcast character_embedding
+        character_embedding_spatial = (
+            character_embedding.unsqueeze(2)
+            .unsqueeze(3)
+            .expand(batch_size, self.n_echar, height, width)
+        )
+
+        # Concatenate all inputs
+        x = torch.cat(
+            [current_state, mental_state_spatial, character_embedding_spatial], dim=1
+        )
+
+        return self._forward_shared(x)
+
+    def forward_direct(self, mixed_data):
+        """
+        Direct forward pass like experiment5 PredNet (fixed 2-stage architecture)
 
         Args:
             mixed_data: (batch_size, current_state_channels + n_echar, height, width)
 
         Returns:
-            action_logits: (batch_size, action_space)
-            goal_logits: (batch_size, goal_space)
-            consumption_logits: (batch_size, 8)
-            sr_pred: (batch_size, 3, env_height, env_width)
+            action_logits, goal_logits, consumption_logits, sr_pred
         """
-        # Following experiment5 approach: mixed data -> shared torso -> predictions
-        batch_size, _, height, width = mixed_data.shape
-        
-        # Shared torso (following experiment5 structure)
-        x = self.conv_1(mixed_data)
-        
+        return self._forward_shared(mixed_data)
+
+    def _forward_shared(self, x):
+        """Shared forward pass implementation"""
+        # Shared torso
+        x = self.conv_1(x)
+
         for i in range(self.n):
             x = self.res_blocks[i](x)
-        
+
         x = self.conv_2(x)
         x = F.relu(x)
-        
-        # Store spatial features for SR prediction (following experiment5)
+
+        # Store spatial features for SR prediction
         spatial_features = x
-        
-        # Global pooling for action and consumption predictions (following experiment5)
+
+        # Global pooling for action and consumption predictions
         x_pooled = torch.mean(x, [2, 3])  # (batch_size, out_channels)
-        
-        # Shared feature extraction (following experiment5 structure)
+
+        # Shared feature extraction
         x_pooled = self.fc1(x_pooled)
         x_pooled = F.relu(x_pooled)
-        
+
         x_pooled = self.fc2(x_pooled)
         x_pooled = F.relu(x_pooled)
-        
-        # Action prediction (following experiment5 structure)
+
+        # Prediction heads
         action_logits = self.fc3_action(x_pooled)
-        
-        # Goal prediction 
         goal_logits = self.fc3_goal(x_pooled)
-        
-        # Consumption prediction (raw logits - sigmoid applied in loss function)
         consumption_logits = self.fc3_consumption(x_pooled)
-        
-        # SR prediction (using spatial features, following experiment5)
-        sr_features = self.conv_sr(spatial_features)  # (batch_size, out_channels, height, width)
+
+        # SR prediction (using spatial features)
+        sr_features = self.conv_sr(spatial_features)
         sr_features = F.relu(sr_features)
-        sr_pred = self.conv_sr_out(sr_features)  # (batch_size, 3, height, width)
-        
-        # Apply softmax to each SR channel independently (following experiment5)
+        sr_pred = self.conv_sr_out(sr_features)
+
+        # Apply softmax to each SR channel independently
         batch_size, channels, height, width = sr_pred.shape
-        sr_pred = sr_pred.view(batch_size, channels, -1)  # (batch_size, 3, spatial_size)
-        sr_pred = F.softmax(sr_pred, dim=2)  # Normalize across spatial locations for each gamma
-        sr_pred = sr_pred.view(batch_size, channels, height, width)  # Back to spatial format
-        
+        sr_pred = sr_pred.view(batch_size, channels, -1)
+        sr_pred = F.softmax(sr_pred, dim=2)
+        sr_pred = sr_pred.view(batch_size, channels, height, width)
+
         return action_logits, goal_logits, consumption_logits, sr_pred
 
 
 class ToMnet(nn.Module):
     def __init__(
         self,
+        use_mentalnet: bool = False,
         batch: int = 32,
         residual_blocks: int = 3,
         n_echar: int = 64,
-        n_ement: int = 64,  # Keep for compatibility, but not used
+        n_ement: int = 64,
         out_channels: int = 32,
         channels_in: int = 9,  # 8 original channels + 1 heading direction channel (for CharNet)
         current_state_channels: int = 8,  # For PredNet (without heading direction)
@@ -397,9 +674,10 @@ class ToMnet(nn.Module):
     ):
         super(ToMnet, self).__init__()
 
+        self.use_mentalnet = use_mentalnet
         self.batch = batch
         self.n_echar = n_echar
-        self.n_ement = n_ement  # Keep for compatibility
+        self.n_ement = n_ement
         self.time_step = time_step
         self.action_space = action_space
         self.goal_space = goal_space
@@ -410,7 +688,7 @@ class ToMnet(nn.Module):
         self.env_width = env_width
         self.env_height = env_height
 
-        # Character network - processes past episodes (same as experiment5)
+        # Character network - processes past episodes (same for both architectures)
         self.char_net = CharNet(
             batch=batch,
             residual_blocks=residual_blocks,
@@ -423,9 +701,22 @@ class ToMnet(nn.Module):
             hidden_size_lstm=hidden_size_lstm,
         )
 
-        # Prediction network - processes current_state + character_embedding directly (like experiment5)
+        # Mental state network - only used in original 3-stage architecture
+        if use_mentalnet:
+            self.mental_net = MentalNet(
+                batch=batch,
+                residual_blocks=residual_blocks,
+                n_ement=n_ement,
+                out_channels=out_channels,
+                channels_in=current_state_channels,
+                time_step=time_step,
+                n_echar=n_echar,
+            )
+
+        # Prediction network - processes inputs based on architecture
         self.pred_net = PredNet(
             batch=batch,
+            n_ement=n_ement,
             n_echar=n_echar,
             current_state_channels=current_state_channels,
             residual_blocks=residual_blocks,
@@ -434,56 +725,70 @@ class ToMnet(nn.Module):
             goal_space=goal_space,
             env_width=env_width,
             env_height=env_height,
+            use_mentalnet=use_mentalnet,
         )
 
     def forward(self, past_trajectories, recent_trajectory, current_state):
         """
-        Forward pass for ToMnet (FIXED: following experiment5 2-stage architecture)
+        Forward pass for ToMnet (supports both architectures)
 
         Args:
             past_trajectories: (batch_size, n_past, seq_len, channels, height, width) - for CharNet
-            recent_trajectory: (batch_size, seq_len, channels, height, width) - unused (for compatibility)
+            recent_trajectory: (batch_size, seq_len, channels, height, width) - for MentalNet (if used)
             current_state: (batch_size, channels, height, width) - for PredNet
 
         Returns:
-            action_logits: (batch_size, action_space)
-            goal_logits: (batch_size, goal_space)
-            consumption_logits: (batch_size, 8)
-            sr_pred: (batch_size, 3, env_height, env_width)
-            character_embedding: (batch_size, n_echar)
-            mental_state: (batch_size, n_ement) - dummy for compatibility
+            action_logits, goal_logits, consumption_logits, sr_pred, character_embedding, mental_state
         """
-        # 1. Character network - processes past episodes (same as experiment5)
+        # 1. Character network - processes past episodes (same for both architectures)
         if self.use_n_past and past_trajectories is not None:
             character_embedding = self.char_net(past_trajectories)
         else:
-            # Use zero embedding if no past trajectories
             batch_size = current_state.size(0)
             character_embedding = torch.zeros(
                 batch_size, self.n_echar, device=current_state.device
             )
 
-        # 2. Direct access approach like experiment5 - BYPASS MentalNet bottleneck
-        # Extract only the relevant channels from current_state for PredNet
-        current_state_for_pred = current_state[:, :self.current_state_channels]  # Take first 8 channels
-        
-        # Reshape character embedding to spatial format (following experiment5 pattern)
+        # Extract relevant channels for PredNet
+        current_state_for_pred = current_state[:, : self.current_state_channels]
         batch_size, _, height, width = current_state_for_pred.shape
-        e_char_spatial = character_embedding.unsqueeze(2).unsqueeze(3)  # (batch, n_echar, 1, 1)
-        e_char_spatial = e_char_spatial.expand(
-            batch_size, self.n_echar, height, width
-        )  # (batch, n_echar, height, width)
 
-        # Concatenate current_state with character embedding (following experiment5)
-        # current_state_for_pred: (batch_size, current_state_channels, height, width)
-        # e_char_spatial: (batch_size, n_echar, height, width)
-        mixed_data = torch.cat([current_state_for_pred, e_char_spatial], dim=1)  # (batch, channels + n_echar, height, width)
+        if self.use_mentalnet:
+            # 2a. Original 3-stage architecture: CharNet → MentalNet → PredNet
 
-        # 3. PredNet processes mixed data directly (following experiment5 pattern)
-        action_logits, goal_logits, consumption_logits, sr_pred = self.pred_net(mixed_data)
+            # Extract actions from recent trajectory for MentalNet
+            # For simplicity, assume actions are embedded in trajectory or use dummy actions
+            recent_actions = torch.zeros(batch_size, recent_trajectory.size(1), dtype=torch.long, device=recent_trajectory.device)
+            
+            # Process recent trajectory through MentalNet
+            mental_state = self.mental_net(recent_trajectory, recent_actions)
 
-        # Create dummy mental_state for compatibility with existing training code
-        mental_state = torch.zeros(batch_size, self.n_ement, device=current_state.device)
+            # PredNet with mental state
+            action_logits, goal_logits, consumption_logits, sr_pred = self.pred_net(
+                mental_state, character_embedding, current_state_for_pred
+            )
+        else:
+            # 2b. Fixed 2-stage architecture: CharNet → PredNet (like experiment5)
+
+            # Reshape character embedding to spatial format
+            e_char_spatial = (
+                character_embedding.unsqueeze(2)
+                .unsqueeze(3)
+                .expand(batch_size, self.n_echar, height, width)
+            )
+
+            # Concatenate current_state with character embedding
+            mixed_data = torch.cat([current_state_for_pred, e_char_spatial], dim=1)
+
+            # PredNet processes mixed data directly
+            action_logits, goal_logits, consumption_logits, sr_pred = (
+                self.pred_net.forward_direct(mixed_data)
+            )
+
+            # Create dummy mental_state for compatibility
+            mental_state = torch.zeros(
+                batch_size, self.n_ement, device=current_state.device
+            )
 
         return (
             action_logits,
@@ -495,17 +800,7 @@ class ToMnet(nn.Module):
         )
 
     def predict_action(self, past_trajectories, recent_trajectory, current_state):
-        """
-        Predict next action
-
-        Args:
-            past_trajectories: Past episode trajectories
-            recent_trajectory: Recent trajectory (unused, for compatibility)
-            current_state: Current state for PredNet
-
-        Returns:
-            Predicted action probabilities
-        """
+        """Predict next action"""
         with torch.no_grad():
             action_logits, _, _, _, _, _ = self.forward(
                 past_trajectories, recent_trajectory, current_state
@@ -513,17 +808,7 @@ class ToMnet(nn.Module):
             return F.softmax(action_logits, dim=1)
 
     def predict_goal(self, past_trajectories, recent_trajectory, current_state):
-        """
-        Predict goal
-
-        Args:
-            past_trajectories: Past episode trajectories
-            recent_trajectory: Recent trajectory (unused, for compatibility)
-            current_state: Current state for PredNet
-
-        Returns:
-            Predicted goal probabilities
-        """
+        """Predict goal"""
         with torch.no_grad():
             _, goal_logits, _, _, _, _ = self.forward(
                 past_trajectories, recent_trajectory, current_state
@@ -531,15 +816,7 @@ class ToMnet(nn.Module):
             return F.softmax(goal_logits, dim=1)
 
     def get_character_embedding(self, past_trajectories):
-        """
-        Get character embedding from past trajectories
-
-        Args:
-            past_trajectories: Past episode trajectories
-
-        Returns:
-            Character embedding
-        """
+        """Get character embedding from past trajectories"""
         with torch.no_grad():
             if self.use_n_past and past_trajectories is not None:
                 return self.char_net(past_trajectories)
@@ -548,19 +825,18 @@ class ToMnet(nn.Module):
                 return torch.zeros(batch_size, self.n_echar)
 
     def get_mental_state(self, recent_trajectory, character_embedding):
-        """
-        Get mental state - returns dummy for compatibility
-
-        Args:
-            recent_trajectory: Recent trajectory (unused)
-            character_embedding: Character embedding (unused)
-
-        Returns:
-            Dummy mental state embedding
-        """
+        """Get mental state from recent trajectory and character embedding"""
         with torch.no_grad():
-            batch_size = 1 if recent_trajectory is None else recent_trajectory.size(0)
-            return torch.zeros(batch_size, self.n_ement)
+            if self.use_mentalnet:
+                # Use new MentalNet interface - pass full trajectory and character embedding
+                mental_state = self.mental_net(recent_trajectory, character_embedding)
+                return mental_state
+            else:
+                # Return dummy mental state for fixed architecture
+                batch_size = (
+                    1 if recent_trajectory is None else recent_trajectory.size(0)
+                )
+                return torch.zeros(batch_size, self.n_ement)
 
 
 class ToMnetLoss(nn.Module):
@@ -574,7 +850,7 @@ class ToMnetLoss(nn.Module):
         self.sr_weight = sr_weight
         self.action_loss = nn.CrossEntropyLoss()
         self.goal_loss = nn.CrossEntropyLoss()
-        self.consumption_loss = nn.BCEWithLogitsLoss()  # For consumption prediction
+        self.consumption_loss = nn.BCEWithLogitsLoss()
 
     def forward(
         self,
@@ -587,30 +863,9 @@ class ToMnetLoss(nn.Module):
         consumption_targets,
         sr_targets,
     ):
-        """
-        Compute combined loss (following experiment 5 approach)
-
-        Args:
-            action_logits: Predicted action logits
-            goal_logits: Predicted goal logits
-            consumption_logits: Predicted consumption logits (batch_size, 8)
-            sr_pred: Predicted SR maps (batch_size, 3, height, width)
-            action_targets: True action labels
-            goal_targets: True goal labels
-            consumption_targets: True consumption labels (batch_size, 8)
-            sr_targets: True SR maps (batch_size, 3, height, width)
-
-        Returns:
-            total_loss: Combined loss
-            action_loss: Action prediction loss
-            goal_loss: Goal prediction loss
-            consumption_loss: Consumption prediction loss
-            sr_loss: SR prediction loss
-        """
+        """Compute combined loss"""
         action_loss = self.action_loss(action_logits, action_targets)
         goal_loss = self.goal_loss(goal_logits, goal_targets)
-
-        # Consumption loss (use sigmoid + BCE for multi-label classification)
         consumption_loss = self.consumption_loss(
             consumption_logits, consumption_targets
         )
@@ -632,23 +887,16 @@ class ToMnetLoss(nn.Module):
 
 # Utility functions
 def create_model(config):
-    """
-    Create ToMnet model from configuration
-
-    Args:
-        config: Configuration dictionary
-
-    Returns:
-        ToMnet model
-    """
+    """Create ToMnet model from configuration"""
     # Handle both Config object and dictionary
-    if hasattr(config, 'get_model_kwargs'):
+    if hasattr(config, "get_model_kwargs"):
         # Config object
         model_kwargs = config.get_model_kwargs()
         model = ToMnet(**model_kwargs)
     else:
         # Dictionary
         model = ToMnet(
+            use_mentalnet=config.get("use_mentalnet", False),
             batch=config.get("batch", 32),
             residual_blocks=config.get("residual_blocks", 3),
             n_echar=config.get("n_echar", 64),
@@ -676,73 +924,50 @@ def count_parameters(model):
 
 # Example usage
 if __name__ == "__main__":
-    # Example configuration
-    config = {
-        "batch_size": 32,
-        "residual_blocks": 3,
-        "n_echar": 64,
-        "n_ement": 64,
-        "out_channels": 32,
-        "channels_in": 9,  # 8 original channels + 1 heading direction channel
-        "current_state_channels": 8,  # For PredNet
-        "time_step": 100,
-        "action_space": 7,
-        "goal_space": 4,
-        "max_n_past": 5,
-        "use_n_past": True,
-    }
+    # Test both architectures
+    for use_mentalnet in [False, True]:
+        print(
+            f"\n=== Testing {'Original' if use_mentalnet else 'Fixed'} Architecture ==="
+        )
 
-    # Create model
-    model = create_model(config)
-    print(f"FIXED Model created with {count_parameters(model)} parameters")
+        config = {
+            "use_mentalnet": use_mentalnet,
+            "batch_size": 32,
+            "residual_blocks": 3,
+            "n_echar": 16,
+            "n_ement": 16,
+            "out_channels": 32,
+            "channels_in": 9,
+            "current_state_channels": 8,
+            "time_step": 20,
+            "action_space": 7,
+            "goal_space": 4,
+            "max_n_past": 1,
+            "use_n_past": True,
+        }
 
-    # Example input shapes
-    batch_size = 8
-    n_past = 3
-    seq_len = 50
-    channels = 9  # 8 original channels + 1 heading direction channel
-    height = 9
-    width = 9
+        model = create_model(config)
+        print(f"Model created with {count_parameters(model):,} parameters")
 
-    # Create dummy data
-    past_trajectories = torch.randn(
-        batch_size, n_past, seq_len, channels, height, width
-    )
-    current_trajectory = torch.randn(batch_size, seq_len, channels, height, width)
-    current_state = torch.randn(batch_size, channels, height, width)
+        # Test forward pass
+        batch_size = 4
+        past_trajectories = torch.randn(batch_size, 1, 20, 9, 9, 9)
+        recent_trajectory = torch.randn(batch_size, 20, 9, 9, 9)
+        current_state = torch.randn(batch_size, 9, 9, 9)
 
-    # Forward pass
-    action_logits, goal_logits, consumption_logits, sr_pred, char_emb, mental_state = (
-        model(past_trajectories, current_trajectory, current_state)
-    )
+        outputs = model(past_trajectories, recent_trajectory, current_state)
+        (
+            action_logits,
+            goal_logits,
+            consumption_logits,
+            sr_pred,
+            char_emb,
+            mental_state,
+        ) = outputs
 
-    print(f"Action logits shape: {action_logits.shape}")
-    print(f"Goal logits shape: {goal_logits.shape}")
-    print(f"Consumption logits shape: {consumption_logits.shape}")
-    print(f"SR prediction shape: {sr_pred.shape}")
-    print(f"Character embedding shape: {char_emb.shape}")
-    print(f"Mental state shape: {mental_state.shape}")
-
-    # Test loss computation
-    action_targets = torch.randint(0, 7, (batch_size,))
-    goal_targets = torch.randint(0, 4, (batch_size,))
-    consumption_targets = torch.randint(0, 2, (batch_size, 8)).float()  # Binary targets
-    sr_targets = torch.rand(batch_size, 3, height, width)  # Random SR targets
-
-    loss_fn = ToMnetLoss()
-    total_loss, action_loss, goal_loss, consumption_loss, sr_loss = loss_fn(
-        action_logits,
-        goal_logits,
-        consumption_logits,
-        sr_pred,
-        action_targets,
-        goal_targets,
-        consumption_targets,
-        sr_targets,
-    )
-
-    print(f"Total loss: {total_loss.item():.4f}")
-    print(f"Action loss: {action_loss.item():.4f}")
-    print(f"Goal loss: {goal_loss.item():.4f}")
-    print(f"Consumption loss: {consumption_loss.item():.4f}")
-    print(f"SR loss: {sr_loss.item():.4f}")
+        print(f"Action logits: {action_logits.shape}")
+        print(f"Goal logits: {goal_logits.shape}")
+        print(f"Consumption logits: {consumption_logits.shape}")
+        print(f"SR pred: {sr_pred.shape}")
+        print(f"Character embedding: {char_emb.shape}")
+        print(f"Mental state: {mental_state.shape}")

@@ -125,6 +125,7 @@ class Config:
 
         # Model architecture
         self.model_config = {
+            "use_mentalnet": False,  # False: experiment5-style (CharNet→PredNet), True: original 3-stage (CharNet→MentalNet→PredNet)
             "residual_blocks": 5,
             "n_echar": 16,
             "n_ement": 16,
@@ -357,12 +358,14 @@ class Config:
     def get_model_kwargs(self):
         """Get model initialization parameters"""
         return {
+            "use_mentalnet": self.model_config["use_mentalnet"],
             "batch": self.training_config["batch_size"],
             "residual_blocks": self.model_config["residual_blocks"],
             "n_echar": self.model_config["n_echar"],
             "n_ement": self.model_config["n_ement"],
             "out_channels": self.model_config["out_channels"],
             "channels_in": self.model_config["channels_in"],
+            "current_state_channels": self.model_config["current_state_channels"],
             "time_step": self.data_config["time_step"],
             "action_space": self.model_config["action_space"],
             "goal_space": self.model_config["goal_space"],

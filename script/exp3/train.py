@@ -481,7 +481,9 @@ def train_epoch(
 
         # Use trajectory without heading direction for MentalNet (first 8 channels only)
         current_state_channels = model_config.get("current_state_channels", 8)
-        recent_trajectory = trajectories[:, :, :current_state_channels]  # [batch_size, seq_len, 8, height, width]
+        recent_trajectory = trajectories[
+            :, :, :current_state_channels
+        ]  # [batch_size, seq_len, 8, height, width]
 
         # Vectorized: Extract current state for PredNet (last non-padded timestep)
 
@@ -659,7 +661,9 @@ def validate_epoch(
 
             # Use trajectory without heading direction for MentalNet (first 8 channels only)
             current_state_channels = model_config.get("current_state_channels", 8)
-            recent_trajectory = trajectories[:, :, :current_state_channels]  # [batch_size, seq_len, 8, height, width]
+            recent_trajectory = trajectories[
+                :, :, :current_state_channels
+            ]  # [batch_size, seq_len, 8, height, width]
 
             # Vectorized: Extract current state for PredNet (last non-padded timestep)
             current_state = torch.zeros(

@@ -126,8 +126,8 @@ class Config:
         # Model architecture
         self.model_config = {
             "residual_blocks": 5,
-            "n_echar": 12,
-            "n_ement": 12,
+            "n_echar": 16,
+            "n_ement": 16,
             "out_channels": 64,
             "channels_in": 9,  # 8 original channels + 1 heading direction channel
             "current_state_channels": 8,  # For MentalNet: 8 original channels (no heading direction)

@@ -114,7 +114,7 @@ class Config:
 
         # Training configuration
         self.training_config = {
-            "batch_size": 512,
+            "batch_size": 1024,
             "epochs": 200,
             "lr": 0.0001,
             "weight_decay": 0.001,
@@ -126,17 +126,17 @@ class Config:
         # Model architecture
         self.model_config = {
             "residual_blocks": 5,
-            "n_echar": 24,
-            "n_ement": 24,
-            "out_channels": 128,
+            "n_echar": 12,
+            "n_ement": 12,
+            "out_channels": 64,
             "channels_in": 9,  # 8 original channels + 1 heading direction channel
             "current_state_channels": 8,  # For MentalNet: 8 original channels (no heading direction)
             "action_space": 7,
             "goal_space": 4,
             "env_width": self.width,
             "env_height": self.height,
-            "hidden_size_lstm": 128,
-            "fc_layer_sizes": [128, 64],
+            "hidden_size_lstm": 64,
+            "fc_layer_sizes": [64, 32],
             "kernel_size": 3,
             "padding": 1,
             "stride": 1,

@@ -11,7 +11,7 @@ class Config:
         self.seed = 42
 
         # Agent settings
-        self.agent_type = "astar"  # Options: "astar", "random", "value"
+        self.agent_type = "value"  # Options: "astar", "random", "value"
         self.observability = "full"  # Options: "full", "partial"
         self.movement_prob = 0.8  # For random agent
 
@@ -406,6 +406,19 @@ class Config:
             self.max_steps = args.max_steps
         if hasattr(args, "env_size") and args.env_size is not None:
             self.env_size = args.env_size
+            # Update width and height based on env_size
+            if self.env_size == "3x3":
+                self.width = 3
+                self.height = 3
+            elif self.env_size == "5x5":
+                self.width = 5
+                self.height = 5
+            elif self.env_size == "9x9":
+                self.width = 9
+                self.height = 9
+            elif self.env_size == "11x11":
+                self.width = 11
+                self.height = 11
         if hasattr(args, "observability") and args.observability is not None:
             self.observability = args.observability
         if hasattr(args, "gif") and args.gif is not None:

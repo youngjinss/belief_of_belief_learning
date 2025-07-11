@@ -27,6 +27,49 @@ Adapted from ToMnetF experiment5 for KeyDoor environment
 
 def load_model(model_path, device, model_kwargs):
     """Load trained ToMnet model"""
+    # Try to load model configuration from saved files
+    model_dir = os.path.dirname(model_path)
+    
+    # First try to load model_config.json
+    model_config_path = os.path.join(model_dir, "model_config.json")
+    if os.path.exists(model_config_path):
+        print(f"Loading model configuration from: {model_config_path}")
+        with open(model_config_path, 'r') as f:
+            saved_model_kwargs = json.load(f)
+        # Use saved configuration instead of passed kwargs
+        model_kwargs = saved_model_kwargs
+    else:
+        # Fallback: try to load full_config.json
+        full_config_path = os.path.join(model_dir, "full_config.json")
+        if os.path.exists(full_config_path):
+            print(f"Loading model configuration from full config: {full_config_path}")
+            with open(full_config_path, 'r') as f:
+                full_config = json.load(f)
+                if "model_config" in full_config:
+                    # Extract model kwargs from model_config
+                    model_config = full_config["model_config"]
+                    model_kwargs = {
+                        "use_mentalnet": model_config.get("use_mentalnet", False),
+                        "batch": model_kwargs.get("batch", 32),  # Keep batch size from current config
+                        "residual_blocks": model_config.get("residual_blocks", 3),
+                        "n_echar": model_config.get("n_echar", 64),
+                        "n_ement": model_config.get("n_ement", 64),
+                        "out_channels": model_config.get("out_channels", 32),
+                        "channels_in": model_config.get("channels_in", 9),
+                        "current_state_channels": model_config.get("current_state_channels", 8),
+                        "time_step": model_kwargs.get("time_step", 500),
+                        "action_space": model_config.get("action_space", 7),
+                        "goal_space": model_config.get("goal_space", 4),
+                        "max_n_past": model_kwargs.get("max_n_past", 10),
+                        "use_n_past": model_kwargs.get("use_n_past", True),
+                        "env_width": model_config.get("env_width", 9),
+                        "env_height": model_config.get("env_height", 9),
+                        "hidden_size_lstm": model_config.get("hidden_size_lstm", 64),
+                    }
+        else:
+            print(f"Warning: No saved model configuration found. Using provided kwargs.")
+    
+    print(f"Model configuration: use_mentalnet={model_kwargs.get('use_mentalnet', False)}")
     model = create_model(model_kwargs)
     model.load_state_dict(torch.load(model_path, map_location=device))
     model.to(device)
@@ -359,7 +402,14 @@ def evaluate_keydoor_model(
 
     # Load test data
     print("Loading test data...")
-    data_reader = DataReader()
+    # Create DataReader with correct dimensions based on environment size
+    data_reader = DataReader(
+        time_step=data_config.get("time_step", 500),
+        w=config.width,
+        h=config.height,
+        d=data_config.get("maze_depth", 9),
+        experiment_no=config.experiment_no
+    )
     test_games = data_reader.ReadAllGames(test_data_dir)
 
     if len(test_games) == 0:
@@ -524,7 +574,13 @@ def analyze_action_likelihood(
 
     if test_loader is None:
         # Load test data
-        data_reader = DataReader()
+        data_reader = DataReader(
+            time_step=data_config.get("time_step", 500),
+            w=config.width,
+            h=config.height,
+            d=data_config.get("maze_depth", 9),
+            experiment_no=config.experiment_no
+        )
         test_games = data_reader.ReadAllGames(config.test_data_dir)
         test_data = prepare_data_for_training(
             test_games,
@@ -644,6 +700,7 @@ if __name__ == "__main__":
     parser.add_argument("--experiment_no", type=int, help="Experiment number")
     parser.add_argument("--batch_size", type=int, help="Evaluation batch size")
     parser.add_argument("--device", type=str, help="CUDA device (e.g., cuda:0)")
+    parser.add_argument("--env_size", type=str, choices=["3x3", "5x5", "9x9", "11x11"], help="Environment size")
     parser.add_argument(
         "--n_samples", type=int, default=1000, help="Number of samples for analysis"
     )
@@ -693,7 +750,13 @@ if __name__ == "__main__":
         model = load_model(model_path, device, model_kwargs)
 
         # Load test data
-        data_reader = DataReader()
+        data_reader = DataReader(
+            time_step=data_config.get("time_step", 500),
+            w=config.width,
+            h=config.height,
+            d=data_config.get("maze_depth", 9),
+            experiment_no=config.experiment_no
+        )
         test_games = data_reader.ReadAllGames(
             args.test_data_dir or config.test_data_dir
         )

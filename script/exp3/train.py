@@ -896,7 +896,14 @@ def train_tomnet(
 
     # Load data
     print("Loading data...")
-    data_reader = DataReader()
+    # Create DataReader with correct dimensions based on environment size
+    data_reader = DataReader(
+        time_step=time_step,
+        w=config.width,
+        h=config.height,
+        d=data_config.get("maze_depth", 9),
+        experiment_no=config.experiment_no
+    )
     games = data_reader.ReadAllGames(data_dir)
 
     if len(games) == 0:
@@ -1169,6 +1176,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--device", type=str, help="Device to use (auto, cpu, cuda)")
     parser.add_argument("--optimizer", type=str, help="Optimizer type (adam)")
+    parser.add_argument("--env_size", type=str, choices=["3x3", "5x5", "9x9", "11x11"], help="Environment size")
 
     # Model architecture
     parser.add_argument("--residual_blocks", type=int, help="Number of residual blocks")

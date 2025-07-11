@@ -700,7 +700,6 @@ if __name__ == "__main__":
     parser.add_argument("--experiment_no", type=int, help="Experiment number")
     parser.add_argument("--batch_size", type=int, help="Evaluation batch size")
     parser.add_argument("--device", type=str, help="CUDA device (e.g., cuda:0)")
-    parser.add_argument("--env_size", type=str, choices=["3x3", "5x5", "9x9", "11x11"], help="Environment size")
     parser.add_argument(
         "--n_samples", type=int, default=1000, help="Number of samples for analysis"
     )
@@ -737,6 +736,43 @@ if __name__ == "__main__":
         results_dir=args.result_dir,
     )
     print("Evaluation completed successfully!")
+
+    # Run N_past evaluation if requested
+    if args.plot_type in ["n_past", "all"]:
+        print("Running N_past evaluation...")
+        # Load model and test data for N_past evaluation
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        model_path = args.model_path or os.path.join(config.model_dir, "best_model.pth")
+        model_kwargs = config.get_model_kwargs()
+        model = load_model(model_path, device, model_kwargs)
+        
+        # Load test data
+        data_reader = DataReader(
+            time_step=config.get_data_config().get("time_step", 500),
+            w=config.width,
+            h=config.height,
+            d=config.get_data_config().get("maze_depth", 9),
+            experiment_no=config.experiment_no
+        )
+        test_games = data_reader.ReadAllGames(
+            args.test_data_dir or config.test_data_dir
+        )
+        data_config = config.get_data_config()
+        test_data = prepare_data_for_training(
+            test_games, min_timestep=6, max_trajectory_length=data_config["max_moves"]
+        )
+        test_dataset = TensorDataset(
+            test_data["trajectories"], test_data["actions"], test_data["goals"]
+        )
+        test_loader = DataLoader(
+            test_dataset, batch_size=config.evaluation_config["batch_size"], shuffle=False
+        )
+        
+        # Run N_past evaluation
+        evaluate_n_past_experiment(
+            model, test_loader, args.result_dir or config.result_dir, data_config, config
+        )
+        print("N_past evaluation completed!")
 
     # Create additional visualizations if requested
     if args.plot_type in ["embeddings", "all"]:

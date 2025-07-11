@@ -268,25 +268,6 @@ def evaluate_model(
                 :, 0
             ]  # Target action for each sliced trajectory
             
-            # DEBUG: Check action target range and values
-            if batch_idx == 0:  # Only print for first batch to avoid spam
-                print(f"DEBUG: action_targets range: {action_targets.min().item()} to {action_targets.max().item()}")
-                print(f"DEBUG: unique actions in batch: {torch.unique(action_targets).cpu().numpy()}")
-                print(f"DEBUG: action_targets shape: {action_targets.shape}")
-                print(f"DEBUG: first 10 action_targets: {action_targets[:10].cpu().numpy()}")
-                print(f"DEBUG: goals shape: {goals.shape}")
-                print(f"DEBUG: first 10 goals: {goals[:10].cpu().numpy()}")
-                
-                # Check if actions are incorrectly using goal values
-                if action_targets.max().item() < 7 and action_targets.max().item() <= 4:
-                    print("🚨 WARNING: Actions appear to be in range 0-3/4, should be 0-6!")
-                    print("   This suggests actions might be confused with goals or the environment")
-                    print("   isn't generating the full action space (stay, pickup, toggle)")
-                    
-                # Check model output dimensions
-                print(f"DEBUG: Model action_space config: {model_kwargs.get('action_space', 'Unknown')}")
-                print(f"DEBUG: Model goal_space config: {model_kwargs.get('goal_space', 'Unknown')}")
-
             # Fully vectorized: Find the effective length for each sample (remove padding)
             # Sum over spatial dimensions for each timestep: [batch_size, seq_len]
             traj_sums = trajectories.sum(

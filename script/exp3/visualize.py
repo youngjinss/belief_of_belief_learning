@@ -8,8 +8,7 @@ import seaborn as sns
 from sklearn.metrics import confusion_matrix
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
-import torch
-import torch.nn.functional as F
+import torchgen
 from torch.utils.data import DataLoader, TensorDataset
 
 from config import Config
@@ -690,8 +689,6 @@ def plot_character_embeddings(
                 goal_ranks = goal_ranks.to(device)
 
                 batch_size = trajectories.size(0)
-                print(
-
                 # Generate past episodes using goal_ranks (same as training/evaluation)
                 past_episodes = generate_past_episodes_from_batch(
                     trajectories, goal_ranks, batch_size, 1, 1, 1, rank_threshold=1

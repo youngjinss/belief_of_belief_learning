@@ -47,13 +47,14 @@ create_log_files() {
 COMMAND=${1:-all}
 
 print_usage() {
-    echo "Usage: $0 [data_generation|test_data_generation|train|evaluate|visualize|all]"
+    echo "Usage: $0 [data_generation|test_data_generation|train|evaluate|n_past|visualize|all]"
     echo ""
     echo "Commands:"
     echo "  data_generation       Generate KeyDoor trajectory data for training"
     echo "  test_data_generation  Generate test data ($VALIDATION_GAMES games with seed $TEST_RANDOM_SEED) for evaluation"
     echo "  train                Train ToMnet model for KeyDoor experiment"
     echo "  evaluate             Evaluate trained model performance"
+    echo "  n_past               Run N_past evaluation (generates n_past_evaluation_results.json)"
     echo "  visualize            Create plots and visualizations"
     echo "  all                  Run complete pipeline including test data generation"
     echo ""
@@ -179,6 +180,62 @@ run_evaluation() {
     fi
 }
 
+run_n_past_evaluation() {
+    # Check if N_past evaluation already completed
+    if [ -f "$RESULTS_DIR/n_past_evaluation_results.json" ]; then
+        log_step "N_past evaluation skipped - n_past_evaluation_results.json already exists"
+        return 0
+    fi
+    
+    log_step "Starting N_past evaluation for experiment $EXPERIMENT_NO"
+    log_step "Logging N_past evaluation output to: $RUN_LOG_DIR/n_past_evaluation.log"
+    
+    cd "$SCRIPTS_DIR"
+    python -c "
+import sys
+sys.path.append('.')
+from evaluate import evaluate_keydoor_model, evaluate_n_past_experiment, load_model
+from config import Config
+from data_generation import DataReader
+from train import prepare_data_for_training
+from torch.utils.data import DataLoader, TensorDataset
+import torch
+
+# Setup
+config = Config()
+config.env_size = '9x9'
+config.width = 9
+config.height = 9
+
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+model_kwargs = config.get_model_kwargs()
+data_config = config.get_data_config()
+
+# Load model
+model = load_model('$RESULTS_DIR/best_model.pth', device, model_kwargs)
+print('Model loaded successfully')
+
+# Load test data
+data_reader = DataReader(
+    time_step=data_config.get('time_step', 500),
+    w=config.width,
+    h=config.height,
+    d=data_config.get('maze_depth', 9),
+    experiment_no=config.experiment_no
+)
+test_games = data_reader.ReadAllGames('$TEST_DATA_DIR')
+test_data = prepare_data_for_training(test_games, min_timestep=6, max_trajectory_length=data_config['max_moves'])
+test_dataset = TensorDataset(test_data['trajectories'], test_data['actions'], test_data['goals'])
+test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
+
+# Run N_past evaluation
+evaluate_n_past_experiment(model, test_loader, '$RESULTS_DIR', data_config, config)
+print('N_past evaluation completed')
+" > "$RUN_LOG_DIR/n_past_evaluation.log" 2>&1
+    
+    log_step "N_past evaluation completed"
+}
+
 run_visualization() {
     # Check if visualization script exists
     if [ ! -f "$SCRIPTS_DIR/visualize.py" ]; then
@@ -289,6 +346,9 @@ case $COMMAND in
     evaluate)
         run_evaluation
         ;;
+    n_past)
+        run_n_past_evaluation
+        ;;
     visualize)
         run_visualization
         ;;
@@ -300,6 +360,7 @@ case $COMMAND in
         run_test_data_generation
         run_training
         run_evaluation
+        run_n_past_evaluation
         run_visualization
         log_step "Complete pipeline finished successfully"
         ;;

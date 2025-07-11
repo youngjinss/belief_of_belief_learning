@@ -354,7 +354,14 @@ class AStarAgent:
 class ValueAgent:
     """
     Value-based agent with stochastic action selection using value iteration
-    Adapted for KeyDoor environment
+    Updated for KeyDoor environment with automatic key pickup and door opening
+    
+    Key features:
+    - Uses value iteration for optimal path planning
+    - Accounts for automatic key pickup when stepping on keys
+    - Accounts for automatic door opening when stepping on doors with correct key
+    - Compatible with 7-action MiniGrid action space
+    - Stochastic policy with temperature-based action selection
     """
 
     def __init__(
@@ -391,8 +398,9 @@ class ValueAgent:
         self.converged = False
 
         # MiniGrid action mapping: 0=up, 1=right, 2=down, 3=left, 4=stay, 5=pickup, 6=toggle
-        # We'll use a simplified 4-action space for value iteration: 0=up, 1=right, 2=down, 3=left
-        self.actions = [(0, -1), (1, 0), (0, 1), (-1, 0)]  # up, right, down, left
+        # Value iteration uses 4 movement actions: 0=up, 1=right, 2=down, 3=left
+        # Grid coordinate system: (x, y) where x=column, y=row, positive y is down
+        self.actions = [(0, -1), (1, 0), (0, 1), (-1, 0)]  # dx, dy for up, right, down, left
 
     def update_observation(self, obs):
         """Update agent's understanding of the environment"""
@@ -438,7 +446,11 @@ class ValueAgent:
         if target_key_pos is None:
             return 4  # Stay if key not found
 
-        # Use value iteration to navigate to key
+        # Check if we're already at the key position
+        if self.agent_pos == target_key_pos:
+            return 4  # Stay - key pickup is automatic when agent steps on it
+
+        # Use value iteration to navigate to key (key will be picked up automatically)
         return self._navigate_with_value_iteration(target_key_pos)
 
     def _open_target_door(self, target_door_color):
@@ -448,7 +460,21 @@ class ValueAgent:
         if target_door_pos is None:
             return 4  # Stay if door not found
 
-        # Use value iteration to navigate to door
+        # Check if we're at the door position
+        if self.agent_pos == target_door_pos:
+            door = self.grid.get(*target_door_pos)
+            if isinstance(door, Door) and door.is_open:
+                # Already opened, episode should end
+                return 4  # Stay on the opened door
+            elif (
+                isinstance(door, Door)
+                and door.is_locked
+                and target_door_color in self.collected_keys
+            ):
+                # Door will be opened automatically when agent steps on it
+                return 4  # Stay - door opening is automatic
+
+        # Navigate to door (door will open automatically when agent steps on it)
         return self._navigate_with_value_iteration(target_door_pos)
 
     def _find_object_position(self, obj_type, color):
@@ -499,25 +525,25 @@ class ValueAgent:
             old_values = value_function.copy()
 
             # Value iteration update
-            for i in range(width):
-                for j in range(height):
-                    if (i, j) == target_pos:
+            for x in range(width):
+                for y in range(height):
+                    if (x, y) == target_pos:
                         continue  # Keep target value high
 
-                    if not self._is_walkable((i, j)):
-                        value_function[i, j] = -self.wall_penalty
+                    if not self._is_walkable((x, y)):
+                        value_function[x, y] = -self.wall_penalty
                         continue
 
                     # Compute Q-values for each action
                     q_values = []
                     for action in range(n_actions):
                         q_val = self._evaluate_action(
-                            (i, j), action, old_values, target_pos
+                            (x, y), action, old_values, target_pos
                         )
                         q_values.append(q_val)
 
                     # Update value function
-                    value_function[i, j] = max(q_values)
+                    value_function[x, y] = max(q_values)
 
             # Check convergence
             if np.max(np.abs(value_function - old_values)) < convergence_threshold:
@@ -552,9 +578,9 @@ class ValueAgent:
 
     def _evaluate_action(self, pos, action, value_function, target_pos):
         """Evaluate expected value of taking action from position"""
-        i, j = pos
-        delta = self.actions[action]
-        new_pos = (i + delta[0], j + delta[1])
+        x, y = pos  # Grid coordinates (x=column, y=row)
+        dx, dy = self.actions[action]
+        new_pos = (x + dx, y + dy)
 
         # Base movement cost
         reward = -self.movement_cost
@@ -567,12 +593,12 @@ class ValueAgent:
             or new_pos[1] >= self.grid.height
         ):
             reward -= self.wall_penalty
-            next_value = self.gamma * value_function[i, j]
+            next_value = self.gamma * value_function[x, y]  # Stay in current position
         else:
             # Check if position is walkable
             if not self._is_walkable(new_pos):
                 reward -= self.wall_penalty
-                next_value = self.gamma * value_function[i, j]
+                next_value = self.gamma * value_function[x, y]  # Stay in current position
             else:
                 # Bonus for reaching target
                 if new_pos == target_pos:
@@ -593,22 +619,34 @@ class ValueAgent:
         return value_action
 
     def _is_walkable(self, pos):
-        """Check if position is walkable"""
+        """Check if position is walkable (matches KeyDoor environment's can_overlap logic)"""
         obj = self.grid.get(*pos)
 
         # Empty cells are walkable
         if obj is None:
             return True
 
-        # Keys are walkable (can step on them)
+        # Keys are walkable (can step on them - automatic pickup)
         if isinstance(obj, Key):
+            return True
+
+        # Check using class name for compatibility
+        if hasattr(obj, "__class__") and obj.__class__.__name__ == "Key":
             return True
 
         # Doors are walkable if they're open or we have the key
         if isinstance(obj, Door):
             if obj.is_open:
                 return True
-            # Check if we have the key for locked doors
+            # Check if we have the key for locked doors (automatic opening)
+            if obj.is_locked and obj.color in self.collected_keys:
+                return True
+
+        # Check using class name for compatibility
+        if hasattr(obj, "__class__") and obj.__class__.__name__ == "Door":
+            if obj.is_open:
+                return True
+            # Check if we have the key for locked doors (automatic opening)
             if obj.is_locked and obj.color in self.collected_keys:
                 return True
 
@@ -629,21 +667,22 @@ class ValueAgent:
 
 
 class RandomAgent:
-    """A random agent that explores the KeyDoor environment."""
+    """A random agent that explores the KeyDoor environment with updated action space."""
 
-    def __init__(self, action_space, movement_prob=0.8):
+    def __init__(self, action_space=7, movement_prob=0.9):
         self.action_space = action_space
         self.movement_prob = movement_prob
 
     def get_action(self, obs):
-        """Return a random action with bias towards movement."""
+        """Return a random action with bias towards movement (automatic pickup/door opening)."""
         rand = np.random.random()
 
         if rand < self.movement_prob:
-            # Focus on movement actions: up, right, down, left
-            return np.random.choice([0, 1, 2, 3])  # 0=up, 1=right, 2=down, 3=left
+            # Focus on movement actions: up, right, down, left, stay
+            return np.random.choice([0, 1, 2, 3, 4])  # 0=up, 1=right, 2=down, 3=left, 4=stay
         else:
-            # Pickup or toggle action (for picking up keys or opening doors)
+            # Rarely use pickup or toggle actions (mostly unnecessary due to automatic behavior)
+            # But keep them for compatibility
             return np.random.choice([5, 6])  # 5=pickup, 6=toggle
 
     def analyze_feedback(self, reward, done):

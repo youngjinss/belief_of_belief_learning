@@ -894,7 +894,6 @@ if __name__ == "__main__":
         default="all",
         help="Type of plot to create",
     )
-    parser.add_argument("--env_size", type=str, choices=["3x3", "5x5", "9x9", "11x11"], help="Environment size")
 
     args = parser.parse_args()
 
@@ -977,5 +976,70 @@ if __name__ == "__main__":
 
             plot_accuracy_by_n_past(results_by_n_past, plot_dir)
             plot_accuracy_heatmap_by_n_past(results_by_n_past, plot_dir)
+
+    # Plot character embeddings
+    if args.plot_type in ["embeddings", "all"]:
+        print("Creating character embedding visualizations...")
+        
+        # Load model and test data for character embedding visualization
+        from evaluate import load_model
+        from data_generation import DataReader
+        from train import prepare_data_for_training
+        from torch.utils.data import DataLoader, TensorDataset
+        import torch
+        
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        model_path = os.path.join(results_dir, "best_model.pth")
+        
+        if os.path.exists(model_path):
+            model_kwargs = config.get_model_kwargs()
+            model = load_model(model_path, device, model_kwargs)
+            
+            # Load test data
+            data_reader = DataReader(
+                time_step=config.get_data_config().get("time_step", 500),
+                w=config.width,
+                h=config.height,
+                d=config.get_data_config().get("maze_depth", 9),
+                experiment_no=config.experiment_no
+            )
+            
+            # Try to find test data directory
+            test_data_dirs = [
+                os.path.join(os.path.dirname(results_dir), "test"),
+                config.test_data_dir,
+                os.path.join(results_dir, "test")
+            ]
+            
+            test_data_dir = None
+            for tdd in test_data_dirs:
+                if os.path.exists(tdd):
+                    test_data_dir = tdd
+                    break
+            
+            if test_data_dir:
+                test_games = data_reader.ReadAllGames(test_data_dir)
+                if test_games:
+                    data_config = config.get_data_config()
+                    test_data = prepare_data_for_training(
+                        test_games, min_timestep=6, max_trajectory_length=data_config["max_moves"]
+                    )
+                    test_dataset = TensorDataset(
+                        test_data["trajectories"], test_data["actions"], test_data["goals"]
+                    )
+                    test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
+                    
+                    # Create character embeddings plot
+                    plot_character_embeddings(
+                        model, test_loader, device, plot_dir, experiment_no,
+                        n_samples=config.evaluation_config.get("n_samples", 1000)
+                    )
+                    print("Character embedding visualization completed!")
+                else:
+                    print("No test games found for character embedding visualization")
+            else:
+                print(f"Test data directory not found. Tried: {test_data_dirs}")
+        else:
+            print(f"Model file not found: {model_path}")
 
     print("Visualization completed!")

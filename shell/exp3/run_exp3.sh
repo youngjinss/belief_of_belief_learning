@@ -169,8 +169,8 @@ run_evaluation() {
     log_step "Logging evaluation output to: $RUN_LOG_DIR/evaluation.log"
     
     cd "$SCRIPTS_DIR"
-    python evaluate.py --config_override --test_data_dir "$TEST_DATA_DIR" --result_dir "$RESULTS_DIR" --model_path "$RESULTS_DIR/best_model.pth" --save_predictions --env_size "9x9" > "$RUN_LOG_DIR/evaluation.log" 2>&1
-    
+    python evaluate.py --config_override --test_data_dir "$TEST_DATA_DIR" --result_dir "$RESULTS_DIR" --model_path "$RESULTS_DIR/best_model.pth" --save_predictions > "$RUN_LOG_DIR/evaluation.log" 2>&1
+
     log_step "Evaluation completed"
     
     # Log evaluation summary if available
@@ -254,8 +254,8 @@ run_visualization() {
     log_step "Logging visualization output to: $RUN_LOG_DIR/visualization.log"
     
     cd "$SCRIPTS_DIR"
-    python visualize.py --config_override --result_dir "$RESULTS_DIR" --plot_dir "$RESULTS_DIR/plots" --plot_type "all" --env_size "9x9" > "$RUN_LOG_DIR/visualization.log" 2>&1
-    
+    python visualize.py --config_override --result_dir "$RESULTS_DIR" --plot_dir "$RESULTS_DIR/plots" --plot_type "all"  > "$RUN_LOG_DIR/visualization.log" 2>&1
+
     log_step "Visualization completed"
     
     # Log visualization summary if available

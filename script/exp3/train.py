@@ -991,14 +991,10 @@ def train_tomnet(
 
         # Print metrics
         train_loss = train_metrics["loss"]
-        train_acc = (
-            (train_metrics["action_accuracy"] + train_metrics["goal_accuracy"])
-            / 2
-            * 100
-        )
-        val_acc = (
-            (val_metrics["action_accuracy"] + val_metrics["goal_accuracy"]) / 2 * 100
-        )
+        train_acc = train_metrics["action_accuracy"] * 100
+        val_acc = val_metrics["action_accuracy"] * 100
+        train_goal_acc = train_metrics["goal_accuracy"] * 100
+        val_goal_acc = val_metrics["goal_accuracy"] * 100
         train_action_loss = train_metrics["action_loss"]
         train_consumption_loss = train_metrics["consumption_loss"]
         train_sr_loss = train_metrics["sr_loss"]
@@ -1007,7 +1003,10 @@ def train_tomnet(
         val_sr_loss = val_metrics["sr_loss"]
 
         print(
-            f"Epoch: {epoch + 1:3d} | Train Loss: {train_loss:.4f} | Train Acc: {train_acc:.4f}% | Val Acc: {val_acc:.4f}% | Time: {epoch_time:.2f}s"
+            f"Epoch: {epoch + 1:3d} | Train Loss: {train_loss:.4f} | Train Action Acc: {train_acc:.4f}% | Val Action Acc: {val_acc:.4f}% | Time: {epoch_time:.2f}s"
+        )
+        print(
+            f"  Goal Acc - Train: {train_goal_acc:.4f}% | Val: {val_goal_acc:.4f}%"
         )
         print(
             f"  Train - Action: {train_action_loss:.4f} | Consumption: {train_consumption_loss:.4f} | SR: {train_sr_loss:.4f}"

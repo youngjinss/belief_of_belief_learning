@@ -464,8 +464,8 @@ def train_epoch(
         non_zero_mask = traj_sum > 0  # [batch_size, seq_len]
         
         # Find last non-zero timestep for each sample
-        # Create timestep indices
-        timestep_indices = torch.arange(trajectories.size(1)).unsqueeze(0).expand(batch_size, -1)
+        # Create timestep indices on the same device as trajectories
+        timestep_indices = torch.arange(trajectories.size(1), device=trajectories.device).unsqueeze(0).expand(batch_size, -1)
         # Set padded timesteps to -1
         timestep_indices = timestep_indices * non_zero_mask - (1 - non_zero_mask.long())
         # Get last non-zero timestep index
@@ -479,8 +479,8 @@ def train_epoch(
         # Vectorized: Extract current state for PredNet (last non-padded timestep)
         current_state_channels = model_config.get("current_state_channels", 8)
         
-        # Create batch indices
-        batch_indices = torch.arange(batch_size)
+        # Create batch indices on the same device as trajectories
+        batch_indices = torch.arange(batch_size, device=trajectories.device)
         # Extract current state using advanced indexing
         current_state = trajectories[batch_indices, effective_lengths, :current_state_channels]
 
@@ -633,9 +633,9 @@ def validate_epoch(
             # Find last non-zero timestep for each batch sample
             non_zero_mask = traj_sums > 0  # [batch_size, seq_len]
             # Get the last True index for each batch sample using vectorized operation
-            # Create sequence indices and mask them
-            seq_indices = torch.arange(trajectories.size(1)).unsqueeze(0).expand(batch_size, -1)
-            masked_indices = torch.where(non_zero_mask, seq_indices, torch.tensor(-1))
+            # Create sequence indices and mask them on the same device
+            seq_indices = torch.arange(trajectories.size(1), device=trajectories.device).unsqueeze(0).expand(batch_size, -1)
+            masked_indices = torch.where(non_zero_mask, seq_indices, torch.tensor(-1, device=trajectories.device))
             # Find the maximum index for each batch (last non-zero timestep)
             effective_lengths = masked_indices.max(dim=1)[0].clamp(min=0).tolist()
             # Apply max(1, length) constraint
@@ -649,9 +649,9 @@ def validate_epoch(
             current_state = torch.zeros(batch_size, current_state_channels, 
                                        trajectories.size(3), trajectories.size(4))
             
-            # Create batch indices and timestep indices for advanced indexing
-            batch_indices = torch.arange(batch_size)
-            last_timesteps = torch.tensor([max(0, length - 1) for length in effective_lengths])
+            # Create batch indices and timestep indices for advanced indexing on the same device
+            batch_indices = torch.arange(batch_size, device=trajectories.device)
+            last_timesteps = torch.tensor([max(0, length - 1) for length in effective_lengths], device=trajectories.device)
             
             # Extract current state using advanced indexing
             current_state = trajectories[batch_indices, last_timesteps, :current_state_channels]

@@ -180,9 +180,9 @@ def evaluate_model(
                 # Find last non-zero timestep for each batch sample
                 non_zero_mask = traj_sums > 0  # [batch_size, seq_len]
                 # Get the last True index for each batch sample using vectorized operation
-                # Create sequence indices and mask them
-                seq_indices = torch.arange(trajectories.size(1)).unsqueeze(0).expand(batch_size, -1)
-                masked_indices = torch.where(non_zero_mask, seq_indices, torch.tensor(-1))
+                # Create sequence indices and mask them on the same device
+                seq_indices = torch.arange(trajectories.size(1), device=trajectories.device).unsqueeze(0).expand(batch_size, -1)
+                masked_indices = torch.where(non_zero_mask, seq_indices, torch.tensor(-1, device=trajectories.device))
                 # Find the maximum index for each batch (last non-zero timestep)
                 effective_lengths = masked_indices.max(dim=1)[0].clamp(min=0).tolist()
                 # Apply max(1, length) constraint
@@ -196,9 +196,9 @@ def evaluate_model(
                 current_state = torch.zeros(batch_size, current_state_channels, 
                                            trajectories.size(3), trajectories.size(4), device=device)
                 
-                # Vectorized: Extract current state using advanced indexing
-                batch_indices = torch.arange(batch_size)
-                last_timesteps = torch.tensor([max(0, length - 1) for length in effective_lengths])
+                # Vectorized: Extract current state using advanced indexing on the same device
+                batch_indices = torch.arange(batch_size, device=trajectories.device)
+                last_timesteps = torch.tensor([max(0, length - 1) for length in effective_lengths], device=trajectories.device)
                 
                 # Extract current state using advanced indexing
                 current_state = trajectories[batch_indices, last_timesteps, :current_state_channels]

@@ -724,20 +724,19 @@ def plot_character_embeddings(
                 goal_ranks = goal_ranks.to(device)
 
                 batch_size = trajectories.size(0)
-                # Generate past episodes using config values
+                # Generate past episodes using config values (aligned with exp5 logic)
                 n_past_config = config.get_n_past_evaluation_config()
                 past_episodes = generate_past_episodes_from_batch(
-                    trajectories, 
-                    goal_ranks, 
-                    batch_size, 
-                    n_past_config['n_past_min'], 
-                    n_past_config['n_past_max'], 
-                    n_past_config['n_past_infer'], 
-                    rank_threshold=1
+                    trajectories=trajectories,
+                    goals=goals,  # Use goals instead of goal_ranks (like exp5)
+                    batch_size=batch_size,
+                    n_past_min=n_past_config['n_past_min'],
+                    n_past_max=n_past_config['n_past_max'],
+                    max_n_past=n_past_config['n_past_max'],  # Use max_n_past parameter like exp5
                 )
-                # Get character embeddings using the model's method
+                # Get character embeddings using direct model call (aligned with exp5 logic)
                 try:
-                    char_embeddings = model.get_character_embedding(past_episodes)
+                    char_embeddings = model.char_net(past_episodes)  # Use char_net directly like exp5
 
                     embeddings.extend(char_embeddings.cpu().numpy())
                     goal_labels.extend(goals.cpu().numpy())
@@ -778,14 +777,19 @@ def plot_character_embeddings(
             pca = PCA(n_components=2)
             embeddings_pca = pca.fit_transform(embeddings)
 
-            for goal in range(num_goals):
+            # Get unique goals present in the data (aligned with exp5 logic)
+            unique_goals = np.unique(goal_labels)
+            for goal in unique_goals:
                 mask = goal_labels == goal
                 if np.sum(mask) > 0:
+                    # Use 1-based indexing for colors and names (aligned with exp5)
+                    color_idx = int(goal) - 1 if goal <= len(goal_colors) else goal % len(goal_colors)
+                    goal_name = goal_names[int(goal) - 1] if goal <= len(goal_names) else f"Goal {goal}"
                     ax1.scatter(
                         embeddings_pca[mask, 0],
                         embeddings_pca[mask, 1],
-                        c=goal_colors[goal],
-                        label=goal_names[goal],
+                        c=goal_colors[color_idx],
+                        label=goal_name,
                         alpha=0.6,
                     )
 
@@ -806,14 +810,18 @@ def plot_character_embeddings(
             )
     else:
         # For 2D embeddings, plot directly
-        for goal in range(num_goals):
+        unique_goals = np.unique(goal_labels)
+        for goal in unique_goals:
             mask = goal_labels == goal
             if np.sum(mask) > 0:
+                # Use 1-based indexing for colors and names (aligned with exp5)
+                color_idx = int(goal) - 1 if goal <= len(goal_colors) else goal % len(goal_colors)
+                goal_name = goal_names[int(goal) - 1] if goal <= len(goal_names) else f"Goal {goal}"
                 ax1.scatter(
                     embeddings[mask, 0],
                     embeddings[mask, 1],
-                    c=goal_colors[goal],
-                    label=goal_names[goal],
+                    c=goal_colors[color_idx],
+                    label=goal_name,
                     alpha=0.6,
                 )
         ax1.set_title("Character Embeddings (2D)")
@@ -831,14 +839,19 @@ def plot_character_embeddings(
             )  # Limit for performance
             goals_tsne = goal_labels[:1000]
 
-            for goal in range(num_goals):
+            # Get unique goals present in the data (aligned with exp5 logic)
+            unique_goals_tsne = np.unique(goals_tsne)
+            for goal in unique_goals_tsne:
                 mask = goals_tsne == goal
                 if np.sum(mask) > 0:
+                    # Use 1-based indexing for colors and names (aligned with exp5)
+                    color_idx = int(goal) - 1 if goal <= len(goal_colors) else goal % len(goal_colors)
+                    goal_name = goal_names[int(goal) - 1] if goal <= len(goal_names) else f"Goal {goal}"
                     ax2.scatter(
                         embeddings_tsne[mask, 0],
                         embeddings_tsne[mask, 1],
-                        c=goal_colors[goal],
-                        label=goal_names[goal],
+                        c=goal_colors[color_idx],
+                        label=goal_name,
                         alpha=0.6,
                     )
 
@@ -889,10 +902,13 @@ def plot_character_embeddings(
     print(f"Embedding dimension: {embeddings.shape[1]}")
 
     # Per-goal statistics
-    for goal in range(num_goals):
+    unique_goals = np.unique(goal_labels)
+    for goal in unique_goals:
         mask = goal_labels == goal
         count = np.sum(mask)
-        print(f"{goal_names[goal]}: {count} samples")
+        # Use 1-based indexing for goal names (aligned with exp5 logic)
+        goal_name = goal_names[int(goal) - 1] if goal <= len(goal_names) else f"Goal {goal}"
+        print(f"{goal_name}: {count} samples")
 
 
 def create_additional_visualizations(

@@ -708,45 +708,54 @@ def plot_character_embeddings(
             if n_samples is not None and sample_count >= n_samples:
                 break
 
-            # Unpack all data including goal_ranks (matching evaluation/training)
-            if len(batch) >= 7:
-                (
-                    trajectories,
-                    actions,
-                    goals,
-                    goal_ranks,
-                    goal_rewards,
-                    consumption_labels,
-                    sr_labels,
-                ) = batch
-                trajectories = trajectories.to(device)
-                goals = goals.to(device) 
-                goal_ranks = goal_ranks.to(device)
-
-                batch_size = trajectories.size(0)
-                # Generate past episodes using config values (aligned with exp5 logic)
-                n_past_config = config.get_n_past_evaluation_config()
-                past_episodes = generate_past_episodes_from_batch(
-                    trajectories=trajectories,
-                    goals=goals,  # Use goals instead of goal_ranks (like exp5)
-                    batch_size=batch_size,
-                    n_past_min=n_past_config['n_past_min'],
-                    n_past_max=n_past_config['n_past_max'],
-                    max_n_past=n_past_config['n_past_max'],  # Use max_n_past parameter like exp5
-                )
-                # Get character embeddings using direct model call (aligned with exp5 logic)
-                try:
-                    char_embeddings = model.char_net(past_episodes)  # Use char_net directly like exp5
-
-                    embeddings.extend(char_embeddings.cpu().numpy())
-                    goal_labels.extend(goals.cpu().numpy())
-
-                    sample_count += len(goals)
-                except Exception as e:
-                    print(f"Error getting character embeddings: {e}")
-                    continue
+            # Handle both 3-element and 4-element batches (aligned with exp5 logic)
+            if len(batch) == 4:
+                traj, curr, act, goals = batch
+                traj = traj.to(device)
+                curr = curr.to(device)
+                act = act.to(device)
+                goals = goals.to(device)
             else:
-                print(f"Batch {batch_idx} has insufficient elements: {len(batch)}")
+                # If batch has 7 elements, extract only the needed ones to match exp5 format
+                if len(batch) >= 7:
+                    trajectories, actions, goals = batch[0], batch[1], batch[2]
+                    traj = trajectories.to(device)
+                    curr = trajectories[:, -1, :8]  # Last timestep, first 8 channels for current state
+                    act = actions.to(device)
+                    goals = goals.to(device)
+                else:
+                    traj, curr, act = batch
+                    traj = traj.to(device)
+                    curr = curr.to(device)
+                    act = act.to(device)
+                    # Create dummy goals if not available (like exp5)
+                    goals = torch.zeros(traj.size(0), dtype=torch.long, device=device)
+
+            act = act.squeeze(-1).type(torch.long)
+            batch_size = traj.size(0)
+
+            # Generate past episodes using exp5 logic
+            n_past_config = config.get_n_past_evaluation_config()
+            past_episodes = generate_past_episodes_from_batch(
+                trajectories=traj,
+                goals=goals,
+                batch_size=batch_size,
+                n_past_min=n_past_config['n_past_min'],
+                n_past_max=n_past_config['n_past_max'],
+                max_n_past=n_past_config['n_past_max'],
+            )
+
+            # Get character embeddings using exp5 approach
+            try:
+                char_embeddings = model.char_net(past_episodes)
+
+                embeddings.extend(char_embeddings.cpu().numpy())
+                goal_labels.extend(goals.cpu().numpy())
+
+                sample_count += len(goals)
+            except Exception as e:
+                print(f"Error getting character embeddings: {e}")
+                continue
 
     print(
         f"Character embedding extraction completed. Total embeddings: {len(embeddings)}"

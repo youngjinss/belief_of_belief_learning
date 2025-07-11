@@ -87,11 +87,8 @@ def evaluate_model_with_n_past(
                         :, current_timestep - 1
                     ]  # [batch, channels, height, width]
 
-                    # Get action targets
-                    if current_timestep < actions.size(1):
-                        action_targets = actions[:, current_timestep]
-                    else:
-                        action_targets = actions[:, -1]
+                    # Get action targets - use actions[:, 0] for trajectory slicing
+                    action_targets = actions[:, 0]  # Target action for each sliced trajectory
 
                     # Model forward pass (model returns 6 outputs)
                     action_logits, _, _, _, _, _ = model(
@@ -177,16 +174,19 @@ def evaluate_model(
                 # For trajectory slicing, use the action at index 0 (the target action for this slice)
                 action_targets = actions[:, 0]  # Target action for each sliced trajectory
                 
-                # Find the effective length for each sample (remove padding)
-                effective_lengths = []
-                for b in range(batch_size):
-                    # Find where padding starts (all zeros)
-                    traj_sample = trajectories[b]  # [seq_len, channels, height, width]
-                    non_zero_timesteps = 0
-                    for t in range(traj_sample.size(0)):
-                        if traj_sample[t].sum() > 0:  # Non-zero timestep
-                            non_zero_timesteps = t + 1
-                    effective_lengths.append(max(1, non_zero_timesteps - 1))  # -1 because we predict next action
+                # Fully vectorized: Find the effective length for each sample (remove padding)
+                # Sum over spatial dimensions for each timestep: [batch_size, seq_len]
+                traj_sums = trajectories.sum(dim=(2, 3, 4))  # Sum over channels, height, width
+                # Find last non-zero timestep for each batch sample
+                non_zero_mask = traj_sums > 0  # [batch_size, seq_len]
+                # Get the last True index for each batch sample using vectorized operation
+                # Create sequence indices and mask them
+                seq_indices = torch.arange(trajectories.size(1)).unsqueeze(0).expand(batch_size, -1)
+                masked_indices = torch.where(non_zero_mask, seq_indices, torch.tensor(-1))
+                # Find the maximum index for each batch (last non-zero timestep)
+                effective_lengths = masked_indices.max(dim=1)[0].clamp(min=0).tolist()
+                # Apply max(1, length) constraint
+                effective_lengths = [max(1, length) for length in effective_lengths]
                 
                 # Use full trajectory for MentalNet (up to effective length)
                 recent_trajectory = trajectories  # [batch_size, seq_len, channels, height, width]
@@ -196,9 +196,12 @@ def evaluate_model(
                 current_state = torch.zeros(batch_size, current_state_channels, 
                                            trajectories.size(3), trajectories.size(4), device=device)
                 
-                for b in range(batch_size):
-                    last_timestep = max(0, effective_lengths[b] - 1)
-                    current_state[b] = trajectories[b, last_timestep, :current_state_channels]
+                # Vectorized: Extract current state using advanced indexing
+                batch_indices = torch.arange(batch_size)
+                last_timesteps = torch.tensor([max(0, length - 1) for length in effective_lengths])
+                
+                # Extract current state using advanced indexing
+                current_state = trajectories[batch_indices, last_timesteps, :current_state_channels]
 
                 # Model forward pass (model returns 6 outputs)
                 (
@@ -534,11 +537,8 @@ def analyze_action_likelihood(
                     :, current_timestep - 1
                 ]  # [batch, channels, height, width]
 
-                # Get action targets
-                if current_timestep < actions.size(1):
-                    action_targets = actions[:, current_timestep]
-                else:
-                    action_targets = actions[:, -1]
+                # Get action targets - use actions[:, 0] for trajectory slicing
+                action_targets = actions[:, 0]  # Target action for each sliced trajectory
 
                 # Model forward pass (model returns 6 outputs)
                 action_logits, _, _, _, _, _ = model(

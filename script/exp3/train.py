@@ -451,33 +451,38 @@ def train_epoch(
             rank_threshold=data_config.get("rank_threshold", 1),
         )
 
-        # Use trajectory up to previous timestep as input to MentalNet
-        # MentalNet processes recent trajectory to predict action at current timestep
-        current_timestep = data_config["time_step"] if data_config else 20
-
-        # Recent trajectory: from start to current_timestep-1 (up to previous timestep)
-        recent_trajectory = trajectories[
-            :, :current_timestep
-        ]  # [batch_size, seq_len, channels, height, width]
-
-        # Extract current state from trajectory (last timestep, first N channels for static environment)
-        # The model expects current_state with shape [batch_size, current_state_channels, height, width]
-        # (walls + player + goals, no heading direction)
+        # With trajectory slicing, we use dynamic timesteps
+        # Each sample has a different effective length, stored in actions[:,0]
+        batch_size = trajectories.size(0)
+        
+        # For trajectory slicing, use the action at index 0 (the target action for this slice)
+        action_targets = actions[:, 0]  # Target action for each sliced trajectory
+        
+        # Vectorized: Find the effective length for each sample (remove padding)
+        # Sum over spatial dimensions to check if timestep is non-zero
+        traj_sum = trajectories.sum(dim=(2, 3, 4))  # [batch_size, seq_len]
+        non_zero_mask = traj_sum > 0  # [batch_size, seq_len]
+        
+        # Find last non-zero timestep for each sample
+        # Create timestep indices
+        timestep_indices = torch.arange(trajectories.size(1)).unsqueeze(0).expand(batch_size, -1)
+        # Set padded timesteps to -1
+        timestep_indices = timestep_indices * non_zero_mask - (1 - non_zero_mask.long())
+        # Get last non-zero timestep index
+        effective_lengths = timestep_indices.max(dim=1)[0]  # [batch_size]
+        # Convert to 0-based indexing for current state (predict next action)
+        effective_lengths = torch.clamp(effective_lengths, min=0)
+        
+        # Use full trajectory for MentalNet (up to effective length)
+        recent_trajectory = trajectories  # [batch_size, seq_len, channels, height, width]
+        
+        # Vectorized: Extract current state for PredNet (last non-padded timestep)
         current_state_channels = model_config.get("current_state_channels", 8)
-        if current_timestep > 0 and current_timestep <= trajectories.size(1):
-            current_state = trajectories[
-                :, current_timestep - 1, :current_state_channels
-            ]  # [batch_size, current_state_channels, height, width]
-        else:
-            current_state = trajectories[
-                :, -1, :current_state_channels
-            ]  # Use last timestep, first N channels
-
-        # Action target: action at current_timestep
-        if current_timestep < actions.size(1):
-            action_targets = actions[:, current_timestep]  # Action at current timestep
-        else:
-            action_targets = actions[:, -1]  # Use last action if trajectory is shorter
+        
+        # Create batch indices
+        batch_indices = torch.arange(batch_size)
+        # Extract current state using advanced indexing
+        current_state = trajectories[batch_indices, effective_lengths, :current_state_channels]
 
         goal_targets = goals
         consumption_targets = consumption_labels
@@ -618,37 +623,41 @@ def validate_epoch(
                 rank_threshold=data_config.get("rank_threshold", 1),
             )
 
-            # Use trajectory up to previous timestep as input to MentalNet
-            # MentalNet processes recent trajectory to predict action at current timestep
-            current_timestep = data_config["time_step"] if data_config else 20
-
-            # Recent trajectory: from start to current_timestep (for MentalNet)
-            recent_trajectory = trajectories[
-                :, :current_timestep
-            ]  # [batch_size, seq_len, channels, height, width]
-
-            # Extract current state from trajectory (last timestep, first N channels for static environment)
-            # The model expects current_state with shape [batch_size, current_state_channels, height, width]
-            # (walls + player + goals, no heading direction)
+            # With trajectory slicing, we use dynamic timesteps
+            # Each sample has a different effective length, stored in actions[:,0]
+            batch_size = trajectories.size(0)
+            
+            # Fully vectorized: Find the effective length for each sample (remove padding)
+            # Sum over spatial dimensions for each timestep: [batch_size, seq_len]
+            traj_sums = trajectories.sum(dim=(2, 3, 4))  # Sum over channels, height, width
+            # Find last non-zero timestep for each batch sample
+            non_zero_mask = traj_sums > 0  # [batch_size, seq_len]
+            # Get the last True index for each batch sample using vectorized operation
+            # Create sequence indices and mask them
+            seq_indices = torch.arange(trajectories.size(1)).unsqueeze(0).expand(batch_size, -1)
+            masked_indices = torch.where(non_zero_mask, seq_indices, torch.tensor(-1))
+            # Find the maximum index for each batch (last non-zero timestep)
+            effective_lengths = masked_indices.max(dim=1)[0].clamp(min=0).tolist()
+            # Apply max(1, length) constraint
+            effective_lengths = [max(1, length) for length in effective_lengths]
+            
+            # Use full trajectory for MentalNet (up to effective length)
+            recent_trajectory = trajectories  # [batch_size, seq_len, channels, height, width]
+            
+            # Vectorized: Extract current state for PredNet (last non-padded timestep)
             current_state_channels = model_config.get("current_state_channels", 8)
-            if current_timestep > 0 and current_timestep <= trajectories.size(1):
-                current_state = trajectories[
-                    :, current_timestep - 1, :current_state_channels
-                ]  # [batch_size, current_state_channels, height, width]
-            else:
-                current_state = trajectories[
-                    :, -1, :current_state_channels
-                ]  # Use last timestep, first N channels
+            current_state = torch.zeros(batch_size, current_state_channels, 
+                                       trajectories.size(3), trajectories.size(4))
+            
+            # Create batch indices and timestep indices for advanced indexing
+            batch_indices = torch.arange(batch_size)
+            last_timesteps = torch.tensor([max(0, length - 1) for length in effective_lengths])
+            
+            # Extract current state using advanced indexing
+            current_state = trajectories[batch_indices, last_timesteps, :current_state_channels]
 
-            # Action target: action at current_timestep
-            if current_timestep < actions.size(1):
-                action_targets = actions[
-                    :, current_timestep
-                ]  # Action at current timestep
-            else:
-                action_targets = actions[
-                    :, -1
-                ]  # Use last action if trajectory is shorter
+            # Action target: action at index 0 (target action for this slice)
+            action_targets = actions[:, 0]  # Target action for each sliced trajectory
 
             goal_targets = goals
             consumption_targets = consumption_labels

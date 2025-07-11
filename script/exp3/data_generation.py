@@ -218,7 +218,7 @@ class DataReader:
                 if consumption_labels[door_idx] > 0:
                     consumed_goal = goal_symbols[i]
                     break
-        
+
         # If no door was opened, default to intended goal
         if consumed_goal is None:
             consumed_goal = intended_goal
@@ -243,9 +243,9 @@ class DataReader:
             "positions": positions,
             "interactions": interactions,
             "intended_goal": intended_goal,  # The whispered/intended goal
-            "consumed_goal": consumed_goal,   # The actual goal reached
+            "consumed_goal": consumed_goal,  # The actual goal reached
             "trajectory_tensor": trajectory_tensor,
-            "goal_tensor": goal_tensor,       # One-hot encoding of intended goal
+            "goal_tensor": goal_tensor,  # One-hot encoding of intended goal
             "filename": filename,
         }
 

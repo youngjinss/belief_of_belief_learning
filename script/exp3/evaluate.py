@@ -88,7 +88,9 @@ def evaluate_model_with_n_past(
                     ]  # [batch, channels, height, width]
 
                     # Get action targets - use actions[:, 0] for trajectory slicing
-                    action_targets = actions[:, 0]  # Target action for each sliced trajectory
+                    action_targets = actions[
+                        :, 0
+                    ]  # Target action for each sliced trajectory
 
                     # Model forward pass (model returns 6 outputs)
                     action_logits, _, _, _, _, _ = model(
@@ -170,38 +172,62 @@ def evaluate_model(
 
                 # With trajectory slicing, we use dynamic timesteps
                 # Each sample has a different effective length, stored in actions[:,0]
-                
+
                 # For trajectory slicing, use the action at index 0 (the target action for this slice)
-                action_targets = actions[:, 0]  # Target action for each sliced trajectory
-                
+                action_targets = actions[
+                    :, 0
+                ]  # Target action for each sliced trajectory
+
                 # Fully vectorized: Find the effective length for each sample (remove padding)
                 # Sum over spatial dimensions for each timestep: [batch_size, seq_len]
-                traj_sums = trajectories.sum(dim=(2, 3, 4))  # Sum over channels, height, width
+                traj_sums = trajectories.sum(
+                    dim=(2, 3, 4)
+                )  # Sum over channels, height, width
                 # Find last non-zero timestep for each batch sample
                 non_zero_mask = traj_sums > 0  # [batch_size, seq_len]
                 # Get the last True index for each batch sample using vectorized operation
                 # Create sequence indices and mask them on the same device
-                seq_indices = torch.arange(trajectories.size(1), device=trajectories.device).unsqueeze(0).expand(batch_size, -1)
-                masked_indices = torch.where(non_zero_mask, seq_indices, torch.tensor(-1, device=trajectories.device))
+                seq_indices = (
+                    torch.arange(trajectories.size(1), device=trajectories.device)
+                    .unsqueeze(0)
+                    .expand(batch_size, -1)
+                )
+                masked_indices = torch.where(
+                    non_zero_mask,
+                    seq_indices,
+                    torch.tensor(-1, device=trajectories.device),
+                )
                 # Find the maximum index for each batch (last non-zero timestep)
                 effective_lengths = masked_indices.max(dim=1)[0].clamp(min=0).tolist()
                 # Apply max(1, length) constraint
                 effective_lengths = [max(1, length) for length in effective_lengths]
-                
+
                 # Use full trajectory for MentalNet (up to effective length)
-                recent_trajectory = trajectories  # [batch_size, seq_len, channels, height, width]
-                
+                recent_trajectory = (
+                    trajectories  # [batch_size, seq_len, channels, height, width]
+                )
+
                 # Extract current state for PredNet (last non-padded timestep)
                 current_state_channels = 8  # Assuming 8 channels for current state
-                current_state = torch.zeros(batch_size, current_state_channels, 
-                                           trajectories.size(3), trajectories.size(4), device=device)
-                
+                current_state = torch.zeros(
+                    batch_size,
+                    current_state_channels,
+                    trajectories.size(3),
+                    trajectories.size(4),
+                    device=device,
+                )
+
                 # Vectorized: Extract current state using advanced indexing on the same device
                 batch_indices = torch.arange(batch_size, device=trajectories.device)
-                last_timesteps = torch.tensor([max(0, length - 1) for length in effective_lengths], device=trajectories.device)
-                
+                last_timesteps = torch.tensor(
+                    [max(0, length - 1) for length in effective_lengths],
+                    device=trajectories.device,
+                )
+
                 # Extract current state using advanced indexing
-                current_state = trajectories[batch_indices, last_timesteps, :current_state_channels]
+                current_state = trajectories[
+                    batch_indices, last_timesteps, :current_state_channels
+                ]
 
                 # Model forward pass (model returns 6 outputs)
                 (
@@ -341,9 +367,9 @@ def evaluate_keydoor_model(
 
     # Prepare test data using trajectory slicing (like training)
     test_data = prepare_data_for_training(
-        test_games, 
+        test_games,
         min_timestep=6,  # Same as training
-        max_trajectory_length=data_config["max_moves"]
+        max_trajectory_length=data_config["max_moves"],
     )
 
     # Create test dataset and loader
@@ -488,9 +514,9 @@ def analyze_action_likelihood(
         data_reader = DataReader()
         test_games = data_reader.ReadAllGames(config.test_data_dir)
         test_data = prepare_data_for_training(
-            test_games, 
+            test_games,
             min_timestep=6,  # Same as training
-            max_trajectory_length=data_config["max_moves"]
+            max_trajectory_length=data_config["max_moves"],
         )
         test_dataset = TensorDataset(
             test_data["trajectories"], test_data["actions"], test_data["goals"]
@@ -538,7 +564,9 @@ def analyze_action_likelihood(
                 ]  # [batch, channels, height, width]
 
                 # Get action targets - use actions[:, 0] for trajectory slicing
-                action_targets = actions[:, 0]  # Target action for each sliced trajectory
+                action_targets = actions[
+                    :, 0
+                ]  # Target action for each sliced trajectory
 
                 # Model forward pass (model returns 6 outputs)
                 action_logits, _, _, _, _, _ = model(

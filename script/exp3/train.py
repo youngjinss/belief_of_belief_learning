@@ -314,7 +314,7 @@ def prepare_data_for_training(games, min_timestep=6, max_trajectory_length=100):
 
         # Get intended goal from goal_rank
         intended_goal_idx = goal_rank.index(1) if 1 in goal_rank else 0
-        
+
         # Get height and width from trajectory
         height, width = trajectory.shape[2], trajectory.shape[3]
 
@@ -322,23 +322,23 @@ def prepare_data_for_training(games, min_timestep=6, max_trajectory_length=100):
         for i in range(min_timestep, seq_len):
             # Slice trajectory up to timestep i
             trajectory_slice = trajectory[:i]  # [i, channels, height, width]
-            
+
             # Pad trajectory slice to consistent length for batching
             if i < max_trajectory_length:
                 padding = np.zeros((max_trajectory_length - i, *trajectory.shape[1:]))
                 trajectory_padded = np.concatenate([trajectory_slice, padding], axis=0)
             else:
                 trajectory_padded = trajectory_slice
-            
+
             # Current state at timestep i-1 (what agent sees before taking action)
             current_timestep = i - 1
-            
+
             # Action at timestep i (what we want to predict)
             if i < len(action_list):
                 action_target = action_list[i]
             else:
                 continue  # Skip if no action available
-            
+
             # Process SR data for this timestep
             if current_timestep in game_sr_data:
                 sr_data_timestep = game_sr_data[current_timestep]
@@ -348,7 +348,9 @@ def prepare_data_for_training(games, min_timestep=6, max_trajectory_length=100):
 
             # Add this training sample
             trajectories.append(trajectory_padded)
-            actions.append([action_target] + [0] * (max_trajectory_length - 1))  # Pad actions too
+            actions.append(
+                [action_target] + [0] * (max_trajectory_length - 1)
+            )  # Pad actions too
             goals.append(intended_goal_idx)
             goal_ranks.append(goal_rank)
             goal_rewards.append(game["goal_rewards"])
@@ -454,35 +456,43 @@ def train_epoch(
         # With trajectory slicing, we use dynamic timesteps
         # Each sample has a different effective length, stored in actions[:,0]
         batch_size = trajectories.size(0)
-        
+
         # For trajectory slicing, use the action at index 0 (the target action for this slice)
         action_targets = actions[:, 0]  # Target action for each sliced trajectory
-        
+
         # Vectorized: Find the effective length for each sample (remove padding)
         # Sum over spatial dimensions to check if timestep is non-zero
         traj_sum = trajectories.sum(dim=(2, 3, 4))  # [batch_size, seq_len]
         non_zero_mask = traj_sum > 0  # [batch_size, seq_len]
-        
+
         # Find last non-zero timestep for each sample
         # Create timestep indices on the same device as trajectories
-        timestep_indices = torch.arange(trajectories.size(1), device=trajectories.device).unsqueeze(0).expand(batch_size, -1)
+        timestep_indices = (
+            torch.arange(trajectories.size(1), device=trajectories.device)
+            .unsqueeze(0)
+            .expand(batch_size, -1)
+        )
         # Set padded timesteps to -1
         timestep_indices = timestep_indices * non_zero_mask - (1 - non_zero_mask.long())
         # Get last non-zero timestep index
         effective_lengths = timestep_indices.max(dim=1)[0]  # [batch_size]
         # Convert to 0-based indexing for current state (predict next action)
         effective_lengths = torch.clamp(effective_lengths, min=0)
-        
+
         # Use full trajectory for MentalNet (up to effective length)
-        recent_trajectory = trajectories  # [batch_size, seq_len, channels, height, width]
-        
+        recent_trajectory = (
+            trajectories  # [batch_size, seq_len, channels, height, width]
+        )
+
         # Vectorized: Extract current state for PredNet (last non-padded timestep)
         current_state_channels = model_config.get("current_state_channels", 8)
-        
+
         # Create batch indices on the same device as trajectories
         batch_indices = torch.arange(batch_size, device=trajectories.device)
         # Extract current state using advanced indexing
-        current_state = trajectories[batch_indices, effective_lengths, :current_state_channels]
+        current_state = trajectories[
+            batch_indices, effective_lengths, :current_state_channels
+        ]
 
         goal_targets = goals
         consumption_targets = consumption_labels
@@ -626,35 +636,54 @@ def validate_epoch(
             # With trajectory slicing, we use dynamic timesteps
             # Each sample has a different effective length, stored in actions[:,0]
             batch_size = trajectories.size(0)
-            
+
             # Fully vectorized: Find the effective length for each sample (remove padding)
             # Sum over spatial dimensions for each timestep: [batch_size, seq_len]
-            traj_sums = trajectories.sum(dim=(2, 3, 4))  # Sum over channels, height, width
+            traj_sums = trajectories.sum(
+                dim=(2, 3, 4)
+            )  # Sum over channels, height, width
             # Find last non-zero timestep for each batch sample
             non_zero_mask = traj_sums > 0  # [batch_size, seq_len]
             # Get the last True index for each batch sample using vectorized operation
             # Create sequence indices and mask them on the same device
-            seq_indices = torch.arange(trajectories.size(1), device=trajectories.device).unsqueeze(0).expand(batch_size, -1)
-            masked_indices = torch.where(non_zero_mask, seq_indices, torch.tensor(-1, device=trajectories.device))
+            seq_indices = (
+                torch.arange(trajectories.size(1), device=trajectories.device)
+                .unsqueeze(0)
+                .expand(batch_size, -1)
+            )
+            masked_indices = torch.where(
+                non_zero_mask, seq_indices, torch.tensor(-1, device=trajectories.device)
+            )
             # Find the maximum index for each batch (last non-zero timestep)
             effective_lengths = masked_indices.max(dim=1)[0].clamp(min=0).tolist()
             # Apply max(1, length) constraint
             effective_lengths = [max(1, length) for length in effective_lengths]
-            
+
             # Use full trajectory for MentalNet (up to effective length)
-            recent_trajectory = trajectories  # [batch_size, seq_len, channels, height, width]
-            
+            recent_trajectory = (
+                trajectories  # [batch_size, seq_len, channels, height, width]
+            )
+
             # Vectorized: Extract current state for PredNet (last non-padded timestep)
             current_state_channels = model_config.get("current_state_channels", 8)
-            current_state = torch.zeros(batch_size, current_state_channels, 
-                                       trajectories.size(3), trajectories.size(4))
-            
+            current_state = torch.zeros(
+                batch_size,
+                current_state_channels,
+                trajectories.size(3),
+                trajectories.size(4),
+            )
+
             # Create batch indices and timestep indices for advanced indexing on the same device
             batch_indices = torch.arange(batch_size, device=trajectories.device)
-            last_timesteps = torch.tensor([max(0, length - 1) for length in effective_lengths], device=trajectories.device)
-            
+            last_timesteps = torch.tensor(
+                [max(0, length - 1) for length in effective_lengths],
+                device=trajectories.device,
+            )
+
             # Extract current state using advanced indexing
-            current_state = trajectories[batch_indices, last_timesteps, :current_state_channels]
+            current_state = trajectories[
+                batch_indices, last_timesteps, :current_state_channels
+            ]
 
             # Action target: action at index 0 (target action for this slice)
             action_targets = actions[:, 0]  # Target action for each sliced trajectory
@@ -875,9 +904,9 @@ def train_tomnet(
 
     # Prepare data using trajectory slicing
     data = prepare_data_for_training(
-        games, 
+        games,
         min_timestep=6,  # Start slicing from timestep 6
-        max_trajectory_length=time_step
+        max_trajectory_length=time_step,
     )
 
     # Create datasets with all data including SR and consumption labels
@@ -1032,9 +1061,7 @@ def train_tomnet(
         print(
             f"Epoch: {epoch + 1:3d} | Train Loss: {train_loss:.4f} | Train Action Acc: {train_acc:.4f}% | Val Action Acc: {val_acc:.4f}% | Time: {epoch_time:.2f}s"
         )
-        print(
-            f"  Goal Acc - Train: {train_goal_acc:.4f}% | Val: {val_goal_acc:.4f}%"
-        )
+        print(f"  Goal Acc - Train: {train_goal_acc:.4f}% | Val: {val_goal_acc:.4f}%")
         print(
             f"  Train - Action: {train_action_loss:.4f} | Consumption: {train_consumption_loss:.4f} | SR: {train_sr_loss:.4f}"
         )

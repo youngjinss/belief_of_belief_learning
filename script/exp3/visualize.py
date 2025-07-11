@@ -698,6 +698,10 @@ def plot_character_embeddings(
     goal_labels = []
 
     sample_count = 0
+    batch_count = 0
+    successful_batches = 0
+    failed_batches = 0
+    
     if n_samples is None:
         print("Starting character embedding extraction for all test samples...")
     else:
@@ -705,7 +709,11 @@ def plot_character_embeddings(
 
     with torch.no_grad():
         for batch_idx, batch in enumerate(test_loader):
+            batch_count += 1
+            print(f"Processing batch {batch_idx + 1}/{len(test_loader)}, current sample count: {sample_count}")
+            
             if n_samples is not None and sample_count >= n_samples:
+                print(f"Reached target sample count of {n_samples}, stopping...")
                 break
 
             # Handle KeyDoor exp3 batch format (7 elements) - use native exp3 logic
@@ -724,9 +732,13 @@ def plot_character_embeddings(
                 goal_ranks = goal_ranks.to(device)
 
                 batch_size = trajectories.size(0)
+                print(f"  Batch size: {batch_size}, trajectories shape: {trajectories.shape}")
+                print(f"  Goals shape: {goals.shape}, goal_ranks shape: {goal_ranks.shape}")
 
                 # Use KeyDoor exp3 native logic with goal_ranks (don't force exp5 compatibility)
                 n_past_config = config.get_n_past_evaluation_config()
+                print(f"  N_past config: {n_past_config}")
+                
                 past_episodes = generate_past_episodes_from_batch(
                     trajectories=trajectories,
                     goals=goal_ranks,  # Use goal_ranks as intended in exp3
@@ -736,32 +748,49 @@ def plot_character_embeddings(
                     max_n_past=n_past_config['n_past_max'],
                     rank_threshold=1,  # KeyDoor exp3 parameter
                 )
+                print(f"  Past episodes shape: {past_episodes.shape}")
 
                 # Use KeyDoor exp3 native character embedding method
                 try:
                     char_embeddings = model.get_character_embedding(past_episodes)  # Native exp3 method
+                    print(f"  Character embeddings shape: {char_embeddings.shape}")
 
                     embeddings.extend(char_embeddings.cpu().numpy())
                     goal_labels.extend(goals.cpu().numpy())
 
                     sample_count += len(goals)
+                    successful_batches += 1
+                    print(f"  Successfully processed {len(goals)} samples, total: {sample_count}")
                 except Exception as e:
-                    print(f"Error getting character embeddings: {e}")
+                    print(f"  Error getting character embeddings: {e}")
+                    failed_batches += 1
                     continue
             else:
-                print(f"Batch {batch_idx} has insufficient elements: {len(batch)} (expected 7 for KeyDoor exp3)")
+                print(f"  Batch {batch_idx} has insufficient elements: {len(batch)} (expected 7 for KeyDoor exp3)")
+                failed_batches += 1
                 continue
 
     print(
         f"Character embedding extraction completed. Total embeddings: {len(embeddings)}"
     )
+    print(f"Batch processing summary:")
+    print(f"  Total batches processed: {batch_count}")
+    print(f"  Successful batches: {successful_batches}")
+    print(f"  Failed batches: {failed_batches}")
+    print(f"  Final sample count: {sample_count}")
 
     if len(embeddings) == 0:
-        print("No embeddings to visualize")
+        print("No embeddings to visualize - no valid samples found!")
         return
 
     embeddings = np.array(embeddings)
     goal_labels = np.array(goal_labels)
+    
+    print(f"\nData for visualization:")
+    print(f"  Embeddings array shape: {embeddings.shape}")
+    print(f"  Goal labels array shape: {goal_labels.shape}")
+    print(f"  Unique goals in data: {np.unique(goal_labels)}")
+    print(f"  Goal distribution: {np.bincount(goal_labels) if len(goal_labels) > 0 else 'N/A'}")
 
     # Create subplots
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
@@ -778,14 +807,26 @@ def plot_character_embeddings(
     # PCA visualization
     if embeddings.shape[1] > 2:
         try:
+            print(f"\nPCA Analysis:")
+            print(f"  Input embeddings shape: {embeddings.shape}")
+            
             pca = PCA(n_components=2)
             embeddings_pca = pca.fit_transform(embeddings)
+            print(f"  PCA output shape: {embeddings_pca.shape}")
+            print(f"  Explained variance ratio: PC1={pca.explained_variance_ratio_[0]:.4f}, PC2={pca.explained_variance_ratio_[1]:.4f}")
 
             # Get unique goals present in the data (aligned with exp5 logic)
             unique_goals = np.unique(goal_labels)
+            print(f"  Unique goals for PCA: {unique_goals}")
+            
+            pca_sample_counts = {}
             for goal in unique_goals:
                 mask = goal_labels == goal
-                if np.sum(mask) > 0:
+                goal_count = np.sum(mask)
+                pca_sample_counts[goal] = goal_count
+                print(f"    Goal {goal}: {goal_count} samples")
+                
+                if goal_count > 0:
                     # Use 1-based indexing for colors and names (aligned with exp5)
                     color_idx = int(goal) - 1 if goal <= len(goal_colors) else goal % len(goal_colors)
                     goal_name = goal_names[int(goal) - 1] if goal <= len(goal_names) else f"Goal {goal}"
@@ -793,11 +834,11 @@ def plot_character_embeddings(
                         embeddings_pca[mask, 0],
                         embeddings_pca[mask, 1],
                         c=goal_colors[color_idx],
-                        label=goal_name,
+                        label=f"{goal_name} (n={goal_count})",
                         alpha=0.6,
                     )
 
-            ax1.set_title("PCA Visualization")
+            ax1.set_title(f"PCA Visualization (n={len(embeddings)} total)")
             ax1.set_xlabel(f"PC1 ({pca.explained_variance_ratio_[0]:.2%} variance)")
             ax1.set_ylabel(f"PC2 ({pca.explained_variance_ratio_[1]:.2%} variance)")
             ax1.legend()
@@ -837,17 +878,33 @@ def plot_character_embeddings(
     # t-SNE visualization
     if len(embeddings) > 50:  # t-SNE needs sufficient samples
         try:
+            print(f"\nt-SNE Analysis:")
+            print(f"  Total available embeddings: {len(embeddings)}")
+            
+            # Limit to 1000 samples for performance
+            n_tsne_samples = min(1000, len(embeddings))
+            embeddings_for_tsne = embeddings[:n_tsne_samples]
+            goals_tsne = goal_labels[:n_tsne_samples]
+            
+            print(f"  Using {n_tsne_samples} samples for t-SNE")
+            print(f"  t-SNE input shape: {embeddings_for_tsne.shape}")
+            
             tsne = TSNE(n_components=2, random_state=42)
-            embeddings_tsne = tsne.fit_transform(
-                embeddings[:1000]
-            )  # Limit for performance
-            goals_tsne = goal_labels[:1000]
+            embeddings_tsne = tsne.fit_transform(embeddings_for_tsne)
+            print(f"  t-SNE output shape: {embeddings_tsne.shape}")
 
             # Get unique goals present in the data (aligned with exp5 logic)
             unique_goals_tsne = np.unique(goals_tsne)
+            print(f"  Unique goals for t-SNE: {unique_goals_tsne}")
+            
+            tsne_sample_counts = {}
             for goal in unique_goals_tsne:
                 mask = goals_tsne == goal
-                if np.sum(mask) > 0:
+                goal_count = np.sum(mask)
+                tsne_sample_counts[goal] = goal_count
+                print(f"    Goal {goal}: {goal_count} samples")
+                
+                if goal_count > 0:
                     # Use 1-based indexing for colors and names (aligned with exp5)
                     color_idx = int(goal) - 1 if goal <= len(goal_colors) else goal % len(goal_colors)
                     goal_name = goal_names[int(goal) - 1] if goal <= len(goal_names) else f"Goal {goal}"
@@ -855,11 +912,11 @@ def plot_character_embeddings(
                         embeddings_tsne[mask, 0],
                         embeddings_tsne[mask, 1],
                         c=goal_colors[color_idx],
-                        label=goal_name,
+                        label=f"{goal_name} (n={goal_count})",
                         alpha=0.6,
                     )
 
-            ax2.set_title("t-SNE Visualization")
+            ax2.set_title(f"t-SNE Visualization (n={n_tsne_samples})")
             ax2.set_xlabel("t-SNE 1")
             ax2.set_ylabel("t-SNE 2")
             ax2.legend()
@@ -875,15 +932,18 @@ def plot_character_embeddings(
                 transform=ax2.transAxes,
             )
     else:
+        print(f"\nt-SNE Analysis:")
+        print(f"  Insufficient samples for t-SNE: {len(embeddings)} < 50 required")
         ax2.text(
             0.5,
             0.5,
-            f"Not enough samples for t-SNE\n({len(embeddings)} < 50)",
+            f"Not enough samples for t-SNE\n({len(embeddings)} < 50 required)",
             ha="center",
             va="center",
             transform=ax2.transAxes,
+            fontsize=12,
         )
-        ax2.set_title("t-SNE Visualization")
+        ax2.set_title(f"t-SNE Visualization (n={len(embeddings)} insufficient)")
 
     plt.tight_layout()
 
@@ -902,17 +962,28 @@ def plot_character_embeddings(
 
     print(f"\nKeyDoor Character Embeddings Analysis (Experiment {experiment_no}):")
     print("-" * 60)
-    print(f"Total samples: {len(embeddings)}")
-    print(f"Embedding dimension: {embeddings.shape[1]}")
+    print(f"Total samples collected: {len(embeddings)}")
+    print(f"Embedding dimension: {embeddings.shape[1] if len(embeddings) > 0 else 'N/A'}")
+    print(f"Data loader had {len(test_loader)} batches")
+    print(f"Batch processing: {successful_batches} successful, {failed_batches} failed")
 
     # Per-goal statistics
-    unique_goals = np.unique(goal_labels)
-    for goal in unique_goals:
-        mask = goal_labels == goal
-        count = np.sum(mask)
-        # Use 1-based indexing for goal names (aligned with exp5 logic)
-        goal_name = goal_names[int(goal) - 1] if goal <= len(goal_names) else f"Goal {goal}"
-        print(f"{goal_name}: {count} samples")
+    if len(embeddings) > 0:
+        unique_goals = np.unique(goal_labels)
+        print(f"\nPer-goal distribution:")
+        for goal in unique_goals:
+            mask = goal_labels == goal
+            count = np.sum(mask)
+            percentage = (count / len(goal_labels)) * 100
+            # Use 1-based indexing for goal names (aligned with exp5 logic)
+            goal_name = goal_names[int(goal) - 1] if goal <= len(goal_names) else f"Goal {goal}"
+            print(f"  {goal_name}: {count} samples ({percentage:.1f}%)")
+            
+        print(f"\nVisualization summary:")
+        print(f"  PCA: Used {len(embeddings)} samples")
+        print(f"  t-SNE: {'Used ' + str(min(1000, len(embeddings))) + ' samples' if len(embeddings) > 50 else 'Insufficient samples (' + str(len(embeddings)) + ' < 50)'}")
+    else:
+        print("\nNo samples available for analysis!")
 
 
 def create_additional_visualizations(

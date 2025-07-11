@@ -168,8 +168,8 @@ run_evaluation() {
     log_step "Logging evaluation output to: $RUN_LOG_DIR/evaluation.log"
     
     cd "$SCRIPTS_DIR"
-    python evaluate.py --config_override --test_data_dir "$TEST_DATA_DIR" --result_dir "$RESULTS_DIR" --model_path "$RESULTS_DIR/best_model.pth" --save_predictions --env_size "9x9" > "$RUN_LOG_DIR/evaluation.log" 2>&1
-    
+    python evaluate.py --config_override --test_data_dir "$TEST_DATA_DIR" --result_dir "$RESULTS_DIR" --model_path "$RESULTS_DIR/best_model.pth" --save_predictions > "$RUN_LOG_DIR/evaluation.log" 2>&1
+
     log_step "Evaluation completed"
     
     # Log evaluation summary if available

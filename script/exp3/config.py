@@ -128,7 +128,7 @@ class Config:
             "use_mentalnet": False,  # False: experiment5-style (CharNet→PredNet), True: original 3-stage (CharNet→MentalNet→PredNet)
             "residual_blocks": 5,
             "n_echar": 16,
-            "n_ement": 16,
+            "n_ement": 32,
             "out_channels": 64,
             "channels_in": 9,  # 8 original channels + 1 heading direction channel
             "current_state_channels": 8,  # For MentalNet: 8 original channels (no heading direction)

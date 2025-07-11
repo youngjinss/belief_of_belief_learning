@@ -479,13 +479,11 @@ def train_epoch(
         # Convert to 0-based indexing for current state (predict next action)
         effective_lengths = torch.clamp(effective_lengths, min=0)
 
-        # Use full trajectory for MentalNet (up to effective length)
-        recent_trajectory = (
-            trajectories  # [batch_size, seq_len, channels, height, width]
-        )
+        # Use trajectory without heading direction for MentalNet (first 8 channels only)
+        current_state_channels = model_config.get("current_state_channels", 8)
+        recent_trajectory = trajectories[:, :, :current_state_channels]  # [batch_size, seq_len, 8, height, width]
 
         # Vectorized: Extract current state for PredNet (last non-padded timestep)
-        current_state_channels = model_config.get("current_state_channels", 8)
 
         # Create batch indices on the same device as trajectories
         batch_indices = torch.arange(batch_size, device=trajectories.device)
@@ -659,13 +657,11 @@ def validate_epoch(
             # Apply max(1, length) constraint
             effective_lengths = [max(1, length) for length in effective_lengths]
 
-            # Use full trajectory for MentalNet (up to effective length)
-            recent_trajectory = (
-                trajectories  # [batch_size, seq_len, channels, height, width]
-            )
+            # Use trajectory without heading direction for MentalNet (first 8 channels only)
+            current_state_channels = model_config.get("current_state_channels", 8)
+            recent_trajectory = trajectories[:, :, :current_state_channels]  # [batch_size, seq_len, 8, height, width]
 
             # Vectorized: Extract current state for PredNet (last non-padded timestep)
-            current_state_channels = model_config.get("current_state_channels", 8)
             current_state = torch.zeros(
                 batch_size,
                 current_state_channels,

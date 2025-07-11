@@ -58,8 +58,8 @@ def calculate_sr_loss_kl_divergence(sr_pred, sr_target):
     Vectorized version for efficiency (adapted from experiment 5)
 
     Args:
-        sr_pred: Predicted SR maps (batch_size, 3, height, width)
-        sr_target: Target SR maps (batch_size, 3, height, width)
+        sr_pred: Predicted SR maps (batch_size, 3, height, width) - already normalized by softmax
+        sr_target: Target SR maps (batch_size, 3, height, width) - raw values, need normalization
 
     Returns:
         sr_loss: KL divergence loss averaged over discount factors
@@ -70,11 +70,8 @@ def calculate_sr_loss_kl_divergence(sr_pred, sr_target):
     sr_pred_flat = sr_pred.view(batch_size, n_gammas, -1)
     sr_target_flat = sr_target.view(batch_size, n_gammas, -1)
 
-    # Ensure predictions are probability distributions (softmax already applied in model)
-    # sr_pred_flat should already be softmax from model output
-
-    # Ensure targets are probability distributions and handle edge cases
-    # Normalize along spatial dimension (dim=2)
+    # SR predictions are already normalized by softmax in the model
+    # Normalize SR targets to probability distributions (sum=1 across spatial locations)
     sr_target_flat = sr_target_flat / (sr_target_flat.sum(dim=2, keepdim=True) + 1e-8)
 
     # Add small epsilon to avoid log(0)

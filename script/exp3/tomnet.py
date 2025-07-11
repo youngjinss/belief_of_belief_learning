@@ -417,7 +417,7 @@ class PredNet(nn.Module):
         sr_pred = sr_pred.view(
             batch_size, channels, -1
         )  # (batch_size, 3, spatial_size)
-        sr_pred = F.softmax(sr_pred, dim=2)
+        sr_pred = F.softmax(sr_pred, dim=2)  # Normalize across spatial locations for each gamma
         sr_pred = sr_pred.view(
             batch_size, channels, height, width
         )  # Back to spatial format

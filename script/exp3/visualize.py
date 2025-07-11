@@ -724,9 +724,16 @@ def plot_character_embeddings(
                 goal_ranks = goal_ranks.to(device)
 
                 batch_size = trajectories.size(0)
-                # Generate past episodes using goal_ranks (same as training/evaluation)
+                # Generate past episodes using config values
+                n_past_config = config.get_n_past_evaluation_config()
                 past_episodes = generate_past_episodes_from_batch(
-                    trajectories, goal_ranks, batch_size, 1, 1, 1, rank_threshold=1
+                    trajectories, 
+                    goal_ranks, 
+                    batch_size, 
+                    n_past_config['n_past_min'], 
+                    n_past_config['n_past_max'], 
+                    n_past_config['n_past_infer'], 
+                    rank_threshold=1
                 )
                 # Get character embeddings using the model's method
                 try:

@@ -138,8 +138,8 @@ def plot_accuracy_heatmap_by_n_past(results_by_n_past, output_dir=None):
 
     # Extract data and calculate per-action accuracy
     n_past_values = sorted(results_by_n_past.keys())
-    # KeyDoor has 7 actions: left, right, forward, pick_up, drop, toggle, done
-    action_names = ["Left", "Right", "Forward", "Pick_up", "Drop", "Toggle", "Done"]
+    # KeyDoor has 7 actions: up, right, down, left, stay, pickup, toggle
+    action_names = ["Up", "Right", "Down", "Left", "Stay", "Pickup", "Toggle"]
 
     accuracy_matrix = []
 

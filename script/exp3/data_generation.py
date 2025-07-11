@@ -30,7 +30,7 @@ class DataReader:
         self.MAZE_HEIGHT = h
         self.MAZE_DEPTH_TRAJECTORY = d
 
-        # KeyDoor action space: [left, right, forward, pickup, drop, toggle, done]
+        # KeyDoor action space: [up, right, down, left, stay, pickup, toggle]
         self.ACTION_SPACE = 7
 
         # Key and door mapping
@@ -461,7 +461,7 @@ class DataReader:
         # Action distribution
         actions = list(stats["action_distribution"].keys())
         action_counts = list(stats["action_distribution"].values())
-        action_names = ["left", "right", "forward", "pickup", "drop", "toggle", "done"]
+        action_names = ["up", "right", "down", "left", "stay", "pickup", "toggle"]
         axes[1, 0].bar([action_names[i] for i in actions], action_counts, alpha=0.7)
         axes[1, 0].set_title("Action Distribution")
         axes[1, 0].set_xlabel("Action")

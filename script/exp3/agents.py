@@ -640,11 +640,11 @@ class RandomAgent:
         rand = np.random.random()
 
         if rand < self.movement_prob:
-            # Focus on movement actions: turn_left, turn_right, forward
-            return np.random.choice([0, 1, 2])  # 0=turn_left, 1=turn_right, 2=forward
+            # Focus on movement actions: up, right, down, left
+            return np.random.choice([0, 1, 2, 3])  # 0=up, 1=right, 2=down, 3=left
         else:
             # Pickup or toggle action (for picking up keys or opening doors)
-            return np.random.choice([3, 5])  # pickup or toggle
+            return np.random.choice([5, 6])  # 5=pickup, 6=toggle
 
     def analyze_feedback(self, reward, done):
         """Random agent doesn't learn from feedback."""

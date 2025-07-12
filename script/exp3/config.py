@@ -26,7 +26,7 @@ class Config:
         self.gif_output = None  # Filename for saving gif (without .gif extension)
 
         # Data generation settings
-        self.n_games = 20000  # Number of games to generate for ToMnet data
+        self.n_games = 100000  # Number of games to generate for ToMnet data
         self.save_dir = "script/exp3/data"  # Directory to save generated data
 
         # Experiment settings
@@ -57,22 +57,22 @@ class Config:
             "random": {"movement_prob": 0.8, "exploration_bias": 0.1},
             "value": {
                 "observability": "full",
-                "movement_cost": 0.01,
-                "wall_penalty": 2.0,
+                "movement_cost": 0.05,
+                "wall_penalty": 10.0,
                 "gamma": 0.99,
                 "temperature": 0.1,
             },
             "value_deterministic": {
                 "observability": "full",
-                "movement_cost": 0.01,
-                "wall_penalty": 2.0,
+                "movement_cost": 0.05,
+                "wall_penalty": 10.0,
                 "gamma": 0.99,
                 "temperature": 0.0,
             },
             "value_stochastic": {
                 "observability": "full",
-                "movement_cost": 0.01,
-                "wall_penalty": 2.0,
+                "movement_cost": 0.05,
+                "wall_penalty": 10.0,
                 "gamma": 0.99,
                 "temperature": 0.5,
             },
@@ -127,7 +127,7 @@ class Config:
         self.model_config = {
             "use_mentalnet": True,  # False: experiment5-style (CharNet→PredNet), True: original 3-stage (CharNet→MentalNet→PredNet)
             "residual_blocks": 5,
-            "n_echar": 16,
+            "n_echar": 128,
             "n_ement": 128,
             "out_channels": 64,
             "channels_in": 9,  # 8 original channels + 1 heading direction channel
@@ -146,7 +146,7 @@ class Config:
         # Data processing configuration
         self.data_config = {
             "max_moves": 50,  # Maximum moves per trajectory (equivalent to experiment5)
-            "time_step": 20,  # Time step for model processing (equivalent to experiment5)
+            "time_step": 10,  # Time step for model processing (equivalent to experiment5)
             "max_n_past": 1,  # Maximum past episodes (matching experiment5)
             "n_past_min": 1,  # Minimum past episodes (matching experiment5)
             "n_past_max": 1,  # Maximum past episodes for sampling (matching experiment5)

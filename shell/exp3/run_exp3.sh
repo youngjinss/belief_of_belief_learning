@@ -217,7 +217,7 @@ run_visualization() {
     python visualize.py --config_override --result_dir "$RESULTS_DIR" --plot_dir "$RESULTS_DIR/plots" --plot_type "all"  > "$RUN_LOG_DIR/visualization.log" 2>&1
     cd "$BASE_DIR"
 
-    # python script/exp3/visualize.py --config_override --result_dir "./results/exp3/20250711_192952"  --plot_dir "./results/exp3/20250711_192952/plots" --plot_type "all"
+    # python script/exp3/visualize.py --config_override --result_dir "./results/exp3/20250712_035356"  --plot_dir "./results/exp3/20250712_035356/plots" --plot_type "all"
 
     log_step "Visualization completed"
     

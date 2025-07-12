@@ -377,6 +377,64 @@ class GameSimulation:
             env.target_door_color = "red"
             env.mission = "Achiever: collect red key and open red door. Blocker: prevent achiever."
 
+    def _reset_environment_state_from_trajectory(self, env, current_step):
+        """Reset environment state to exactly match trajectory data up to current step"""
+        from gym_minigrid.minigrid import Grid, Wall, Key, Door
+        
+        # Completely reconstruct grid from original maze data
+        maze_height = len(self.maze)
+        maze_width = len(self.maze[0]) if maze_height > 0 else 0
+        env.grid = Grid(maze_width, maze_height)
+        
+        # Initialize fresh state
+        env.achiever_keys = []
+        collected_keys = set()
+        opened_doors = set()
+        
+        # Replay all interactions from start to current step to determine what should be collected/opened
+        for step_idx in range(current_step + 1):
+            if step_idx < len(self.achiever_interactions):
+                interaction = self.achiever_interactions[step_idx]
+                
+                if interaction in "ABCD":
+                    # Key pickup
+                    color_map = {"A": "red", "B": "green", "C": "blue", "D": "yellow"}
+                    key_color = color_map[interaction]
+                    if key_color not in collected_keys:
+                        collected_keys.add(key_color)
+                        env.achiever_keys.append(key_color)
+                        
+                elif interaction in "abcd":
+                    # Door opening 
+                    color_map = {"a": "red", "b": "green", "c": "blue", "d": "yellow"}
+                    door_color = color_map[interaction]
+                    opened_doors.add(door_color)
+        
+        # Reconstruct grid from original maze data, excluding collected keys and opening doors
+        for y in range(maze_height):
+            for x in range(maze_width):
+                cell = self.maze[y][x]
+                
+                if cell == "#":
+                    env.grid.set(x, y, Wall())
+                elif cell in "ABCD":
+                    color_map = {"A": "red", "B": "green", "C": "blue", "D": "yellow"}
+                    color = color_map.get(cell, "red")
+                    # Only place key if it hasn't been collected according to trajectory
+                    if color not in collected_keys:
+                        key = Key(color)
+                        key.can_overlap = lambda: True
+                        env.grid.set(x, y, key)
+                elif cell in "abcd":
+                    color_map = {"a": "red", "b": "green", "c": "blue", "d": "yellow"}
+                    color = color_map.get(cell, "red")
+                    door = Door(color, is_locked=True)
+                    # Open door if it should be opened according to trajectory
+                    if color in opened_doors:
+                        door.is_open = True
+                        door.is_locked = False
+                    env.grid.set(x, y, door)
+
     def render_to_image(self, env):
         """Render environment to PIL Image using native MiniGrid rendering (same as render_kd.py)"""
         # Get the rendered image as RGB array
@@ -510,6 +568,9 @@ class GameSimulation:
                 # Update agent positions for rendering consistency (after env.step)
                 env.achiever_pos = np.array(achiever_position)
                 env.blocker_pos = np.array(blocker_position)
+                
+                # Reset environment state to match trajectory exactly (override automatic behavior)
+                self._reset_environment_state_from_trajectory(env, step)
 
                 # Update the main agent_pos for rendering (use achiever as primary)
                 env.agent_pos = env.achiever_pos

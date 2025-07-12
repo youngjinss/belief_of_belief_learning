@@ -39,9 +39,9 @@ except Exception as e:
     print(f"Warning: Could not import gym_minigrid: {e}")
 
 
-def env_to_maze_format(env, agent_pos):
+def env_to_maze_format(env, achiever_pos, blocker_pos):
     """
-    Convert KeyDoor environment to maze format without outer walls
+    Convert AchieverBlocker environment to maze format without outer walls
     (Matches the format used in generate.py)
     """
     maze_lines = []
@@ -53,8 +53,10 @@ def env_to_maze_format(env, agent_pos):
         for i in range(width):
             cell = env.grid.get(i, j)
 
-            if agent_pos == (i, j):
-                row += "O"  # Agent
+            if achiever_pos == (i, j):
+                row += "O"  # Achiever
+            elif blocker_pos == (i, j):
+                row += "X"  # Blocker
             elif cell is None:
                 row += "-"  # Empty space
             elif cell.type == "wall":
@@ -81,11 +83,14 @@ class GameSimulation:
     def __init__(self, data_file):
         self.data_file = data_file
         self.maze = []
-        self.agent_positions = []
-        self.sr_data = {}
+        self.achiever_positions = []
+        self.blocker_positions = []
+        self.achiever_sr_data = {}
+        self.blocker_sr_data = {}
         self.goal_rank = []
         self.trajectory_length = 0
         self.consumption_labels = []
+        self.blocker_infer_goal = None
 
         # Parse data
         self.parse_data()
@@ -111,59 +116,117 @@ class GameSimulation:
 
         # Parse maze
         maze_section = False
+        trajectory_section = False
+        achiever_section = False
+        blocker_section = False
         sr_section = False
-        position_section = False
 
         # Additional trajectory data
-        self.actions = []
-        self.interactions = []
+        self.achiever_actions = []
+        self.blocker_actions = []
+        self.achiever_interactions = []
+        self.blocker_interactions = []
         # No heading tracking needed with direct movement
 
         i = 0
         while i < len(lines):
             line = lines[i].strip()
 
-            if line == "Maze:":
+            # Parse MAZE section
+            if line == "MAZE:":
                 maze_section = True
                 i += 1
                 continue
 
-            if maze_section and line.startswith("Goal Consumed Rank"):
+            if maze_section and line.startswith("Trajectory length:"):
                 maze_section = False
-                # Parse goal rank
-                rank_str = line.split(":")[1].strip()
-                self.goal_rank = eval(rank_str)
+                self.trajectory_length = int(line.split(":")[1].strip())
+                trajectory_section = True
                 i += 1
                 continue
 
-            if (
-                maze_section
-                and line.strip()
-                and not line.startswith("Goal Consumed Rank")
-            ):
+            if maze_section and line.strip():
                 self.maze.append(list(line.strip()))
                 i += 1
                 continue
 
-            if line.startswith("Trajectory length:"):
-                self.trajectory_length = int(line.split(":")[1].strip())
+            # Parse trajectory section (two-agent format)
+            if trajectory_section and line.startswith("[") and "][" in line:
+                # Format: [achiever_pos][blocker_pos] : achiever_action,blocker_action : achiever_interaction,blocker_interaction
+                parts = line.split(" : ")
+                if len(parts) >= 3:
+                    # Parse positions
+                    pos_part = parts[0]
+                    achiever_pos_str = pos_part.split("][")[0].strip("[")
+                    blocker_pos_str = pos_part.split("][")[1].strip("]")
+                    achiever_pos = tuple(map(int, achiever_pos_str.split(", ")))
+                    blocker_pos = tuple(map(int, blocker_pos_str.split(", ")))
+                    
+                    # Parse actions
+                    action_part = parts[1]
+                    actions = action_part.split(",")
+                    achiever_action = int(actions[0])
+                    blocker_action = int(actions[1])
+                    
+                    # Parse interactions
+                    interaction_part = parts[2]
+                    interactions = interaction_part.split(",")
+                    achiever_interaction = interactions[0]
+                    blocker_interaction = interactions[1] if len(interactions) > 1 else "X"
+                    
+                    self.achiever_positions.append(achiever_pos)
+                    self.blocker_positions.append(blocker_pos)
+                    self.achiever_actions.append(achiever_action)
+                    self.blocker_actions.append(blocker_action)
+                    self.achiever_interactions.append(achiever_interaction)
+                    self.blocker_interactions.append(blocker_interaction)
                 i += 1
                 continue
 
-            if line.startswith("Consumption Labels:"):
-                labels = line.split(":")[1].strip().split(",")
-                self.consumption_labels = [float(l) for l in labels]
+            # Parse Achiever section
+            if line == "Achiever:":
+                trajectory_section = False
+                achiever_section = True
                 i += 1
                 continue
 
-            if line == "SR_Data_Per_Timestep:":
-                sr_section = True
+            if achiever_section:
+                if line.startswith("Goal Consumed Rank:"):
+                    rank_str = line.split(":")[1].strip()
+                    self.goal_rank = eval(rank_str)
+                elif line.startswith("Consumption Labels:"):
+                    labels = line.split(":")[1].strip().split(",")
+                    self.consumption_labels = [float(l) for l in labels]
+                elif line == "SR_Data_Per_Timestep:":
+                    sr_section = True
+                    current_agent = "achiever"
+                elif line == "Blocker:":
+                    achiever_section = False
+                    blocker_section = True
+                    sr_section = False
                 i += 1
                 continue
 
+            # Parse Blocker section
+            if blocker_section:
+                if line.startswith("Infer Goal:"):
+                    self.blocker_infer_goal = line.split(":")[1].strip()
+                elif line == "SR_Data_Per_Timestep:":
+                    sr_section = True
+                    current_agent = "blocker"
+                i += 1
+                continue
+
+            # Parse SR data
             if sr_section and line.startswith("Timestep_"):
                 timestep = int(line.split("_")[1].replace(":", ""))
-                self.sr_data[timestep] = {}
+                
+                if current_agent == "achiever":
+                    self.achiever_sr_data[timestep] = {}
+                    sr_dict = self.achiever_sr_data[timestep]
+                else:
+                    self.blocker_sr_data[timestep] = {}
+                    sr_dict = self.blocker_sr_data[timestep]
 
                 # Read next 3 lines for gamma values
                 for j in range(3):
@@ -173,7 +236,7 @@ class GameSimulation:
                             parts = gamma_line.split(": ")
                             gamma_val = float(parts[0].split("_")[2])
 
-                            # Handle sparse format: "1,5:0.046875;1,6:0.0625;..."
+                            # Handle sparse format
                             if len(parts) > 1:
                                 sparse_data = parts[1]
                                 entries = sparse_data.split(";")
@@ -184,38 +247,25 @@ class GameSimulation:
                                         pos = tuple(map(int, pos_val[0].split(",")))
                                         value = float(pos_val[1])
                                         sr_entries.append((pos, value))
-                                self.sr_data[timestep][gamma_val] = sr_entries
+                                sr_dict[gamma_val] = sr_entries
                             else:
-                                self.sr_data[timestep][gamma_val] = []
+                                sr_dict[gamma_val] = []
 
                 i += 4  # Skip to next timestep
-                continue
-
-            if sr_section and line.startswith("[") and ":" in line:
-                # Position log section: [x, y] : action : interaction
-                parts = line.split(" : ")
-                if len(parts) >= 3:
-                    pos_str = parts[0].strip("[]")
-                    pos = tuple(map(int, pos_str.split(", ")))
-                    action = int(parts[1])
-                    interaction = parts[2]
-
-                    self.agent_positions.append(pos)
-                    self.actions.append(action)
-                    self.interactions.append(interaction)
-                i += 1
                 continue
 
             i += 1
 
     def find_initial_positions(self):
-        """Find initial positions of agent and objects"""
+        """Find initial positions of agents and objects"""
         self.initial_positions = {}
 
         for i, row in enumerate(self.maze):
             for j, cell in enumerate(row):
                 if cell == "O":
-                    self.initial_positions["agent"] = (i, j)
+                    self.initial_positions["achiever"] = (i, j)
+                elif cell == "X":
+                    self.initial_positions["blocker"] = (i, j)
                 elif cell in "ABCDabcd":
                     self.initial_positions[cell] = (i, j)
 
@@ -227,13 +277,13 @@ class GameSimulation:
 
         # Create environment based on size (but we'll completely overwrite the grid)
         if height == 5 and width == 5:
-            env_name = "MiniGrid-KeyDoor-5x5-v1"
+            env_name = "MiniGrid-AchieverBlocker-5x5-v1"
         elif height == 9 and width == 9:
-            env_name = "MiniGrid-KeyDoor-9x9-v1"
+            env_name = "MiniGrid-AchieverBlocker-9x9-v1"
         elif height == 11 and width == 11:
-            env_name = "MiniGrid-KeyDoor-9x9-v1"  # 11x11 maze data uses 9x9 environment
+            env_name = "MiniGrid-AchieverBlocker-11x11-v1"
         else:
-            env_name = "MiniGrid-KeyDoor-9x9-v1"  # Default
+            env_name = "MiniGrid-AchieverBlocker-9x9-v1"  # Default
 
         # Create environment
         env = gym.make(env_name, max_steps=500)
@@ -245,10 +295,10 @@ class GameSimulation:
         return env
 
     def _reconstruct_exact_environment(self, env):
-        """Reconstruct the exact environment from maze data"""
+        """Reconstruct the exact environment from maze data for two agents"""
         from gym_minigrid.minigrid import Grid, Wall, Key, Door
 
-        # Get maze dimensions (now 9x9 without outer walls)
+        # Get maze dimensions
         maze_height = len(self.maze)
         maze_width = len(self.maze[0]) if maze_height > 0 else 0
 
@@ -257,11 +307,17 @@ class GameSimulation:
         env.width = maze_width
         env.height = maze_height
 
-        # Clear agent keys
-        env.agent_keys = []
+        # Initialize agent inventories
+        env.achiever_keys = []
+        env.blocker_keys = []
+
+        # Initialize agent directions (facing right by default)
+        env.achiever_dir = 0  # 0=east, 1=south, 2=west, 3=north
+        env.blocker_dir = 0
 
         # Reconstruct from maze data directly
-        agent_pos = None
+        achiever_pos = None
+        blocker_pos = None
 
         for y in range(maze_height):
             for x in range(maze_width):
@@ -279,38 +335,36 @@ class GameSimulation:
                     color_map = {"a": "red", "b": "green", "c": "blue", "d": "yellow"}
                     color = color_map.get(cell, "red")
                     door = Door(color, is_locked=True)
-                    door.can_overlap = (
-                        lambda color=color: not door.is_locked
-                        or color in env.agent_keys
-                    )
                     env.grid.set(x, y, door)
                 elif cell == "O":
-                    agent_pos = (x, y)
+                    achiever_pos = (x, y)
+                elif cell == "X":
+                    blocker_pos = (x, y)
 
-        # Set agent position
-        if len(self.agent_positions) > 0:
-            # Use trajectory starting position
-            env.agent_pos = np.array(self.agent_positions[0])
-        elif agent_pos:
-            # Use maze position
-            env.agent_pos = np.array(agent_pos)
+        # Set agent positions
+        if len(self.achiever_positions) > 0:
+            env.achiever_pos = np.array(self.achiever_positions[0])
+        elif achiever_pos:
+            env.achiever_pos = np.array(achiever_pos)
         else:
-            # Fallback: find agent position from maze if not found in trajectory
-            for y in range(maze_height):
-                for x in range(maze_width):
-                    if self.maze[y][x] == "O":
-                        env.agent_pos = np.array([x, y])
-                        break
+            env.achiever_pos = np.array([0, 0])  # Fallback
 
-        # Set target door color
+        if len(self.blocker_positions) > 0:
+            env.blocker_pos = np.array(self.blocker_positions[0])
+        elif blocker_pos:
+            env.blocker_pos = np.array(blocker_pos)
+        else:
+            env.blocker_pos = np.array([1, 1])  # Fallback
+
+        # Set target door color for achiever
         if self.goal_rank:
             colors = ["red", "green", "blue", "yellow"]
             target_idx = self.goal_rank.index(1) if 1 in self.goal_rank else 0
             env.target_door_color = colors[target_idx]
-            env.mission = f"collect {env.target_door_color} key and open {env.target_door_color} door"
+            env.mission = f"Achiever: collect {env.target_door_color} key and open {env.target_door_color} door. Blocker: prevent achiever."
         else:
             env.target_door_color = "red"
-            env.mission = "collect red key and open red door"
+            env.mission = "Achiever: collect red key and open red door. Blocker: prevent achiever."
 
     def render_to_image(self, env):
         """Render environment to PIL Image using native MiniGrid rendering (same as render_kd.py)"""
@@ -336,12 +390,47 @@ class GameSimulation:
         # If it's something else, try to handle it
         return None
 
+    def _handle_achiever_interaction(self, env, achiever_pos, interaction):
+        """Handle achiever interactions like key pickup and door opening"""
+        try:
+            from gym_minigrid.minigrid import Key, Door
+            
+            # Key pickup (uppercase letters: A, B, C, D)
+            if interaction in "ABCD":
+                # Remove the key from the grid
+                env.grid.set(*achiever_pos, None)
+                
+                # Add key to achiever's inventory
+                color_map = {"A": "red", "B": "green", "C": "blue", "D": "yellow"}
+                key_color = color_map.get(interaction, "red")
+                if not hasattr(env, 'achiever_keys'):
+                    env.achiever_keys = []
+                env.achiever_keys.append(key_color)
+                print(f"    Achiever picked up {key_color} key!")
+            
+            # Door opening (lowercase letters: a, b, c, d)
+            elif interaction in "abcd":
+                # Open the door
+                door = env.grid.get(*achiever_pos)
+                if door and hasattr(door, 'is_open'):
+                    door.is_open = True
+                    door.is_locked = False
+                    
+                color_map = {"a": "red", "b": "green", "c": "blue", "d": "yellow"}
+                door_color = color_map.get(interaction, "red")
+                print(f"    Achiever opened {door_color} door!")
+                
+        except Exception as e:
+            print(f"Warning: Could not handle interaction {interaction}: {e}")
+
     def visualize_trajectory(self, save_gif=False, pause_time=0.5):
-        """Visualize the agent's trajectory using native MiniGrid rendering"""
-        print("=== Game Simulation ===")
-        print(f"Mission: Replay trajectory from data file")
+        """Visualize the two-agent trajectory using native MiniGrid rendering"""
+        print("=== AchieverBlocker Game Simulation ===")
+        print(f"Mission: Replay two-agent trajectory from data file")
         print(f"Trajectory length: {self.trajectory_length}")
         print(f"Goal rank: {self.goal_rank}")
+        if self.blocker_infer_goal:
+            print(f"Blocker inferred goal: {self.blocker_infer_goal}")
 
         # Create environment
         env = self.create_minigrid_env()
@@ -370,81 +459,96 @@ class GameSimulation:
         except Exception as e:
             print(f"Warning: Could not render: {e}")
 
-        print(f"Initial agent position: {env.agent_pos}")
-        print(f"Initial agent keys: {env.agent_keys}")
+        print(f"Initial achiever position: {env.achiever_pos}")
+        print(f"Initial blocker position: {env.blocker_pos}")
+        print(f"Initial achiever keys: {env.achiever_keys}")
+        print(f"Initial blocker keys: {env.blocker_keys}")
         print(f"Initial positions from maze: {self.initial_positions}")
+        print(f"Parsed {len(self.achiever_positions)} achiever positions")
+        print(f"Parsed {len(self.blocker_positions)} blocker positions")
+        print(f"Parsed {len(self.achiever_actions)} achiever actions")
+        print(f"Parsed {len(self.blocker_actions)} blocker actions")
 
         print("\nReplaying trajectory...")
 
         # Replay each step
-        for step in range(min(len(self.actions), self.trajectory_length)):
-            action = self.actions[step]
-            position = self.agent_positions[step]
-            interaction = (
-                self.interactions[step] if step < len(self.interactions) else "X"
+        for step in range(min(len(self.achiever_actions), self.trajectory_length)):
+            achiever_action = self.achiever_actions[step]
+            blocker_action = self.blocker_actions[step]
+            achiever_position = self.achiever_positions[step]
+            blocker_position = self.blocker_positions[step]
+            achiever_interaction = (
+                self.achiever_interactions[step] if step < len(self.achiever_interactions) else "X"
             )
-            # Get action name
-            action_name = (
-                self.action_names[action]
-                if action < len(self.action_names)
-                else f"action_{action}"
+            blocker_interaction = (
+                self.blocker_interactions[step] if step < len(self.blocker_interactions) else "X"
+            )
+            
+            # Get action names
+            achiever_action_name = (
+                self.action_names[achiever_action]
+                if achiever_action < len(self.action_names)
+                else f"action_{achiever_action}"
+            )
+            blocker_action_name = (
+                self.action_names[blocker_action]
+                if blocker_action < len(self.action_names)
+                else f"action_{blocker_action}"
             )
 
-            # Update agent direction based on action for better visualization
-            action_to_direction = {
-                0: 3,  # up -> north
-                1: 0,  # right -> east
-                2: 1,  # down -> south
-                3: 2,  # left -> west
-                # For stay, pickup, toggle actions, keep current direction
-            }
+            print(f"Step {step + 1}:")
+            print(f"  Achiever: {achiever_action_name} at {achiever_position} -> {achiever_interaction}")
+            print(f"  Blocker:  {blocker_action_name} at {blocker_position} -> {blocker_interaction}")
 
-            if action in action_to_direction:
-                env.agent_dir = action_to_direction[action]
-                direction_names = ["east", "south", "west", "north"]
-                direction_name = direction_names[env.agent_dir]
-                print(
-                    f"Step {step + 1}: {action_name} at {position} facing {direction_name} -> {interaction}"
-                )
-            else:
-                print(f"Step {step + 1}: {action_name} at {position} -> {interaction}")
+            if hasattr(env, "achiever_keys") and env.achiever_keys:
+                print(f"  Achiever inventory: {env.achiever_keys}")
+            if hasattr(env, "blocker_keys") and env.blocker_keys:
+                print(f"  Blocker inventory: {env.blocker_keys}")
 
-            if hasattr(env, "agent_keys") and env.agent_keys:
-                print(f"  Agent inventory: {env.agent_keys}")
-
-            # Take step in environment
+            # Update agent positions and directions for visualization
             try:
-                obs, reward, terminated, truncated, info = env.step(action)
-                done = terminated or truncated
+                # Update agent positions
+                env.achiever_pos = np.array(achiever_position)
+                env.blocker_pos = np.array(blocker_position)
+                
+                # Update agent directions based on actions
+                # Action to direction mapping: 0=up->north(3), 1=right->east(0), 2=down->south(1), 3=left->west(2)
+                action_to_direction = {
+                    0: 3,  # up -> north
+                    1: 0,  # right -> east
+                    2: 1,  # down -> south
+                    3: 2,  # left -> west
+                    # For stay, pickup, toggle actions, keep current direction
+                }
+                
+                if achiever_action in action_to_direction:
+                    env.achiever_dir = action_to_direction[achiever_action]
+                    
+                if blocker_action in action_to_direction:
+                    env.blocker_dir = action_to_direction[blocker_action]
+                
+                # Handle achiever interactions (key pickup, door opening)
+                if achiever_interaction != "X":
+                    self._handle_achiever_interaction(env, achiever_position, achiever_interaction)
+                
+                # Update the main agent_pos for rendering (use achiever as primary)
+                env.agent_pos = env.achiever_pos
+                env.agent_dir = env.achiever_dir
 
-                # Let MiniGrid handle key pickup naturally - ignore interaction data for keys
-                # The interaction data is just for logging, not for controlling the environment
+                # Update step counter to match trajectory
+                env.step_count = step + 1
 
-                # Handle observation if it's a dict
-                if isinstance(obs, dict):
-                    obs = obs.get("image", obs)
-
-                # Render environment
+                # Render environment (currently shows only achiever due to MiniGrid limitation)
                 try:
                     env.render()
                 except Exception as e:
                     print(f"Warning: Could not render: {e}")
 
-                # Capture frame for GIF
+                # Capture frame for GIF (environment now handles dual-agent rendering)
                 if save_gif:
                     frame = self.render_to_image(env)
                     if frame:
                         frames.append(frame)
-
-                # Check if episode is done
-                if done:
-                    print(f"Episode ended at step {step + 1} with reward: {reward:.2f}")
-                    print(
-                        f"Environment says episode is done, but trajectory continues..."
-                    )
-                    print(f"Terminated: {terminated}, Truncated: {truncated}")
-                    # Don't break here - continue with the trajectory regardless of environment state
-                    done = False
 
                 # Pause between steps
                 if pause_time > 0:
@@ -456,7 +560,7 @@ class GameSimulation:
 
         # Save GIF if requested
         if save_gif and frames:
-            gif_path = "trajectory_simulation.gif"
+            gif_path = "achiever_blocker_trajectory.gif"
             print(f"Saving {len(frames)} frames to {gif_path}")
             frames[0].save(
                 gif_path,
@@ -474,21 +578,29 @@ class GameSimulation:
 
     def print_summary(self):
         """Print summary of the simulation data"""
-        print("=== Game Simulation Summary ===")
+        print("=== AchieverBlocker Game Simulation Summary ===")
         print(f"Maze size: {len(self.maze)}x{len(self.maze[0]) if self.maze else 0}")
         print(f"Goal Consumed Rank: {self.goal_rank}")
         print(f"Trajectory Length: {self.trajectory_length}")
         print(f"Consumption Labels: {self.consumption_labels}")
-        print(f"Number of timesteps with SR data: {len(self.sr_data)}")
-        print(f"Number of position records: {len(self.agent_positions)}")
+        if self.blocker_infer_goal:
+            print(f"Blocker Inferred Goal: {self.blocker_infer_goal}")
+        print(f"Number of timesteps with Achiever SR data: {len(self.achiever_sr_data)}")
+        print(f"Number of timesteps with Blocker SR data: {len(self.blocker_sr_data)}")
+        print(f"Number of achiever position records: {len(self.achiever_positions)}")
+        print(f"Number of blocker position records: {len(self.blocker_positions)}")
         print(f"\nInitial positions:")
         for key, pos in self.initial_positions.items():
             print(f"  {key}: {pos}")
 
-        # Show first few SR entries
-        print(f"\nFirst 5 SR data entries:")
-        for i in range(min(5, len(self.sr_data))):
-            print(f"  Timestep {i}: {self.sr_data.get(i, {})}")
+        # Show first few SR entries for both agents
+        print(f"\nFirst 3 Achiever SR data entries:")
+        for i in range(min(3, len(self.achiever_sr_data))):
+            print(f"  Timestep {i}: {self.achiever_sr_data.get(i, {})}")
+        
+        print(f"\nFirst 3 Blocker SR data entries:")
+        for i in range(min(3, len(self.blocker_sr_data))):
+            print(f"  Timestep {i}: {self.blocker_sr_data.get(i, {})}")
 
 
 def main():
@@ -503,7 +615,7 @@ def main():
     parser.add_argument(
         "--pause",
         type=float,
-        default=0.5,
+        default=0.1,
         help="Pause duration between actions in seconds (default: 0.5)",
     )
     parser.add_argument(

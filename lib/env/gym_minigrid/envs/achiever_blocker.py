@@ -409,8 +409,71 @@ class AchieverBlockerEnv(MiniGridEnv):
 
     def render(self, mode="human"):
         """Render environment with both agents"""
-        img = super().render(mode)
-        return img
+        if mode == "human" and self.grid_render is None:
+            from gym_minigrid.rendering import Renderer
+            from gym_minigrid.minigrid import CELL_PIXELS
+            self.grid_render = Renderer(
+                self.width * CELL_PIXELS,
+                self.height * CELL_PIXELS,
+                True if mode == "human" else False,
+            )
+        
+        if mode in ["human", "rgb_array"]:
+            from gym_minigrid.minigrid import CELL_PIXELS
+            
+            # Initialize renderer if needed
+            if self.grid_render is None:
+                from gym_minigrid.rendering import Renderer
+                self.grid_render = Renderer(
+                    self.width * CELL_PIXELS,
+                    self.height * CELL_PIXELS,
+                    False,  # Not human mode for rgb_array
+                )
+            
+            r = self.grid_render
+            if r.window:
+                r.window.setText(self.mission)
+            
+            r.beginFrame()
+            
+            # Render the whole grid
+            self.grid.render(r, CELL_PIXELS)
+            
+            # Draw the achiever agent (red triangle)
+            if hasattr(self, 'achiever_pos') and self.achiever_pos is not None:
+                r.push()
+                r.translate(
+                    CELL_PIXELS * (self.achiever_pos[0] + 0.5),
+                    CELL_PIXELS * (self.achiever_pos[1] + 0.5),
+                )
+                r.rotate(getattr(self, 'achiever_dir', 0) * 90)
+                r.setLineColor(255, 0, 0)  # Red
+                r.setColor(255, 0, 0)      # Red
+                r.drawPolygon([(-12, 10), (12, 0), (-12, -10)])
+                r.pop()
+            
+            # Draw the blocker agent (blue triangle)
+            if hasattr(self, 'blocker_pos') and self.blocker_pos is not None:
+                r.push()
+                r.translate(
+                    CELL_PIXELS * (self.blocker_pos[0] + 0.5),
+                    CELL_PIXELS * (self.blocker_pos[1] + 0.5),
+                )
+                r.rotate(getattr(self, 'blocker_dir', 0) * 90)
+                r.setLineColor(0, 0, 255)  # Blue
+                r.setColor(0, 0, 255)      # Blue
+                r.drawPolygon([(-12, 10), (12, 0), (-12, -10)])
+                r.pop()
+            
+            r.endFrame()
+            
+            if mode == "rgb_array":
+                return r.getArray()
+            elif mode == "human":
+                return r
+        else:
+            # Fallback to parent render for other modes
+            return super().render(mode)
 
 
 # Size variants

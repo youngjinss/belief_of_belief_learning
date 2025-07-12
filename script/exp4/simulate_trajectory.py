@@ -99,14 +99,23 @@ class GameSimulation:
         self.find_initial_positions()
 
         # Action names for display
-        self.action_names = [
+        self.achiever_action_names = [
             "up",
-            "right",
+            "right", 
             "down",
             "left",
             "stay",
             "pickup",
             "toggle",
+        ]
+        
+        self.blocker_action_names = [
+            "up",
+            "right",
+            "down", 
+            "left",
+            "stay",
+            "broken",
         ]
 
     def parse_data(self):
@@ -390,38 +399,6 @@ class GameSimulation:
         # If it's something else, try to handle it
         return None
 
-    def _handle_achiever_interaction(self, env, achiever_pos, interaction):
-        """Handle achiever interactions like key pickup and door opening"""
-        try:
-            from gym_minigrid.minigrid import Key, Door
-            
-            # Key pickup (uppercase letters: A, B, C, D)
-            if interaction in "ABCD":
-                # Remove the key from the grid
-                env.grid.set(*achiever_pos, None)
-                
-                # Add key to achiever's inventory
-                color_map = {"A": "red", "B": "green", "C": "blue", "D": "yellow"}
-                key_color = color_map.get(interaction, "red")
-                if not hasattr(env, 'achiever_keys'):
-                    env.achiever_keys = []
-                env.achiever_keys.append(key_color)
-                print(f"    Achiever picked up {key_color} key!")
-            
-            # Door opening (lowercase letters: a, b, c, d)
-            elif interaction in "abcd":
-                # Open the door
-                door = env.grid.get(*achiever_pos)
-                if door and hasattr(door, 'is_open'):
-                    door.is_open = True
-                    door.is_locked = False
-                    
-                color_map = {"a": "red", "b": "green", "c": "blue", "d": "yellow"}
-                door_color = color_map.get(interaction, "red")
-                print(f"    Achiever opened {door_color} door!")
-                
-        except Exception as e:
-            print(f"Warning: Could not handle interaction {interaction}: {e}")
 
     def visualize_trajectory(self, save_gif=False, pause_time=0.5):
         """Visualize the two-agent trajectory using native MiniGrid rendering"""
@@ -462,12 +439,6 @@ class GameSimulation:
         print(f"Initial achiever position: {env.achiever_pos}")
         print(f"Initial blocker position: {env.blocker_pos}")
         print(f"Initial achiever keys: {env.achiever_keys}")
-        print(f"Initial blocker keys: {env.blocker_keys}")
-        print(f"Initial positions from maze: {self.initial_positions}")
-        print(f"Parsed {len(self.achiever_positions)} achiever positions")
-        print(f"Parsed {len(self.blocker_positions)} blocker positions")
-        print(f"Parsed {len(self.achiever_actions)} achiever actions")
-        print(f"Parsed {len(self.blocker_actions)} blocker actions")
 
         print("\nReplaying trajectory...")
 
@@ -486,13 +457,13 @@ class GameSimulation:
             
             # Get action names
             achiever_action_name = (
-                self.action_names[achiever_action]
-                if achiever_action < len(self.action_names)
+                self.achiever_action_names[achiever_action]
+                if achiever_action < len(self.achiever_action_names)
                 else f"action_{achiever_action}"
             )
             blocker_action_name = (
-                self.action_names[blocker_action]
-                if blocker_action < len(self.action_names)
+                self.blocker_action_names[blocker_action]
+                if blocker_action < len(self.blocker_action_names)
                 else f"action_{blocker_action}"
             )
 
@@ -507,12 +478,7 @@ class GameSimulation:
 
             # Update agent positions and directions for visualization
             try:
-                # Update agent positions
-                env.achiever_pos = np.array(achiever_position)
-                env.blocker_pos = np.array(blocker_position)
-                
-                # Update agent directions based on actions
-                # Action to direction mapping: 0=up->north(3), 1=right->east(0), 2=down->south(1), 3=left->west(2)
+                # Update agent directions based on actions (for visualization)
                 action_to_direction = {
                     0: 3,  # up -> north
                     1: 0,  # right -> east
@@ -527,9 +493,14 @@ class GameSimulation:
                 if blocker_action in action_to_direction:
                     env.blocker_dir = action_to_direction[blocker_action]
                 
-                # Handle achiever interactions (key pickup, door opening)
-                if achiever_interaction != "X":
-                    self._handle_achiever_interaction(env, achiever_position, achiever_interaction)
+                # Execute actions in environment and let it handle state naturally
+                action_pair = (achiever_action, blocker_action)
+                obs, rewards, terminated, truncated, info = env.step(action_pair)
+                done = terminated or truncated
+                
+                # Update agent positions for rendering consistency (after env.step)
+                env.achiever_pos = np.array(achiever_position)
+                env.blocker_pos = np.array(blocker_position)
                 
                 # Update the main agent_pos for rendering (use achiever as primary)
                 env.agent_pos = env.achiever_pos
@@ -544,11 +515,18 @@ class GameSimulation:
                 except Exception as e:
                     print(f"Warning: Could not render: {e}")
 
-                # Capture frame for GIF (environment now handles dual-agent rendering)
+                # Capture frame for GIF
                 if save_gif:
                     frame = self.render_to_image(env)
                     if frame:
                         frames.append(frame)
+
+                # Check if episode is done
+                if done:
+                    print(f"Episode ended at step {step + 1} with rewards: {rewards}")
+                    print(f"Environment says episode is done, but trajectory continues...")
+                    print(f"Terminated: {terminated}, Truncated: {truncated}")
+                    # Don't break here - continue with the trajectory regardless of environment state
 
                 # Pause between steps
                 if pause_time > 0:

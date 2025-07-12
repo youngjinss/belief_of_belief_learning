@@ -101,18 +101,18 @@ class GameSimulation:
         # Action names for display
         self.achiever_action_names = [
             "up",
-            "right", 
+            "right",
             "down",
             "left",
             "stay",
             "pickup",
             "toggle",
         ]
-        
+
         self.blocker_action_names = [
             "up",
             "right",
-            "down", 
+            "down",
             "left",
             "stay",
             "broken",
@@ -170,19 +170,21 @@ class GameSimulation:
                     blocker_pos_str = pos_part.split("][")[1].strip("]")
                     achiever_pos = tuple(map(int, achiever_pos_str.split(", ")))
                     blocker_pos = tuple(map(int, blocker_pos_str.split(", ")))
-                    
+
                     # Parse actions
                     action_part = parts[1]
                     actions = action_part.split(",")
                     achiever_action = int(actions[0])
                     blocker_action = int(actions[1])
-                    
+
                     # Parse interactions
                     interaction_part = parts[2]
                     interactions = interaction_part.split(",")
                     achiever_interaction = interactions[0]
-                    blocker_interaction = interactions[1] if len(interactions) > 1 else "X"
-                    
+                    blocker_interaction = (
+                        interactions[1] if len(interactions) > 1 else "X"
+                    )
+
                     self.achiever_positions.append(achiever_pos)
                     self.blocker_positions.append(blocker_pos)
                     self.achiever_actions.append(achiever_action)
@@ -229,7 +231,7 @@ class GameSimulation:
             # Parse SR data
             if sr_section and line.startswith("Timestep_"):
                 timestep = int(line.split("_")[1].replace(":", ""))
-                
+
                 if current_agent == "achiever":
                     self.achiever_sr_data[timestep] = {}
                     sr_dict = self.achiever_sr_data[timestep]
@@ -399,7 +401,6 @@ class GameSimulation:
         # If it's something else, try to handle it
         return None
 
-
     def visualize_trajectory(self, save_gif=False, pause_time=0.5):
         """Visualize the two-agent trajectory using native MiniGrid rendering"""
         print("=== AchieverBlocker Game Simulation ===")
@@ -449,12 +450,16 @@ class GameSimulation:
             achiever_position = self.achiever_positions[step]
             blocker_position = self.blocker_positions[step]
             achiever_interaction = (
-                self.achiever_interactions[step] if step < len(self.achiever_interactions) else "X"
+                self.achiever_interactions[step]
+                if step < len(self.achiever_interactions)
+                else "X"
             )
             blocker_interaction = (
-                self.blocker_interactions[step] if step < len(self.blocker_interactions) else "X"
+                self.blocker_interactions[step]
+                if step < len(self.blocker_interactions)
+                else "X"
             )
-            
+
             # Get action names
             achiever_action_name = (
                 self.achiever_action_names[achiever_action]
@@ -468,8 +473,12 @@ class GameSimulation:
             )
 
             print(f"Step {step + 1}:")
-            print(f"  Achiever: {achiever_action_name} at {achiever_position} -> {achiever_interaction}")
-            print(f"  Blocker:  {blocker_action_name} at {blocker_position} -> {blocker_interaction}")
+            print(
+                f"  Achiever: {achiever_action_name} at {achiever_position} -> {achiever_interaction}"
+            )
+            print(
+                f"  Blocker:  {blocker_action_name} at {blocker_position} -> {blocker_interaction}"
+            )
 
             if hasattr(env, "achiever_keys") and env.achiever_keys:
                 print(f"  Achiever inventory: {env.achiever_keys}")
@@ -486,22 +495,22 @@ class GameSimulation:
                     3: 2,  # left -> west
                     # For stay, pickup, toggle actions, keep current direction
                 }
-                
+
                 if achiever_action in action_to_direction:
                     env.achiever_dir = action_to_direction[achiever_action]
-                    
+
                 if blocker_action in action_to_direction:
                     env.blocker_dir = action_to_direction[blocker_action]
-                
+
                 # Execute actions in environment and let it handle state naturally
                 action_pair = (achiever_action, blocker_action)
                 obs, rewards, terminated, truncated, info = env.step(action_pair)
                 done = terminated or truncated
-                
+
                 # Update agent positions for rendering consistency (after env.step)
                 env.achiever_pos = np.array(achiever_position)
                 env.blocker_pos = np.array(blocker_position)
-                
+
                 # Update the main agent_pos for rendering (use achiever as primary)
                 env.agent_pos = env.achiever_pos
                 env.agent_dir = env.achiever_dir
@@ -524,7 +533,9 @@ class GameSimulation:
                 # Check if episode is done
                 if done:
                     print(f"Episode ended at step {step + 1} with rewards: {rewards}")
-                    print(f"Environment says episode is done, but trajectory continues...")
+                    print(
+                        f"Environment says episode is done, but trajectory continues..."
+                    )
                     print(f"Terminated: {terminated}, Truncated: {truncated}")
                     # Don't break here - continue with the trajectory regardless of environment state
 
@@ -563,7 +574,9 @@ class GameSimulation:
         print(f"Consumption Labels: {self.consumption_labels}")
         if self.blocker_infer_goal:
             print(f"Blocker Inferred Goal: {self.blocker_infer_goal}")
-        print(f"Number of timesteps with Achiever SR data: {len(self.achiever_sr_data)}")
+        print(
+            f"Number of timesteps with Achiever SR data: {len(self.achiever_sr_data)}"
+        )
         print(f"Number of timesteps with Blocker SR data: {len(self.blocker_sr_data)}")
         print(f"Number of achiever position records: {len(self.achiever_positions)}")
         print(f"Number of blocker position records: {len(self.blocker_positions)}")
@@ -575,7 +588,7 @@ class GameSimulation:
         print(f"\nFirst 3 Achiever SR data entries:")
         for i in range(min(3, len(self.achiever_sr_data))):
             print(f"  Timestep {i}: {self.achiever_sr_data.get(i, {})}")
-        
+
         print(f"\nFirst 3 Blocker SR data entries:")
         for i in range(min(3, len(self.blocker_sr_data))):
             print(f"  Timestep {i}: {self.blocker_sr_data.get(i, {})}")

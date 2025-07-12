@@ -24,7 +24,11 @@ from lib.env.gym_minigrid.envs.achiever_blocker import (
     AchieverBlocker9x9Env,
     AchieverBlocker11x11Env,
 )
-from script.exp4.achievers import AStarAgent, RandomAgent as AchieverRandomAgent, ValueAgent
+from script.exp4.achievers import (
+    AStarAgent,
+    RandomAgent as AchieverRandomAgent,
+    ValueAgent,
+)
 from script.exp4.blockers import RandomAgent as BlockerRandomAgent
 from script.exp4.config import Config
 
@@ -281,46 +285,62 @@ def save_game_with_labels(
             for line in initial_maze_lines:
                 f.write(line + "\n")
 
-        f.write(f"Trajectory length: {len(trajectory_data['achiever_positions']) - 1}\n")
-        
+        f.write(
+            f"Trajectory length: {len(trajectory_data['achiever_positions']) - 1}\n"
+        )
+
         # Write trajectory with 2-agent actions and interactions
-        for i in range(len(trajectory_data['achiever_actions'])):
-            achiever_pos = trajectory_data['achiever_positions'][i]
-            blocker_pos = trajectory_data['blocker_positions'][i]
-            achiever_action = trajectory_data['achiever_actions'][i]
-            blocker_action = trajectory_data['blocker_actions'][i]
-            
+        for i in range(len(trajectory_data["achiever_actions"])):
+            achiever_pos = trajectory_data["achiever_positions"][i]
+            blocker_pos = trajectory_data["blocker_positions"][i]
+            achiever_action = trajectory_data["achiever_actions"][i]
+            blocker_action = trajectory_data["blocker_actions"][i]
+
             # Determine interactions
             achiever_interaction = "X"  # Default no interaction
             blocker_interaction = "X"  # Default no interaction
-            
+
             # Check for key pickup by achiever
             if hasattr(achiever_agent, "keys_collected_steps"):
                 for step, key_color in achiever_agent.keys_collected_steps:
                     if step == i:
-                        color_map = {"red": "A", "green": "B", "blue": "C", "yellow": "D"}
+                        color_map = {
+                            "red": "A",
+                            "green": "B",
+                            "blue": "C",
+                            "yellow": "D",
+                        }
                         achiever_interaction = color_map.get(key_color, "X")
                         break
-            
+
             # Check for door opening by achiever
-            if achiever_interaction == "X" and hasattr(achiever_agent, "doors_opened_steps"):
+            if achiever_interaction == "X" and hasattr(
+                achiever_agent, "doors_opened_steps"
+            ):
                 for step, door_color in achiever_agent.doors_opened_steps:
                     if step == i:
-                        color_map = {"red": "a", "green": "b", "blue": "c", "yellow": "d"}
+                        color_map = {
+                            "red": "a",
+                            "green": "b",
+                            "blue": "c",
+                            "yellow": "d",
+                        }
                         achiever_interaction = color_map.get(door_color, "X")
                         break
-                        
+
             # Blocker just blocks, no special interactions for now
             blocker_interaction = "X"
-            
-            f.write(f"[{achiever_pos[0]}, {achiever_pos[1]}][{blocker_pos[0]}, {blocker_pos[1]}] : {achiever_action},{blocker_action} : {achiever_interaction},{blocker_interaction}\n")
+
+            f.write(
+                f"[{achiever_pos[0]}, {achiever_pos[1]}][{blocker_pos[0]}, {blocker_pos[1]}] : {achiever_action},{blocker_action} : {achiever_interaction},{blocker_interaction}\n"
+            )
 
         f.write("\n")
 
         # Section 2: Achiever
         f.write("Achiever:\n")
         f.write("Goal Consumed Rank : " + str(key_door_rank) + "\n")
-        
+
         if goal_rewards is not None:
             colors = ["red", "green", "blue", "yellow"]
             reward_list = [goal_rewards.get(color, 0.0) for color in colors]
@@ -333,7 +353,11 @@ def save_game_with_labels(
             f.write("Goal Costs: " + ",".join(map(str, cost_list)) + "\n")
             f.write("Goal Costs Sum: " + str(sum(cost_list)) + "\n")
 
-        f.write("Consumption Labels: " + ",".join(map(str, consumption_labels.tolist())) + "\n")
+        f.write(
+            "Consumption Labels: "
+            + ",".join(map(str, consumption_labels.tolist()))
+            + "\n"
+        )
 
         # Save achiever SR data per timestep
         if gammas is None:
@@ -509,8 +533,8 @@ def run_single_game(game_id, config_dict, save_dir):
 
     # Seed environment before reset (following exp3 pattern)
     env.seed(config_dict["base_random_seed"] + game_id)
-    
-    # Reset environment 
+
+    # Reset environment
     obs, info = env.reset()
 
     # Create achiever agent
@@ -558,7 +582,9 @@ def run_single_game(game_id, config_dict, save_dir):
     # Save initial maze state (before agents start moving)
     initial_achiever_pos = tuple(env.achiever_pos)
     initial_blocker_pos = tuple(env.blocker_pos)
-    initial_maze_lines = env_to_maze_format(env, initial_achiever_pos, initial_blocker_pos)
+    initial_maze_lines = env_to_maze_format(
+        env, initial_achiever_pos, initial_blocker_pos
+    )
 
     # Record initial positions before any actions
     achiever_positions.append(initial_achiever_pos)
@@ -574,7 +600,7 @@ def run_single_game(game_id, config_dict, save_dir):
         # Get actions from both agents
         achiever_action = achiever_agent.get_action(obs)
         blocker_action = blocker_agent.get_action(obs)
-        
+
         achiever_actions.append(achiever_action)
         blocker_actions.append(blocker_action)
 
@@ -592,8 +618,8 @@ def run_single_game(game_id, config_dict, save_dir):
         done = terminated or truncated
 
         # Update rewards
-        total_achiever_reward += rewards['achiever']
-        total_blocker_reward += rewards['blocker']
+        total_achiever_reward += rewards["achiever"]
+        total_blocker_reward += rewards["blocker"]
         step_count += 1
 
         # Track key collection
@@ -605,7 +631,7 @@ def run_single_game(game_id, config_dict, save_dir):
                 keys_collected_steps.append((step_count - 1, new_key))
 
         # Check for door opening by reward
-        if rewards['achiever'] >= 1.0:  # Door opening reward
+        if rewards["achiever"] >= 1.0:  # Door opening reward
             # Find which door was opened
             for x in range(env.grid.width):
                 for y in range(env.grid.height):
@@ -626,11 +652,11 @@ def run_single_game(game_id, config_dict, save_dir):
 
     # Calculate SR labels for each agent and timestep
     sr_gammas = config_dict.get("sr_gammas", [0.5, 0.9, 0.99])
-    
+
     achiever_sr_labels_per_timestep = calculate_sr_labels_for_trajectory(
         achiever_positions, grid_size=env.width, gammas=sr_gammas
     )
-    
+
     blocker_sr_labels_per_timestep = calculate_sr_labels_for_trajectory(
         blocker_positions, grid_size=env.width, gammas=sr_gammas
     )
@@ -648,10 +674,10 @@ def run_single_game(game_id, config_dict, save_dir):
 
     # Prepare trajectory data
     trajectory_data = {
-        'achiever_positions': achiever_positions,
-        'blocker_positions': blocker_positions,
-        'achiever_actions': achiever_actions,
-        'blocker_actions': blocker_actions,
+        "achiever_positions": achiever_positions,
+        "blocker_positions": blocker_positions,
+        "achiever_actions": achiever_actions,
+        "blocker_actions": blocker_actions,
     }
 
     # Save game with labels
@@ -693,7 +719,9 @@ def generate_trajectories(
 
     n_games = config.n_games
 
-    print(f"Generating {n_games} AchieverBlocker trajectories with random seed: {random_seed}")
+    print(
+        f"Generating {n_games} AchieverBlocker trajectories with random seed: {random_seed}"
+    )
     print(f"Achiever type: {config.achiever_type}")
     print(f"Blocker type: {config.blocker_type}")
     print(f"Environment size: {config.env_size}")
@@ -706,12 +734,18 @@ def generate_trajectories(
 
     # Check if data already exists in the save directory
     if os.path.exists(config.save_dir):
-        existing_files = [f for f in os.listdir(config.save_dir) if f.startswith('test') and f.endswith('.txt')]
+        existing_files = [
+            f
+            for f in os.listdir(config.save_dir)
+            if f.startswith("test") and f.endswith(".txt")
+        ]
         if existing_files:
             print(f"Data already exists in {config.save_dir}")
             print(f"Found {len(existing_files)} existing trajectory files")
             print("Exiting to avoid overwriting existing data")
-            print("If you want to regenerate data, please delete the existing directory first")
+            print(
+                "If you want to regenerate data, please delete the existing directory first"
+            )
             return
 
     # Create output directory
@@ -768,7 +802,9 @@ def generate_trajectories(
 
     print(f"Generated {n_games} games successfully using {n_processes} processes!")
     print(f"Data saved to: {config.save_dir}")
-    print(f"Environment: {config.get_env_name()}, Achiever: {config.achiever_type}, Blocker: {config.blocker_type}")
+    print(
+        f"Environment: {config.get_env_name()}, Achiever: {config.achiever_type}, Blocker: {config.blocker_type}"
+    )
 
 
 if __name__ == "__main__":

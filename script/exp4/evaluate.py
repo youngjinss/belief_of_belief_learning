@@ -481,7 +481,7 @@ def evaluate_keydoor_model(
     processed_test_data_path = os.path.join(
         test_data_dir, f"processed_test_data_exp{config.experiment_no}.pkl"
     )
-    
+
     if not os.path.exists(processed_test_data_path):
         print("Processed test data not found. Generating...")
         # Load and process test data
@@ -507,7 +507,7 @@ def evaluate_keydoor_model(
                 "time_step"
             ],  # Use time_step (20) not max_moves (50)
         )
-        
+
         # Save processed test data for future use
         print(f"Saving processed test data to: {processed_test_data_path}")
         data_reader.save_processed_data(test_data, processed_test_data_path)
@@ -715,12 +715,12 @@ def analyze_action_likelihood(
         env_name = config.get_env_name().replace("MiniGrid-", "").replace("-v1", "")
         agent_type = config.agent_type
         test_data_dir_default = f"./data/{env_name}/{agent_type}/test"
-        
+
         # Check if processed test data exists, if not generate it
         processed_test_data_path = os.path.join(
             test_data_dir_default, f"processed_test_data_exp{config.experiment_no}.pkl"
         )
-        
+
         if not os.path.exists(processed_test_data_path):
             print("Processed test data not found. Generating...")
             # Load and process test data
@@ -740,7 +740,7 @@ def analyze_action_likelihood(
                     "time_step"
                 ],  # Use time_step (20) not max_moves (50)
             )
-            
+
             # Save processed test data for future use
             print(f"Saving processed test data to: {processed_test_data_path}")
             data_reader.save_processed_data(test_data, processed_test_data_path)

@@ -1,7 +1,6 @@
 from ..minigrid import *
 from ..register import register
 import numpy as np
-from typing import Dict, Tuple, List, Any
 import gymnasium as gym
 from gymnasium import spaces
 
@@ -56,18 +55,19 @@ class AchieverBlockerEnv(MiniGridEnv):
             agent_view_size=size,  # Agents can see entire grid
         )
 
-        # Action space for both agents (same actions as original)
-        # up=0, right=1, down=2, left=3, stay=4, pickup=5, toggle=6
-        self.single_action_space = spaces.Discrete(7)
+        # Separate action spaces for achiever and blocker
+        # Achiever: up=0, right=1, down=2, left=3, stay=4, pickup=5, toggle=6
+        self.achiever_action_space = spaces.Discrete(7)
+        
+        # Blocker: up=0, right=1, down=2, left=3, stay=4, broken=5
+        self.blocker_action_space = spaces.Discrete(6)
         
         # Combined action space: tuple of actions for (achiever, blocker)
         self.action_space = spaces.Tuple((
-            self.single_action_space,  # achiever actions
-            self.single_action_space   # blocker actions
+            self.achiever_action_space,  # achiever actions (7)
+            self.blocker_action_space    # blocker actions (6)
         ))
         
-        # For 2-agent environment, we'll return a dict of observations
-        # Use the parent's observation space structure but for multiple agents
 
     def reset(self, **kwargs):
         """Reset environment for both agents"""
@@ -231,26 +231,44 @@ class AchieverBlockerEnv(MiniGridEnv):
         terminated = False
         truncated = False
         
-        # Check if achiever opened target door
-        door_positions = self._get_door_positions()
-        achiever_pos_tuple = tuple(self.achiever_pos)
-        if achiever_pos_tuple in door_positions:
-            door = self.grid.get(*self.achiever_pos)
-            if (
-                isinstance(door, Door)
-                and door.color == self.target_door_color
-                and door.is_open
-            ):
-                terminated = True
-                achiever_reward += 10.0  # Big reward for achiever success
-                blocker_reward -= 5.0    # Penalty for blocker failure
+        # Check if blocker chose "broken" action (action 5)
+        if blocker_action == 5:  # "broken" action
+            blocker_pos_tuple = tuple(self.blocker_pos)
+            door_positions = self._get_door_positions()
+            
+            # Check if blocker is at a door position
+            if blocker_pos_tuple in door_positions:
+                door = self.grid.get(*self.blocker_pos)
+                if isinstance(door, Door):
+                    terminated = True
+                    
+                    # Check if blocker blocked the correct target door
+                    if door.color == self.target_door_color:
+                        blocker_reward += 1.0   # Success: blocked target door
+                        achiever_reward -= 1.0  # Penalty for achiever
+                    else:
+                        blocker_reward -= 1.0   # Failure: blocked wrong door
+                        achiever_reward += 0.5  # Small reward for achiever
         
-        # Reward blocker for being near target door (blocking behavior)
+        # Check if achiever opened target door
+        if not terminated:  # Only check if game hasn't ended due to blocker's "done"
+            door_positions = self._get_door_positions()
+            achiever_pos_tuple = tuple(self.achiever_pos)
+            if achiever_pos_tuple in door_positions:
+                door = self.grid.get(*self.achiever_pos)
+                if (
+                    isinstance(door, Door)
+                    and door.color == self.target_door_color
+                    and door.is_open
+                ):
+                    terminated = True
+                    achiever_reward += 10.0  # Big reward for achiever success
+                    blocker_reward -= 5.0    # Penalty for blocker failure
+        
+        # Small reward for blocker being near target door
         target_door_pos = self._get_target_door_position()
-        if target_door_pos is not None:
-            blocker_distance = np.linalg.norm(np.array(self.blocker_pos) - np.array(target_door_pos))
-            if blocker_distance <= 1.0:  # Adjacent to target door
-                blocker_reward += 0.1
+        if target_door_pos is not None and np.linalg.norm(np.array(self.blocker_pos) - np.array(target_door_pos)) <= 1.0:
+            blocker_reward += 0.1
         
         # Update step count
         self.step_count += 1
@@ -292,6 +310,8 @@ class AchieverBlockerEnv(MiniGridEnv):
             new_pos = current_pos + move_vectors[action]
         elif action == MiniGridEnv.Actions.stay:
             pass  # No movement
+        elif action == 5:  # "broken" action
+            pass  # No movement
         # pickup and toggle actions don't change position
         
         # Check bounds
@@ -307,32 +327,54 @@ class AchieverBlockerEnv(MiniGridEnv):
         return new_pos, new_dir
 
     def _handle_collision(self, achiever_new_pos, blocker_new_pos):
-        """Handle collision between agents (agents cannot overlap)"""
+        """Handle collision between agents (agents cannot overlap or swap positions)"""
+        # Check if agents are trying to occupy the same cell
         if np.array_equal(achiever_new_pos, blocker_new_pos):
-            # Collision detected: achiever goes to previous position, blocker keeps new position
-            return self.achiever_prev_pos, blocker_new_pos
+            # Collision detected: both agents stay in their previous positions
+            return self.achiever_prev_pos, self.blocker_prev_pos
+        
+        # Check if agents are trying to swap positions
+        elif (np.array_equal(achiever_new_pos, self.blocker_prev_pos) and 
+              np.array_equal(blocker_new_pos, self.achiever_prev_pos)):
+            # Position swap detected: both agents stay in their previous positions
+            return self.achiever_prev_pos, self.blocker_prev_pos
         else:
             # No collision
             return achiever_new_pos, blocker_new_pos
 
     def _auto_pickup_key(self, agent_pos):
-        """Auto pickup key for achiever when stepping on it"""
+        """Auto pickup key for achiever when stepping on it or adjacent to it"""
+        # Check exact position first
         obj = self.grid.get(*agent_pos)
-
         if isinstance(obj, Key):
-            # Check if achiever can carry more keys
             if len(self.achiever_keys) < self.max_keys:
                 key_color = obj.color
-
-                # Pick up key automatically
                 self.achiever_keys.append(key_color)
                 self.grid.set(*agent_pos, None)
-
-                # Give reward if it's target color key
                 if key_color == self.target_door_color:
-                    return 0.5  # Reward for collecting target key
+                    return 0.5
                 else:
-                    return -self.cost[key_color]  # Cost for collecting wrong key
+                    return -self.cost[key_color]
+
+        # Check adjacent positions for compatibility with data generation
+        adjacent_positions = [
+            (agent_pos[0] + 1, agent_pos[1]),  # right
+            (agent_pos[0] - 1, agent_pos[1]),  # left
+            (agent_pos[0], agent_pos[1] + 1),  # down
+            (agent_pos[0], agent_pos[1] - 1),  # up
+        ]
+        
+        for adj_pos in adjacent_positions:
+            if (0 <= adj_pos[0] < self.grid.width and 0 <= adj_pos[1] < self.grid.height):
+                adj_obj = self.grid.get(*adj_pos)
+                if isinstance(adj_obj, Key) and len(self.achiever_keys) < self.max_keys:
+                    key_color = adj_obj.color
+                    self.achiever_keys.append(key_color)
+                    self.grid.set(*adj_pos, None)
+                    if key_color == self.target_door_color:
+                        return 0.5
+                    else:
+                        return -self.cost[key_color]
 
         return 0
 

@@ -900,27 +900,58 @@ def train_tomnet(
     print(f"Using device: {device}")
     print(f"Results will be saved to: {experiment_save_dir}")
 
-    # Load data
-    print("Loading data...")
-    # Create DataReader with correct dimensions based on environment size
-    data_reader = DataReader(
-        time_step=time_step,
-        w=config.width,
-        h=config.height,
-        d=data_config.get("maze_depth", 9),
-        experiment_no=config.experiment_no,
+    # Check if processed data exists, if not generate it
+    processed_data_path = os.path.join(
+        data_dir, f"processed_data_exp{config.experiment_no}.pkl"
     )
-    games = data_reader.ReadAllGames(data_dir)
+    
+    if not os.path.exists(processed_data_path):
+        print("Processed data not found. Generating...")
+        # Load and process data
+        print("Loading raw data...")
+        # Create DataReader with correct dimensions based on environment size
+        data_reader = DataReader(
+            time_step=time_step,
+            w=config.width,
+            h=config.height,
+            d=data_config.get("maze_depth", 9),
+            experiment_no=config.experiment_no,
+        )
+        games = data_reader.ReadAllGames(data_dir)
 
-    if len(games) == 0:
-        raise ValueError(f"No games found in {data_dir}")
+        if len(games) == 0:
+            raise ValueError(f"No games found in {data_dir}")
 
-    # Prepare data using trajectory slicing
-    data = prepare_data_for_training(
-        games,
-        min_timestep=6,  # Start slicing from timestep 6
-        max_trajectory_length=time_step,
-    )
+        # Prepare data using trajectory slicing
+        data = prepare_data_for_training(
+            games,
+            min_timestep=6,  # Start slicing from timestep 6
+            max_trajectory_length=time_step,
+        )
+        
+        # Save processed data for future use
+        print(f"Saving processed data to: {processed_data_path}")
+        data_reader.save_processed_data(data, processed_data_path)
+    else:
+        print("Loading existing processed data...")
+        data_reader = DataReader(
+            time_step=time_step,
+            w=config.width,
+            h=config.height,
+            d=data_config.get("maze_depth", 9),
+            experiment_no=config.experiment_no,
+        )
+        data = data_reader.load_processed_data(processed_data_path)
+
+    # Log data shapes for verification
+    print(f"Data shapes:")
+    print(f"Trajectories: {data['trajectories'].shape}")
+    print(f"Actions: {data['actions'].shape}")
+    print(f"Goals: {data['goals'].shape}")
+    print(f"Goal ranks: {data['goal_ranks'].shape}")
+    print(f"Goal rewards: {data['goal_rewards'].shape}")
+    print(f"Consumption labels: {data['consumption_labels'].shape}")
+    print(f"SR labels: {data['sr_labels'].shape}")
 
     # Create datasets with all data including SR and consumption labels
     dataset = TensorDataset(

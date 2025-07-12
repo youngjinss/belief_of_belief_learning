@@ -477,29 +477,60 @@ def evaluate_keydoor_model(
     model = load_model(model_path, device, model_kwargs)
     print(f"Model loaded successfully")
 
-    # Load test data ONCE
-    print("Loading test data...")
-    # Create DataReader with correct dimensions based on environment size
-    data_reader = DataReader(
-        time_step=data_config.get("time_step", 500),
-        w=config.width,
-        h=config.height,
-        d=data_config.get("maze_depth", 9),
-        experiment_no=config.experiment_no,
+    # Check if processed test data exists, if not generate it
+    processed_test_data_path = os.path.join(
+        test_data_dir, f"processed_test_data_exp{config.experiment_no}.pkl"
     )
-    test_games = data_reader.ReadAllGames(test_data_dir)
+    
+    if not os.path.exists(processed_test_data_path):
+        print("Processed test data not found. Generating...")
+        # Load and process test data
+        print("Loading raw test data...")
+        # Create DataReader with correct dimensions based on environment size
+        data_reader = DataReader(
+            time_step=data_config.get("time_step", 500),
+            w=config.width,
+            h=config.height,
+            d=data_config.get("maze_depth", 9),
+            experiment_no=config.experiment_no,
+        )
+        test_games = data_reader.ReadAllGames(test_data_dir)
 
-    if len(test_games) == 0:
-        raise ValueError(f"No test games found in {test_data_dir}")
+        if len(test_games) == 0:
+            raise ValueError(f"No test games found in {test_data_dir}")
 
-    # Prepare test data using trajectory slicing (exactly like training)
-    test_data = prepare_data_for_training(
-        test_games,
-        min_timestep=6,  # Same as training
-        max_trajectory_length=data_config[
-            "time_step"
-        ],  # Use time_step (20) not max_moves (50)
-    )
+        # Prepare test data using trajectory slicing (exactly like training)
+        test_data = prepare_data_for_training(
+            test_games,
+            min_timestep=6,  # Same as training
+            max_trajectory_length=data_config[
+                "time_step"
+            ],  # Use time_step (20) not max_moves (50)
+        )
+        
+        # Save processed test data for future use
+        print(f"Saving processed test data to: {processed_test_data_path}")
+        data_reader.save_processed_data(test_data, processed_test_data_path)
+    else:
+        print("Loading existing processed test data...")
+        data_reader = DataReader(
+            time_step=data_config.get("time_step", 500),
+            w=config.width,
+            h=config.height,
+            d=data_config.get("maze_depth", 9),
+            experiment_no=config.experiment_no,
+        )
+        test_data = data_reader.load_processed_data(processed_test_data_path)
+
+    # Log test data shapes for verification
+    print(f"Test data shapes:")
+    print(f"Trajectories: {test_data['trajectories'].shape}")
+    print(f"Actions: {test_data['actions'].shape}")
+    print(f"Goals: {test_data['goals'].shape}")
+    print(f"Goal ranks: {test_data['goal_ranks'].shape}")
+    print(f"Goal rewards: {test_data['goal_rewards'].shape}")
+    print(f"Consumption labels: {test_data['consumption_labels'].shape}")
+    print(f"SR labels: {test_data['sr_labels'].shape}")
 
     # Create test dataset and loader with all required data including goal_ranks
     test_dataset = TensorDataset(
@@ -684,21 +715,45 @@ def analyze_action_likelihood(
         env_name = config.get_env_name().replace("MiniGrid-", "").replace("-v0", "")
         agent_type = config.agent_type
         test_data_dir_default = f"./data/{env_name}/{agent_type}/test"
-        data_reader = DataReader(
-            time_step=data_config.get("time_step", 500),
-            w=config.width,
-            h=config.height,
-            d=data_config.get("maze_depth", 9),
-            experiment_no=config.experiment_no,
+        
+        # Check if processed test data exists, if not generate it
+        processed_test_data_path = os.path.join(
+            test_data_dir_default, f"processed_test_data_exp{config.experiment_no}.pkl"
         )
-        test_games = data_reader.ReadAllGames(test_data_dir_default)
-        test_data = prepare_data_for_training(
-            test_games,
-            min_timestep=6,  # Same as training
-            max_trajectory_length=data_config[
-                "time_step"
-            ],  # Use time_step (20) not max_moves (50)
-        )
+        
+        if not os.path.exists(processed_test_data_path):
+            print("Processed test data not found. Generating...")
+            # Load and process test data
+            print("Loading raw test data...")
+            data_reader = DataReader(
+                time_step=data_config.get("time_step", 500),
+                w=config.width,
+                h=config.height,
+                d=data_config.get("maze_depth", 9),
+                experiment_no=config.experiment_no,
+            )
+            test_games = data_reader.ReadAllGames(test_data_dir_default)
+            test_data = prepare_data_for_training(
+                test_games,
+                min_timestep=6,  # Same as training
+                max_trajectory_length=data_config[
+                    "time_step"
+                ],  # Use time_step (20) not max_moves (50)
+            )
+            
+            # Save processed test data for future use
+            print(f"Saving processed test data to: {processed_test_data_path}")
+            data_reader.save_processed_data(test_data, processed_test_data_path)
+        else:
+            print("Loading existing processed test data...")
+            data_reader = DataReader(
+                time_step=data_config.get("time_step", 500),
+                w=config.width,
+                h=config.height,
+                d=data_config.get("maze_depth", 9),
+                experiment_no=config.experiment_no,
+            )
+            test_data = data_reader.load_processed_data(processed_test_data_path)
         test_dataset = TensorDataset(
             test_data["trajectories"],
             test_data["actions"],

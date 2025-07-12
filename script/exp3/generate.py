@@ -697,6 +697,16 @@ def generate_trajectories(
     # Override config save_dir with the new path
     config.save_dir = save_dir
 
+    # Check if data already exists in the save directory
+    if os.path.exists(config.save_dir):
+        existing_files = [f for f in os.listdir(config.save_dir) if f.startswith('test') and f.endswith('.txt')]
+        if existing_files:
+            print(f"Data already exists in {config.save_dir}")
+            print(f"Found {len(existing_files)} existing trajectory files")
+            print("Exiting to avoid overwriting existing data")
+            print("If you want to regenerate data, please delete the existing directory first")
+            return
+
     # Create output directory
     os.makedirs(config.save_dir, exist_ok=True)
 

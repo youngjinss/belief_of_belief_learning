@@ -19,3 +19,4 @@ from .crossing import *
 from .dynamicobstacles import *
 from .distshift import *
 from .keydoor import *
+from .achiever_blocker import *

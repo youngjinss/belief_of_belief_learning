@@ -507,7 +507,10 @@ def run_single_game(game_id, config_dict, save_dir):
     else:
         raise ValueError(f"Unknown environment size: {env_size}")
 
-    # Reset environment with seed
+    # Seed environment before reset (following exp3 pattern)
+    env.seed(config_dict["base_random_seed"] + game_id)
+    
+    # Reset environment 
     obs, info = env.reset()
 
     # Create achiever agent

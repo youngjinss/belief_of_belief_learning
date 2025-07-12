@@ -661,7 +661,7 @@ def run_single_game(game_id, config_dict, save_dir):
     return game_id
 
 
-def generate_trajectories(config=None, random_seed=42, n_processes=None):
+def generate_trajectories(config=None, random_seed=42, n_processes=None, test_data=False):
     """
     Generate trajectories for KeyDoor environment in ToMnet format
 
@@ -669,6 +669,7 @@ def generate_trajectories(config=None, random_seed=42, n_processes=None):
         config: Config object containing all parameters. If None, uses default values.
         random_seed: Random seed for environment generation
         n_processes: Number of parallel processes
+        test_data: If True, saves data to test subdirectory
     """
     if config is None:
         config = Config()
@@ -680,9 +681,8 @@ def generate_trajectories(config=None, random_seed=42, n_processes=None):
     print(f"Environment size: {config.env_size}")
 
     # Create save directory based on environment name and agent type
-    env_name = config.get_env_name()  # This gets the formatted environment name
-    agent_type = config.agent_type
-    save_dir = os.path.join("data", env_name, agent_type)
+    # Use the config method to get the correct data path
+    save_dir = config.get_data_path(is_test=test_data)
     
     # Override config save_dir with the new path
     config.save_dir = save_dir
@@ -788,6 +788,11 @@ if __name__ == "__main__":
         default=None,
         help="Number of parallel processes (default: CPU count - 1)",
     )
+    parser.add_argument(
+        "--test_data",
+        action="store_true",
+        help="Generate test data (saves to test subdirectory)",
+    )
 
     args = parser.parse_args()
 
@@ -798,5 +803,5 @@ if __name__ == "__main__":
         config.update_from_args(args)
 
     generate_trajectories(
-        config, random_seed=args.random_seed, n_processes=args.n_processes
+        config, random_seed=args.random_seed, n_processes=args.n_processes, test_data=args.test_data
     )

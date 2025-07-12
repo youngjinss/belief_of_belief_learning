@@ -120,8 +120,8 @@ run_test_data_generation() {
     log_step "Logging test data generation output to: $RUN_LOG_DIR/test_data_generation.log"
     
     cd script/exp3
-    # Generate test data with different random seed (no --test_mode argument needed)
-    python generate.py --config_override --n_games "$VALIDATION_GAMES" --random_seed "$TEST_RANDOM_SEED" > "$RUN_LOG_DIR/test_data_generation.log" 2>&1
+    # Generate test data with different random seed using --test_data flag
+    python generate.py --config_override --n_games "$VALIDATION_GAMES" --random_seed "$TEST_RANDOM_SEED" --test_data > "$RUN_LOG_DIR/test_data_generation.log" 2>&1
     cd "$BASE_DIR"
 
     # Try to determine the actual test data path from logs and verify files

@@ -27,7 +27,7 @@ class Config:
 
         # Data generation settings
         self.n_games = 100000  # Number of games to generate for ToMnet data
-        self.save_dir = "script/exp3/data"  # Directory to save generated data
+        self.save_dir = "data"  # Base directory to save generated data
 
         # Experiment settings
         self.experiment_name = "exp3"
@@ -38,7 +38,7 @@ class Config:
 
         # Directory settings for evaluation and visualization
         self.model_dir = "results/exp3"
-        self.test_data_dir = "data/exp3/test"
+        self.test_data_dir = None  # Will be set dynamically using get_data_path(is_test=True)
         self.result_dir = "results/exp3"
         self.plot_dir = "results/exp3/plots"
         self.log_dir = "log/exp3"
@@ -186,6 +186,29 @@ class Config:
     def get_env_name(self):
         """Get full environment name"""
         return self.env_name.format(size=self.env_size)
+    
+    def get_data_path(self, is_test=False):
+        """
+        Get data path based on environment name and agent type
+        
+        Args:
+            is_test (bool): If True, returns path for test data with /test suffix
+            
+        Returns:
+            str: Data path in format ./data/{env_name}/{agent_type}/ or ./data/{env_name}/{agent_type}/test/
+        """
+        import os
+        env_name = self.get_env_name()
+        base_path = os.path.join(self.save_dir, env_name, self.agent_type)
+        
+        if is_test:
+            return os.path.join(base_path, "test")
+        else:
+            return base_path
+    
+    def get_test_data_dir(self):
+        """Get test data directory path"""
+        return self.get_data_path(is_test=True)
 
     def get_env_config(self):
         """Get environment configuration"""

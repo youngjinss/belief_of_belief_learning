@@ -274,11 +274,11 @@ class GameSimulation:
         for i, row in enumerate(self.maze):
             for j, cell in enumerate(row):
                 if cell == "O":
-                    self.initial_positions["achiever"] = (i, j)
+                    self.initial_positions["achiever"] = (j, i)  # (x, y) = (column, row)
                 elif cell == "X":
-                    self.initial_positions["blocker"] = (i, j)
+                    self.initial_positions["blocker"] = (j, i)  # (x, y) = (column, row)
                 elif cell in "ABCDabcd":
-                    self.initial_positions[cell] = (i, j)
+                    self.initial_positions[cell] = (j, i)  # (x, y) = (column, row)
 
     def create_minigrid_env(self):
         """Create MiniGrid environment from maze data"""

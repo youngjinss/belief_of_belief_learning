@@ -343,8 +343,8 @@ class AchieverBlockerEnv(MiniGridEnv):
             return achiever_new_pos, blocker_new_pos
 
     def _auto_pickup_key(self, agent_pos):
-        """Auto pickup key for achiever when stepping on it or adjacent to it"""
-        # Check exact position first
+        """Auto pickup key for achiever when stepping on it (same coordinate only)"""
+        # Check exact position only
         obj = self.grid.get(*agent_pos)
         if isinstance(obj, Key):
             if len(self.achiever_keys) < self.max_keys:
@@ -355,26 +355,6 @@ class AchieverBlockerEnv(MiniGridEnv):
                     return 0.5
                 else:
                     return -self.cost[key_color]
-
-        # Check adjacent positions for compatibility with data generation
-        adjacent_positions = [
-            (agent_pos[0] + 1, agent_pos[1]),  # right
-            (agent_pos[0] - 1, agent_pos[1]),  # left
-            (agent_pos[0], agent_pos[1] + 1),  # down
-            (agent_pos[0], agent_pos[1] - 1),  # up
-        ]
-        
-        for adj_pos in adjacent_positions:
-            if (0 <= adj_pos[0] < self.grid.width and 0 <= adj_pos[1] < self.grid.height):
-                adj_obj = self.grid.get(*adj_pos)
-                if isinstance(adj_obj, Key) and len(self.achiever_keys) < self.max_keys:
-                    key_color = adj_obj.color
-                    self.achiever_keys.append(key_color)
-                    self.grid.set(*adj_pos, None)
-                    if key_color == self.target_door_color:
-                        return 0.5
-                    else:
-                        return -self.cost[key_color]
 
         return 0
 

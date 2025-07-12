@@ -448,7 +448,7 @@ def evaluate_keydoor_model(
 
     if test_data_dir is None:
         # Generate path from config
-        env_name = config.get_env_name().replace("MiniGrid-", "").replace("-v0", "")
+        env_name = config.get_env_name()
         agent_type = config.agent_type
         test_data_dir = f"./data/{env_name}/{agent_type}/test"
 

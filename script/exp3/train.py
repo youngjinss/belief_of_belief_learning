@@ -867,7 +867,7 @@ def train_tomnet(
 
     # Set data_dir based on config if not provided
     if data_dir is None:
-        env_name = config.get_env_name().replace("MiniGrid-", "").replace("-v0", "")
+        env_name = config.get_env_name()
         agent_type = config.agent_type
         data_dir = f"./data/{env_name}/{agent_type}/"
 

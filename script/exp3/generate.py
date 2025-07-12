@@ -769,14 +769,14 @@ if __name__ == "__main__":
         "--agent_type",
         type=str,
         choices=["astar", "value", "random"],
-        default="astar",
+        default=None,
         help="Type of agent to use",
     )
     parser.add_argument(
         "--env_size",
         type=str,
         choices=["5x5", "9x9", "11x11"],
-        default="9x9",
+        default=None,
         help="KeyDoor environment size",
     )
     # Removed --save_dir option as it's now automatically generated from env_name and agent_type

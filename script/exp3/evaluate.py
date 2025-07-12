@@ -841,10 +841,10 @@ if __name__ == "__main__":
         "--n_samples", type=int, default=1000, help="Number of samples for analysis"
     )
     parser.add_argument(
-        "--n_past_min", type=int, default=0, help="Minimum N_past value"
+        "--n_past_min", type=int, help="Minimum N_past value"
     )
     parser.add_argument(
-        "--n_past_max", type=int, default=4, help="Maximum N_past value"
+        "--n_past_max", type=int, help="Maximum N_past value"
     )
     parser.add_argument(
         "--save_predictions", action="store_true", help="Save predictions to file"
@@ -853,7 +853,7 @@ if __name__ == "__main__":
         "--plot_type",
         type=str,
         choices=["basic", "embeddings", "n_past", "all"],
-        default="basic",
+        default="all",
         help="Type of visualization to create",
     )
 

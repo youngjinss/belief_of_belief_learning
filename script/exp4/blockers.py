@@ -17,35 +17,47 @@ class RandomAgent:
     """
     Random Blocker Agent for AchieverBlocker environment.
     
-    This agent only uses movement actions (0-4: up, right, down, left, stay)
-    and doesn't use pickup or toggle actions, as the blocker's role is to
-    position itself strategically to block the achiever's access to doors.
+    This agent uses movement actions (0-4: up, right, down, left, stay)
+    and the "broken" action (5) to end the game when positioned at a door.
     """
     
-    def __init__(self, movement_prob=0.9):
+    def __init__(self, movement_prob=0.9, broken_prob=0.1):
         """
         Initialize random blocker agent.
         
         Args:
             movement_prob: Probability of choosing movement action vs staying
+            broken_prob: Probability of choosing "broken" action when at a door
         """
         self.env = None
         self.movement_prob = movement_prob
+        self.broken_prob = broken_prob
         
-        # Only use movement actions: up(0), right(1), down(2), left(3), stay(4)
+        # Movement actions: up(0), right(1), down(2), left(3), stay(4)
         self.movement_actions = [0, 1, 2, 3, 4]
         
     def get_action(self, obs):
         """
-        Get random action for blocker agent.
-        Only returns movement actions (0-4): up, right, down, left, stay
+        Get action for blocker agent.
+        Returns movement actions (0-4): up, right, down, left, stay
+        or "broken" action (5) when positioned at a door.
         
         Args:
             obs: Environment observation
             
         Returns:
-            action: Random movement action (0-4)
+            action: Movement action (0-4) or broken action (5)
         """
+        # Check if blocker is at a door position and should consider "broken" action
+        if self.env is not None:
+            blocker_pos = getattr(self.env, 'blocker_pos', None)
+            if blocker_pos is not None:
+                cell = self.env.grid.get(*blocker_pos)
+                if isinstance(cell, Door):
+                    # At a door position - consider "broken" action
+                    if np.random.random() < self.broken_prob:
+                        return 5  # "broken" action
+        
         # Randomly choose between movement and staying
         rand = np.random.random()
         
@@ -56,6 +68,10 @@ class RandomAgent:
             # Stay in place
             return 4
     
+    def set_env(self, env):
+        """Set environment reference for action decisions"""
+        self.env = env
+        
     def reset(self):
         """Reset agent state for new episode"""
         pass

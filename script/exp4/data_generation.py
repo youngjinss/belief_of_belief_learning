@@ -30,8 +30,11 @@ class DataReader:
         self.MAZE_HEIGHT = h
         self.MAZE_DEPTH_TRAJECTORY = d
 
-        # KeyDoor action space: [up, right, down, left, stay, pickup, toggle]
-        self.ACTION_SPACE = 7
+        # AchieverBlocker action spaces:
+        # Achiever: [up, right, down, left, stay, pickup, toggle] = 7 actions
+        # Blocker: [up, right, down, left, stay, broken] = 6 actions
+        self.ACHIEVER_ACTION_SPACE = 7
+        self.BLOCKER_ACTION_SPACE = 6
 
         # Key and door mapping
         self.KEY_MAPPING = {"A": 0, "B": 1, "C": 2, "D": 3}  # red, green, blue, yellow

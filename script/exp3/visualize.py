@@ -126,22 +126,29 @@ def plot_accuracy_by_n_past(
     print(f"\nBest N_past: {best_n_past} (Accuracy: {max(accuracies):.4f})")
 
 
-def plot_accuracy_heatmap_by_n_past(results_by_n_past, output_dir=None):
+def plot_accuracy_heatmap_by_n_past(results_by_n_past, output_dir=None, config=None):
     """
     Create a heatmap showing per-action accuracy by N_past values
 
     Args:
         results_by_n_past: Dictionary with N_past values as keys and metrics as values
         output_dir: Directory to save plots
+        config: Config object containing action configuration
     """
     plt.style.use("seaborn-v0_8")
 
     # Extract data and calculate per-action accuracy
     n_past_values = sorted(results_by_n_past.keys())
-    # Get action information from config
-    action_config = config.get_action_config()
-    num_actions = action_config.get('num_actions', 7)
-    action_names = action_config.get('action_names', ["Up", "Right", "Down", "Left", "Stay", "Pickup", "Toggle"][:num_actions])
+    
+    # Get action information from config or use defaults
+    if config is not None:
+        action_config = config.get_action_config()
+        num_actions = action_config.get('num_actions', 7)
+        action_names = action_config.get('action_names', ["Up", "Right", "Down", "Left", "Stay", "Pickup", "Toggle"][:num_actions])
+    else:
+        # Use default values if config is not provided
+        num_actions = 7
+        action_names = ["Up", "Right", "Down", "Left", "Stay", "Pickup", "Toggle"][:num_actions]
 
     accuracy_matrix = []
 

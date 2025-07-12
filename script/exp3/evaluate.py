@@ -640,7 +640,7 @@ def evaluate_n_past_experiment(
     )
 
     plot_accuracy_by_n_past(results_by_n_past, output_dir)
-    plot_accuracy_heatmap_by_n_past(results_by_n_past, output_dir)
+    plot_accuracy_heatmap_by_n_past(results_by_n_past, output_dir, config)
 
     # Create character embeddings visualization
     print("Creating character embeddings visualization...")

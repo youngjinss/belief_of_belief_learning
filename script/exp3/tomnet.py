@@ -229,72 +229,80 @@ class CharNet(nn.Module):
 
 class ConvLSTM2d(nn.Module):
     """Convolutional LSTM implementation"""
-    
+
     def __init__(self, input_channels, hidden_channels, kernel_size=3, padding=1):
         super(ConvLSTM2d, self).__init__()
-        
+
         self.input_channels = input_channels
         self.hidden_channels = hidden_channels
         self.kernel_size = kernel_size
         self.padding = padding
-        
+
         # Gates: input, forget, output, candidate
         self.conv_gates = nn.Conv2d(
             input_channels + hidden_channels,
             4 * hidden_channels,
             kernel_size=kernel_size,
-            padding=padding
+            padding=padding,
         )
-        
+
     def forward(self, x, hidden_state=None):
         """
         Vectorized ConvLSTM forward pass
-        
+
         Args:
             x: Input tensor (batch_size, seq_len, channels, height, width)
             hidden_state: Tuple of (h, c) or None
-            
+
         Returns:
             output: (batch_size, seq_len, hidden_channels, height, width)
             (h, c): Final hidden and cell states
         """
         batch_size, seq_len, _, height, width = x.size()
-        
+
         if hidden_state is None:
-            h = torch.zeros(batch_size, self.hidden_channels, height, width, device=x.device)
-            c = torch.zeros(batch_size, self.hidden_channels, height, width, device=x.device)
+            h = torch.zeros(
+                batch_size, self.hidden_channels, height, width, device=x.device
+            )
+            c = torch.zeros(
+                batch_size, self.hidden_channels, height, width, device=x.device
+            )
         else:
             h, c = hidden_state
-            
+
         # Initialize output storage
-        outputs = torch.zeros(batch_size, seq_len, self.hidden_channels, height, width, device=x.device)
-        
+        outputs = torch.zeros(
+            batch_size, seq_len, self.hidden_channels, height, width, device=x.device
+        )
+
         # Process each timestep (minimal sequential processing for LSTM dependencies)
         for t in range(seq_len):
             x_t = x[:, t]  # (batch_size, input_channels, height, width)
-            
+
             # Combine input and previous hidden state
             combined = torch.cat([x_t, h], dim=1)
-            
+
             # Compute all gates in one pass
             gates = self.conv_gates(combined)
-            
+
             # Split gates efficiently
-            i_gate, f_gate, o_gate, g_gate = torch.split(gates, self.hidden_channels, dim=1)
-            
+            i_gate, f_gate, o_gate, g_gate = torch.split(
+                gates, self.hidden_channels, dim=1
+            )
+
             # Apply activations (vectorized)
             i_gate = torch.sigmoid(i_gate)
             f_gate = torch.sigmoid(f_gate)
             o_gate = torch.sigmoid(o_gate)
             g_gate = torch.tanh(g_gate)
-            
+
             # Update cell and hidden states (vectorized)
             c = f_gate * c + i_gate * g_gate
             h = o_gate * torch.tanh(c)
-            
+
             # Store output
             outputs[:, t] = h
-            
+
         return outputs, (h, c)
 
 
@@ -316,27 +324,24 @@ class MentalNet(nn.Module):
         self.batch = batch
         self.time_step = time_step
         self.n_echar = n_echar
-        
+
         # Paper spec: state channels (8) + action channel (1) = 9 total input channels
         self.state_channels = 8  # State without heading direction
-        self.action_space = 7    # Number of possible actions
+        self.action_space = 7  # Number of possible actions
         self.input_channels = self.state_channels + 1  # State + spatialized action
-        
+
         # Use configurable n_ement channels throughout
         self.resnet_channels = n_ement
-        
+
         # Output is spatial mental state embedding (n_ement channels)
         self.output_channels = n_ement
-        
+
         # Initial conv layer to get to n_ement channels
         self.input_conv = nn.Conv2d(
-            self.input_channels, 
-            self.resnet_channels, 
-            kernel_size=3, 
-            padding=1
+            self.input_channels, self.resnet_channels, kernel_size=3, padding=1
         )
         self.input_bn = nn.BatchNorm2d(self.resnet_channels)
-        
+
         # Paper spec: 5-layer ResNet with n_ement channels, ReLU, BatchNorm
         self.resnet_layers = nn.ModuleList()
         for _ in range(5):  # Exactly 5 layers as specified
@@ -345,124 +350,141 @@ class MentalNet(nn.Module):
                     in_channels=self.resnet_channels,
                     out_channels=self.resnet_channels,
                     kernel_size=3,
-                    padding=1
+                    padding=1,
                 )
             )
-        
+
         # Paper spec: Convolutional LSTM with n_ement channels
         self.conv_lstm = ConvLSTM2d(
             input_channels=self.resnet_channels,
             hidden_channels=self.resnet_channels,
             kernel_size=3,
-            padding=1
+            padding=1,
         )
-        
+
         # Paper spec: 1-layer convnet with n_ement channels for final output
         self.output_conv = nn.Conv2d(
-            self.resnet_channels,
-            self.output_channels,
-            kernel_size=3,
-            padding=1
+            self.resnet_channels, self.output_channels, kernel_size=3, padding=1
         )
 
     def spatialize_action(self, action_indices, height, width):
         """
         Convert action indices to spatial representation
-        
+
         Args:
             action_indices: (batch_size,) - action indices for each sample
             height, width: spatial dimensions
-            
+
         Returns:
             Spatialized actions: (batch_size, 1, height, width)
         """
         batch_size = action_indices.size(0)
         device = action_indices.device
-        
+
         # Create spatial action maps
         # Each action gets a unique value across the entire spatial map
         action_maps = torch.zeros(batch_size, 1, height, width, device=device)
-        
+
         for i in range(batch_size):
             action_idx = action_indices[i].item()
             # Normalize action index to [0, 1] range
-            action_value = action_idx / (self.action_space - 1) if self.action_space > 1 else 0
+            action_value = (
+                action_idx / (self.action_space - 1) if self.action_space > 1 else 0
+            )
             action_maps[i, 0] = action_value
-            
+
         return action_maps
 
     def forward(self, recent_trajectory, recent_actions):
         """
         Forward pass following paper specification
-        
+
         Args:
             recent_trajectory: (batch_size, seq_len, channels, height, width) - full trajectory
             recent_actions: (batch_size, seq_len) - actions taken at each timestep
-            
+
         Returns:
             Mental state embedding: (batch_size, output_channels, height, width) - SPATIAL output
         """
         batch_size, seq_len, channels, height, width = recent_trajectory.shape
-        
+
         # Extract state channels (first 8 channels, excluding heading direction)
-        states = recent_trajectory[:, :, :self.state_channels]  # (batch_size, seq_len, 8, height, width)
-        
+        states = recent_trajectory[
+            :, :, : self.state_channels
+        ]  # (batch_size, seq_len, 8, height, width)
+
         # Check if trajectory is empty (query state is initial state)
         trajectory_sum = torch.sum(states, dim=(2, 3, 4))  # (batch_size, seq_len)
         is_empty = torch.all(trajectory_sum == 0, dim=1)  # (batch_size,)
-        
+
         if torch.all(is_empty):
             # Return zero vector for empty trajectories
-            return torch.zeros(batch_size, self.output_channels, height, width, device=recent_trajectory.device)
-        
+            return torch.zeros(
+                batch_size,
+                self.output_channels,
+                height,
+                width,
+                device=recent_trajectory.device,
+            )
+
         # Pre-process each timestep: spatialize action + concatenate with state
         processed_timesteps = []
-        
+
         for t in range(seq_len):
             state_t = states[:, t]  # (batch_size, 8, height, width)
             action_t = recent_actions[:, t]  # (batch_size,)
-            
+
             # Spatialize action
-            action_spatial_t = self.spatialize_action(action_t, height, width)  # (batch_size, 1, height, width)
-            
+            action_spatial_t = self.spatialize_action(
+                action_t, height, width
+            )  # (batch_size, 1, height, width)
+
             # Concatenate state and spatialized action
-            combined_t = torch.cat([state_t, action_spatial_t], dim=1)  # (batch_size, 9, height, width)
-            
+            combined_t = torch.cat(
+                [state_t, action_spatial_t], dim=1
+            )  # (batch_size, 9, height, width)
+
             processed_timesteps.append(combined_t)
-        
+
         # Stack timesteps
-        processed_trajectory = torch.stack(processed_timesteps, dim=1)  # (batch_size, seq_len, 9, height, width)
-        
+        processed_trajectory = torch.stack(
+            processed_timesteps, dim=1
+        )  # (batch_size, seq_len, 9, height, width)
+
         # Pass through initial conv to get to 32 channels
         # Reshape for processing
-        trajectory_flat = processed_trajectory.view(batch_size * seq_len, self.input_channels, height, width)
-        
+        trajectory_flat = processed_trajectory.view(
+            batch_size * seq_len, self.input_channels, height, width
+        )
+
         # Initial conv + batch norm + ReLU
         x = self.input_conv(trajectory_flat)
         x = self.input_bn(x)
         x = F.relu(x)
-        
+
         # Pass through 5-layer ResNet with 32 channels, ReLU, BatchNorm
         for resnet_layer in self.resnet_layers:
             x = resnet_layer(x)
-        
+
         # Reshape back to sequence format for ConvLSTM
         x = x.view(batch_size, seq_len, self.resnet_channels, height, width)
-        
+
         # Feed into convolutional LSTM with 32 channels
         lstm_output, (final_h, final_c) = self.conv_lstm(x)
-        
+
         # Use final hidden state from LSTM
         final_features = final_h  # (batch_size, 32, height, width)
-        
+
         # LSTM output through 1-layer convnet with 32 channels
-        mental_state = self.output_conv(final_features)  # (batch_size, 32, height, width)
-        
+        mental_state = self.output_conv(
+            final_features
+        )  # (batch_size, 32, height, width)
+
         # Handle empty trajectories - set their output to zero
         for i in range(batch_size):
             if is_empty[i]:
                 mental_state[i] = 0
-        
+
         return mental_state
 
 
@@ -583,7 +605,7 @@ class PredNet(nn.Module):
                 .unsqueeze(3)
                 .expand(batch_size, self.n_ement, height, width)
             )
-        
+
         # Spatially broadcast character_embedding
         character_embedding_spatial = (
             character_embedding.unsqueeze(2)
@@ -759,8 +781,13 @@ class ToMnet(nn.Module):
 
             # Extract actions from recent trajectory for MentalNet
             # For simplicity, assume actions are embedded in trajectory or use dummy actions
-            recent_actions = torch.zeros(batch_size, recent_trajectory.size(1), dtype=torch.long, device=recent_trajectory.device)
-            
+            recent_actions = torch.zeros(
+                batch_size,
+                recent_trajectory.size(1),
+                dtype=torch.long,
+                device=recent_trajectory.device,
+            )
+
             # Process recent trajectory through MentalNet
             mental_state = self.mental_net(recent_trajectory, recent_actions)
 

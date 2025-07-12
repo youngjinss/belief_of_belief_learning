@@ -90,10 +90,8 @@ run_data_generation() {
     log_step "Using config-based data path generation"
     log_step "Logging data generation output to: $RUN_LOG_DIR/train_data_generation.log"
     
-    cd script/exp3
-    # Let generate.py use config-based path generation
-    python generate.py --config_override > "$RUN_LOG_DIR/train_data_generation.log" 2>&1
-    cd "$BASE_DIR"
+    # Run generate.py from base directory to maintain correct relative paths
+    python script/exp3/generate.py --config_override --agent_type "$AGENT_TYPE" > "$RUN_LOG_DIR/train_data_generation.log" 2>&1
     
     log_step "Data generation completed"
     
@@ -119,10 +117,8 @@ run_test_data_generation() {
     log_step "Using config-based test data path generation"
     log_step "Logging test data generation output to: $RUN_LOG_DIR/test_data_generation.log"
     
-    cd script/exp3
-    # Generate test data with different random seed using --test_data flag
-    python generate.py --config_override --n_games "$VALIDATION_GAMES" --random_seed "$TEST_RANDOM_SEED" --test_data > "$RUN_LOG_DIR/test_data_generation.log" 2>&1
-    cd "$BASE_DIR"
+    # Run generate.py from base directory to maintain correct relative paths
+    python script/exp3/generate.py --config_override --agent_type "$AGENT_TYPE" --n_games "$VALIDATION_GAMES" --random_seed "$TEST_RANDOM_SEED" --test_data > "$RUN_LOG_DIR/test_data_generation.log" 2>&1
 
     # Try to determine the actual test data path from logs and verify files
     local actual_test_dir=$(grep -o "Saving.*to.*data/[^/]*/[^/]*/test" "$RUN_LOG_DIR/test_data_generation.log" | head -1 | cut -d' ' -f3 || echo "$TEST_DATA_DIR")
@@ -148,10 +144,8 @@ run_training() {
     log_step "Starting ToMnet training for experiment $EXPERIMENT_NO"
     log_step "Logging training output to: $RUN_LOG_DIR/training.log"
     
-    cd script/exp3
-    # Use config-based data path (train.py will auto-generate from config if --data_dir not provided)
-    python train.py --config_override --save_dir "$RESULTS_DIR" > "$RUN_LOG_DIR/training.log" 2>&1
-    cd "$BASE_DIR"
+    # Run train.py from base directory to maintain correct relative paths
+    python script/exp3/train.py --config_override --save_dir "$RESULTS_DIR" > "$RUN_LOG_DIR/training.log" 2>&1
     
     log_step "Training completed"
     
@@ -179,10 +173,8 @@ run_evaluation() {
     log_step "Starting evaluation for experiment $EXPERIMENT_NO"
     log_step "Logging evaluation output to: $RUN_LOG_DIR/evaluation.log"
     
-    cd script/exp3
-    # Use config-based test data path (evaluate.py will auto-generate from config if --test_data_dir not provided)
-    python evaluate.py --config_override --result_dir "$RESULTS_DIR" --model_path "$RESULTS_DIR/best_model.pth" --save_predictions --plot_type "all" > "$RUN_LOG_DIR/evaluation.log" 2>&1
-    cd "$BASE_DIR"
+    # Run evaluate.py from base directory to maintain correct relative paths
+    python script/exp3/evaluate.py --config_override --result_dir "$RESULTS_DIR" --model_path "$RESULTS_DIR/best_model.pth" --save_predictions --plot_type "all" > "$RUN_LOG_DIR/evaluation.log" 2>&1
 
     # python script/exp3/evaluate.py --config_override --test_data_dir "./data/exp3/test" --result_dir "./results/exp3/20250711_192952" --model_path "./results/exp3/20250711_192952/best_model.pth" --save_predictions --plot_type "all"
 
@@ -213,9 +205,8 @@ run_visualization() {
     log_step "Starting visualization for experiment $EXPERIMENT_NO"
     log_step "Logging visualization output to: $RUN_LOG_DIR/visualization.log"
     
-    cd script/exp3
-    python visualize.py --config_override --result_dir "$RESULTS_DIR" --plot_dir "$RESULTS_DIR/plots" --plot_type "all"  > "$RUN_LOG_DIR/visualization.log" 2>&1
-    cd "$BASE_DIR"
+    # Run visualize.py from base directory to maintain correct relative paths
+    python script/exp3/visualize.py --config_override --result_dir "$RESULTS_DIR" --plot_dir "$RESULTS_DIR/plots" --plot_type "all"  > "$RUN_LOG_DIR/visualization.log" 2>&1
 
     # python script/exp3/visualize.py --config_override --result_dir "./results/exp3/20250712_035356"  --plot_dir "./results/exp3/20250712_035356/plots" --plot_type "all"
 

@@ -1,7 +1,7 @@
 class Config:
     def __init__(self):
         # Environment settings
-        self.env_name = "MiniGrid-KeyDoor-{size}-v1"
+        self.env_name = "MiniGrid-AchieverBlocker-{size}-v1"
         self.width = 9
         self.height = 9
         self.env_size = (
@@ -11,7 +11,8 @@ class Config:
         self.seed = 42
 
         # Agent settings
-        self.agent_type = "value"  # Options: "astar", "random", "value"
+        self.achiever_type = "value"  # Options: "astar", "random", "value"
+        self.blocker_type = "random"  # Options: "random" (initially)
         self.observability = "full"  # Options: "full", "partial"
         self.movement_prob = 0.8  # For random agent
 
@@ -26,7 +27,7 @@ class Config:
         self.gif_output = None  # Filename for saving gif (without .gif extension)
 
         # Data generation settings
-        self.n_games = 100000  # Number of games to generate for ToMnet data
+        self.n_games = 5  # Number of games to generate for ToMnet data
         self.save_dir = "data"  # Base directory to save generated data
 
         # Experiment settings
@@ -191,18 +192,19 @@ class Config:
 
     def get_data_path(self, is_test=False):
         """
-        Get data path based on environment name and agent type
+        Get data path based on environment name and agent types
 
         Args:
             is_test (bool): If True, returns path for test data with /test suffix
 
         Returns:
-            str: Data path in format ./data/{env_name}/{agent_type}/ or ./data/{env_name}/{agent_type}/test/
+            str: Data path in format ./data/{env_name}/{achiever_type}_{blocker_type}/ or ./data/{env_name}/{achiever_type}_{blocker_type}/test/
         """
         import os
 
         env_name = self.get_env_name()
-        base_path = os.path.join(self.save_dir, env_name, self.agent_type)
+        agent_combination = f"{self.achiever_type}_{self.blocker_type}"
+        base_path = os.path.join(self.save_dir, env_name, agent_combination)
 
         if is_test:
             return os.path.join(base_path, "test")
@@ -225,13 +227,14 @@ class Config:
     def get_agent_config(self):
         """Get agent configuration"""
         base_config = {
-            "agent_type": self.agent_type,
+            "achiever_type": self.achiever_type,
+            "blocker_type": self.blocker_type,
             "observability": self.observability,
         }
 
         # Add agent-specific configurations
-        if self.agent_type in self.agent_configs:
-            base_config.update(self.agent_configs[self.agent_type])
+        if self.achiever_type in self.agent_configs:
+            base_config.update(self.agent_configs[self.achiever_type])
 
         return base_config
 
@@ -420,8 +423,13 @@ class Config:
     def update_from_args(self, args):
         """Update configuration from command line arguments"""
         # Environment and agent settings
+        if hasattr(args, "achiever_type") and args.achiever_type is not None:
+            self.achiever_type = args.achiever_type
+        if hasattr(args, "blocker_type") and args.blocker_type is not None:
+            self.blocker_type = args.blocker_type
+        # Backward compatibility
         if hasattr(args, "agent_type") and args.agent_type is not None:
-            self.agent_type = args.agent_type
+            self.achiever_type = args.agent_type
         if hasattr(args, "seed") and args.seed is not None:
             self.seed = args.seed
         if hasattr(args, "episodes") and args.episodes is not None:
@@ -557,8 +565,10 @@ class Config:
 
     def validate(self):
         """Validate configuration"""
-        if self.agent_type not in ["astar", "random", "value"]:
-            raise ValueError(f"Invalid agent_type: {self.agent_type}")
+        if self.achiever_type not in ["astar", "random", "value"]:
+            raise ValueError(f"Invalid achiever_type: {self.achiever_type}")
+        if self.blocker_type not in ["random"]:
+            raise ValueError(f"Invalid blocker_type: {self.blocker_type}")
 
         if self.env_size not in ["3x3", "5x5", "9x9", "11x11"]:
             raise ValueError(f"Invalid env_size: {self.env_size}")
@@ -618,9 +628,10 @@ class Config:
 
     def __str__(self):
         """String representation of configuration"""
-        return f"""KeyDoor Experiment Configuration:
+        return f"""AchieverBlocker Experiment Configuration:
   Environment: {self.get_env_name()}
-  Agent Type: {self.agent_type}
+  Achiever Type: {self.achiever_type}
+  Blocker Type: {self.blocker_type}
   Observability: {self.observability}
   Episodes: {self.episodes}
   Max Steps: {self.max_steps}

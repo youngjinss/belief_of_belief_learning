@@ -19,17 +19,18 @@ sys.path.append(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 )
 
-from lib.env.gym_minigrid.envs.keydoor_v1 import (
-    KeyDoor5x5Env,
-    KeyDoor9x9Env,
-    KeyDoor11x11Env,
+from lib.env.gym_minigrid.envs.achiever_blocker import (
+    AchieverBlocker5x5Env,
+    AchieverBlocker9x9Env,
+    AchieverBlocker11x11Env,
 )
-from script.exp4.agents import AStarAgent, RandomAgent, ValueAgent
+from script.exp4.achievers import AStarAgent, RandomAgent as AchieverRandomAgent, ValueAgent
+from script.exp4.blockers import RandomAgent as BlockerRandomAgent
 from script.exp4.config import Config
 
 """
-Data generation for KeyDoor environment in ToMnet format
-Adapted from experiment 5 for KeyDoor environment with 4 keys and 4 doors
+Data generation for AchieverBlocker environment in ToMnet format
+2-agent environment with achiever and blocker agents
 """
 
 
@@ -43,7 +44,7 @@ def calculate_successor_representation(
     Args:
         positions: List of positions visited in the episode
         query_time_t: Current timestep t to calculate SR from
-        grid_size: Size of the grid (9x9 for KeyDoor)
+        grid_size: Size of the grid (9x9 for AchieverBlocker)
         gammas: List of discount factors (defaults to [0.5, 0.9, 0.99])
         num_rollouts: Number of rollouts (for stochastic agents, default 1)
 
@@ -93,7 +94,7 @@ def calculate_sr_labels_for_trajectory(positions, grid_size=9, gammas=None):
 
     Args:
         positions: List of positions visited in the episode
-        grid_size: Size of the grid (9x9 for KeyDoor)
+        grid_size: Size of the grid (9x9 for AchieverBlocker)
         gammas: List of discount factors (defaults to [0.5, 0.9, 0.99])
 
     Returns:
@@ -180,28 +181,31 @@ def calculate_consumption_labels(keys_collected, doors_opened):
     return consumption_vector
 
 
-def env_to_maze_format(env, agent_pos):
+def env_to_maze_format(env, achiever_pos, blocker_pos):
     """
-    Convert KeyDoor environment to maze format without outer walls
+    Convert AchieverBlocker environment to maze format with both agents
 
     Args:
-        env: KeyDoor environment
-        agent_pos: Current agent position
+        env: AchieverBlocker environment
+        achiever_pos: Current achiever position
+        blocker_pos: Current blocker position
 
     Returns:
-        maze_str: String representation of the maze (9x9 internal grid)
+        maze_str: String representation of the maze with O (achiever) and X (blocker)
     """
     maze_lines = []
     width, height = env.width, env.height
 
-    # Process each row without adding outer walls
+    # Process each row
     for j in range(height):
         row = ""
         for i in range(width):
             cell = env.grid.get(i, j)
 
-            if agent_pos == (i, j):
-                row += "O"  # Agent
+            if achiever_pos == (i, j):
+                row += "O"  # Achiever
+            elif blocker_pos == (i, j):
+                row += "X"  # Blocker
             elif cell is None:
                 row += "-"  # Empty space
             elif cell.type == "wall":
@@ -223,31 +227,37 @@ def env_to_maze_format(env, agent_pos):
 
 
 def save_game_with_labels(
-    agent,
+    achiever_agent,
+    blocker_agent,
     env,
-    sr_labels_per_timestep,
+    achiever_sr_labels_per_timestep,
+    blocker_sr_labels_per_timestep,
     consumption_labels,
     key_door_rank,
     name="",
-    base_dir="data/exp3",
+    base_dir="data/exp4",
     game_id=None,
     initial_maze_lines=None,
     gammas=None,
     goal_rewards=None,
     game_costs=None,
+    trajectory_data=None,
 ):
     """
-    Save game data with SR and consumption labels in experiment 5 format
+    Save game data with SR and consumption labels for 2-agent environment
 
     Args:
-        agent: The agent that played the game
-        env: The KeyDoor environment
-        sr_labels_per_timestep: SR labels for each timestep (sparse format)
+        achiever_agent: The achiever agent that played the game
+        blocker_agent: The blocker agent that played the game
+        env: The AchieverBlocker environment
+        achiever_sr_labels_per_timestep: SR labels for achiever at each timestep
+        blocker_sr_labels_per_timestep: SR labels for blocker at each timestep
         consumption_labels: Consumption labels for keys and doors
         key_door_rank: Rank of keys based on importance
         name: Output directory name
         base_dir: Base directory for saving
         game_id: Unique game ID for file naming
+        trajectory_data: Dictionary containing trajectory information
     """
     import uuid
 
@@ -265,118 +275,107 @@ def save_game_with_labels(
         new_file_path = os.path.join(gf, f"test_{timestamp}_{unique_id}.txt")
 
     with open(new_file_path, "w") as f:
-        f.write("Maze:\n")
-
-        # Save the maze in experiment 5 format (use initial state if provided, otherwise final state)
+        # Section 1: Environment
+        f.write("MAZE:\n")
         if initial_maze_lines is not None:
-            maze_lines = initial_maze_lines
-        else:
-            # Fallback to final state (for backward compatibility)
-            maze_lines = env_to_maze_format(
-                env,
-                (
-                    agent.position_history[-1]
-                    if hasattr(agent, "position_history") and agent.position_history
-                    else env.agent_pos
-                ),
-            )
-        for line in maze_lines:
-            f.write(line + "\n")
+            for line in initial_maze_lines:
+                f.write(line + "\n")
 
-        # Save key/door rank (similar to goal rank)
+        f.write(f"Trajectory length: {len(trajectory_data['achiever_positions']) - 1}\n")
+        
+        # Write trajectory with 2-agent actions and interactions
+        for i in range(len(trajectory_data['achiever_actions'])):
+            achiever_pos = trajectory_data['achiever_positions'][i]
+            blocker_pos = trajectory_data['blocker_positions'][i]
+            achiever_action = trajectory_data['achiever_actions'][i]
+            blocker_action = trajectory_data['blocker_actions'][i]
+            
+            # Determine interactions
+            achiever_interaction = "X"  # Default no interaction
+            blocker_interaction = "X"  # Default no interaction
+            
+            # Check for key pickup by achiever
+            if hasattr(achiever_agent, "keys_collected_steps"):
+                for step, key_color in achiever_agent.keys_collected_steps:
+                    if step == i:
+                        color_map = {"red": "A", "green": "B", "blue": "C", "yellow": "D"}
+                        achiever_interaction = color_map.get(key_color, "X")
+                        break
+            
+            # Check for door opening by achiever
+            if achiever_interaction == "X" and hasattr(achiever_agent, "doors_opened_steps"):
+                for step, door_color in achiever_agent.doors_opened_steps:
+                    if step == i:
+                        color_map = {"red": "a", "green": "b", "blue": "c", "yellow": "d"}
+                        achiever_interaction = color_map.get(door_color, "X")
+                        break
+                        
+            # Blocker just blocks, no special interactions for now
+            blocker_interaction = "X"
+            
+            f.write(f"[{achiever_pos[0]}, {achiever_pos[1]}][{blocker_pos[0]}, {blocker_pos[1]}] : {achiever_action},{blocker_action} : {achiever_interaction},{blocker_interaction}\n")
+
+        f.write("\n")
+
+        # Section 2: Achiever
+        f.write("Achiever:\n")
         f.write("Goal Consumed Rank : " + str(key_door_rank) + "\n")
-        f.write("Trajectory length: " + str(len(agent.action_history)) + "\n")
-
-        # Save goal rewards (sum constrained to configured total)
+        
         if goal_rewards is not None:
-            # Convert to list format: [red, green, blue, yellow]
             colors = ["red", "green", "blue", "yellow"]
             reward_list = [goal_rewards.get(color, 0.0) for color in colors]
             f.write("Goal Rewards: " + ",".join(map(str, reward_list)) + "\n")
             f.write("Goal Rewards Sum: " + str(sum(reward_list)) + "\n")
 
-        # Save game costs (sum constrained to 1.0)
         if game_costs is not None:
-            # Convert to list format: [red, green, blue, yellow]
             colors = ["red", "green", "blue", "yellow"]
             cost_list = [game_costs.get(color, 0.0) for color in colors]
-            f.write("Game Costs: " + ",".join(map(str, cost_list)) + "\n")
-            f.write("Game Costs Sum: " + str(sum(cost_list)) + "\n")
+            f.write("Goal Costs: " + ",".join(map(str, cost_list)) + "\n")
+            f.write("Goal Costs Sum: " + str(sum(cost_list)) + "\n")
 
-        # Save consumption labels
-        f.write(
-            "Consumption Labels: "
-            + ",".join(map(str, consumption_labels.tolist()))
-            + "\n"
-        )
+        f.write("Consumption Labels: " + ",".join(map(str, consumption_labels.tolist())) + "\n")
 
-        # Save SR data per timestep in sparse format
+        # Save achiever SR data per timestep
         if gammas is None:
             gammas = [0.5, 0.9, 0.99]
 
         f.write("SR_Data_Per_Timestep:\n")
-        for t, sr_data_at_t in enumerate(sr_labels_per_timestep):
+        for t, sr_data_at_t in enumerate(achiever_sr_labels_per_timestep):
             f.write(f"Timestep_{t}:\n")
             for gamma_idx, gamma in enumerate(gammas):
                 sparse_sr = (
                     sr_data_at_t[gamma_idx] if gamma_idx < len(sr_data_at_t) else []
                 )
-                # Convert sparse format [(position, value)] to string
                 sparse_str = ";".join(
                     [f"{pos[0]},{pos[1]}:{val}" for pos, val in sparse_sr]
                 )
                 f.write(f"SR_gamma_{gamma}: {sparse_str}\n")
 
-        # Save trajectory moves
-        for i in range(len(agent.action_history)):
-            pos = (
-                agent.position_history[i]
-                if hasattr(agent, "position_history")
-                and i < len(agent.position_history)
-                else [0, 0]
-            )
-            action = agent.action_history[i]
+        f.write("\n")
 
-            # Check if key or door was interacted at this step
-            interaction = "X"
-            if hasattr(agent, "keys_collected_steps"):
-                for step, key_color in agent.keys_collected_steps:
-                    if step == i:
-                        color_map = {
-                            "red": "A",
-                            "green": "B",
-                            "blue": "C",
-                            "yellow": "D",
-                        }
-                        interaction = color_map.get(key_color, "X")
-                        break
+        # Section 3: Blocker
+        f.write("Blocker:\n")
+        # For now, blocker doesn't have sophisticated goal inference
+        # But we'll add a placeholder for future development
+        f.write("Infer Goal: " + str(env.target_door_color) + "\n")
 
-            if interaction == "X" and hasattr(agent, "doors_opened_steps"):
-                for step, door_color in agent.doors_opened_steps:
-                    if step == i:
-                        color_map = {
-                            "red": "a",
-                            "green": "b",
-                            "blue": "c",
-                            "yellow": "d",
-                        }
-                        interaction = color_map.get(door_color, "X")
-                        break
-
-            msg = f"[{pos[0]}, {pos[1]}] : {action} : {interaction}"
-            f.write(msg + "\n")
+        # Save blocker SR data per timestep
+        f.write("SR_Data_Per_Timestep:\n")
+        for t, sr_data_at_t in enumerate(blocker_sr_labels_per_timestep):
+            f.write(f"Timestep_{t}:\n")
+            for gamma_idx, gamma in enumerate(gammas):
+                sparse_sr = (
+                    sr_data_at_t[gamma_idx] if gamma_idx < len(sr_data_at_t) else []
+                )
+                sparse_str = ";".join(
+                    [f"{pos[0]},{pos[1]}:{val}" for pos, val in sparse_sr]
+                )
+                f.write(f"SR_gamma_{gamma}: {sparse_str}\n")
 
 
 def generate_game_rewards(config_dict, game_id):
     """
     Generate goal rewards for this game based on config settings
-
-    Args:
-        config_dict: Dictionary containing configuration
-        game_id: Game ID for seeding
-
-    Returns:
-        dict: Mapping of goal colors to reward values
     """
     # Set seed for consistent reward generation for this game
     np.random.seed(config_dict["base_random_seed"] + game_id + 1000)
@@ -413,13 +412,6 @@ def generate_game_rewards(config_dict, game_id):
 def generate_game_costs(config_dict, game_id):
     """
     Generate random costs for this game based on config settings
-
-    Args:
-        config_dict: Dictionary containing configuration
-        game_id: Game ID for seeding
-
-    Returns:
-        dict: Mapping of door colors to cost values (sum=1.0)
     """
     # Set seed for consistent cost generation for this game
     np.random.seed(config_dict["base_random_seed"] + game_id + 2000)
@@ -479,7 +471,7 @@ def generate_game_costs(config_dict, game_id):
 
 def run_single_game(game_id, config_dict, save_dir):
     """
-    Run a single KeyDoor game simulation
+    Run a single AchieverBlocker game simulation
 
     Args:
         game_id: Unique identifier for this game
@@ -498,42 +490,33 @@ def run_single_game(game_id, config_dict, save_dir):
     # Generate random costs for this game
     game_costs = generate_game_costs(config_dict, game_id)
 
-    # Create KeyDoor environment with custom preferences and costs
+    # Create AchieverBlocker environment with custom preferences and costs
     env_size = config_dict["env_size"]
     if env_size == "5x5":
-        env = KeyDoor5x5Env(
+        env = AchieverBlocker5x5Env(
             preference=goal_rewards, cost=game_costs, max_steps=config_dict["max_steps"]
         )
     elif env_size == "9x9":
-        env = KeyDoor9x9Env(
+        env = AchieverBlocker9x9Env(
             preference=goal_rewards, cost=game_costs, max_steps=config_dict["max_steps"]
         )
     elif env_size == "11x11":
-        env = KeyDoor11x11Env(
+        env = AchieverBlocker11x11Env(
             preference=goal_rewards, cost=game_costs, max_steps=config_dict["max_steps"]
         )
     else:
         raise ValueError(f"Unknown environment size: {env_size}")
 
     # Reset environment with seed
-    env.seed(config_dict["base_random_seed"] + game_id)
-    reset_result = env.reset()
-    if isinstance(reset_result, tuple):
-        obs, _ = reset_result
-    else:
-        obs = reset_result
+    obs, info = env.reset()
 
-    # Handle observation if it's a dict (same as render_kd.py)
-    if isinstance(obs, dict):
-        obs = obs.get("image", obs)
-
-    # Create agent based on config (same as render_kd.py)
-    agent_type = config_dict["agent_type"]
-    if agent_type == "astar":
-        agent = AStarAgent(env, observability=config_dict["observability"])
-    elif agent_type == "value":
+    # Create achiever agent
+    achiever_type = config_dict["achiever_type"]
+    if achiever_type == "astar":
+        achiever_agent = AStarAgent(env, observability=config_dict["observability"])
+    elif achiever_type == "value":
         agent_config = config_dict.get("agent_configs", {}).get("value", {})
-        agent = ValueAgent(
+        achiever_agent = ValueAgent(
             env,
             observability=agent_config.get("observability", "full"),
             movement_cost=agent_config.get("movement_cost", 0.01),
@@ -541,102 +524,112 @@ def run_single_game(game_id, config_dict, save_dir):
             gamma=agent_config.get("gamma", 0.99),
             temperature=agent_config.get("temperature", 0.1),
         )
-    elif agent_type == "random":
-        agent = RandomAgent(
+    elif achiever_type == "random":
+        achiever_agent = AchieverRandomAgent(
             env.action_space, movement_prob=config_dict.get("random_movement_prob", 0.8)
         )
     else:
-        raise ValueError(f"Unknown agent type: {agent_type}")
+        raise ValueError(f"Unknown achiever type: {achiever_type}")
 
-    # Reset agent
-    agent.reset()
+    # Create blocker agent
+    blocker_type = config_dict["blocker_type"]
+    if blocker_type == "random":
+        blocker_agent = BlockerRandomAgent()
+    else:
+        raise ValueError(f"Unknown blocker type: {blocker_type}")
+
+    # Reset agents
+    achiever_agent.reset()
+    blocker_agent.reset()
 
     # Initialize tracking
-    position_history = []
-    action_history = []
-    # No heading history needed with direct movement
+    achiever_positions = []
+    blocker_positions = []
+    achiever_actions = []
+    blocker_actions = []
     keys_collected = []
     doors_opened = []
     keys_collected_steps = []
     doors_opened_steps = []
 
-    # Save initial maze state (before agent starts moving)
-    initial_agent_pos = tuple(env.agent_pos)
-    initial_maze_lines = env_to_maze_format(env, initial_agent_pos)
+    # Save initial maze state (before agents start moving)
+    initial_achiever_pos = tuple(env.achiever_pos)
+    initial_blocker_pos = tuple(env.blocker_pos)
+    initial_maze_lines = env_to_maze_format(env, initial_achiever_pos, initial_blocker_pos)
+
+    # Record initial positions before any actions
+    achiever_positions.append(initial_achiever_pos)
+    blocker_positions.append(initial_blocker_pos)
 
     # Run game simulation
     step_count = 0
     max_steps = config_dict["max_steps"]
-    episode_reward = 0
-
-    # Log goal rewards
-    total_reward = sum(goal_rewards.values())
-
-    # Record initial position before any actions
-    initial_position = tuple(env.agent_pos)
-    position_history.append(initial_position)
+    total_achiever_reward = 0
+    total_blocker_reward = 0
 
     while step_count < max_steps:
-        # Get action from agent
-        action = agent.get_action(obs)
-        action_history.append(action)
+        # Get actions from both agents
+        achiever_action = achiever_agent.get_action(obs)
+        blocker_action = blocker_agent.get_action(obs)
+        
+        achiever_actions.append(achiever_action)
+        blocker_actions.append(blocker_action)
 
-        # Execute action (same as render_kd.py)
-        obs, reward, terminated, truncated, info = env.step(action)
+        action_pair = (achiever_action, blocker_action)
 
-        # Record position AFTER action execution
-        current_position = tuple(env.agent_pos)
-        position_history.append(current_position)
+        # Execute action
+        obs, rewards, terminated, truncated, info = env.step(action_pair)
+
+        # Record positions AFTER action execution
+        current_achiever_pos = tuple(env.achiever_pos)
+        current_blocker_pos = tuple(env.blocker_pos)
+        achiever_positions.append(current_achiever_pos)
+        blocker_positions.append(current_blocker_pos)
+
         done = terminated or truncated
 
-        # Handle observation if it's a dict
-        if isinstance(obs, dict):
-            obs = obs.get("image", obs)
-
-        # Update reward
-        episode_reward += reward
+        # Update rewards
+        total_achiever_reward += rewards['achiever']
+        total_blocker_reward += rewards['blocker']
         step_count += 1
 
-        # Track key collection and door opening
-        # Use environment's agent_keys instead of agent.collected_keys
-        if hasattr(env, "agent_keys"):
-            current_keys = list(env.agent_keys)
+        # Track key collection
+        if hasattr(env, "achiever_keys"):
+            current_keys = list(env.achiever_keys)
             if len(current_keys) > len(keys_collected):
                 new_key = [k for k in current_keys if k not in keys_collected][0]
                 keys_collected.append(new_key)
                 keys_collected_steps.append((step_count - 1, new_key))
 
         # Check for door opening by reward
-        if reward > 0 and step_count > 1:
-            if reward >= 1.0:  # Door opening reward
-                # Find which door was opened
-                for x in range(env.grid.width):
-                    for y in range(env.grid.height):
-                        obj = env.grid.get(x, y)
-                        if obj and obj.type == "door" and obj.is_open:
-                            if obj.color not in doors_opened:
-                                doors_opened.append(obj.color)
-                                doors_opened_steps.append((step_count - 1, obj.color))
-                                break
-
-        # Let agent analyze feedback (for learning agents)
-        if hasattr(agent, "analyze_feedback"):
-            agent.analyze_feedback(reward, done)
+        if rewards['achiever'] >= 1.0:  # Door opening reward
+            # Find which door was opened
+            for x in range(env.grid.width):
+                for y in range(env.grid.height):
+                    obj = env.grid.get(x, y)
+                    if obj and obj.type == "door" and obj.is_open:
+                        if obj.color not in doors_opened:
+                            doors_opened.append(obj.color)
+                            doors_opened_steps.append((step_count - 1, obj.color))
+                            break
 
         # Check if episode is done
         if done:
             break
 
-    # Store tracking data in agent for save function
-    agent.position_history = position_history
-    agent.action_history = action_history
-    agent.keys_collected_steps = keys_collected_steps
-    agent.doors_opened_steps = doors_opened_steps
+    # Store tracking data in agents for save function
+    achiever_agent.keys_collected_steps = keys_collected_steps
+    achiever_agent.doors_opened_steps = doors_opened_steps
 
-    # Calculate SR labels for each timestep
+    # Calculate SR labels for each agent and timestep
     sr_gammas = config_dict.get("sr_gammas", [0.5, 0.9, 0.99])
-    sr_labels_per_timestep = calculate_sr_labels_for_trajectory(
-        position_history, grid_size=env.width, gammas=sr_gammas
+    
+    achiever_sr_labels_per_timestep = calculate_sr_labels_for_trajectory(
+        achiever_positions, grid_size=env.width, gammas=sr_gammas
+    )
+    
+    blocker_sr_labels_per_timestep = calculate_sr_labels_for_trajectory(
+        blocker_positions, grid_size=env.width, gammas=sr_gammas
     )
 
     # Calculate consumption labels (keys and doors)
@@ -650,11 +643,21 @@ def run_single_game(game_id, config_dict, save_dir):
         keys_collected, doors_opened, target_door_color, goal_rewards
     )
 
+    # Prepare trajectory data
+    trajectory_data = {
+        'achiever_positions': achiever_positions,
+        'blocker_positions': blocker_positions,
+        'achiever_actions': achiever_actions,
+        'blocker_actions': blocker_actions,
+    }
+
     # Save game with labels
     save_game_with_labels(
-        agent=agent,
+        achiever_agent=achiever_agent,
+        blocker_agent=blocker_agent,
         env=env,
-        sr_labels_per_timestep=sr_labels_per_timestep,
+        achiever_sr_labels_per_timestep=achiever_sr_labels_per_timestep,
+        blocker_sr_labels_per_timestep=blocker_sr_labels_per_timestep,
         consumption_labels=consumption_labels,
         key_door_rank=key_door_rank,
         name="",
@@ -664,6 +667,7 @@ def run_single_game(game_id, config_dict, save_dir):
         gammas=sr_gammas,
         goal_rewards=goal_rewards,
         game_costs=game_costs,
+        trajectory_data=trajectory_data,
     )
 
     return game_id
@@ -673,7 +677,7 @@ def generate_trajectories(
     config=None, random_seed=42, n_processes=None, test_data=False
 ):
     """
-    Generate trajectories for KeyDoor environment in ToMnet format
+    Generate trajectories for AchieverBlocker environment in ToMnet format
 
     Args:
         config: Config object containing all parameters. If None, uses default values.
@@ -686,12 +690,12 @@ def generate_trajectories(
 
     n_games = config.n_games
 
-    print(f"Generating {n_games} KeyDoor trajectories with random seed: {random_seed}")
-    print(f"Agent type: {config.agent_type}")
+    print(f"Generating {n_games} AchieverBlocker trajectories with random seed: {random_seed}")
+    print(f"Achiever type: {config.achiever_type}")
+    print(f"Blocker type: {config.blocker_type}")
     print(f"Environment size: {config.env_size}")
 
-    # Create save directory based on environment name and agent type
-    # Use the config method to get the correct data path
+    # Create save directory based on environment name and agent types
     save_dir = config.get_data_path(is_test=test_data)
 
     # Override config save_dir with the new path
@@ -721,7 +725,8 @@ def generate_trajectories(
         "env_size": config.env_size,
         "max_steps": config.max_steps,
         "observability": config.observability,
-        "agent_type": config.agent_type,
+        "achiever_type": config.achiever_type,
+        "blocker_type": config.blocker_type,
         "base_random_seed": random_seed,
         # Agent-specific configs (complete configurations)
         "agent_configs": config.agent_configs,
@@ -751,7 +756,7 @@ def generate_trajectories(
 
         for i, result in enumerate(pool.imap(game_func, game_ids)):
             results.append(result)
-            if (i + 1) % 5000 == 0:
+            if (i + 1) % 5 == 0 or (i + 1) == n_games:
                 print(f"Generated {i + 1}/{n_games} games")
 
         # Wait for all processes to complete
@@ -760,7 +765,7 @@ def generate_trajectories(
 
     print(f"Generated {n_games} games successfully using {n_processes} processes!")
     print(f"Data saved to: {config.save_dir}")
-    print(f"Environment: {config.get_env_name()}, Agent: {config.agent_type}")
+    print(f"Environment: {config.get_env_name()}, Achiever: {config.achiever_type}, Blocker: {config.blocker_type}")
 
 
 if __name__ == "__main__":
@@ -773,7 +778,7 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Generate trajectories for KeyDoor environment in ToMnet format"
+        description="Generate trajectories for AchieverBlocker environment in ToMnet format"
     )
     parser.add_argument(
         "--config_override",
@@ -782,20 +787,26 @@ if __name__ == "__main__":
     )
     parser.add_argument("--n_games", type=int, help="Number of games to generate")
     parser.add_argument(
-        "--agent_type",
+        "--achiever_type",
         type=str,
         choices=["astar", "value", "random"],
         default=None,
-        help="Type of agent to use",
+        help="Type of achiever agent to use",
+    )
+    parser.add_argument(
+        "--blocker_type",
+        type=str,
+        choices=["random"],
+        default=None,
+        help="Type of blocker agent to use",
     )
     parser.add_argument(
         "--env_size",
         type=str,
         choices=["5x5", "9x9", "11x11"],
         default=None,
-        help="KeyDoor environment size",
+        help="AchieverBlocker environment size",
     )
-    # Removed --save_dir option as it's now automatically generated from env_name and agent_type
     parser.add_argument(
         "--random_seed",
         type=int,

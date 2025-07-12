@@ -344,18 +344,6 @@ def evaluate_model(
                 char_emb,
                 mental_state,
             ) = model(past_episodes, recent_trajectory, current_state)
-
-            # DEBUG: Check model output dimensions
-            if batch_idx == 0:
-                print(f"DEBUG: action_logits shape: {action_logits.shape}")
-                print(f"DEBUG: goal_logits shape: {goal_logits.shape}")
-                print(f"DEBUG: Expected action_logits shape: (batch_size, 7)")
-                print(f"DEBUG: Expected goal_logits shape: (batch_size, 4)")
-                
-                if action_logits.shape[1] != 7:
-                    print(f"🚨 ERROR: Model outputs {action_logits.shape[1]} actions, expected 7!")
-                    print("   This could explain why we're getting wrong predictions")
-
             # Get predictions
             probabilities = F.softmax(action_logits, dim=1)
             _, predicted = torch.max(action_logits, 1)
@@ -374,12 +362,6 @@ def evaluate_model(
     precision, recall, f1, _ = precision_recall_fscore_support(
         targets, predictions, average="weighted"
     )
-    
-    # DEBUG: Check target and prediction ranges
-    print(f"DEBUG: targets range: {targets.min()} to {targets.max()}")
-    print(f"DEBUG: predictions range: {predictions.min()} to {predictions.max()}")
-    print(f"DEBUG: unique targets: {np.unique(targets)}")
-    print(f"DEBUG: unique predictions: {np.unique(predictions)}")
     
     # Force confusion matrix to be 7x7 for KeyDoor (actions 0-6)
     conf_matrix = confusion_matrix(targets, predictions, labels=list(range(7)))

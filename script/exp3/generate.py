@@ -679,6 +679,14 @@ def generate_trajectories(config=None, random_seed=42, n_processes=None):
     print(f"Agent type: {config.agent_type}")
     print(f"Environment size: {config.env_size}")
 
+    # Create save directory based on environment name and agent type
+    env_name = config.get_env_name()  # This gets the formatted environment name
+    agent_type = config.agent_type
+    save_dir = os.path.join("data", env_name, agent_type)
+    
+    # Override config save_dir with the new path
+    config.save_dir = save_dir
+    
     # Create output directory
     os.makedirs(config.save_dir, exist_ok=True)
 
@@ -732,6 +740,7 @@ def generate_trajectories(config=None, random_seed=42, n_processes=None):
 
     print(f"Generated {n_games} games successfully using {n_processes} processes!")
     print(f"Data saved to: {config.save_dir}")
+    print(f"Environment: {config.get_env_name()}, Agent: {config.agent_type}")
 
 
 if __name__ == "__main__":
@@ -766,12 +775,7 @@ if __name__ == "__main__":
         default="9x9",
         help="KeyDoor environment size",
     )
-    parser.add_argument(
-        "--save_dir",
-        type=str,
-        default="data/exp3",
-        help="Directory to save generated data",
-    )
+    # Removed --save_dir option as it's now automatically generated from env_name and agent_type
     parser.add_argument(
         "--random_seed",
         type=int,

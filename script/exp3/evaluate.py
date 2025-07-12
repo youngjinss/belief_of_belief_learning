@@ -457,7 +457,10 @@ def evaluate_keydoor_model(
             raise FileNotFoundError(f"No trained model found in {config.model_dir}")
 
     if test_data_dir is None:
-        test_data_dir = config.test_data_dir
+        # Generate path from config
+        env_name = config.get_env_name().replace("MiniGrid-", "").replace("-v0", "")
+        agent_type = config.agent_type
+        test_data_dir = f"./data/{env_name}/{agent_type}/test"
 
     if results_dir is None:
         results_dir = config.result_dir
@@ -688,6 +691,9 @@ def analyze_action_likelihood(
 
     if test_loader is None:
         # Load test data
+        env_name = config.get_env_name().replace("MiniGrid-", "").replace("-v0", "")
+        agent_type = config.agent_type
+        test_data_dir_default = f"./data/{env_name}/{agent_type}/test"
         data_reader = DataReader(
             time_step=data_config.get("time_step", 500),
             w=config.width,
@@ -695,7 +701,7 @@ def analyze_action_likelihood(
             d=data_config.get("maze_depth", 9),
             experiment_no=config.experiment_no
         )
-        test_games = data_reader.ReadAllGames(config.test_data_dir)
+        test_games = data_reader.ReadAllGames(test_data_dir_default)
         test_data = prepare_data_for_training(
             test_games,
             min_timestep=6,  # Same as training

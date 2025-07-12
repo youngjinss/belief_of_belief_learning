@@ -849,7 +849,7 @@ def save_training_plots(history, save_dir):
 
 
 def train_tomnet(
-    data_dir="./data/exp3",
+    data_dir=None,
     save_dir="./results/exp3",
     config=None,
 ):
@@ -864,6 +864,12 @@ def train_tomnet(
     # Use provided config or create default
     if config is None:
         config = Config()
+    
+    # Set data_dir based on config if not provided
+    if data_dir is None:
+        env_name = config.get_env_name().replace("MiniGrid-", "").replace("-v0", "")
+        agent_type = config.agent_type
+        data_dir = f"./data/{env_name}/{agent_type}/"
 
     # Extract parameters from config
     training_kwargs = config.get_training_kwargs()
@@ -1154,8 +1160,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--data_dir",
         type=str,
-        default="./data/exp3",
-        help="Directory containing game data",
+        default=None,
+        help="Directory containing game data (auto-generated from config if not provided)",
     )
     parser.add_argument(
         "--save_dir",

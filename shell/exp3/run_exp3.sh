@@ -10,9 +10,13 @@ EXPERIMENT_NO=3
 VALIDATION_GAMES=2000
 TEST_RANDOM_SEED=123
 BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-SCRIPTS_DIR="$BASE_DIR/script/exp3"
-TRAIN_DATA_DIR="$BASE_DIR/data/exp3"
-TEST_DATA_DIR="$BASE_DIR/data/exp3/test"
+
+# Data paths will be dynamically set based on config
+# Default fallback paths (env_name="KeyDoor-9x9", agent_type="value")
+ENV_NAME="KeyDoor-9x9"
+AGENT_TYPE="value"
+TRAIN_DATA_DIR="$BASE_DIR/data/$ENV_NAME/$AGENT_TYPE"
+TEST_DATA_DIR="$BASE_DIR/data/$ENV_NAME/$AGENT_TYPE/test"
 RESULTS_DIR="$BASE_DIR/results/exp3"
 LOG_DIR="$BASE_DIR/log/exp3"
 
@@ -68,6 +72,7 @@ print_usage() {
     echo "  - Successor representation labels for ToMnet training"
     echo "  - ToMnet architecture adapted for KeyDoor environment"
     echo "  - Character embedding with past episode generation"
+    echo "  - Config-based data paths: ./data/{env_name}/{agent_type}/"
     echo ""
 }
 
@@ -81,54 +86,55 @@ log_step() {
 create_log_files
 
 run_data_generation() {
-    # Check if data already exists
-    if [ -f "$TRAIN_DATA_DIR/test1.txt" ]; then
-        log_step "Data generation skipped - test*.txt already exists"
-        return 0
-    fi
-    
     log_step "Starting KeyDoor trajectory generation for experiment $EXPERIMENT_NO"
+    log_step "Using config-based data path generation"
     log_step "Logging data generation output to: $RUN_LOG_DIR/train_data_generation.log"
     
-    cd "$SCRIPTS_DIR"
-    python generate.py --config_override --save_dir "$TRAIN_DATA_DIR" > "$RUN_LOG_DIR/train_data_generation.log" 2>&1
+    cd script/exp3
+    # Let generate.py use config-based path generation
+    python generate.py --config_override > "$RUN_LOG_DIR/train_data_generation.log" 2>&1
+    cd "$BASE_DIR"
     
     log_step "Data generation completed"
     
     # Log generation summary if available
     if [ -f "$RUN_LOG_DIR/train_data_generation.log" ]; then
         log_step "Data generation summary:"
-        grep -i "generated.*games\|success\|completed" "$RUN_LOG_DIR/train_data_generation.log" | tail -5 || true
+        grep -i "generated.*games\|success\|completed\|saving.*to" "$RUN_LOG_DIR/train_data_generation.log" | tail -5 || true
     fi
     
-    # Count generated files
-    local generated_files=$(find "$TRAIN_DATA_DIR" -name "test*.txt" | wc -l)
-    log_step "Generated $generated_files trajectory files in $TRAIN_DATA_DIR"
+    # Try to determine the actual path and count files
+    local actual_data_dir=$(grep -o "Saving.*to.*data/[^']*" "$RUN_LOG_DIR/train_data_generation.log" | head -1 | cut -d' ' -f3 || echo "$TRAIN_DATA_DIR")
+    if [ -d "$actual_data_dir" ]; then
+        local generated_files=$(find "$actual_data_dir" -name "test*.txt" | wc -l)
+        log_step "Generated $generated_files trajectory files in $actual_data_dir"
+    else
+        log_step "Could not determine generated data directory from logs"
+    fi
 }
 
 run_test_data_generation() {
-    # Check if test data already exists
-    if [ -f "$TEST_DATA_DIR/test1.txt" ]; then
-        log_step "Test data generation skipped - $VALIDATION_GAMES test files already exist in $TEST_DATA_DIR"
-        return 0
-    fi
-    
     log_step "Starting test data generation for experiment $EXPERIMENT_NO"
     log_step "Generating $VALIDATION_GAMES test games with random seed $TEST_RANDOM_SEED"
+    log_step "Using config-based test data path generation"
     log_step "Logging test data generation output to: $RUN_LOG_DIR/test_data_generation.log"
     
-    # Create test data directory
-    mkdir -p "$TEST_DATA_DIR"
-    
-    cd "$SCRIPTS_DIR"
-    python generate.py --config_override --n_games "$VALIDATION_GAMES" --save_dir "$TEST_DATA_DIR" --random_seed "$TEST_RANDOM_SEED" > "$RUN_LOG_DIR/test_data_generation.log" 2>&1
+    cd script/exp3
+    # Let generate.py create the test subdirectory using config-based paths
+    python generate.py --config_override --n_games "$VALIDATION_GAMES" --test_mode --random_seed "$TEST_RANDOM_SEED" > "$RUN_LOG_DIR/test_data_generation.log" 2>&1
+    cd "$BASE_DIR"
 
-    # Verify test data was generated correctly
-    GENERATED_TEST_FILES=$(find "$TEST_DATA_DIR" -name "test*.txt" | wc -l)
-    if [ "$GENERATED_TEST_FILES" -eq "$VALIDATION_GAMES" ]; then
-        log_step "Test data generation completed successfully - $GENERATED_TEST_FILES files generated"
+    # Try to determine the actual test data path from logs and verify files
+    local actual_test_dir=$(grep -o "Saving.*to.*data/[^/]*/[^/]*/test" "$RUN_LOG_DIR/test_data_generation.log" | head -1 | cut -d' ' -f3 || echo "$TEST_DATA_DIR")
+    if [ -d "$actual_test_dir" ]; then
+        GENERATED_TEST_FILES=$(find "$actual_test_dir" -name "test*.txt" | wc -l)
+        if [ "$GENERATED_TEST_FILES" -eq "$VALIDATION_GAMES" ]; then
+            log_step "Test data generation completed successfully - $GENERATED_TEST_FILES files generated in $actual_test_dir"
+        else
+            log_step "Warning: Expected $VALIDATION_GAMES test files, but found $GENERATED_TEST_FILES in $actual_test_dir"
+        fi
     else
-        log_step "Warning: Expected $VALIDATION_GAMES test files, but found $GENERATED_TEST_FILES"
+        log_step "Could not determine generated test data directory from logs"
     fi
 }
 
@@ -142,8 +148,10 @@ run_training() {
     log_step "Starting ToMnet training for experiment $EXPERIMENT_NO"
     log_step "Logging training output to: $RUN_LOG_DIR/training.log"
     
-    cd "$SCRIPTS_DIR"
-    python train.py --config_override --data_dir "$TRAIN_DATA_DIR" --save_dir "$RESULTS_DIR" > "$RUN_LOG_DIR/training.log" 2>&1
+    cd script/exp3
+    # Use config-based data path (train.py will auto-generate from config if --data_dir not provided)
+    python train.py --config_override --save_dir "$RESULTS_DIR" > "$RUN_LOG_DIR/training.log" 2>&1
+    cd "$BASE_DIR"
     
     log_step "Training completed"
     
@@ -156,7 +164,7 @@ run_training() {
 
 run_evaluation() {
     # Check if evaluation script exists
-    if [ ! -f "$SCRIPTS_DIR/evaluate.py" ]; then
+    if [ ! -f "script/exp3/evaluate.py" ]; then
         log_step "Evaluation skipped - evaluate.py not found"
         log_step "Create evaluate.py script for model evaluation"
         return 0
@@ -171,8 +179,10 @@ run_evaluation() {
     log_step "Starting evaluation for experiment $EXPERIMENT_NO"
     log_step "Logging evaluation output to: $RUN_LOG_DIR/evaluation.log"
     
-    cd "$SCRIPTS_DIR"
-    python evaluate.py --config_override --test_data_dir "$TEST_DATA_DIR" --result_dir "$RESULTS_DIR" --model_path "$RESULTS_DIR/best_model.pth" --save_predictions --plot_type "all" > "$RUN_LOG_DIR/evaluation.log" 2>&1
+    cd script/exp3
+    # Use config-based test data path (evaluate.py will auto-generate from config if --test_data_dir not provided)
+    python evaluate.py --config_override --result_dir "$RESULTS_DIR" --model_path "$RESULTS_DIR/best_model.pth" --save_predictions --plot_type "all" > "$RUN_LOG_DIR/evaluation.log" 2>&1
+    cd "$BASE_DIR"
 
     # python script/exp3/evaluate.py --config_override --test_data_dir "./data/exp3/test" --result_dir "./results/exp3/20250711_192952" --model_path "./results/exp3/20250711_192952/best_model.pth" --save_predictions --plot_type "all"
 
@@ -188,7 +198,7 @@ run_evaluation() {
 
 run_visualization() {
     # Check if visualization script exists
-    if [ ! -f "$SCRIPTS_DIR/visualize.py" ]; then
+    if [ ! -f "script/exp3/visualize.py" ]; then
         log_step "Visualization skipped - visualize.py not found"
         log_step "Create visualize.py script for result visualization"
         return 0
@@ -203,8 +213,9 @@ run_visualization() {
     log_step "Starting visualization for experiment $EXPERIMENT_NO"
     log_step "Logging visualization output to: $RUN_LOG_DIR/visualization.log"
     
-    cd "$SCRIPTS_DIR"
+    cd script/exp3
     python visualize.py --config_override --result_dir "$RESULTS_DIR" --plot_dir "$RESULTS_DIR/plots" --plot_type "all"  > "$RUN_LOG_DIR/visualization.log" 2>&1
+    cd "$BASE_DIR"
 
     # python script/exp3/visualize.py --config_override --result_dir "./results/exp3/20250711_192952"  --plot_dir "./results/exp3/20250711_192952/plots" --plot_type "all"
 
@@ -221,60 +232,58 @@ run_visualization() {
 check_exp3_implementation() {
     log_step "Checking KeyDoor experiment implementation..."
     
-    cd "$SCRIPTS_DIR"
-    
     # Check if required files exist
-    if [ -f "config.py" ]; then
+    if [ -f "script/exp3/config.py" ]; then
         log_step "✓ config.py exists"
     else
         log_step "✗ config.py not found"
     fi
     
-    if [ -f "generate.py" ]; then
+    if [ -f "script/exp3/generate.py" ]; then
         log_step "✓ generate.py exists"
     else
         log_step "✗ generate.py not found"
     fi
     
-    if [ -f "train.py" ]; then
+    if [ -f "script/exp3/train.py" ]; then
         log_step "✓ train.py exists"
     else
         log_step "✗ train.py not found"
     fi
     
-    if [ -f "tomnet.py" ]; then
+    if [ -f "script/exp3/tomnet.py" ]; then
         log_step "✓ tomnet.py exists"
     else
         log_step "✗ tomnet.py not found"
     fi
     
-    if [ -f "data_generation.py" ]; then
+    if [ -f "script/exp3/data_generation.py" ]; then
         log_step "✓ data_generation.py exists"
     else
         log_step "✗ data_generation.py not found"
     fi
     
     # Check if config has KeyDoor-specific parameters
-    if grep -q "KeyDoor" config.py; then
+    if grep -q "KeyDoor" "script/exp3/config.py"; then
         log_step "✓ KeyDoor environment configured in config.py"
     else
         log_step "✗ KeyDoor environment not configured in config.py"
     fi
     
-    if grep -q "astar" config.py; then
+    if grep -q "astar" "script/exp3/config.py"; then
         log_step "✓ A* agent configured in config.py"
     else
         log_step "✗ A* agent not configured in config.py"
     fi
     
     # Check if ToMnet model supports KeyDoor
-    if grep -q "action_space.*7" tomnet.py 2>/dev/null; then
+    if grep -q "action_space.*7" "script/exp3/tomnet.py" 2>/dev/null; then
         log_step "✓ KeyDoor action space (7 actions) configured in tomnet.py"
     else
         log_step "✗ KeyDoor action space not configured in tomnet.py"
     fi
     
-    if grep -q "goal_space.*4" tomnet.py 2>/dev/null; then
+    if grep -q "goal_space.*4" "script/exp3/tomnet.py" 2>/dev/null; then
         log_step "✓ KeyDoor goal space (4 goals) configured in tomnet.py"
     else
         log_step "✗ KeyDoor goal space not configured in tomnet.py"
@@ -353,3 +362,4 @@ echo "  - ToMnet architecture adapted for KeyDoor environment"
 echo "  - Character embedding with past episode generation from batch"
 echo "  - Early stopping and model checkpointing"
 echo "  - Comprehensive training history tracking and visualization"
+echo "  - Config-based data paths: ./data/{env_name}/{agent_type}/"

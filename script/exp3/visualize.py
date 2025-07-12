@@ -916,7 +916,7 @@ def plot_character_embeddings(
                         alpha=0.6,
                     )
 
-            ax2.set_title(f"t-SNE Visualization (n={n_tsne_samples})")
+            ax2.set_title(f"t-SNE Visualization (n={len(embeddings)})")
             ax2.set_xlabel("t-SNE 1")
             ax2.set_ylabel("t-SNE 2")
             ax2.legend()

@@ -29,12 +29,12 @@ def load_model(model_path, device, model_kwargs):
     """Load trained ToMnet model"""
     # Try to load model configuration from saved files
     model_dir = os.path.dirname(model_path)
-    
+
     # First try to load model_config.json
     model_config_path = os.path.join(model_dir, "model_config.json")
     if os.path.exists(model_config_path):
         print(f"Loading model configuration from: {model_config_path}")
-        with open(model_config_path, 'r') as f:
+        with open(model_config_path, "r") as f:
             saved_model_kwargs = json.load(f)
         # Use saved configuration instead of passed kwargs
         model_kwargs = saved_model_kwargs
@@ -43,20 +43,24 @@ def load_model(model_path, device, model_kwargs):
         full_config_path = os.path.join(model_dir, "full_config.json")
         if os.path.exists(full_config_path):
             print(f"Loading model configuration from full config: {full_config_path}")
-            with open(full_config_path, 'r') as f:
+            with open(full_config_path, "r") as f:
                 full_config = json.load(f)
                 if "model_config" in full_config:
                     # Extract model kwargs from model_config
                     model_config = full_config["model_config"]
                     model_kwargs = {
                         "use_mentalnet": model_config.get("use_mentalnet", False),
-                        "batch": model_kwargs.get("batch", 32),  # Keep batch size from current config
+                        "batch": model_kwargs.get(
+                            "batch", 32
+                        ),  # Keep batch size from current config
                         "residual_blocks": model_config.get("residual_blocks", 3),
                         "n_echar": model_config.get("n_echar", 64),
                         "n_ement": model_config.get("n_ement", 64),
                         "out_channels": model_config.get("out_channels", 32),
                         "channels_in": model_config.get("channels_in", 9),
-                        "current_state_channels": model_config.get("current_state_channels", 8),
+                        "current_state_channels": model_config.get(
+                            "current_state_channels", 8
+                        ),
                         "time_step": model_kwargs.get("time_step", 500),
                         "action_space": model_config.get("action_space", 7),
                         "goal_space": model_config.get("goal_space", 4),
@@ -67,25 +71,29 @@ def load_model(model_path, device, model_kwargs):
                         "hidden_size_lstm": model_config.get("hidden_size_lstm", 64),
                     }
         else:
-            print(f"Warning: No saved model configuration found. Using provided kwargs.")
-    
-    print(f"Model configuration: use_mentalnet={model_kwargs.get('use_mentalnet', False)}")
+            print(
+                f"Warning: No saved model configuration found. Using provided kwargs."
+            )
+
+    print(
+        f"Model configuration: use_mentalnet={model_kwargs.get('use_mentalnet', False)}"
+    )
     model = create_model(model_kwargs)
-    
+
     # Load checkpoint
     checkpoint = torch.load(model_path, map_location=device)
-    
+
     # Handle different checkpoint formats
-    if 'model_state_dict' in checkpoint:
+    if "model_state_dict" in checkpoint:
         # Checkpoint format with optimizer state
-        model.load_state_dict(checkpoint['model_state_dict'])
-    elif isinstance(checkpoint, dict) and 'model_state_dict' not in checkpoint:
+        model.load_state_dict(checkpoint["model_state_dict"])
+    elif isinstance(checkpoint, dict) and "model_state_dict" not in checkpoint:
         # Direct state dict format
         model.load_state_dict(checkpoint)
     else:
         # Fallback: assume it's a direct state dict
         model.load_state_dict(checkpoint)
-    
+
     model.to(device)
     model.eval()
     return model
@@ -147,7 +155,9 @@ def evaluate_model_with_n_past(
                     n_past,
                     n_past,
                     n_past_max,
-                    rank_threshold=data_config.get("rank_threshold", 1) if data_config else 1,
+                    rank_threshold=(
+                        data_config.get("rank_threshold", 1) if data_config else 1
+                    ),
                 )
 
                 # Use dynamic trajectory slicing (same as training/main evaluation)
@@ -170,9 +180,7 @@ def evaluate_model_with_n_past(
                 current_state_channels = (
                     data_config.get("current_state_channels", 8) if data_config else 8
                 )
-                recent_trajectory = trajectories[
-                    :, :, :current_state_channels
-                ]
+                recent_trajectory = trajectories[:, :, :current_state_channels]
 
                 # Extract current state using advanced indexing
                 batch_indices = torch.arange(batch_size, device=trajectories.device)
@@ -271,17 +279,17 @@ def evaluate_model(
                 n_past_min=data_config.get("n_past_min", 1) if data_config else 1,
                 n_past_max=data_config.get("n_past_max", 1) if data_config else 1,
                 max_n_past=data_config.get("max_n_past", 1) if data_config else 1,
-                rank_threshold=data_config.get("rank_threshold", 1) if data_config else 1,
+                rank_threshold=(
+                    data_config.get("rank_threshold", 1) if data_config else 1
+                ),
             )
 
             # With trajectory slicing, we use dynamic timesteps
             # Each sample has a different effective length, stored in actions[:,0]
 
             # For trajectory slicing, use the action at index 0 (the target action for this slice)
-            action_targets = actions[
-                :, 0
-            ]  # Target action for each sliced trajectory
-            
+            action_targets = actions[:, 0]  # Target action for each sliced trajectory
+
             # Fully vectorized: Find the effective length for each sample (remove padding)
             # Sum over spatial dimensions for each timestep: [batch_size, seq_len]
             traj_sums = trajectories.sum(
@@ -362,7 +370,7 @@ def evaluate_model(
     precision, recall, f1, _ = precision_recall_fscore_support(
         targets, predictions, average="weighted"
     )
-    
+
     # Force confusion matrix to be 7x7 for KeyDoor (actions 0-6)
     conf_matrix = confusion_matrix(targets, predictions, labels=list(range(7)))
 
@@ -477,7 +485,7 @@ def evaluate_keydoor_model(
         w=config.width,
         h=config.height,
         d=data_config.get("maze_depth", 9),
-        experiment_no=config.experiment_no
+        experiment_no=config.experiment_no,
     )
     test_games = data_reader.ReadAllGames(test_data_dir)
 
@@ -488,7 +496,9 @@ def evaluate_keydoor_model(
     test_data = prepare_data_for_training(
         test_games,
         min_timestep=6,  # Same as training
-        max_trajectory_length=data_config["time_step"],  # Use time_step (20) not max_moves (50)
+        max_trajectory_length=data_config[
+            "time_step"
+        ],  # Use time_step (20) not max_moves (50)
     )
 
     # Create test dataset and loader with all required data including goal_ranks
@@ -536,16 +546,14 @@ def evaluate_keydoor_model(
     # Run N_past evaluation if requested (using same model and test_loader)
     if plot_type in ["n_past", "all"]:
         print("Running N_past evaluation...")
-        evaluate_n_past_experiment(
-            model, test_loader, results_dir, data_config, config
-        )
+        evaluate_n_past_experiment(model, test_loader, results_dir, data_config, config)
         print("N_past evaluation completed!")
 
     # Create character embeddings if requested (using same model and test_loader)
     if plot_type in ["embeddings", "all"]:
         print("Creating character embedding visualizations...")
         from visualize import plot_character_embeddings
-        
+
         plot_character_embeddings(
             model,
             test_loader,
@@ -681,13 +689,15 @@ def analyze_action_likelihood(
             w=config.width,
             h=config.height,
             d=data_config.get("maze_depth", 9),
-            experiment_no=config.experiment_no
+            experiment_no=config.experiment_no,
         )
         test_games = data_reader.ReadAllGames(test_data_dir_default)
         test_data = prepare_data_for_training(
             test_games,
             min_timestep=6,  # Same as training
-            max_trajectory_length=data_config["time_step"],  # Use time_step (20) not max_moves (50)
+            max_trajectory_length=data_config[
+                "time_step"
+            ],  # Use time_step (20) not max_moves (50)
         )
         test_dataset = TensorDataset(
             test_data["trajectories"],
@@ -759,9 +769,7 @@ def analyze_action_likelihood(
 
             # Use trajectory without heading for MentalNet
             current_state_channels = data_config.get("current_state_channels", 8)
-            recent_trajectory = trajectories[
-                :, :, :current_state_channels
-            ]
+            recent_trajectory = trajectories[:, :, :current_state_channels]
 
             # Extract current state using advanced indexing
             batch_indices = torch.arange(batch_size, device=trajectories.device)
@@ -770,9 +778,7 @@ def analyze_action_likelihood(
             ]
 
             # Get action targets - use actions[:, 0] for trajectory slicing
-            action_targets = actions[
-                :, 0
-            ]  # Target action for each sliced trajectory
+            action_targets = actions[:, 0]  # Target action for each sliced trajectory
 
             # Model forward pass (model returns 6 outputs)
             action_logits, _, _, _, _, _ = model(
@@ -840,12 +846,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--n_samples", type=int, default=1000, help="Number of samples for analysis"
     )
-    parser.add_argument(
-        "--n_past_min", type=int, help="Minimum N_past value"
-    )
-    parser.add_argument(
-        "--n_past_max", type=int, help="Maximum N_past value"
-    )
+    parser.add_argument("--n_past_min", type=int, help="Minimum N_past value")
+    parser.add_argument("--n_past_max", type=int, help="Maximum N_past value")
     parser.add_argument(
         "--save_predictions", action="store_true", help="Save predictions to file"
     )

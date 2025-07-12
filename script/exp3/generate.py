@@ -19,7 +19,11 @@ sys.path.append(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 )
 
-from lib.env.gym_minigrid.envs.keydoor import KeyDoor5x5Env, KeyDoor9x9Env, KeyDoor11x11Env
+from lib.env.gym_minigrid.envs.keydoor import (
+    KeyDoor5x5Env,
+    KeyDoor9x9Env,
+    KeyDoor11x11Env,
+)
 from script.exp3.agents import AStarAgent, RandomAgent, ValueAgent
 from script.exp3.config import Config
 
@@ -665,7 +669,9 @@ def run_single_game(game_id, config_dict, save_dir):
     return game_id
 
 
-def generate_trajectories(config=None, random_seed=42, n_processes=None, test_data=False):
+def generate_trajectories(
+    config=None, random_seed=42, n_processes=None, test_data=False
+):
     """
     Generate trajectories for KeyDoor environment in ToMnet format
 
@@ -687,10 +693,10 @@ def generate_trajectories(config=None, random_seed=42, n_processes=None, test_da
     # Create save directory based on environment name and agent type
     # Use the config method to get the correct data path
     save_dir = config.get_data_path(is_test=test_data)
-    
+
     # Override config save_dir with the new path
     config.save_dir = save_dir
-    
+
     # Create output directory
     os.makedirs(config.save_dir, exist_ok=True)
 
@@ -807,5 +813,8 @@ if __name__ == "__main__":
         config.update_from_args(args)
 
     generate_trajectories(
-        config, random_seed=args.random_seed, n_processes=args.n_processes, test_data=args.test_data
+        config,
+        random_seed=args.random_seed,
+        n_processes=args.n_processes,
+        test_data=args.test_data,
     )

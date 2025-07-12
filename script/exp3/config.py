@@ -38,7 +38,9 @@ class Config:
 
         # Directory settings for evaluation and visualization
         self.model_dir = "results/exp3"
-        self.test_data_dir = None  # Will be set dynamically using get_data_path(is_test=True)
+        self.test_data_dir = (
+            None  # Will be set dynamically using get_data_path(is_test=True)
+        )
         self.result_dir = "results/exp3"
         self.plot_dir = "results/exp3/plots"
         self.log_dir = "log/exp3"
@@ -186,26 +188,27 @@ class Config:
     def get_env_name(self):
         """Get full environment name"""
         return self.env_name.format(size=self.env_size)
-    
+
     def get_data_path(self, is_test=False):
         """
         Get data path based on environment name and agent type
-        
+
         Args:
             is_test (bool): If True, returns path for test data with /test suffix
-            
+
         Returns:
             str: Data path in format ./data/{env_name}/{agent_type}/ or ./data/{env_name}/{agent_type}/test/
         """
         import os
+
         env_name = self.get_env_name()
         base_path = os.path.join(self.save_dir, env_name, self.agent_type)
-        
+
         if is_test:
             return os.path.join(base_path, "test")
         else:
             return base_path
-    
+
     def get_test_data_dir(self):
         """Get test data directory path"""
         return self.get_data_path(is_test=True)
@@ -572,43 +575,46 @@ class Config:
     def get_goal_config(self):
         """Get goal configuration for visualization"""
         return {
-            'num_goals': self.model_config.get('goal_space', 4),
-            'goal_colors': ["red", "green", "blue", "yellow"],
-            'goal_names': ["Goal A (Red)", "Goal B (Green)", "Goal C (Blue)", "Goal D (Yellow)"]
+            "num_goals": self.model_config.get("goal_space", 4),
+            "goal_colors": ["red", "green", "blue", "yellow"],
+            "goal_names": [
+                "Goal A (Red)",
+                "Goal B (Green)",
+                "Goal C (Blue)",
+                "Goal D (Yellow)",
+            ],
         }
-    
+
     def get_action_config(self):
         """Get action configuration for visualization"""
         return {
-            'num_actions': self.model_config.get('action_space', 7),
-            'action_names': ["Up", "Right", "Down", "Left", "Stay", "Pickup", "Toggle"]
+            "num_actions": self.model_config.get("action_space", 7),
+            "action_names": ["Up", "Right", "Down", "Left", "Stay", "Pickup", "Toggle"],
         }
-    
+
     def get_history_config(self):
         """Get history file configuration"""
         return {
-            'history_files': [
+            "history_files": [
                 "training_history.json",
                 "history.json",
-                "train_history.json"
+                "train_history.json",
             ]
         }
-    
+
     def get_prediction_config(self):
         """Get prediction file configuration"""
         return {
-            'prediction_files': [
+            "prediction_files": [
                 "predictions.pkl",
                 "test_predictions.pkl",
-                "eval_predictions.pkl"
+                "eval_predictions.pkl",
             ]
         }
-    
+
     def get_n_past_config(self):
         """Get N_past evaluation configuration"""
-        return {
-            'n_past_results_file': "n_past_evaluation_results.json"
-        }
+        return {"n_past_results_file": "n_past_evaluation_results.json"}
 
     def __str__(self):
         """String representation of configuration"""

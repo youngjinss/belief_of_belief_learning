@@ -355,7 +355,7 @@ class ValueAgent:
     """
     Value-based agent with stochastic action selection using value iteration
     Updated for KeyDoor environment with automatic key pickup and door opening
-    
+
     Key features:
     - Uses value iteration for optimal path planning
     - Accounts for automatic key pickup when stepping on keys
@@ -400,7 +400,12 @@ class ValueAgent:
         # MiniGrid action mapping: 0=up, 1=right, 2=down, 3=left, 4=stay, 5=pickup, 6=toggle
         # Value iteration uses 4 movement actions: 0=up, 1=right, 2=down, 3=left
         # Grid coordinate system: (x, y) where x=column, y=row, positive y is down
-        self.actions = [(0, -1), (1, 0), (0, 1), (-1, 0)]  # dx, dy for up, right, down, left
+        self.actions = [
+            (0, -1),
+            (1, 0),
+            (0, 1),
+            (-1, 0),
+        ]  # dx, dy for up, right, down, left
 
     def update_observation(self, obs):
         """Update agent's understanding of the environment"""
@@ -598,7 +603,9 @@ class ValueAgent:
             # Check if position is walkable
             if not self._is_walkable(new_pos):
                 reward -= self.wall_penalty
-                next_value = self.gamma * value_function[x, y]  # Stay in current position
+                next_value = (
+                    self.gamma * value_function[x, y]
+                )  # Stay in current position
             else:
                 # Bonus for reaching target
                 if new_pos == target_pos:
@@ -679,7 +686,9 @@ class RandomAgent:
 
         if rand < self.movement_prob:
             # Focus on movement actions: up, right, down, left, stay
-            return np.random.choice([0, 1, 2, 3, 4])  # 0=up, 1=right, 2=down, 3=left, 4=stay
+            return np.random.choice(
+                [0, 1, 2, 3, 4]
+            )  # 0=up, 1=right, 2=down, 3=left, 4=stay
         else:
             # Rarely use pickup or toggle actions (mostly unnecessary due to automatic behavior)
             # But keep them for compatibility

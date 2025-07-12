@@ -864,7 +864,7 @@ def train_tomnet(
     # Use provided config or create default
     if config is None:
         config = Config()
-    
+
     # Set data_dir based on config if not provided
     if data_dir is None:
         env_name = config.get_env_name().replace("MiniGrid-", "").replace("-v0", "")
@@ -908,7 +908,7 @@ def train_tomnet(
         w=config.width,
         h=config.height,
         d=data_config.get("maze_depth", 9),
-        experiment_no=config.experiment_no
+        experiment_no=config.experiment_no,
     )
     games = data_reader.ReadAllGames(data_dir)
 

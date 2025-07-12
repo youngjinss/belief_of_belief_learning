@@ -73,8 +73,13 @@ class AStarAgent:
 
     def update_observation(self, obs):
         """Update agent's understanding of the environment"""
-        # Get current agent position from environment
-        new_pos = tuple(self.env.agent_pos)
+        # Get current achiever position from environment
+        if hasattr(self.env, 'achiever_pos'):
+            new_pos = tuple(self.env.achiever_pos)
+        else:
+            # Fallback to single agent mode
+            new_pos = tuple(self.env.agent_pos) if hasattr(self.env, 'agent_pos') else self.agent_pos
+            
         if new_pos != self.agent_pos:
             # If we have a path and we moved to the expected next position, advance the path
             if self.path and len(self.path) >= 2 and self.path[1] == new_pos:
@@ -90,8 +95,12 @@ class AStarAgent:
         # Get the grid from environment
         self.grid = self.env.grid
 
-        # Update collected keys based on agent's inventory
-        self.collected_keys = set(self.env.agent_keys)
+        # Update collected keys based on achiever's inventory
+        if hasattr(self.env, 'achiever_keys'):
+            self.collected_keys = set(self.env.achiever_keys)
+        else:
+            # Fallback to single agent mode
+            self.collected_keys = set(self.env.agent_keys) if hasattr(self.env, 'agent_keys') else set()
 
     def get_action(self, obs):
         """
@@ -409,16 +418,25 @@ class ValueAgent:
 
     def update_observation(self, obs):
         """Update agent's understanding of the environment"""
-        # Get current agent position from environment
-        new_pos = tuple(self.env.agent_pos)
+        # Get current achiever position from environment
+        if hasattr(self.env, 'achiever_pos'):
+            new_pos = tuple(self.env.achiever_pos)
+        else:
+            # Fallback to single agent mode
+            new_pos = tuple(self.env.agent_pos) if hasattr(self.env, 'agent_pos') else self.agent_pos
+            
         if new_pos != self.agent_pos:
             self.agent_pos = new_pos
 
         # Get the grid from environment
         self.grid = self.env.grid
 
-        # Update collected keys based on agent's inventory
-        self.collected_keys = set(self.env.agent_keys)
+        # Update collected keys based on achiever's inventory
+        if hasattr(self.env, 'achiever_keys'):
+            self.collected_keys = set(self.env.achiever_keys)
+        else:
+            # Fallback to single agent mode
+            self.collected_keys = set(self.env.agent_keys) if hasattr(self.env, 'agent_keys') else set()
 
     def get_action(self, obs):
         """

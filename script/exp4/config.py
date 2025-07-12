@@ -27,7 +27,7 @@ class Config:
         self.gif_output = None  # Filename for saving gif (without .gif extension)
 
         # Data generation settings
-        self.n_games = 5  # Number of games to generate for ToMnet data
+        self.n_games = 100  # Number of games to generate for ToMnet data
         self.save_dir = "data"  # Base directory to save generated data
 
         # Experiment settings
@@ -135,7 +135,8 @@ class Config:
             "out_channels": 64,
             "channels_in": 9,  # 8 original channels + 1 heading direction channel
             "current_state_channels": 8,  # For MentalNet: 8 original channels (no heading direction)
-            "action_space": 7,
+            "achiever_action_space": 7,  # up, right, down, left, stay, pickup, toggle
+            "blocker_action_space": 6,   # up, right, down, left, stay, broken
             "goal_space": 4,
             "env_width": self.width,
             "env_height": self.height,
@@ -396,7 +397,8 @@ class Config:
             "channels_in": self.model_config["channels_in"],
             "current_state_channels": self.model_config["current_state_channels"],
             "time_step": self.data_config["time_step"],
-            "action_space": self.model_config["action_space"],
+            "achiever_action_space": self.model_config["achiever_action_space"],
+            "blocker_action_space": self.model_config["blocker_action_space"],
             "goal_space": self.model_config["goal_space"],
             "max_n_past": self.data_config["max_n_past"],
             "use_n_past": True,
@@ -490,8 +492,10 @@ class Config:
             self.model_config["out_channels"] = args.out_channels
         if hasattr(args, "channels_in") and args.channels_in is not None:
             self.model_config["channels_in"] = args.channels_in
-        if hasattr(args, "action_space") and args.action_space is not None:
-            self.model_config["action_space"] = args.action_space
+        if hasattr(args, "achiever_action_space") and args.achiever_action_space is not None:
+            self.model_config["achiever_action_space"] = args.achiever_action_space
+        if hasattr(args, "blocker_action_space") and args.blocker_action_space is not None:
+            self.model_config["blocker_action_space"] = args.blocker_action_space
         if hasattr(args, "goal_space") and args.goal_space is not None:
             self.model_config["goal_space"] = args.goal_space
         if hasattr(args, "hidden_size_lstm") and args.hidden_size_lstm is not None:
@@ -598,8 +602,10 @@ class Config:
     def get_action_config(self):
         """Get action configuration for visualization"""
         return {
-            "num_actions": self.model_config.get("action_space", 7),
-            "action_names": ["Up", "Right", "Down", "Left", "Stay", "Pickup", "Toggle"],
+            "achiever_num_actions": self.model_config.get("achiever_action_space", 7),
+            "blocker_num_actions": self.model_config.get("blocker_action_space", 6),
+            "achiever_action_names": ["Up", "Right", "Down", "Left", "Stay", "Pickup", "Toggle"],
+            "blocker_action_names": ["Up", "Right", "Down", "Left", "Stay", "Broken"],
         }
 
     def get_history_config(self):

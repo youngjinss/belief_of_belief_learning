@@ -11,12 +11,7 @@ VALIDATION_GAMES=2000
 TEST_RANDOM_SEED=123
 BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
-# Data paths will be dynamically set based on config
-# Default fallback paths (env_name="KeyDoor-9x9", agent_type="value")
-ENV_NAME="KeyDoor-9x9"
-AGENT_TYPE="value"
-TRAIN_DATA_DIR="$BASE_DIR/data/$ENV_NAME/$AGENT_TYPE"
-TEST_DATA_DIR="$BASE_DIR/data/$ENV_NAME/$AGENT_TYPE/test"
+# Data paths will be dynamically determined from config.py
 RESULTS_DIR="$BASE_DIR/results/exp3"
 LOG_DIR="$BASE_DIR/log/exp3"
 
@@ -29,8 +24,8 @@ fi
 RUN_LOG_DIR="$LOG_DIR/$TIMESTAMP"
 RESULTS_DIR="$RESULTS_DIR/$TIMESTAMP"
 
-# Create directories
-mkdir -p "$TRAIN_DATA_DIR" "$TEST_DATA_DIR" "$RESULTS_DIR" "$LOG_DIR" "$RUN_LOG_DIR"
+# Create directories (data directories will be created automatically by generate.py)
+mkdir -p "$RESULTS_DIR" "$LOG_DIR" "$RUN_LOG_DIR"
 
 # Function to pre-create all log files
 create_log_files() {
@@ -102,7 +97,7 @@ run_data_generation() {
     fi
     
     # Try to determine the actual path and count files
-    local actual_data_dir=$(grep -o "Saving.*to.*data/[^']*" "$RUN_LOG_DIR/train_data_generation.log" | head -1 | cut -d' ' -f3 || echo "$TRAIN_DATA_DIR")
+    local actual_data_dir=$(grep -o "Data saved to: .*" "$RUN_LOG_DIR/train_data_generation.log" | head -1 | cut -d' ' -f4)
     if [ -d "$actual_data_dir" ]; then
         local generated_files=$(find "$actual_data_dir" -name "test*.txt" | wc -l)
         log_step "Generated $generated_files trajectory files in $actual_data_dir"
@@ -121,7 +116,7 @@ run_test_data_generation() {
     python script/exp3/generate.py --config_override --n_games "$VALIDATION_GAMES" --random_seed "$TEST_RANDOM_SEED" --test_data > "$RUN_LOG_DIR/test_data_generation.log" 2>&1
 
     # Try to determine the actual test data path from logs and verify files
-    local actual_test_dir=$(grep -o "Saving.*to.*data/[^/]*/[^/]*/test" "$RUN_LOG_DIR/test_data_generation.log" | head -1 | cut -d' ' -f3 || echo "$TEST_DATA_DIR")
+    local actual_test_dir=$(grep -o "Data saved to: .*" "$RUN_LOG_DIR/test_data_generation.log" | head -1 | cut -d' ' -f4)
     if [ -d "$actual_test_dir" ]; then
         GENERATED_TEST_FILES=$(find "$actual_test_dir" -name "test*.txt" | wc -l)
         if [ "$GENERATED_TEST_FILES" -eq "$VALIDATION_GAMES" ]; then

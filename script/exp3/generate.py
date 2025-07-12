@@ -19,7 +19,7 @@ sys.path.append(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 )
 
-from lib.env.gym_minigrid.envs.keydoor import KeyDoor5x5Env, KeyDoor9x9Env
+from lib.env.gym_minigrid.envs.keydoor import KeyDoor5x5Env, KeyDoor9x9Env, KeyDoor11x11Env
 from script.exp3.agents import AStarAgent, RandomAgent, ValueAgent
 from script.exp3.config import Config
 
@@ -502,6 +502,10 @@ def run_single_game(game_id, config_dict, save_dir):
         )
     elif env_size == "9x9":
         env = KeyDoor9x9Env(
+            preference=goal_rewards, cost=game_costs, max_steps=config_dict["max_steps"]
+        )
+    elif env_size == "11x11":
+        env = KeyDoor11x11Env(
             preference=goal_rewards, cost=game_costs, max_steps=config_dict["max_steps"]
         )
     else:

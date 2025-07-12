@@ -692,7 +692,11 @@ class ValueAgent:
 
 
 class RandomAgent:
-    """A random agent that explores the KeyDoor environment with updated action space."""
+    """A random agent that explores the AchieverBlocker environment.
+    
+    Achiever uses 7-action space: up, right, down, left, stay, pickup, toggle
+    (no "done" action - that's only for blockers)
+    """
 
     def __init__(self, action_space=7, movement_prob=0.9):
         self.action_space = action_space

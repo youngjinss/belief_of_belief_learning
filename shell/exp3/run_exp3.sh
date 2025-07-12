@@ -91,7 +91,7 @@ run_data_generation() {
     log_step "Logging data generation output to: $RUN_LOG_DIR/train_data_generation.log"
     
     # Run generate.py from base directory to maintain correct relative paths
-    python script/exp3/generate.py --config_override --agent_type "$AGENT_TYPE" > "$RUN_LOG_DIR/train_data_generation.log" 2>&1
+    python script/exp3/generate.py --config_override > "$RUN_LOG_DIR/train_data_generation.log" 2>&1
     
     log_step "Data generation completed"
     
@@ -118,7 +118,7 @@ run_test_data_generation() {
     log_step "Logging test data generation output to: $RUN_LOG_DIR/test_data_generation.log"
     
     # Run generate.py from base directory to maintain correct relative paths
-    python script/exp3/generate.py --config_override --agent_type "$AGENT_TYPE" --n_games "$VALIDATION_GAMES" --random_seed "$TEST_RANDOM_SEED" --test_data > "$RUN_LOG_DIR/test_data_generation.log" 2>&1
+    python script/exp3/generate.py --config_override --n_games "$VALIDATION_GAMES" --random_seed "$TEST_RANDOM_SEED" --test_data > "$RUN_LOG_DIR/test_data_generation.log" 2>&1
 
     # Try to determine the actual test data path from logs and verify files
     local actual_test_dir=$(grep -o "Saving.*to.*data/[^/]*/[^/]*/test" "$RUN_LOG_DIR/test_data_generation.log" | head -1 | cut -d' ' -f3 || echo "$TEST_DATA_DIR")

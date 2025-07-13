@@ -21,52 +21,28 @@ class RandomAgent:
     and the "broken" action (5) to end the game when positioned at a door.
     """
 
-    def __init__(self, movement_prob=0.9, broken_prob=0.1):
+    def __init__(self):
         """
         Initialize random blocker agent.
-
-        Args:
-            movement_prob: Probability of choosing movement action vs staying
-            broken_prob: Probability of choosing "broken" action when at a door
         """
         self.env = None
-        self.movement_prob = movement_prob
-        self.broken_prob = broken_prob
 
-        # Movement actions: up(0), right(1), down(2), left(3), stay(4)
-        self.movement_actions = [0, 1, 2, 3, 4]
+        # All possible actions: up(0), right(1), down(2), left(3), stay(4), break(5)
+        self.all_actions = [0, 1, 2, 3, 4, 5]
 
     def get_action(self, obs):
         """
         Get action for blocker agent.
-        Returns movement actions (0-4): up, right, down, left, stay
-        or "broken" action (5) when positioned at a door.
+        Returns random action from the full action space.
 
         Args:
             obs: Environment observation
 
         Returns:
-            action: Movement action (0-4) or broken action (5)
+            action: Random action from available action space
         """
-        # Check if blocker is at a door position and should consider "broken" action
-        if self.env is not None:
-            blocker_pos = getattr(self.env, "blocker_pos", None)
-            if blocker_pos is not None:
-                cell = self.env.grid.get(*blocker_pos)
-                if isinstance(cell, Door):
-                    # At a door position - consider "broken" action
-                    if np.random.random() < self.broken_prob:
-                        return 5  # "broken" action
-
-        # Randomly choose between movement and staying
-        rand = np.random.random()
-
-        if rand < self.movement_prob:
-            # Choose random movement action (up, right, down, left)
-            return np.random.choice([0, 1, 2, 3])
-        else:
-            # Stay in place
-            return 4
+        # Randomly choose from all available actions
+        return np.random.choice(self.all_actions)
 
     def set_env(self, env):
         """Set environment reference for action decisions"""

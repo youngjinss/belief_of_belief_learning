@@ -29,7 +29,10 @@ from script.exp4.achievers import (
     RandomAgent as AchieverRandomAgent,
     ValueAgent,
 )
-from script.exp4.blockers import RandomAgent as BlockerRandomAgent, GoalDirectAgent as BlockerGoalDirectAgent
+from script.exp4.blockers import (
+    RandomAgent as BlockerRandomAgent,
+    GoalDirectAgent as BlockerGoalDirectAgent,
+)
 from script.exp4.config import Config
 
 """
@@ -41,7 +44,7 @@ Data generation for AchieverBlocker environment in ToMnet format
 def calculate_successor_representation_vectorized(positions, grid_size=9, gammas=None):
     """
     Vectorized calculation of successor representation for all timesteps and gammas.
-    
+
     Optimized version that processes all timesteps and discount factors simultaneously
     using NumPy vectorization for significant performance improvement.
 
@@ -56,52 +59,52 @@ def calculate_successor_representation_vectorized(positions, grid_size=9, gammas
     """
     if gammas is None:
         gammas = [0.5, 0.9, 0.99]
-    
+
     T = len(positions)
     n_gammas = len(gammas)
-    
+
     if T == 0:
         return []
-    
+
     # Convert positions to numpy array for vectorized operations
     pos_array = np.array(positions)  # Shape: (T, 2)
-    
+
     # Precompute all discount factors: gamma^delta_t for all gammas and delta_t
     max_delta_t = T
     gamma_powers = np.zeros((n_gammas, max_delta_t))  # Shape: (n_gammas, max_delta_t)
     for g_idx, gamma in enumerate(gammas):
         gamma_powers[g_idx] = gamma ** np.arange(max_delta_t)
-    
+
     sr_labels_per_timestep = []
-    
+
     # Process each query timestep
     for query_t in range(T):
         # Get future positions from query_t onwards
         future_positions = pos_array[query_t:]  # Shape: (T-query_t, 2)
         remaining_steps = T - query_t
-        
+
         if remaining_steps == 0:
             # No future steps, return empty sparse representations
             sr_labels_per_timestep.append([[] for _ in gammas])
             continue
-        
+
         # Initialize SR maps for all gammas: (n_gammas, grid_size, grid_size)
         sr_maps = np.zeros((n_gammas, grid_size, grid_size))
-        
+
         # Vectorized accumulation of discounted visits
         for delta_t in range(remaining_steps):
             pos = future_positions[delta_t]
             x, y = pos[0], pos[1]
-            
+
             # Add discounted visit for all gammas simultaneously
             discounts = gamma_powers[:, delta_t]  # Shape: (n_gammas,)
             sr_maps[:, x, y] += discounts
-        
+
         # Normalize each SR map
         sr_sums = sr_maps.sum(axis=(1, 2), keepdims=True)  # Shape: (n_gammas, 1, 1)
         sr_sums = np.where(sr_sums > 0, sr_sums, 1)  # Avoid division by zero
         sr_maps = sr_maps / sr_sums
-        
+
         # Convert to sparse format for each gamma
         sparse_representations = []
         for g_idx in range(n_gammas):
@@ -111,9 +114,9 @@ def calculate_successor_representation_vectorized(positions, grid_size=9, gammas
                 value = sr_maps[g_idx, i, j]
                 sparse_sr.append(((i, j), value))
             sparse_representations.append(sparse_sr)
-        
+
         sr_labels_per_timestep.append(sparse_representations)
-    
+
     return sr_labels_per_timestep
 
 
@@ -358,9 +361,9 @@ def save_game_with_labels(
         )
 
         # Pre-calculate blocker interaction result for final step
-        blocker_inferred_goal = getattr(blocker_agent, 'target_door_color', None)
-        actual_target_door = getattr(env, 'target_door_color', None)
-        
+        blocker_inferred_goal = getattr(blocker_agent, "target_door_color", None)
+        actual_target_door = getattr(env, "target_door_color", None)
+
         # Determine blocker interaction result
         if blocker_inferred_goal and actual_target_door:
             if blocker_inferred_goal == actual_target_door:
@@ -463,20 +466,20 @@ def save_game_with_labels(
 
         # Section 3: Blocker
         f.write("Blocker:\n")
-        
+
         # Get blocker's inferred goal and actual target door
-        blocker_inferred_goal = getattr(blocker_agent, 'target_door_color', None)
-        actual_target_door = getattr(env, 'target_door_color', None)
-        
+        blocker_inferred_goal = getattr(blocker_agent, "target_door_color", None)
+        actual_target_door = getattr(env, "target_door_color", None)
+
         # Write inferred goal
         if blocker_inferred_goal:
             f.write("Infer Goal: " + str(blocker_inferred_goal) + "\n")
         else:
             f.write("Infer Goal: X\n")  # No inference made
-        
+
         # Determine interaction result
         # 1 = Success (correct door inference)
-        # 0 = Fail (incorrect door inference) 
+        # 0 = Fail (incorrect door inference)
         # X = No interaction (no inference made)
         if blocker_inferred_goal and actual_target_door:
             if blocker_inferred_goal == actual_target_door:
@@ -485,7 +488,7 @@ def save_game_with_labels(
                 interaction_result = "0"  # Fail - incorrect inference
         else:
             interaction_result = "X"  # No interaction
-        
+
         f.write("Interaction: " + interaction_result + "\n")
 
         # Save blocker SR data per timestep
@@ -647,7 +650,7 @@ def run_single_game(game_id, config_dict, save_dir):
     if achiever_type == "astar":
         achiever_agent = AStarAgent(observability=config_dict["observability"])
     elif achiever_type == "value":
-        agent_config = config_dict.get("agent_configs", {}).get("value", {})
+        agent_config = config_dict.get("achiever_configs", {}).get("value", {})
         achiever_agent = ValueAgent(
             observability=agent_config.get("observability", "full"),
             movement_cost=agent_config.get("movement_cost", 0.01),
@@ -657,7 +660,8 @@ def run_single_game(game_id, config_dict, save_dir):
         )
     elif achiever_type == "random":
         achiever_agent = AchieverRandomAgent(
-            action_space=7, movement_prob=config_dict.get("random_movement_prob", 0.8)
+            action_space=config_dict.get("achiever_action_space", 7),
+            movement_prob=config_dict.get("random_movement_prob", 0.8),
         )
     else:
         raise ValueError(f"Unknown achiever type: {achiever_type}")
@@ -674,7 +678,7 @@ def run_single_game(game_id, config_dict, save_dir):
     # Reset agents
     achiever_agent.reset()
     blocker_agent.reset()
-    
+
     # Set environment reference for blocker agent
     blocker_agent.set_env(env)
 
@@ -875,7 +879,8 @@ def generate_trajectories(
         "blocker_type": config.blocker_type,
         "base_random_seed": random_seed,
         # Agent-specific configs (complete configurations)
-        "agent_configs": config.agent_configs,
+        "achiever_configs": config.achiever_configs,
+        "blocker_configs": config.blocker_configs,
         # SR settings
         "sr_gammas": config.sr_settings["gammas"],
         "sr_grid_size": config.sr_settings["grid_size"],
@@ -884,7 +889,7 @@ def generate_trajectories(
         # Cost settings
         "cost_settings": config.cost_settings,
         # Backward compatibility
-        "random_movement_prob": config.agent_configs.get("random", {}).get(
+        "random_movement_prob": config.achiever_configs.get("random", {}).get(
             "movement_prob", 0.8
         ),
     }

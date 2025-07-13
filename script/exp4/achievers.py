@@ -52,7 +52,7 @@ class AStarAgent:
         self.grid = None
         self.current_target = None
         self.path = []
-        
+
         # Grid dimensions - will be set from observations
         self.width = None
         self.height = None
@@ -79,14 +79,14 @@ class AStarAgent:
         """Update agent's understanding of the environment"""
         if obs is None:
             return
-            
+
         # Update grid dimensions from observations
-        if 'grid_info' in obs and self.width is None:
-            self.width = obs['grid_info']['width']
-            self.height = obs['grid_info']['height']
-            
+        if "grid_info" in obs and self.width is None:
+            self.width = obs["grid_info"]["width"]
+            self.height = obs["grid_info"]["height"]
+
         # Get current achiever position from observations
-        new_pos = tuple(obs['achiever_pos'])
+        new_pos = tuple(obs["achiever_pos"])
 
         if new_pos != self.agent_pos:
             # If we have a path and we moved to the expected next position, advance the path
@@ -101,10 +101,10 @@ class AStarAgent:
             pass
 
         # Get the grid from achiever's visual observation
-        self.grid = obs['achiever']
+        self.grid = obs["achiever"]
 
         # Update collected keys based on achiever's key inventory
-        achiever_keys_array = obs['achiever_keys']
+        achiever_keys_array = obs["achiever_keys"]
         color_map = ["red", "green", "blue", "yellow"]
         self.collected_keys = set()
         for i, has_key in enumerate(achiever_keys_array):
@@ -142,15 +142,15 @@ class AStarAgent:
     def _infer_target_door_color(self, obs=None):
         """Infer target door color from observations."""
         # Use target door color from observations if available
-        if obs and 'target_door_color' in obs:
-            return obs['target_door_color']
-        
+        if obs and "target_door_color" in obs:
+            return obs["target_door_color"]
+
         # Fallback: use first available door color
-        if obs and 'door_positions' in obs:
-            door_colors = list(obs['door_positions'].keys())
+        if obs and "door_positions" in obs:
+            door_colors = list(obs["door_positions"].keys())
             if door_colors:
                 return door_colors[0]
-        
+
         # Final fallback
         return "red"
 
@@ -196,16 +196,16 @@ class AStarAgent:
         """Find position of specific object type and color"""
         if obs is None:
             return None
-            
+
         if obj_type.__name__ == "Key":
             # Get key positions from observations
-            if 'key_positions' in obs:
-                return obs['key_positions'].get(color, None)
+            if "key_positions" in obs:
+                return obs["key_positions"].get(color, None)
         elif obj_type.__name__ == "Door":
             # Get door positions from observations
-            if 'door_positions' in obs:
-                return obs['door_positions'].get(color, None)
-        
+            if "door_positions" in obs:
+                return obs["door_positions"].get(color, None)
+
         return None
 
     def _navigate_to_position(self, target_pos):
@@ -298,7 +298,7 @@ class AStarAgent:
                 # Use grid dimensions from observations
                 width = self.width if self.width is not None else 9  # fallback
                 height = self.height if self.height is not None else 9  # fallback
-                
+
                 if (
                     node_pos[0] < 0
                     or node_pos[0] >= width
@@ -345,13 +345,13 @@ class AStarAgent:
         """Check if position is walkable"""
         # For now, use simplified walkability - most positions are walkable
         # TODO: This should parse the visual grid observation properly
-        
+
         # Check bounds using grid dimensions from observations
         width = self.width if self.width is not None else 9  # fallback
         height = self.height if self.height is not None else 9  # fallback
         if pos[0] < 0 or pos[0] >= width or pos[1] < 0 or pos[1] >= height:
             return False
-            
+
         # For now, assume most positions are walkable except walls
         # This is a simplified approach until visual observation parsing is implemented
         return True
@@ -397,7 +397,7 @@ class ValueAgent:
         self.current_target = None
         self.path = []
         self.target_door_color = None
-        
+
         # Grid dimensions - will be set from observations
         self.width = None
         self.height = None
@@ -433,23 +433,23 @@ class ValueAgent:
         """Update agent's understanding of the environment"""
         if obs is None:
             return
-            
+
         # Update grid dimensions from observations
-        if 'grid_info' in obs and self.width is None:
-            self.width = obs['grid_info']['width']
-            self.height = obs['grid_info']['height']
-            
+        if "grid_info" in obs and self.width is None:
+            self.width = obs["grid_info"]["width"]
+            self.height = obs["grid_info"]["height"]
+
         # Get current achiever position from observations
-        new_pos = tuple(obs['achiever_pos'])
+        new_pos = tuple(obs["achiever_pos"])
 
         if new_pos != self.agent_pos:
             self.agent_pos = new_pos
 
         # Get the grid from achiever's visual observation
-        self.grid = obs['achiever']
+        self.grid = obs["achiever"]
 
         # Update collected keys based on achiever's key inventory
-        achiever_keys_array = obs['achiever_keys']
+        achiever_keys_array = obs["achiever_keys"]
         color_map = ["red", "green", "blue", "yellow"]
         self.collected_keys = set()
         for i, has_key in enumerate(achiever_keys_array):
@@ -525,16 +525,16 @@ class ValueAgent:
         """Find position of specific object type and color"""
         if obs is None:
             return None
-            
+
         if obj_type.__name__ == "Key":
             # Get key positions from observations
-            if 'key_positions' in obs:
-                return obs['key_positions'].get(color, None)
+            if "key_positions" in obs:
+                return obs["key_positions"].get(color, None)
         elif obj_type.__name__ == "Door":
             # Get door positions from observations
-            if 'door_positions' in obs:
-                return obs['door_positions'].get(color, None)
-        
+            if "door_positions" in obs:
+                return obs["door_positions"].get(color, None)
+
         return None
 
     def _navigate_with_value_iteration(self, target_pos, obs=None):
@@ -558,11 +558,11 @@ class ValueAgent:
         width = self.width if self.width is not None else 9  # fallback
         height = self.height if self.height is not None else 9  # fallback
         n_actions = 4
-        
+
         # Get blocker position from observations
         blocker_pos = None
-        if obs is not None and 'blocker_pos' in obs:
-            blocker_pos = tuple(obs['blocker_pos'])
+        if obs is not None and "blocker_pos" in obs:
+            blocker_pos = tuple(obs["blocker_pos"])
 
         # Initialize value function
         value_function = np.zeros((width, height))
@@ -572,19 +572,21 @@ class ValueAgent:
 
         # Precompute action deltas and grid coordinates
         actions = [(0, -1), (1, 0), (0, 1), (-1, 0)]  # up, right, down, left
-        x_coords, y_coords = np.meshgrid(np.arange(width), np.arange(height), indexing='ij')
+        x_coords, y_coords = np.meshgrid(
+            np.arange(width), np.arange(height), indexing="ij"
+        )
         coord_mask = np.ones((width, height), dtype=bool)
-        
+
         # Mask for target position (keep it unchanged)
         coord_mask[target_pos[0], target_pos[1]] = False
-        
+
         # Precompute walkability mask (vectorized)
         walkable_mask = np.ones((width, height), dtype=bool)
         # For the simplified walkability check, most positions are walkable
         # Walls are typically only at borders - this is a simplified approach
         # that matches the current _is_walkable implementation
         walkable_mask[0, :] = True  # Top border (doors can be here)
-        walkable_mask[-1, :] = True  # Bottom border 
+        walkable_mask[-1, :] = True  # Bottom border
         walkable_mask[:, 0] = True  # Left border
         walkable_mask[:, -1] = True  # Right border
         # Interior positions are walkable by default (already True)
@@ -595,77 +597,78 @@ class ValueAgent:
 
             # Vectorized Q-value computation for all positions and actions
             q_values_all = np.zeros((width, height, n_actions))
-            
+
             for action_idx, (dx, dy) in enumerate(actions):
                 # Compute next positions for all grid cells
                 next_x = x_coords + dx
                 next_y = y_coords + dy
-                
+
                 # Bounds checking
                 valid_moves = (
-                    (next_x >= 0) & (next_x < width) & 
-                    (next_y >= 0) & (next_y < height)
+                    (next_x >= 0) & (next_x < width) & (next_y >= 0) & (next_y < height)
                 )
-                
+
                 # Initialize rewards and next values
                 rewards = np.full((width, height), -self.movement_cost)
                 next_values = np.zeros((width, height))
-                
+
                 # Handle valid moves
                 valid_next_x = np.where(valid_moves, next_x, x_coords)
                 valid_next_y = np.where(valid_moves, next_y, y_coords)
-                
+
                 # Get next values (stay in place for invalid moves)
                 next_values = np.where(
                     valid_moves,
                     self.gamma * old_values[valid_next_x, valid_next_y],
-                    self.gamma * old_values[x_coords, y_coords]
+                    self.gamma * old_values[x_coords, y_coords],
                 )
-                
+
                 # Apply penalties for invalid moves
                 rewards = np.where(valid_moves, rewards, rewards - self.wall_penalty)
-                
+
                 # Apply walkability penalties
                 next_walkable = np.where(
                     valid_moves,
                     walkable_mask[valid_next_x, valid_next_y],
-                    True  # Staying in place is always "walkable"
+                    True,  # Staying in place is always "walkable"
                 )
                 rewards = np.where(next_walkable, rewards, rewards - self.wall_penalty)
                 next_values = np.where(
                     next_walkable,
                     next_values,
-                    self.gamma * old_values[x_coords, y_coords]
+                    self.gamma * old_values[x_coords, y_coords],
                 )
-                
+
                 # Apply blocker position penalty
                 if blocker_pos is not None:
                     blocker_conflict = (
-                        valid_moves & 
-                        (valid_next_x == blocker_pos[0]) & 
-                        (valid_next_y == blocker_pos[1])
+                        valid_moves
+                        & (valid_next_x == blocker_pos[0])
+                        & (valid_next_y == blocker_pos[1])
                     )
-                    rewards = np.where(blocker_conflict, rewards - self.wall_penalty, rewards)
+                    rewards = np.where(
+                        blocker_conflict, rewards - self.wall_penalty, rewards
+                    )
                     next_values = np.where(
                         blocker_conflict,
                         self.gamma * old_values[x_coords, y_coords],
-                        next_values
+                        next_values,
                     )
-                
+
                 # Apply target bonus
                 target_bonus = (
-                    valid_moves & 
-                    (valid_next_x == target_pos[0]) & 
-                    (valid_next_y == target_pos[1])
+                    valid_moves
+                    & (valid_next_x == target_pos[0])
+                    & (valid_next_y == target_pos[1])
                 )
                 rewards = np.where(target_bonus, rewards + 10.0, rewards)
-                
+
                 # Store Q-values
                 q_values_all[:, :, action_idx] = rewards + next_values
 
             # Update value function (max over actions)
             new_values = np.max(q_values_all, axis=2)
-            
+
             # Apply masks: keep target value high, set unwalkable positions to penalty
             value_function = np.where(coord_mask, new_values, value_function)
             value_function = np.where(walkable_mask, value_function, -self.wall_penalty)
@@ -682,7 +685,13 @@ class ValueAgent:
         q_values = []
         for action in range(n_actions):
             q_val = self._evaluate_action(
-                current_pos, action, value_function, target_pos, width, height, blocker_pos
+                current_pos,
+                action,
+                value_function,
+                target_pos,
+                width,
+                height,
+                blocker_pos,
             )
             q_values.append(q_val)
 
@@ -701,7 +710,9 @@ class ValueAgent:
 
         return action
 
-    def _evaluate_action(self, pos, action, value_function, target_pos, width, height, blocker_pos=None):
+    def _evaluate_action(
+        self, pos, action, value_function, target_pos, width, height, blocker_pos=None
+    ):
         """Evaluate expected value of taking action from position"""
         x, y = pos  # Grid coordinates (x=column, y=row)
         dx, dy = self.actions[action]
@@ -729,8 +740,12 @@ class ValueAgent:
             else:
                 # Check if new position conflicts with blocker position
                 if blocker_pos is not None and new_pos == blocker_pos:
-                    reward -= self.wall_penalty  # Heavy penalty for trying to move to blocker's position
-                    next_value = self.gamma * value_function[x, y]  # Stay in current position
+                    reward -= (
+                        self.wall_penalty
+                    )  # Heavy penalty for trying to move to blocker's position
+                    next_value = (
+                        self.gamma * value_function[x, y]
+                    )  # Stay in current position
                 else:
                     # Bonus for reaching target
                     if new_pos == target_pos:
@@ -754,36 +769,36 @@ class ValueAgent:
         """Check if position is walkable using a simplified approach for value iteration"""
         # For value iteration, we use a simplified walkability check
         # since we're now observation-based and don't have direct grid access
-        
+
         # Check bounds using grid dimensions from observations
         width = self.width if self.width is not None else 9  # fallback
         height = self.height if self.height is not None else 9  # fallback
         if pos[0] < 0 or pos[0] >= width or pos[1] < 0 or pos[1] >= height:
             return False
-            
+
         # For now, assume most positions are walkable except walls (which are at edges)
         # This is a simplified approach - keys and doors are considered walkable
         # Walls are typically only at the border positions (0, x) or (width-1, x) etc.
-        if pos[0] == 0 or pos[0] == width-1 or pos[1] == 0 or pos[1] == height-1:
+        if pos[0] == 0 or pos[0] == width - 1 or pos[1] == 0 or pos[1] == height - 1:
             # Check if this is a door position (doors on walls are walkable)
             # This needs to be enhanced when we implement proper visual observation parsing
             return True  # For now, assume wall positions with doors are walkable
-        
+
         # Interior positions are generally walkable
         return True
 
     def _infer_target_door_color(self, obs=None):
         """Infer target door color from observations."""
         # Use target door color from observations if available
-        if obs and 'target_door_color' in obs:
-            return obs['target_door_color']
-        
+        if obs and "target_door_color" in obs:
+            return obs["target_door_color"]
+
         # Fallback: use first available door color
-        if obs and 'door_positions' in obs:
-            door_colors = list(obs['door_positions'].keys())
+        if obs and "door_positions" in obs:
+            door_colors = list(obs["door_positions"].keys())
             if door_colors:
                 return door_colors[0]
-        
+
         # Final fallback
         return "red"
 
@@ -808,7 +823,16 @@ class RandomAgent:
     (no "done" action - that's only for blockers)
     """
 
-    def __init__(self, action_space=7, movement_prob=0.9):
+    def __init__(self, action_space=None, movement_prob=0.9):
+        # Get action space from config if not provided
+        if action_space is None:
+            try:
+                from config import Config
+
+                config = Config()
+                action_space = config.model_config["achiever_action_space"]
+            except:
+                action_space = 7  # Fallback default
         self.action_space = action_space
         self.movement_prob = movement_prob
 

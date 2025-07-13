@@ -41,7 +41,7 @@ def create_agent(agent_type, env, config):
     elif agent_type == "random":
         return RandomAgent(env.action_space, movement_prob=config.movement_prob)
     elif agent_type == "value":
-        agent_config = config.agent_configs.get("value", {})
+        agent_config = config.achiever_configs.get("value", {})
         return ValueAgent(
             env,
             observability=agent_config.get("observability", "full"),

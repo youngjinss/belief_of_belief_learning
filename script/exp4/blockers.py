@@ -57,7 +57,7 @@ class RandomAgent:
 class GoalDirectAgent:
     """
     Goal-directed Blocker Agent for AchieverBlocker environment.
-    
+
     Strategy:
     1. Stay (action 4) until achiever picks up first key
     2. Infer target door color from achiever's first key
@@ -75,7 +75,7 @@ class GoalDirectAgent:
         self.grid = None
         self.blocker_pos = None
         self.achiever_pos = None
-        
+
         # Grid dimensions - will be set from observations
         self.width = None
         self.height = None
@@ -122,24 +122,24 @@ class GoalDirectAgent:
     def _update_from_obs(self, obs):
         """Update internal state from observations."""
         # Update grid dimensions from observations
-        if 'grid_info' in obs and self.width is None:
-            self.width = obs['grid_info']['width']
-            self.height = obs['grid_info']['height']
-            
-        self.blocker_pos = tuple(obs['blocker_pos'])
-        self.achiever_pos = tuple(obs['achiever_pos'])
+        if "grid_info" in obs and self.width is None:
+            self.width = obs["grid_info"]["width"]
+            self.height = obs["grid_info"]["height"]
+
+        self.blocker_pos = tuple(obs["blocker_pos"])
+        self.achiever_pos = tuple(obs["achiever_pos"])
         # Extract grid from blocker's visual observation
-        self.grid = obs['blocker']
+        self.grid = obs["blocker"]
 
     def _check_achiever_key_pickup(self, obs):
         """Check if achiever has picked up any key."""
-        achiever_keys = obs['achiever_keys']
+        achiever_keys = obs["achiever_keys"]
         if len(achiever_keys) > 0 and achiever_keys.sum() > 0:
             self.achiever_has_key = True
 
     def _infer_target_door(self, obs):
         """Infer target door color from achiever's first key."""
-        achiever_keys = obs['achiever_keys']
+        achiever_keys = obs["achiever_keys"]
         if len(achiever_keys) > 0 and achiever_keys.sum() > 0:
             # Find first key collected (first non-zero index)
             # Color mapping: 0=red, 1=green, 2=blue, 3=yellow
@@ -149,12 +149,14 @@ class GoalDirectAgent:
                 if has_key > 0:
                     first_key_idx = i
                     break
-            
+
             if first_key_idx is not None and first_key_idx < len(color_map):
                 first_key_color = color_map[first_key_idx]
                 self.target_door_color = first_key_color
-                self.target_door_pos = self._find_door_position_from_obs(first_key_color, obs)
-                
+                self.target_door_pos = self._find_door_position_from_obs(
+                    first_key_color, obs
+                )
+
                 # Plan path to target door
                 if self.target_door_pos:
                     self.path_to_door = self._find_path_to_door(obs)
@@ -163,9 +165,9 @@ class GoalDirectAgent:
     def _find_door_position_from_obs(self, color, obs):
         """Find position of door with given color from observations."""
         # Use door positions from observations
-        if obs and 'door_positions' in obs:
-            return obs['door_positions'].get(color, None)
-        
+        if obs and "door_positions" in obs:
+            return obs["door_positions"].get(color, None)
+
         # No fallback - if door positions aren't in observations, return None
         return None
 
@@ -182,7 +184,7 @@ class GoalDirectAgent:
 
         start = self.blocker_pos
         goal = self.target_door_pos
-        
+
         if start == goal:
             return []
 
@@ -191,22 +193,22 @@ class GoalDirectAgent:
 
         # Get wall positions from observations
         wall_positions = set()
-        if obs and 'wall_positions' in obs:
-            wall_positions = set(tuple(pos) for pos in obs['wall_positions'])
+        if obs and "wall_positions" in obs:
+            wall_positions = set(tuple(pos) for pos in obs["wall_positions"])
 
         # BFS to find path
         queue = deque([(start, [])])
         visited = {start}
-        
+
         # Movement directions: up, right, down, left
         directions = [(0, -1), (1, 0), (0, 1), (-1, 0)]
-        
+
         while queue:
             (x, y), path = queue.popleft()
-            
+
             for dx, dy in directions:
                 nx, ny = x + dx, y + dy
-                
+
                 # Check bounds using grid size from observations
                 if 0 <= nx < grid_size and 0 <= ny < grid_size:
                     if (nx, ny) not in visited:
@@ -214,30 +216,30 @@ class GoalDirectAgent:
                         if self._is_walkable_position(nx, ny, wall_positions, obs):
                             visited.add((nx, ny))
                             new_path = path + [(nx, ny)]
-                            
+
                             if (nx, ny) == goal:
                                 return new_path
-                            
+
                             queue.append(((nx, ny), new_path))
-        
+
         return []  # No path found
 
     def _is_walkable_position(self, x, y, wall_positions, obs):
         """Check if a position is walkable (not a wall, not occupied by achiever)."""
         pos = (x, y)
-        
+
         # Check if position is a wall
         if pos in wall_positions:
             return False
-        
+
         # Avoid achiever position to prevent collision
         if pos == self.achiever_pos:
             return False
-        
+
         # Goal door position is always walkable (we want to reach it)
         if pos == self.target_door_pos:
             return True
-        
+
         # All other positions are walkable (keys, empty spaces, other doors)
         return True
 
@@ -247,18 +249,18 @@ class GoalDirectAgent:
             # Recalculate path if needed
             self.path_to_door = self._find_path_to_door(obs)
             self.current_path_index = 0
-            
+
             if not self.path_to_door:
                 return 4  # Stay if no path
 
         # Get next position in path
         target_pos = self.path_to_door[self.current_path_index]
         current_pos = self.blocker_pos
-        
+
         # Calculate direction to move
         dx = target_pos[0] - current_pos[0]
         dy = target_pos[1] - current_pos[1]
-        
+
         # Move towards target
         if dy < 0:  # Move up
             action = 0
@@ -272,10 +274,10 @@ class GoalDirectAgent:
             # Already at target position, advance to next
             self.current_path_index += 1
             return self._navigate_to_door(obs)
-        
+
         # Advance path index for next step
         self.current_path_index += 1
-        
+
         return action
 
     def set_env(self, env):

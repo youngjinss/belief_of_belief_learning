@@ -318,6 +318,7 @@ class MentalNet(nn.Module):
         channels_in: int,
         time_step: int,
         n_echar: int,
+        action_space: int = 7,
     ):
         super(MentalNet, self).__init__()
 
@@ -326,8 +327,10 @@ class MentalNet(nn.Module):
         self.n_echar = n_echar
 
         # Paper spec: state channels (8) + action channel (1) = 9 total input channels
-        self.state_channels = 8  # State without heading direction
-        self.action_space = 7  # Number of possible actions
+        self.state_channels = (
+            channels_in - 1
+        )  # State without heading direction (channels_in - 1)
+        self.action_space = action_space  # Number of possible actions from config
         self.input_channels = self.state_channels + 1  # State + spatialized action
 
         # Use configurable n_ement channels throughout
@@ -738,6 +741,7 @@ class ToMnet(nn.Module):
                 channels_in=current_state_channels,
                 time_step=time_step,
                 n_echar=n_echar,
+                action_space=action_space,
             )
 
         # Prediction network - processes inputs based on architecture
@@ -796,8 +800,8 @@ class ToMnet(nn.Module):
             mental_state = self.mental_net(recent_trajectory, recent_actions)
 
             # PredNet with mental state
-            action_logits, goal_logits, agent_logits, consumption_logits, sr_pred = self.pred_net(
-                mental_state, character_embedding, current_state_for_pred
+            action_logits, goal_logits, agent_logits, consumption_logits, sr_pred = (
+                self.pred_net(mental_state, character_embedding, current_state_for_pred)
             )
         else:
             # 2b. Fixed 2-stage architecture: CharNet → PredNet (like experiment5)
@@ -874,7 +878,12 @@ class ToMnet(nn.Module):
 
 class ToMnetLoss(nn.Module):
     def __init__(
-        self, action_weight=1.0, goal_weight=1.0, agent_weight=1.0, consumption_weight=1.0, sr_weight=1.0
+        self,
+        action_weight=1.0,
+        goal_weight=1.0,
+        agent_weight=1.0,
+        consumption_weight=1.0,
+        sr_weight=1.0,
     ):
         super(ToMnetLoss, self).__init__()
         self.action_weight = action_weight

@@ -274,7 +274,10 @@ class GameSimulation:
         for i, row in enumerate(self.maze):
             for j, cell in enumerate(row):
                 if cell == "O":
-                    self.initial_positions["achiever"] = (j, i)  # (x, y) = (column, row)
+                    self.initial_positions["achiever"] = (
+                        j,
+                        i,
+                    )  # (x, y) = (column, row)
                 elif cell == "X":
                     self.initial_positions["blocker"] = (j, i)  # (x, y) = (column, row)
                 elif cell in "ABCDabcd":
@@ -380,22 +383,22 @@ class GameSimulation:
     def _reset_environment_state_from_trajectory(self, env, current_step):
         """Reset environment state to exactly match trajectory data up to current step"""
         from gym_minigrid.minigrid import Grid, Wall, Key, Door
-        
+
         # Completely reconstruct grid from original maze data
         maze_height = len(self.maze)
         maze_width = len(self.maze[0]) if maze_height > 0 else 0
         env.grid = Grid(maze_width, maze_height)
-        
+
         # Initialize fresh state
         env.achiever_keys = []
         collected_keys = set()
         opened_doors = set()
-        
+
         # Replay all interactions from start to current step to determine what should be collected/opened
         for step_idx in range(current_step):
             if step_idx < len(self.achiever_interactions):
                 interaction = self.achiever_interactions[step_idx]
-                
+
                 if interaction in "ABCD":
                     # Key pickup
                     color_map = {"A": "red", "B": "green", "C": "blue", "D": "yellow"}
@@ -403,18 +406,18 @@ class GameSimulation:
                     if key_color not in collected_keys:
                         collected_keys.add(key_color)
                         env.achiever_keys.append(key_color)
-                        
+
                 elif interaction in "abcd":
-                    # Door opening 
+                    # Door opening
                     color_map = {"a": "red", "b": "green", "c": "blue", "d": "yellow"}
                     door_color = color_map[interaction]
                     opened_doors.add(door_color)
-        
+
         # Reconstruct grid from original maze data, excluding collected keys and opening doors
         for y in range(maze_height):
             for x in range(maze_width):
                 cell = self.maze[y][x]
-                
+
                 if cell == "#":
                     env.grid.set(x, y, Wall())
                 elif cell in "ABCD":
@@ -568,7 +571,7 @@ class GameSimulation:
                 # Update agent positions for rendering consistency (after env.step)
                 env.achiever_pos = np.array(achiever_position)
                 env.blocker_pos = np.array(blocker_position)
-                
+
                 # Reset environment state to match trajectory exactly (override automatic behavior)
                 self._reset_environment_state_from_trajectory(env, step)
 

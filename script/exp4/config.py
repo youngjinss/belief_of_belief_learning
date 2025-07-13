@@ -27,7 +27,7 @@ class Config:
         self.gif_output = None  # Filename for saving gif (without .gif extension)
 
         # Data generation settings
-        self.n_games = 300  # Number of games to generate for ToMnet data
+        self.n_games = 10  # Number of games to generate for ToMnet data (reduced for testing)
         self.save_dir = "data"  # Base directory to save generated data
 
         # Experiment settings
@@ -54,16 +54,21 @@ class Config:
             "11x11": {"grid_size": 11, "max_steps": 1000},
         }
 
-        # Agent configurations
-        self.agent_configs = {
-            "astar": {"observability": "full", "debug": False},
-            "random": {"movement_prob": 0.8, "exploration_bias": 0.1},
+        # Achiever configurations
+        self.achiever_configs = {
+            "astar": {"observability": "full", "debug": False, "action_space": 7},
+            "random": {
+                "movement_prob": 0.8,
+                "exploration_bias": 0.1,
+                "action_space": 7,
+            },
             "value": {
                 "observability": "full",
                 "movement_cost": 0.05,
                 "wall_penalty": 10.0,
                 "gamma": 0.99,
                 "temperature": 0.1,
+                "action_space": 7,
             },
             "value_deterministic": {
                 "observability": "full",
@@ -71,6 +76,7 @@ class Config:
                 "wall_penalty": 10.0,
                 "gamma": 0.99,
                 "temperature": 0.0,
+                "action_space": 7,
             },
             "value_stochastic": {
                 "observability": "full",
@@ -78,6 +84,24 @@ class Config:
                 "wall_penalty": 10.0,
                 "gamma": 0.99,
                 "temperature": 0.5,
+                "action_space": 7,
+            },
+        }
+
+        # Blocker configurations
+        self.blocker_configs = {
+            "random": {
+                "movement_prob": 0.8,
+                "exploration_bias": 0.1,
+                "action_space": 6,
+            },
+            "goal_direct": {
+                "observability": "full",
+                "movement_cost": 0.05,
+                "wall_penalty": 10.0,
+                "gamma": 0.99,
+                "temperature": 0.1,
+                "action_space": 6,
             },
         }
 
@@ -167,6 +191,7 @@ class Config:
             "max_grad_norm": 1.0,
             "action_weight": 1.0,
             "goal_weight": 1.0,
+            "agent_weight": 1.0,
             "consumption_weight": 1.0,
             "sr_weight": 1.0,
         }
@@ -234,8 +259,8 @@ class Config:
         }
 
         # Add agent-specific configurations
-        if self.achiever_type in self.agent_configs:
-            base_config.update(self.agent_configs[self.achiever_type])
+        if self.achiever_type in self.achiever_configs:
+            base_config.update(self.achiever_configs[self.achiever_type])
 
         return base_config
 
@@ -397,8 +422,10 @@ class Config:
             "channels_in": self.model_config["channels_in"],
             "current_state_channels": self.model_config["current_state_channels"],
             "time_step": self.data_config["time_step"],
-            "achiever_action_space": self.model_config["achiever_action_space"],
-            "blocker_action_space": self.model_config["blocker_action_space"],
+            "action_space": max(
+                self.model_config["achiever_action_space"],
+                self.model_config["blocker_action_space"],
+            ),  # Use max action space
             "goal_space": self.model_config["goal_space"],
             "max_n_past": self.data_config["max_n_past"],
             "use_n_past": True,

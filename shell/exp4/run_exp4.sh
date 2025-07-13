@@ -7,7 +7,7 @@ set -e  # Exit on error
 
 # Configuration
 EXPERIMENT_NO=4
-VALIDATION_GAMES=2000
+VALIDATION_GAMES=50  # Reduced from 2000 for testing
 TEST_RANDOM_SEED=123
 BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 

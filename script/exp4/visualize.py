@@ -56,7 +56,9 @@ def plot_accuracy_by_n_past(
     )
     ax1.set_xlabel("Number of Past Episodes (N_past)", fontsize=12)
     ax1.set_ylabel("Accuracy", fontsize=12)
-    ax1.set_title("AchieverBlocker: Action Accuracy vs N_past", fontsize=14, fontweight="bold")
+    ax1.set_title(
+        "AchieverBlocker: Action Accuracy vs N_past", fontsize=14, fontweight="bold"
+    )
     ax1.grid(True, alpha=0.3)
     ax1.set_xlim(-0.5, max(n_past_values) + 0.5)
     ax1.set_ylim(0, 1.0)
@@ -151,9 +153,16 @@ def plot_accuracy_heatmap_by_n_past(results_by_n_past, output_dir=None, config=N
     else:
         # Use default values if config is not provided (AchieverBlocker has mixed actions)
         num_actions = 8  # Combined achiever (0-6) and blocker (0-5) actions
-        action_names = ["Up", "Right", "Down", "Left", "Stay", "Pickup", "Toggle", "Broken"][
-            :num_actions
-        ]
+        action_names = [
+            "Up",
+            "Right",
+            "Down",
+            "Left",
+            "Stay",
+            "Pickup",
+            "Toggle",
+            "Broken",
+        ][:num_actions]
 
     accuracy_matrix = []
 
@@ -276,7 +285,8 @@ def plot_training_curves(history_path, output_dir, config=None, experiment_no=No
         ax3, ax4 = axes[1]
 
     fig.suptitle(
-        f"AchieverBlocker ToMnet Training History (Experiment {experiment_no})", fontsize=16
+        f"AchieverBlocker ToMnet Training History (Experiment {experiment_no})",
+        fontsize=16,
     )
 
     epochs = history["epoch"]
@@ -491,7 +501,9 @@ def plot_training_curves(history_path, output_dir, config=None, experiment_no=No
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
         plt.savefig(
-            os.path.join(output_dir, f"achieverblocker_training_curves_exp{experiment_no}.png"),
+            os.path.join(
+                output_dir, f"achieverblocker_training_curves_exp{experiment_no}.png"
+            ),
             dpi=300,
             bbox_inches="tight",
         )
@@ -593,7 +605,9 @@ def plot_confusion_matrix(
     plt.show()
 
     # Print confusion matrix statistics
-    print(f"\nAchieverBlocker Confusion Matrix Statistics (Experiment {experiment_no}):")
+    print(
+        f"\nAchieverBlocker Confusion Matrix Statistics (Experiment {experiment_no}):"
+    )
     print("-" * 60)
     for i, action in enumerate(action_names):
         if i < len(cm):
@@ -832,7 +846,8 @@ def plot_character_embeddings(
     # Create subplots
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
     fig.suptitle(
-        f"AchieverBlocker: Character Embeddings (Experiment {experiment_no})", fontsize=16
+        f"AchieverBlocker: Character Embeddings (Experiment {experiment_no})",
+        fontsize=16,
     )
 
     # Get goal information from config
@@ -1034,7 +1049,8 @@ def plot_character_embeddings(
         os.makedirs(output_dir, exist_ok=True)
         plt.savefig(
             os.path.join(
-                output_dir, f"achieverblocker_character_embeddings_exp{experiment_no}.png"
+                output_dir,
+                f"achieverblocker_character_embeddings_exp{experiment_no}.png",
             ),
             dpi=300,
             bbox_inches="tight",
@@ -1042,7 +1058,9 @@ def plot_character_embeddings(
 
     plt.show()
 
-    print(f"\nAchieverBlocker Character Embeddings Analysis (Experiment {experiment_no}):")
+    print(
+        f"\nAchieverBlocker Character Embeddings Analysis (Experiment {experiment_no}):"
+    )
     print("-" * 60)
     print(f"Total samples collected: {len(embeddings)}")
     print(
@@ -1123,7 +1141,9 @@ def create_additional_visualizations(
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="Visualize AchieverBlocker ToMnet results")
+    parser = argparse.ArgumentParser(
+        description="Visualize AchieverBlocker ToMnet results"
+    )
     parser.add_argument(
         "--config_override",
         action="store_true",

@@ -99,9 +99,8 @@ class DataGenerator:
                 parsing_maze = False
                 trajectory_length = int(line.split(":")[1].strip())
                 continue
-            elif parsing_maze and line and not line.startswith("#"):
-                continue
-            elif parsing_maze and line.startswith("#"):
+            elif parsing_maze and line:
+                # Parse any non-empty line as a maze row
                 maze_row = []
                 for char in line:
                     if char in self.OBJECT_ENCODING:

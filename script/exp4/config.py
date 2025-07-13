@@ -208,8 +208,8 @@ class Config:
         # N_past evaluation settings
         self.n_past_evaluation = {
             "n_past_min": 0,
-            "n_past_max": 4,
-            "n_past_infer": 4,
+            "n_past_max": 5,
+            "n_past_infer": 5,
         }
 
     def get_env_name(self):

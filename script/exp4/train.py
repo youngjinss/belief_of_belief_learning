@@ -5,6 +5,7 @@ import os
 import json
 import sys
 import numpy as np
+from tqdm import tqdm
 from datetime import datetime
 import time
 
@@ -285,7 +286,7 @@ def prepare_data_for_training(
 
     print(f"Preparing data from {len(samples)} samples with trajectory slicing...")
 
-    for sample in samples:
+    for sample in tqdm(samples, desc="Dataset processing"):
         # Extract data from sample
         trajectory = sample["trajectory"]  # [seq_len, channels, height, width]
         goal_tensor = sample["goal"]  # [4] one-hot encoded

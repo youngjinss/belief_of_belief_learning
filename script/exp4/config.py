@@ -12,7 +12,7 @@ class Config:
 
         # Agent settings
         self.achiever_type = "value"  # Options: "astar", "random", "value"
-        self.blocker_type = "random"  # Options: "random" (initially)
+        self.blocker_type = "goal_direct"  # Options: "random", "goal_direct"
         self.observability = "full"  # Options: "full", "partial"
         self.movement_prob = 0.8  # For random agent
 
@@ -577,7 +577,7 @@ class Config:
         """Validate configuration"""
         if self.achiever_type not in ["astar", "random", "value"]:
             raise ValueError(f"Invalid achiever_type: {self.achiever_type}")
-        if self.blocker_type not in ["random"]:
+        if self.blocker_type not in ["random", "goal_direct"]:
             raise ValueError(f"Invalid blocker_type: {self.blocker_type}")
 
         if self.env_size not in ["3x3", "5x5", "9x9", "11x11"]:

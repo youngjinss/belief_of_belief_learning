@@ -29,7 +29,7 @@ from script.exp4.achievers import (
     RandomAgent as AchieverRandomAgent,
     ValueAgent,
 )
-from script.exp4.blockers import RandomAgent as BlockerRandomAgent
+from script.exp4.blockers import RandomAgent as BlockerRandomAgent, GoalDirectAgent as BlockerGoalDirectAgent
 from script.exp4.config import Config
 
 """
@@ -562,12 +562,17 @@ def run_single_game(game_id, config_dict, save_dir):
     blocker_type = config_dict["blocker_type"]
     if blocker_type == "random":
         blocker_agent = BlockerRandomAgent()
+    elif blocker_type == "goal_direct":
+        blocker_agent = BlockerGoalDirectAgent()
     else:
         raise ValueError(f"Unknown blocker type: {blocker_type}")
 
     # Reset agents
     achiever_agent.reset()
     blocker_agent.reset()
+    
+    # Set environment reference for blocker agent
+    blocker_agent.set_env(env)
 
     # Initialize tracking
     achiever_positions = []
@@ -835,7 +840,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--blocker_type",
         type=str,
-        choices=["random"],
+        choices=["random", "goal_direct"],
         default=None,
         help="Type of blocker agent to use",
     )

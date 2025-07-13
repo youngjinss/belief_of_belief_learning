@@ -12,7 +12,7 @@ import time
 sys.path.append(os.path.dirname(__file__))
 
 from tomnet import ToMnet, ToMnetLoss, create_model, count_parameters
-from data_generation import DataReader
+from data_generation import DataGenerator
 from config import Config
 
 """
@@ -140,7 +140,8 @@ class EarlyStopping:
 
 def generate_past_episodes_from_batch(
     trajectories,
-    goals,
+    goal_ranks,
+    agents,
     batch_size,
     n_past_min=1,
     n_past_max=5,
@@ -149,12 +150,13 @@ def generate_past_episodes_from_batch(
 ):
     """
     Generate past episodes by randomly sampling from other trajectories in the batch
-    with the same goal, using fully vectorized operations for efficiency
-    (Adapted from experiment 5 for exp4 tensor format)
+    with the same goal rank AND same agent type, using fully vectorized operations for efficiency
+    (Adapted from experiment 5 for exp4 multi-agent tensor format)
 
     Args:
         trajectories: Batch of trajectories [batch_size, seq_len, channels, height, width]
-        goals: Batch of goal labels [batch_size] or goal ranks [batch_size, 4]
+        goal_ranks: Batch of goal ranks [batch_size, 4] (rank format [1,2,2,2] etc.)
+        agents: Batch of agent labels [batch_size] (0=achiever, 1=blocker)
         batch_size: Size of current batch
         n_past_min: Minimum number of past episodes to sample
         n_past_max: Maximum number of past episodes to sample
@@ -179,49 +181,52 @@ def generate_past_episodes_from_batch(
         n_past_min, n_past_max + 1, (batch_size,), device=device
     )
 
-    # Create goal similarity matrix (batch_size x batch_size)
-    # same_goal_mask[i, j] = True if sample i and j have the same goal/rank (within threshold)
-    if goals.dim() > 1:  # Handle goal_ranks (multi-dimensional)
-        # For goal ranks, use rank_threshold to limit comparison
-        # goals shape: [batch_size, 4] for goal ranks
-
-        if rank_threshold < 4:
-            # Create vectorized comparison using only top ranks for efficiency
-            # Find which goals have ranks <= rank_threshold for all samples
-            top_goals_mask = goals <= rank_threshold  # [batch_size, 4]
-
-            # Vectorized comparison: check if same goals are in top ranks
-            # Expand dimensions for broadcasting: [batch_size, 1, 4] and [1, batch_size, 4]
-            top_goals_i = top_goals_mask.unsqueeze(1)  # [batch_size, 1, 4]
-            top_goals_j = top_goals_mask.unsqueeze(0)  # [1, batch_size, 4]
-
-            # Check if all 4 positions match (same top goals)
-            same_goal_mask = torch.all(
-                top_goals_i == top_goals_j, dim=2
-            )  # [batch_size, batch_size]
-        else:
-            # Use full rank comparison (rank_threshold >= 4)
-            # Vectorized comparison of full rank vectors
-            goals_i = goals.unsqueeze(1)  # [batch_size, 1, 4]
-            goals_j = goals.unsqueeze(0)  # [1, batch_size, 4]
-            same_goal_mask = torch.all(
-                goals_i == goals_j, dim=2
-            )  # [batch_size, batch_size]
-    else:  # Handle single goal values
-        goals_expanded = goals.unsqueeze(1)  # [batch_size, 1]
-        same_goal_mask = goals_expanded == goals.unsqueeze(
-            0
+    # Create goal similarity matrix (batch_size x batch_size) based on goal ranks
+    # same_goal_mask[i, j] = True if sample i and j have similar goal ranks (within threshold)
+    # goal_ranks shape: [batch_size, 4] for goal ranks
+    
+    if rank_threshold < 4:
+        # Create vectorized comparison using only top ranks for efficiency
+        # Find which goals have ranks <= rank_threshold for all samples
+        top_goals_mask = goal_ranks <= rank_threshold  # [batch_size, 4]
+        
+        # Vectorized comparison: check if same goals are in top ranks
+        # Expand dimensions for broadcasting: [batch_size, 1, 4] and [1, batch_size, 4]
+        top_goals_i = top_goals_mask.unsqueeze(1)  # [batch_size, 1, 4]
+        top_goals_j = top_goals_mask.unsqueeze(0)  # [1, batch_size, 4]
+        
+        # Check if all 4 positions match (same top goals)
+        same_goal_mask = torch.all(
+            top_goals_i == top_goals_j, dim=2
         )  # [batch_size, batch_size]
+    else:
+        # Use full rank comparison (rank_threshold >= 4)
+        # Vectorized comparison of full rank vectors
+        goals_i = goal_ranks.unsqueeze(1)  # [batch_size, 1, 4]
+        goals_j = goal_ranks.unsqueeze(0)  # [1, batch_size, 4]
+        same_goal_mask = torch.all(
+            goals_i == goals_j, dim=2
+        )  # [batch_size, batch_size]
+    
+    # Create agent similarity matrix (batch_size x batch_size)
+    # same_agent_mask[i, j] = True if sample i and j have the same agent type
+    agents_expanded = agents.unsqueeze(1)  # [batch_size, 1]
+    same_agent_mask = agents_expanded == agents.unsqueeze(
+        0
+    )  # [batch_size, batch_size]
+    
+    # Combine goal and agent matching: both must match
+    same_goal_and_agent_mask = same_goal_mask & same_agent_mask
 
     # Exclude self-matches by setting diagonal to False
-    same_goal_mask.fill_diagonal_(False)
+    same_goal_and_agent_mask.fill_diagonal_(False)
 
     # Create random sampling matrix for all samples at once
     # For each sample, we create random indices for selecting past episodes
     rand_matrix = torch.rand(batch_size, batch_size, device=device)
 
-    # Mask out invalid sources (different goals or self)
-    rand_matrix = rand_matrix * same_goal_mask.float()
+    # Mask out invalid sources (different goals/agents or self)
+    rand_matrix = rand_matrix * same_goal_and_agent_mask.float()
 
     # For each sample, sort the random values to get sampling order
     sorted_vals, sorted_indices = torch.sort(rand_matrix, dim=1, descending=True)
@@ -255,9 +260,197 @@ def generate_past_episodes_from_batch(
     return past_episodes_batch
 
 
+def extract_actions_from_trajectory(trajectory, agent_type):
+    """
+    Extract actions from trajectory by analyzing position changes
+    
+    Args:
+        trajectory: [seq_len, channels, height, width] trajectory tensor
+        agent_type: 'achiever' or 'blocker'
+    
+    Returns:
+        List of actions (integers)
+    """
+    actions = []
+    
+    # Find agent positions in each timestep
+    # Agent is represented in channel 1 (empty space layer with agent)
+    for t in range(len(trajectory) - 1):
+        current_pos = None
+        next_pos = None
+        
+        # Find current position
+        current_frame = trajectory[t, 1]  # Channel 1: agent position
+        current_nonzero = np.nonzero(current_frame)
+        if len(current_nonzero[0]) > 0:
+            current_pos = (current_nonzero[1][0], current_nonzero[0][0])  # (x, y)
+        
+        # Find next position
+        next_frame = trajectory[t + 1, 1]
+        next_nonzero = np.nonzero(next_frame)
+        if len(next_nonzero[0]) > 0:
+            next_pos = (next_nonzero[1][0], next_nonzero[0][0])  # (x, y)
+        
+        # Convert position change to action
+        if current_pos is not None and next_pos is not None:
+            dx = next_pos[0] - current_pos[0]
+            dy = next_pos[1] - current_pos[1]
+            
+            # Convert movement to action (based on MiniGrid action space)
+            # 0: turn_left, 1: turn_right, 2: move_forward, 3: pickup, 4: drop, 5: toggle, 6: done
+            if dx == 0 and dy == 0:
+                action = 6  # No movement - done/stay
+            elif dx == 1 and dy == 0:
+                action = 2  # Move right (assuming forward)
+            elif dx == -1 and dy == 0:
+                action = 2  # Move left
+            elif dx == 0 and dy == 1:
+                action = 2  # Move down
+            elif dx == 0 and dy == -1:
+                action = 2  # Move up
+            else:
+                action = 2  # Default to move_forward
+        else:
+            action = 6  # Default action
+        
+        actions.append(action)
+    
+    # Add final action
+    actions.append(6)  # Done
+    
+    return actions
+
+
+def prepare_data_for_training_multiagent(samples, grid_size=9, min_timestep=6, max_trajectory_length=100):
+    """
+    Prepare multi-agent sample data for training from processed samples with trajectory slicing
+
+    Args:
+        samples: List of processed samples from DataGenerator (containing both achiever and blocker samples)
+        shuffle_data: Whether to shuffle the samples
+        grid_size: Size of the grid (default 9 for 9x9)
+        min_timestep: Minimum timestep to start slicing from
+        max_trajectory_length: Maximum length of trajectory to use
+
+    Returns:
+        Dictionary containing prepared training data
+    """
+    
+    trajectories = []
+    actions = []
+    goals = []
+    goal_ranks = []
+    agents = []
+    consumption_labels = []
+    sr_labels = []
+    
+    print(f"Preparing data from {len(samples)} samples with trajectory slicing...")
+    
+    for sample in samples:
+        # Extract data from sample
+        trajectory = sample['trajectory']  # [seq_len, channels, height, width]
+        goal_tensor = sample['goal']  # [4] one-hot encoded
+        agent_type = sample['agent']  # 'achiever' or 'blocker'
+        consumption = sample['consumption_labels']  # [8] consumption labels
+        sr_data_per_timestep = sample.get('sr_data_per_timestep', {})
+        
+        # Convert agent type to numerical (0=achiever, 1=blocker)
+        agent_label = 0 if agent_type == 'achiever' else 1
+        
+        # Extract goal rank from goal tensor and agent type
+        if agent_type == 'achiever':
+            # For achiever: convert one-hot goal to rank format
+            # goal_tensor is one-hot [0,0,1,0] -> goal_rank should be [2,2,1,2]
+            goal_idx = torch.argmax(torch.tensor(goal_tensor)).item()
+            goal_rank = [2, 2, 2, 2]  # Default rank 2 for all
+            goal_rank[goal_idx] = 1  # Set the achieved goal to rank 1
+        else:
+            # For blocker: convert inferred goal to rank format
+            # If blocker inferred goal C (index 2), then rank should be [2,2,1,2]
+            goal_idx = torch.argmax(torch.tensor(goal_tensor)).item()
+            goal_rank = [2, 2, 2, 2]  # Default rank 2 for all
+            goal_rank[goal_idx] = 1  # Set the inferred goal to rank 1
+        
+        # Extract actions from trajectory differences (simple action extraction)
+        # This extracts movement actions from position changes in trajectory
+        action_list = extract_actions_from_trajectory(trajectory, agent_type)
+        
+        # Truncate trajectory to max length
+        seq_len = min(trajectory.shape[0], max_trajectory_length)
+        trajectory = trajectory[:seq_len]
+        action_list = action_list[:seq_len]
+        
+        # TRAJECTORY SLICING: Create multiple samples per trajectory
+        for i in range(min_timestep, seq_len):
+            # Slice trajectory up to timestep i
+            trajectory_slice = trajectory[:i]  # [i, channels, height, width]
+            
+            # Pad trajectory slice to consistent length for batching
+            if i < max_trajectory_length:
+                padding_shape = (max_trajectory_length - i, *trajectory.shape[1:])
+                padding = np.zeros(padding_shape)
+                trajectory_padded = np.concatenate([trajectory_slice, padding], axis=0)
+            else:
+                trajectory_padded = trajectory_slice
+            
+            # Current timestep for action prediction
+            current_timestep = i - 1
+            
+            # Action at timestep i (what we want to predict)
+            if i < len(action_list):
+                action_target = action_list[i]
+            else:
+                continue  # Skip if no action available
+            
+            # Process SR data for this timestep
+            if current_timestep in sr_data_per_timestep:
+                sr_data_timestep = sr_data_per_timestep[current_timestep]
+                sr_dense = convert_sparse_sr_to_dense(sr_data_timestep, grid_size, grid_size)
+            else:
+                sr_dense = np.zeros((3, grid_size, grid_size))
+            
+            # Add this training sample
+            trajectories.append(trajectory_padded)
+            actions.append([action_target] + [0] * (max_trajectory_length - 1))  # Pad actions
+            goals.append(goal_tensor)
+            goal_ranks.append(goal_rank)
+            agents.append(agent_label)
+            consumption_labels.append(consumption)
+            sr_labels.append(sr_dense)
+    
+    # Convert to tensors
+    trajectories = torch.tensor(np.array(trajectories), dtype=torch.float32)
+    actions = torch.tensor(np.array(actions), dtype=torch.long)
+    goals = torch.tensor(np.array(goals), dtype=torch.float32)
+    goal_ranks = torch.tensor(np.array(goal_ranks), dtype=torch.long)
+    agents = torch.tensor(np.array(agents), dtype=torch.long)
+    consumption_labels = torch.tensor(np.array(consumption_labels), dtype=torch.float32)
+    sr_labels = torch.tensor(np.array(sr_labels), dtype=torch.float32)
+    
+    print(f"Data shapes:")
+    print(f"  Trajectories: {trajectories.shape}")
+    print(f"  Actions: {actions.shape}")
+    print(f"  Goals: {goals.shape}")
+    print(f"  Goal ranks: {goal_ranks.shape}")
+    print(f"  Agents: {agents.shape}")
+    print(f"  Consumption labels: {consumption_labels.shape}")
+    print(f"  SR labels: {sr_labels.shape}")
+    
+    return {
+        "trajectories": trajectories,
+        "actions": actions,
+        "goals": goals,
+        "goal_ranks": goal_ranks,
+        "agents": agents,
+        "consumption_labels": consumption_labels,
+        "sr_labels": sr_labels,
+    }
+
+
 def prepare_data_for_training(games, min_timestep=6, max_trajectory_length=100):
     """
     Prepare game data for training using trajectory slicing (like experiment 5)
+    [LEGACY FUNCTION - kept for backward compatibility]
 
     Args:
         games: List of game data from DataReader
@@ -303,9 +496,25 @@ def prepare_data_for_training(games, min_timestep=6, max_trajectory_length=100):
             height, width = trajectory.shape[2], trajectory.shape[3]
             heading_channel = np.zeros((seq_len, 1, height, width))
 
-            # Simple heading direction: 0=north, 1=east, 2=south, 3=west (encoded as 0.0, 0.25, 0.5, 0.75)
-            # For now, use a placeholder value of 0 (north) for all timesteps
-            # TODO: Extract actual heading from action sequence
+            # Extract heading direction from action sequence
+            # Actions: 0=up/north, 1=right/east, 2=down/south, 3=left/west, 4=stay, 5=pickup, 6=toggle/break
+            # Heading: 0=north, 1=east, 2=south, 3=west (encoded as 0.0, 0.25, 0.5, 0.75)
+            current_heading = 2  # Default to south (facing down)
+            
+            for t in range(seq_len):
+                # Only movement actions change heading direction
+                if t < len(action_list) and action_list[t] < 4:  # Movement actions
+                    if action_list[t] == 0:  # Up
+                        current_heading = 0  # North
+                    elif action_list[t] == 1:  # Right  
+                        current_heading = 1  # East
+                    elif action_list[t] == 2:  # Down
+                        current_heading = 2  # South
+                    elif action_list[t] == 3:  # Left
+                        current_heading = 3  # West
+                
+                # Set heading value (normalized to 0-1 range)
+                heading_channel[t, 0, :, :] = current_heading / 3.0
 
             # Concatenate heading channel to trajectory
             trajectory = np.concatenate(
@@ -422,13 +631,13 @@ def train_epoch(
     total_samples = 0
 
     for batch_idx, batch in enumerate(train_loader):
-        # Unpack all data including new SR and consumption labels
+        # Unpack multi-agent data
         (
             trajectories,
             actions,
             goals,
             goal_ranks,
-            goal_rewards,
+            agents,
             consumption_labels,
             sr_labels,
         ) = batch
@@ -437,6 +646,7 @@ def train_epoch(
         actions = actions.to(device)
         goals = goals.to(device)
         goal_ranks = goal_ranks.to(device)
+        agents = agents.to(device)
         consumption_labels = consumption_labels.to(device)
         sr_labels = sr_labels.to(device)
 
@@ -446,6 +656,7 @@ def train_epoch(
         past_episodes = generate_past_episodes_from_batch(
             trajectories,
             goal_ranks,
+            agents,
             batch_size,
             n_past_min=data_config.get("n_past_min", 1),
             n_past_max=data_config.get("n_past_max", 5),
@@ -456,17 +667,15 @@ def train_epoch(
         # With trajectory slicing, we use dynamic timesteps
         # Each sample has a different effective length, stored in actions[:,0]
         batch_size = trajectories.size(0)
-
+        
         # For trajectory slicing, use the action at index 0 (the target action for this slice)
         action_targets = actions[:, 0]  # Target action for each sliced trajectory
 
-        # Vectorized: Find the effective length for each sample (remove padding)
-        # Sum over spatial dimensions to check if timestep is non-zero
+        # Find the effective length for each sample (remove padding)
         traj_sum = trajectories.sum(dim=(2, 3, 4))  # [batch_size, seq_len]
         non_zero_mask = traj_sum > 0  # [batch_size, seq_len]
-
+        
         # Find last non-zero timestep for each sample
-        # Create timestep indices on the same device as trajectories
         timestep_indices = (
             torch.arange(trajectories.size(1), device=trajectories.device)
             .unsqueeze(0)
@@ -476,7 +685,7 @@ def train_epoch(
         timestep_indices = timestep_indices * non_zero_mask - (1 - non_zero_mask.long())
         # Get last non-zero timestep index
         effective_lengths = timestep_indices.max(dim=1)[0]  # [batch_size]
-        # Convert to 0-based indexing for current state (predict next action)
+        # Convert to 0-based indexing for current state
         effective_lengths = torch.clamp(effective_lengths, min=0)
 
         # Use trajectory without heading direction for MentalNet (first 8 channels only)
@@ -485,40 +694,48 @@ def train_epoch(
             :, :, :current_state_channels
         ]  # [batch_size, seq_len, 8, height, width]
 
-        # Vectorized: Extract current state for PredNet (last non-padded timestep)
-
-        # Create batch indices on the same device as trajectories
+        # Extract current state for PredNet (last non-padded timestep)
         batch_indices = torch.arange(batch_size, device=trajectories.device)
-        # Extract current state using advanced indexing
         current_state = trajectories[
             batch_indices, effective_lengths, :current_state_channels
         ]
-
-        goal_targets = goals
+        
+        # Convert one-hot goals to class indices for loss computation
+        if goals.dim() > 1:  # One-hot encoded goals
+            goal_targets = torch.argmax(goals, dim=1)
+        else:
+            goal_targets = goals
+        
+        agent_targets = agents
         consumption_targets = consumption_labels
-        sr_targets = sr_labels
 
         optimizer.zero_grad()
 
         # Forward pass - CharNet gets past_episodes, MentalNet gets recent_trajectory, PredNet gets current_state
-        action_logits, goal_logits, consumption_logits, sr_pred, _, _ = model(
+        action_logits, goal_logits, agent_logits, consumption_logits, sr_pred, _, _ = model(
             past_episodes, recent_trajectory, current_state
         )
 
-        # Compute loss with all components
+        # Use loaded SR labels as targets
+        sr_targets = sr_labels
+        
+        # Compute loss with all components including agent prediction
         (
             total_loss_batch,
             action_loss_batch,
             goal_loss_batch,
+            agent_loss_batch,
             consumption_loss_batch,
             sr_loss_batch,
         ) = loss_fn(
             action_logits,
             goal_logits,
+            agent_logits,
             consumption_logits,
             sr_pred,
             action_targets,
             goal_targets,
+            agent_targets,
             consumption_targets,
             sr_targets,
         )
@@ -535,36 +752,43 @@ def train_epoch(
         total_loss += total_loss_batch.item()
         total_action_loss += action_loss_batch.item()
         total_goal_loss += goal_loss_batch.item()
+        total_agent_loss = agent_loss_batch.item()  # Track agent loss
         total_consumption_loss += consumption_loss_batch.item()
         total_sr_loss += sr_loss_batch.item()
 
         # Calculate accuracy
         _, predicted_actions = torch.max(action_logits, 1)
         _, predicted_goals = torch.max(goal_logits, 1)
+        _, predicted_agents = torch.max(agent_logits, 1)
 
         correct_actions += (predicted_actions == action_targets).sum().item()
         correct_goals += (predicted_goals == goal_targets).sum().item()
+        correct_agents = (predicted_agents == agent_targets).sum().item()  # Track agent accuracy
         total_samples += batch_size
 
     num_batches = len(train_loader)
     avg_loss = total_loss / num_batches if num_batches > 0 else 0
     avg_action_loss = total_action_loss / num_batches if num_batches > 0 else 0
     avg_goal_loss = total_goal_loss / num_batches if num_batches > 0 else 0
+    avg_agent_loss = total_agent_loss / num_batches if num_batches > 0 else 0
     avg_consumption_loss = (
         total_consumption_loss / num_batches if num_batches > 0 else 0
     )
     avg_sr_loss = total_sr_loss / num_batches if num_batches > 0 else 0
     action_accuracy = correct_actions / total_samples
     goal_accuracy = correct_goals / total_samples
+    agent_accuracy = correct_agents / total_samples
 
     return {
         "loss": avg_loss,
         "action_loss": avg_action_loss,
         "goal_loss": avg_goal_loss,
+        "agent_loss": avg_agent_loss,
         "consumption_loss": avg_consumption_loss,
         "sr_loss": avg_sr_loss,
         "action_accuracy": action_accuracy,
         "goal_accuracy": goal_accuracy,
+        "agent_accuracy": agent_accuracy,
     }
 
 
@@ -594,21 +818,23 @@ def validate_epoch(
     total_loss = 0
     total_action_loss = 0
     total_goal_loss = 0
+    total_agent_loss = 0
     total_consumption_loss = 0
     total_sr_loss = 0
     correct_actions = 0
     correct_goals = 0
+    correct_agents = 0
     total_samples = 0
 
     with torch.no_grad():
         for batch_idx, batch in enumerate(val_loader):
-            # Unpack all data including new SR and consumption labels
+            # Unpack multi-agent data
             (
                 trajectories,
                 actions,
                 goals,
                 goal_ranks,
-                goal_rewards,
+                agents,
                 consumption_labels,
                 sr_labels,
             ) = batch
@@ -617,6 +843,7 @@ def validate_epoch(
             actions = actions.to(device)
             goals = goals.to(device)
             goal_ranks = goal_ranks.to(device)
+            agents = agents.to(device)
             consumption_labels = consumption_labels.to(device)
             sr_labels = sr_labels.to(device)
 
@@ -626,6 +853,7 @@ def validate_epoch(
             past_episodes = generate_past_episodes_from_batch(
                 trajectories,
                 goal_ranks,
+                agents,
                 batch_size,
                 n_past_min=data_config.get("n_past_min", 1),
                 n_past_max=data_config.get("n_past_max", 5),
@@ -685,32 +913,41 @@ def validate_epoch(
                 batch_indices, last_timesteps, :current_state_channels
             ]
 
-            # Action target: action at index 0 (target action for this slice)
+            # For trajectory slicing, use the action at index 0 (the target action for this slice)
             action_targets = actions[:, 0]  # Target action for each sliced trajectory
-
-            goal_targets = goals
+            
+            # Convert one-hot goals to class indices for loss computation
+            if goals.dim() > 1:  # One-hot encoded goals
+                goal_targets = torch.argmax(goals, dim=1)
+            else:
+                goal_targets = goals
+            
+            agent_targets = agents
             consumption_targets = consumption_labels
             sr_targets = sr_labels
 
             # Forward pass - CharNet gets past_episodes, MentalNet gets recent_trajectory, PredNet gets current_state
-            action_logits, goal_logits, consumption_logits, sr_pred, _, _ = model(
+            action_logits, goal_logits, agent_logits, consumption_logits, sr_pred, _, _ = model(
                 past_episodes, recent_trajectory, current_state
             )
 
-            # Compute loss with all components
+            # Compute loss with all components including agent prediction
             (
                 total_loss_batch,
                 action_loss_batch,
                 goal_loss_batch,
+                agent_loss_batch,
                 consumption_loss_batch,
                 sr_loss_batch,
             ) = loss_fn(
                 action_logits,
                 goal_logits,
+                agent_logits,
                 consumption_logits,
                 sr_pred,
                 action_targets,
                 goal_targets,
+                agent_targets,
                 consumption_targets,
                 sr_targets,
             )
@@ -719,36 +956,43 @@ def validate_epoch(
             total_loss += total_loss_batch.item()
             total_action_loss += action_loss_batch.item()
             total_goal_loss += goal_loss_batch.item()
+            total_agent_loss += agent_loss_batch.item()
             total_consumption_loss += consumption_loss_batch.item()
             total_sr_loss += sr_loss_batch.item()
 
             # Calculate accuracy
             _, predicted_actions = torch.max(action_logits, 1)
             _, predicted_goals = torch.max(goal_logits, 1)
+            _, predicted_agents = torch.max(agent_logits, 1)
 
             correct_actions += (predicted_actions == action_targets).sum().item()
             correct_goals += (predicted_goals == goal_targets).sum().item()
+            correct_agents += (predicted_agents == agent_targets).sum().item()
             total_samples += batch_size
 
     num_batches = len(val_loader)
     avg_loss = total_loss / num_batches if num_batches > 0 else 0
     avg_action_loss = total_action_loss / num_batches if num_batches > 0 else 0
     avg_goal_loss = total_goal_loss / num_batches if num_batches > 0 else 0
+    avg_agent_loss = total_agent_loss / num_batches if num_batches > 0 else 0
     avg_consumption_loss = (
         total_consumption_loss / num_batches if num_batches > 0 else 0
     )
     avg_sr_loss = total_sr_loss / num_batches if num_batches > 0 else 0
     action_accuracy = correct_actions / total_samples
     goal_accuracy = correct_goals / total_samples
+    agent_accuracy = correct_agents / total_samples
 
     return {
         "loss": avg_loss,
         "action_loss": avg_action_loss,
         "goal_loss": avg_goal_loss,
+        "agent_loss": avg_agent_loss,
         "consumption_loss": avg_consumption_loss,
         "sr_loss": avg_sr_loss,
         "action_accuracy": action_accuracy,
         "goal_accuracy": goal_accuracy,
+        "agent_accuracy": agent_accuracy,
     }
 
 
@@ -909,39 +1153,44 @@ def train_tomnet(
         print("Processed data not found. Generating...")
         # Load and process data
         print("Loading raw data...")
-        # Create DataReader with correct dimensions based on environment size
-        data_reader = DataReader(
+        # Import the new DataReader for multi-agent environment
+        from data_generation import DataGenerator as MultiAgentDataReader
+        
+        # Create DataReader for multi-agent data
+        data_reader = MultiAgentDataReader(
             time_step=time_step,
             w=config.width,
             h=config.height,
             d=data_config.get("maze_depth", 9),
-            experiment_no=config.experiment_no,
         )
-        games = data_reader.ReadAllGames(data_dir)
-
-        if len(games) == 0:
-            raise ValueError(f"No games found in {data_dir}")
-
-        # Prepare data using trajectory slicing
-        data = prepare_data_for_training(
-            games,
-            min_timestep=6,  # Start slicing from timestep 6
-            max_trajectory_length=time_step,
-        )
+        
+        # Process directory to get samples
+        samples = data_reader.process_directory(data_dir)
+        
+        if len(samples) == 0:
+            raise ValueError(f"No samples found in {data_dir}")
+        
+        # Prepare data from multi-agent samples with shuffling
+        data = prepare_data_for_training_multiagent(samples, grid_size=config.width)
 
         # Save processed data for future use
         print(f"Saving processed data to: {processed_data_path}")
         data_reader.save_processed_data(data, processed_data_path)
     else:
         print("Loading existing processed data...")
-        data_reader = DataReader(
+        from data_generation import DataGenerator as MultiAgentDataReader
+        
+        data_reader = MultiAgentDataReader(
             time_step=time_step,
             w=config.width,
             h=config.height,
             d=data_config.get("maze_depth", 9),
-            experiment_no=config.experiment_no,
         )
-        data = data_reader.load_processed_data(processed_data_path)
+        
+        samples = data_reader.load_processed_data(processed_data_path)
+        
+        # Convert loaded samples to training data format
+        data = prepare_data_for_training_multiagent(samples, grid_size=config.width)
 
     # Log data shapes for verification
     print(f"Data shapes:")
@@ -949,17 +1198,17 @@ def train_tomnet(
     print(f"Actions: {data['actions'].shape}")
     print(f"Goals: {data['goals'].shape}")
     print(f"Goal ranks: {data['goal_ranks'].shape}")
-    print(f"Goal rewards: {data['goal_rewards'].shape}")
+    print(f"Agents: {data['agents'].shape}")
     print(f"Consumption labels: {data['consumption_labels'].shape}")
     print(f"SR labels: {data['sr_labels'].shape}")
 
-    # Create datasets with all data including SR and consumption labels
+    # Create datasets with multi-agent data
     dataset = TensorDataset(
         data["trajectories"],
         data["actions"],
         data["goals"],
         data["goal_ranks"],
-        data["goal_rewards"],
+        data["agents"],
         data["consumption_labels"],
         data["sr_labels"],
     )
@@ -1009,6 +1258,7 @@ def train_tomnet(
     loss_fn = ToMnetLoss(
         action_weight=training_process_config["action_weight"],
         goal_weight=training_process_config["goal_weight"],
+        agent_weight=training_process_config.get("agent_weight", 1.0),
         consumption_weight=training_process_config.get("consumption_weight", 1.0),
         sr_weight=training_process_config.get("sr_weight", 1.0),
     )
@@ -1027,17 +1277,21 @@ def train_tomnet(
         "train_loss": [],
         "train_action_loss": [],
         "train_goal_loss": [],
+        "train_agent_loss": [],
         "train_consumption_loss": [],
         "train_sr_loss": [],
         "train_action_accuracy": [],
         "train_goal_accuracy": [],
+        "train_agent_accuracy": [],
         "val_loss": [],
         "val_action_loss": [],
         "val_goal_loss": [],
+        "val_agent_loss": [],
         "val_consumption_loss": [],
         "val_sr_loss": [],
         "val_action_accuracy": [],
         "val_goal_accuracy": [],
+        "val_agent_accuracy": [],
         "epoch_time": [],
     }
 
@@ -1076,17 +1330,21 @@ def train_tomnet(
         history["train_loss"].append(train_metrics["loss"])
         history["train_action_loss"].append(train_metrics["action_loss"])
         history["train_goal_loss"].append(train_metrics["goal_loss"])
+        history["train_agent_loss"].append(train_metrics["agent_loss"])
         history["train_consumption_loss"].append(train_metrics["consumption_loss"])
         history["train_sr_loss"].append(train_metrics["sr_loss"])
         history["train_action_accuracy"].append(train_metrics["action_accuracy"])
         history["train_goal_accuracy"].append(train_metrics["goal_accuracy"])
+        history["train_agent_accuracy"].append(train_metrics["agent_accuracy"])
         history["val_loss"].append(val_metrics["loss"])
         history["val_action_loss"].append(val_metrics["action_loss"])
         history["val_goal_loss"].append(val_metrics["goal_loss"])
+        history["val_agent_loss"].append(val_metrics["agent_loss"])
         history["val_consumption_loss"].append(val_metrics["consumption_loss"])
         history["val_sr_loss"].append(val_metrics["sr_loss"])
         history["val_action_accuracy"].append(val_metrics["action_accuracy"])
         history["val_goal_accuracy"].append(val_metrics["goal_accuracy"])
+        history["val_agent_accuracy"].append(val_metrics["agent_accuracy"])
         history["epoch_time"].append(epoch_time)
 
         # Print metrics
@@ -1161,7 +1419,7 @@ def train_tomnet(
     torch.save(model.state_dict(), os.path.join(experiment_save_dir, "final_model.pth"))
 
     # Save data statistics
-    stats = data_reader.get_data_statistics(games)
+    stats = data_reader.get_statistics(samples)
     with open(os.path.join(experiment_save_dir, "data_statistics.json"), "w") as f:
         json.dump(stats, f, indent=2)
 

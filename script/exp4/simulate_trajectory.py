@@ -392,7 +392,7 @@ class GameSimulation:
         opened_doors = set()
         
         # Replay all interactions from start to current step to determine what should be collected/opened
-        for step_idx in range(current_step + 1):
+        for step_idx in range(current_step):
             if step_idx < len(self.achiever_interactions):
                 interaction = self.achiever_interactions[step_idx]
                 

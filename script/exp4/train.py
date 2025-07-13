@@ -420,10 +420,12 @@ def train_epoch(
     total_loss = 0
     total_action_loss = 0
     total_goal_loss = 0
+    total_agent_loss = 0
     total_consumption_loss = 0
     total_sr_loss = 0
     correct_actions = 0
     correct_goals = 0
+    correct_agents = 0
     total_samples = 0
 
     for batch_idx, batch in enumerate(train_loader):
@@ -548,7 +550,7 @@ def train_epoch(
         total_loss += total_loss_batch.item()
         total_action_loss += action_loss_batch.item()
         total_goal_loss += goal_loss_batch.item()
-        total_agent_loss = agent_loss_batch.item()  # Track agent loss
+        total_agent_loss += agent_loss_batch.item()  # Track agent loss
         total_consumption_loss += consumption_loss_batch.item()
         total_sr_loss += sr_loss_batch.item()
 
@@ -559,7 +561,7 @@ def train_epoch(
 
         correct_actions += (predicted_actions == action_targets).sum().item()
         correct_goals += (predicted_goals == goal_targets).sum().item()
-        correct_agents = (
+        correct_agents += (
             (predicted_agents == agent_targets).sum().item()
         )  # Track agent accuracy
         total_samples += batch_size
@@ -976,9 +978,8 @@ def train_tomnet(
             raise ValueError(f"No samples found in {data_dir}")
 
         # Prepare data from multi-agent samples with shuffling
-        max_steps = config.env_variants[config.env_size]["max_steps"]
         data = prepare_data_for_training(
-            samples, grid_size=config.width, max_trajectory_length=max_steps
+            samples, grid_size=config.width, max_trajectory_length=time_step
         )
 
         # Save processed training data for future use

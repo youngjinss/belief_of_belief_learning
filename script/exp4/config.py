@@ -27,7 +27,7 @@ class Config:
         self.gif_output = None  # Filename for saving gif (without .gif extension)
 
         # Data generation settings
-        self.n_games = 100000  # Number of games to generate for ToMnet data
+        self.n_games = 50000  # Number of games to generate for ToMnet data
         self.save_dir = "data"  # Base directory to save generated data
 
         # Experiment settings
@@ -141,7 +141,7 @@ class Config:
 
         # Training configuration
         self.training_config = {
-            "batch_size": 512,
+            "batch_size": 1024,
             "epochs": 200,
             "lr": 0.0001,
             "weight_decay": 0.001,

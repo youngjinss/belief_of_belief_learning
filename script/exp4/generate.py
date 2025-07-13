@@ -540,11 +540,10 @@ def run_single_game(game_id, config_dict, save_dir):
     # Create achiever agent
     achiever_type = config_dict["achiever_type"]
     if achiever_type == "astar":
-        achiever_agent = AStarAgent(env, observability=config_dict["observability"])
+        achiever_agent = AStarAgent(observability=config_dict["observability"])
     elif achiever_type == "value":
         agent_config = config_dict.get("agent_configs", {}).get("value", {})
         achiever_agent = ValueAgent(
-            env,
             observability=agent_config.get("observability", "full"),
             movement_cost=agent_config.get("movement_cost", 0.01),
             wall_penalty=agent_config.get("wall_penalty", 2.0),
@@ -553,7 +552,7 @@ def run_single_game(game_id, config_dict, save_dir):
         )
     elif achiever_type == "random":
         achiever_agent = AchieverRandomAgent(
-            env.action_space, movement_prob=config_dict.get("random_movement_prob", 0.8)
+            action_space=7, movement_prob=config_dict.get("random_movement_prob", 0.8)
         )
     else:
         raise ValueError(f"Unknown achiever type: {achiever_type}")

@@ -46,8 +46,7 @@ class AStarAgent:
     A* Agent adapted for KeyDoor environments
     """
 
-    def __init__(self, env, observability="full"):
-        self.env = env
+    def __init__(self, observability="full"):
         self.observability = observability
         self.agent_pos = None
         self.grid = None
@@ -59,6 +58,7 @@ class AStarAgent:
 
         # Strategy: first collect target key, then go to target door
         self.strategy_phase = "collect_key"  # "collect_key" or "open_door"
+        self.target_door_color = None
 
         # Adjacent squares for movement (up, down, left, right)
         # Note: In grid coordinates (row, col), positive row is down
@@ -73,16 +73,11 @@ class AStarAgent:
 
     def update_observation(self, obs):
         """Update agent's understanding of the environment"""
-        # Get current achiever position from environment
-        if hasattr(self.env, "achiever_pos"):
-            new_pos = tuple(self.env.achiever_pos)
-        else:
-            # Fallback to single agent mode
-            new_pos = (
-                tuple(self.env.agent_pos)
-                if hasattr(self.env, "agent_pos")
-                else self.agent_pos
-            )
+        if obs is None:
+            return
+            
+        # Get current achiever position from observations
+        new_pos = tuple(obs['achiever_pos'])
 
         if new_pos != self.agent_pos:
             # If we have a path and we moved to the expected next position, advance the path
@@ -96,17 +91,16 @@ class AStarAgent:
             # Position didn't change - could be turning or stuck
             pass
 
-        # Get the grid from environment
-        self.grid = self.env.grid
+        # Get the grid from achiever's visual observation
+        self.grid = obs['achiever']
 
-        # Update collected keys based on achiever's inventory
-        if hasattr(self.env, "achiever_keys"):
-            self.collected_keys = set(self.env.achiever_keys)
-        else:
-            # Fallback to single agent mode
-            self.collected_keys = (
-                set(self.env.agent_keys) if hasattr(self.env, "agent_keys") else set()
-            )
+        # Update collected keys based on achiever's key inventory
+        achiever_keys_array = obs['achiever_keys']
+        color_map = ["red", "green", "blue", "yellow"]
+        self.collected_keys = set()
+        for i, has_key in enumerate(achiever_keys_array):
+            if has_key > 0 and i < len(color_map):
+                self.collected_keys.add(color_map[i])
 
     def get_action(self, obs):
         """
@@ -114,8 +108,11 @@ class AStarAgent:
         """
         self.update_observation(obs)
 
-        # Determine strategy based on current state
-        target_key_color = self.env.target_door_color
+        # Infer target door color from observations
+        if self.target_door_color is None:
+            self.target_door_color = self._infer_target_door_color(obs)
+
+        target_key_color = self.target_door_color
 
         if self.strategy_phase == "collect_key":
             # Check if we already have the target key
@@ -124,19 +121,34 @@ class AStarAgent:
                 self.path = []  # Clear path to recalculate
             else:
                 # Find and collect the target key
-                return self._collect_target_key(target_key_color)
+                return self._collect_target_key(target_key_color, obs)
 
         elif self.strategy_phase == "open_door":
             # Go to target door and open it
-            return self._open_target_door(target_key_color)
+            return self._open_target_door(target_key_color, obs)
 
         # Better fallback: try random movement instead of staying stuck
         return np.random.choice([0, 1, 2, 3])  # random movement
 
-    def _collect_target_key(self, target_key_color):
+    def _infer_target_door_color(self, obs=None):
+        """Infer target door color from observations."""
+        # Use target door color from observations if available
+        if obs and 'target_door_color' in obs:
+            return obs['target_door_color']
+        
+        # Fallback: use first available door color
+        if obs and 'door_positions' in obs:
+            door_colors = list(obs['door_positions'].keys())
+            if door_colors:
+                return door_colors[0]
+        
+        # Final fallback
+        return "red"
+
+    def _collect_target_key(self, target_key_color, obs=None):
         """Strategy to collect the target key"""
         # Find target key position
-        target_key_pos = self._find_object_position(Key, target_key_color)
+        target_key_pos = self._find_object_position(Key, target_key_color, obs)
         if target_key_pos is None:
             return 4  # Stay if key not found
 
@@ -147,10 +159,10 @@ class AStarAgent:
         # Navigate to the key position (key will be picked up automatically when agent steps on it)
         return self._navigate_to_position(target_key_pos)
 
-    def _open_target_door(self, target_door_color):
+    def _open_target_door(self, target_door_color, obs=None):
         """Strategy to open the target door"""
         # Find target door position
-        target_door_pos = self._find_object_position(Door, target_door_color)
+        target_door_pos = self._find_object_position(Door, target_door_color, obs)
         if target_door_pos is None:
             return 4  # Stay if door not found
 
@@ -171,21 +183,20 @@ class AStarAgent:
         # Navigate to door (door will open automatically when agent steps on it)
         return self._navigate_to_position(target_door_pos)
 
-    def _find_object_position(self, obj_type, color):
+    def _find_object_position(self, obj_type, color, obs=None):
         """Find position of specific object type and color"""
-        for i in range(self.grid.width):
-            for j in range(self.grid.height):
-                obj = self.grid.get(i, j)
-                if obj is not None:
-                    # Check both isinstance and class name for compatibility
-                    if isinstance(obj, obj_type) and obj.color == color:
-                        return (i, j)
-                    elif (
-                        hasattr(obj, "color")
-                        and obj.color == color
-                        and obj.__class__.__name__ == obj_type.__name__
-                    ):
-                        return (i, j)
+        if obs is None:
+            return None
+            
+        if obj_type.__name__ == "Key":
+            # Get key positions from observations
+            if 'key_positions' in obs:
+                return obs['key_positions'].get(color, None)
+        elif obj_type.__name__ == "Door":
+            # Get door positions from observations
+            if 'door_positions' in obs:
+                return obs['door_positions'].get(color, None)
+        
         return None
 
     def _navigate_to_position(self, target_pos):
@@ -277,9 +288,9 @@ class AStarAgent:
                 # Check if position is within grid bounds
                 if (
                     node_pos[0] < 0
-                    or node_pos[0] >= self.grid.width
+                    or node_pos[0] >= 9
                     or node_pos[1] < 0
-                    or node_pos[1] >= self.grid.height
+                    or node_pos[1] >= 9
                 ):
                     continue
 
@@ -319,38 +330,16 @@ class AStarAgent:
 
     def _is_walkable(self, pos):
         """Check if position is walkable"""
-        obj = self.grid.get(*pos)
-
-        # Empty cells are walkable
-        if obj is None:
-            return True
-
-        # Keys are walkable (can step on them)
-        if isinstance(obj, Key):
-            return True
-
-        # Check using class name for compatibility
-        if hasattr(obj, "__class__") and obj.__class__.__name__ == "Key":
-            return True
-
-        # Doors are walkable if they're open or we have the key
-        if isinstance(obj, Door):
-            if obj.is_open:
-                return True
-            # Check if we have the key for locked doors
-            if obj.is_locked and obj.color in self.collected_keys:
-                return True
-
-        # Check using class name for compatibility
-        if hasattr(obj, "__class__") and obj.__class__.__name__ == "Door":
-            if obj.is_open:
-                return True
-            # Check if we have the key for locked doors
-            if obj.is_locked and obj.color in self.collected_keys:
-                return True
-
-        # Walls and other objects are not walkable
-        return False
+        # For now, use simplified walkability - most positions are walkable
+        # TODO: This should parse the visual grid observation properly
+        
+        # Check bounds
+        if pos[0] < 0 or pos[0] >= 9 or pos[1] < 0 or pos[1] >= 9:
+            return False
+            
+        # For now, assume most positions are walkable except walls
+        # This is a simplified approach until visual observation parsing is implemented
+        return True
 
     def _heuristic(self, pos1, pos2):
         """Manhattan distance heuristic"""
@@ -381,19 +370,18 @@ class ValueAgent:
 
     def __init__(
         self,
-        env,
         observability="full",
         movement_cost=0.01,
         wall_penalty=2.0,
         gamma=0.99,
         temperature=0.1,
     ):
-        self.env = env
         self.observability = observability
         self.agent_pos = None
         self.grid = None
         self.current_target = None
         self.path = []
+        self.target_door_color = None
 
         # Track agent's collected keys
         self.collected_keys = set()
@@ -424,31 +412,25 @@ class ValueAgent:
 
     def update_observation(self, obs):
         """Update agent's understanding of the environment"""
-        # Get current achiever position from environment
-        if hasattr(self.env, "achiever_pos"):
-            new_pos = tuple(self.env.achiever_pos)
-        else:
-            # Fallback to single agent mode
-            new_pos = (
-                tuple(self.env.agent_pos)
-                if hasattr(self.env, "agent_pos")
-                else self.agent_pos
-            )
+        if obs is None:
+            return
+            
+        # Get current achiever position from observations
+        new_pos = tuple(obs['achiever_pos'])
 
         if new_pos != self.agent_pos:
             self.agent_pos = new_pos
 
-        # Get the grid from environment
-        self.grid = self.env.grid
+        # Get the grid from achiever's visual observation
+        self.grid = obs['achiever']
 
-        # Update collected keys based on achiever's inventory
-        if hasattr(self.env, "achiever_keys"):
-            self.collected_keys = set(self.env.achiever_keys)
-        else:
-            # Fallback to single agent mode
-            self.collected_keys = (
-                set(self.env.agent_keys) if hasattr(self.env, "agent_keys") else set()
-            )
+        # Update collected keys based on achiever's key inventory
+        achiever_keys_array = obs['achiever_keys']
+        color_map = ["red", "green", "blue", "yellow"]
+        self.collected_keys = set()
+        for i, has_key in enumerate(achiever_keys_array):
+            if has_key > 0 and i < len(color_map):
+                self.collected_keys.add(color_map[i])
 
     def get_action(self, obs):
         """
@@ -456,8 +438,11 @@ class ValueAgent:
         """
         self.update_observation(obs)
 
-        # Determine strategy based on current state
-        target_key_color = self.env.target_door_color
+        # Infer target door color from observations
+        if self.target_door_color is None:
+            self.target_door_color = self._infer_target_door_color(obs)
+
+        target_key_color = self.target_door_color
 
         if self.strategy_phase == "collect_key":
             # Check if we already have the target key
@@ -465,19 +450,19 @@ class ValueAgent:
                 self.strategy_phase = "open_door"
             else:
                 # Find and collect the target key
-                return self._collect_target_key(target_key_color)
+                return self._collect_target_key(target_key_color, obs)
 
         elif self.strategy_phase == "open_door":
             # Go to target door and open it
-            return self._open_target_door(target_key_color)
+            return self._open_target_door(target_key_color, obs)
 
         # Better fallback: try random movement instead of staying stuck
         return np.random.choice([0, 1, 2, 3])  # random movement
 
-    def _collect_target_key(self, target_key_color):
+    def _collect_target_key(self, target_key_color, obs=None):
         """Strategy to collect the target key using value iteration"""
         # Find target key position
-        target_key_pos = self._find_object_position(Key, target_key_color)
+        target_key_pos = self._find_object_position(Key, target_key_color, obs)
         if target_key_pos is None:
             return 4  # Stay if key not found
 
@@ -486,12 +471,12 @@ class ValueAgent:
             return 4  # Stay - key pickup is automatic when agent steps on it
 
         # Use value iteration to navigate to key (key will be picked up automatically)
-        return self._navigate_with_value_iteration(target_key_pos)
+        return self._navigate_with_value_iteration(target_key_pos, obs)
 
-    def _open_target_door(self, target_door_color):
+    def _open_target_door(self, target_door_color, obs=None):
         """Strategy to open the target door using value iteration"""
         # Find target door position
-        target_door_pos = self._find_object_position(Door, target_door_color)
+        target_door_pos = self._find_object_position(Door, target_door_color, obs)
         if target_door_pos is None:
             return 4  # Stay if door not found
 
@@ -510,29 +495,28 @@ class ValueAgent:
                 return 4  # Stay - door opening is automatic
 
         # Navigate to door (door will open automatically when agent steps on it)
-        return self._navigate_with_value_iteration(target_door_pos)
+        return self._navigate_with_value_iteration(target_door_pos, obs)
 
-    def _find_object_position(self, obj_type, color):
+    def _find_object_position(self, obj_type, color, obs=None):
         """Find position of specific object type and color"""
-        for i in range(self.grid.width):
-            for j in range(self.grid.height):
-                obj = self.grid.get(i, j)
-                if obj is not None:
-                    # Check both isinstance and class name for compatibility
-                    if isinstance(obj, obj_type) and obj.color == color:
-                        return (i, j)
-                    elif (
-                        hasattr(obj, "color")
-                        and obj.color == color
-                        and obj.__class__.__name__ == obj_type.__name__
-                    ):
-                        return (i, j)
+        if obs is None:
+            return None
+            
+        if obj_type.__name__ == "Key":
+            # Get key positions from observations
+            if 'key_positions' in obs:
+                return obs['key_positions'].get(color, None)
+        elif obj_type.__name__ == "Door":
+            # Get door positions from observations
+            if 'door_positions' in obs:
+                return obs['door_positions'].get(color, None)
+        
         return None
 
-    def _navigate_with_value_iteration(self, target_pos):
+    def _navigate_with_value_iteration(self, target_pos, obs=None):
         """Navigate using value iteration and convert to MiniGrid actions"""
         # Run value iteration to get optimal action
-        optimal_action = self._plan_value_iteration(target_pos)
+        optimal_action = self._plan_value_iteration(target_pos, obs)
 
         if optimal_action is None:
             return 4  # Stay if no action found
@@ -541,12 +525,12 @@ class ValueAgent:
         return self._convert_to_minigrid_action(optimal_action)
 
     def _plan_value_iteration(
-        self, target_pos, max_iterations=100, convergence_threshold=0.01
+        self, target_pos, obs=None, max_iterations=100, convergence_threshold=0.01
     ):
         """
         Run value iteration to compute optimal action for reaching target
         """
-        width, height = self.grid.width, self.grid.height
+        width, height = 9, 9
         n_actions = 4
 
         # Initialize value function
@@ -623,9 +607,9 @@ class ValueAgent:
         # Check bounds
         if (
             new_pos[0] < 0
-            or new_pos[0] >= self.grid.width
+            or new_pos[0] >= 9
             or new_pos[1] < 0
-            or new_pos[1] >= self.grid.height
+            or new_pos[1] >= 9
         ):
             reward -= self.wall_penalty
             next_value = self.gamma * value_function[x, y]  # Stay in current position
@@ -690,6 +674,21 @@ class ValueAgent:
         # Walls and other objects are not walkable
         return False
 
+    def _infer_target_door_color(self, obs=None):
+        """Infer target door color from observations."""
+        # Use target door color from observations if available
+        if obs and 'target_door_color' in obs:
+            return obs['target_door_color']
+        
+        # Fallback: use first available door color
+        if obs and 'door_positions' in obs:
+            door_colors = list(obs['door_positions'].keys())
+            if door_colors:
+                return door_colors[0]
+        
+        # Final fallback
+        return "red"
+
     def reset(self):
         """Reset agent state for new episode"""
         self.agent_pos = None
@@ -701,6 +700,7 @@ class ValueAgent:
         self.value_function = None
         self.policy = None
         self.converged = False
+        self.target_door_color = None
 
 
 class RandomAgent:

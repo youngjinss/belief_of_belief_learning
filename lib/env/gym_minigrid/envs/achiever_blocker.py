@@ -385,6 +385,26 @@ class AchieverBlockerEnv(MiniGridEnv):
                 if isinstance(obj, Door):
                     door_positions.append((x, y))
         return door_positions
+    
+    def _get_door_positions_with_colors(self):
+        """Get door positions with their colors"""
+        door_positions = {}
+        for x in range(self.grid.width):
+            for y in range(self.grid.height):
+                obj = self.grid.get(x, y)
+                if isinstance(obj, Door):
+                    door_positions[obj.color] = (x, y)
+        return door_positions
+    
+    def _get_key_positions(self):
+        """Get key positions with their colors"""
+        key_positions = {}
+        for x in range(self.grid.width):
+            for y in range(self.grid.height):
+                obj = self.grid.get(x, y)
+                if isinstance(obj, Key):
+                    key_positions[obj.color] = (x, y)
+        return key_positions
 
     def _get_target_door_position(self):
         """Get target door position"""
@@ -421,12 +441,28 @@ class AchieverBlockerEnv(MiniGridEnv):
             if color in self.achiever_keys:
                 achiever_keys_array[i] = 1
         
+        # Get key positions
+        key_positions = self._get_key_positions()
+        
+        # Get door positions  
+        door_positions = self._get_door_positions_with_colors()
+        
+        # Get grid size info
+        grid_info = {
+            'width': self.width,
+            'height': self.height
+        }
+        
         return {
             'achiever': achiever_obs,
             'blocker': blocker_obs,
             'achiever_keys': achiever_keys_array,
             'achiever_pos': self.achiever_pos.astype(np.int32),
-            'blocker_pos': self.blocker_pos.astype(np.int32)
+            'blocker_pos': self.blocker_pos.astype(np.int32),
+            'target_door_color': self.target_door_color,
+            'key_positions': key_positions,
+            'door_positions': door_positions,
+            'grid_info': grid_info
         }
 
     def render(self, mode="human"):

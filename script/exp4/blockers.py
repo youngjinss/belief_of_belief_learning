@@ -75,6 +75,10 @@ class GoalDirectAgent:
         self.grid = None
         self.blocker_pos = None
         self.achiever_pos = None
+        
+        # Grid dimensions - will be set from observations
+        self.width = None
+        self.height = None
 
     def get_action(self, obs):
         """
@@ -117,6 +121,11 @@ class GoalDirectAgent:
 
     def _update_from_obs(self, obs):
         """Update internal state from observations."""
+        # Update grid dimensions from observations
+        if 'grid_info' in obs and self.width is None:
+            self.width = obs['grid_info']['width']
+            self.height = obs['grid_info']['height']
+            
         self.blocker_pos = tuple(obs['blocker_pos'])
         self.achiever_pos = tuple(obs['achiever_pos'])
         # Extract grid from blocker's visual observation
@@ -153,19 +162,12 @@ class GoalDirectAgent:
 
     def _find_door_position_from_obs(self, color, obs):
         """Find position of door with given color from observations."""
-        # Use door positions from observations if available
+        # Use door positions from observations
         if obs and 'door_positions' in obs:
             return obs['door_positions'].get(color, None)
         
-        # Fallback to hardcoded positions if observations don't have door info
-        # Common door positions in 9x9 grid (based on environment structure)
-        door_positions = {
-            "red": (4, 8),    # bottom center
-            "green": (4, 0),  # top center  
-            "blue": (8, 4),   # right center
-            "yellow": (0, 4)  # left center
-        }
-        return door_positions.get(color, None)
+        # No fallback - if door positions aren't in observations, return None
+        return None
 
     def _at_target_door(self):
         """Check if blocker is at the target door position."""
@@ -174,7 +176,7 @@ class GoalDirectAgent:
         return self.blocker_pos == self.target_door_pos
 
     def _find_path_to_door(self, obs=None):
-        """Find path from current position to target door using BFS."""
+        """Find path from current position to target door using BFS with wall avoidance."""
         if self.target_door_pos is None:
             return []
 
@@ -184,10 +186,13 @@ class GoalDirectAgent:
         if start == goal:
             return []
 
-        # Get grid size from observations or use default
-        grid_size = 9  # default
-        if obs and 'grid_info' in obs:
-            grid_size = obs['grid_info']['width']
+        # Get grid size from instance dimensions
+        grid_size = self.width if self.width is not None else 9  # fallback
+
+        # Get wall positions from observations
+        wall_positions = set()
+        if obs and 'wall_positions' in obs:
+            wall_positions = set(tuple(pos) for pos in obs['wall_positions'])
 
         # BFS to find path
         queue = deque([(start, [])])
@@ -195,10 +200,6 @@ class GoalDirectAgent:
         
         # Movement directions: up, right, down, left
         directions = [(0, -1), (1, 0), (0, 1), (-1, 0)]
-        
-        # For now, use a simplified pathfinding that assumes open space
-        # This will need to be improved when implementing full partial observability
-        # to parse the visual grid observation properly
         
         while queue:
             (x, y), path = queue.popleft()
@@ -209,8 +210,8 @@ class GoalDirectAgent:
                 # Check bounds using grid size from observations
                 if 0 <= nx < grid_size and 0 <= ny < grid_size:
                     if (nx, ny) not in visited:
-                        # Simplified walkability check - avoid achiever position
-                        if (nx, ny) != self.achiever_pos:
+                        # Check if position is walkable
+                        if self._is_walkable_position(nx, ny, wall_positions, obs):
                             visited.add((nx, ny))
                             new_path = path + [(nx, ny)]
                             
@@ -220,6 +221,25 @@ class GoalDirectAgent:
                             queue.append(((nx, ny), new_path))
         
         return []  # No path found
+
+    def _is_walkable_position(self, x, y, wall_positions, obs):
+        """Check if a position is walkable (not a wall, not occupied by achiever)."""
+        pos = (x, y)
+        
+        # Check if position is a wall
+        if pos in wall_positions:
+            return False
+        
+        # Avoid achiever position to prevent collision
+        if pos == self.achiever_pos:
+            return False
+        
+        # Goal door position is always walkable (we want to reach it)
+        if pos == self.target_door_pos:
+            return True
+        
+        # All other positions are walkable (keys, empty spaces, other doors)
+        return True
 
     def _navigate_to_door(self, obs=None):
         """Navigate to target door following planned path."""
@@ -273,3 +293,6 @@ class GoalDirectAgent:
         self.grid = None
         self.blocker_pos = None
         self.achiever_pos = None
+        # Keep width/height since they don't change between episodes
+        # self.width = None
+        # self.height = None

@@ -52,6 +52,10 @@ class AStarAgent:
         self.grid = None
         self.current_target = None
         self.path = []
+        
+        # Grid dimensions - will be set from observations
+        self.width = None
+        self.height = None
 
         # Track agent's collected keys
         self.collected_keys = set()
@@ -75,6 +79,11 @@ class AStarAgent:
         """Update agent's understanding of the environment"""
         if obs is None:
             return
+            
+        # Update grid dimensions from observations
+        if 'grid_info' in obs and self.width is None:
+            self.width = obs['grid_info']['width']
+            self.height = obs['grid_info']['height']
             
         # Get current achiever position from observations
         new_pos = tuple(obs['achiever_pos'])
@@ -286,11 +295,15 @@ class AStarAgent:
                 )
 
                 # Check if position is within grid bounds
+                # Use grid dimensions from observations
+                width = self.width if self.width is not None else 9  # fallback
+                height = self.height if self.height is not None else 9  # fallback
+                
                 if (
                     node_pos[0] < 0
-                    or node_pos[0] >= 9
+                    or node_pos[0] >= width
                     or node_pos[1] < 0
-                    or node_pos[1] >= 9
+                    or node_pos[1] >= height
                 ):
                     continue
 
@@ -333,8 +346,10 @@ class AStarAgent:
         # For now, use simplified walkability - most positions are walkable
         # TODO: This should parse the visual grid observation properly
         
-        # Check bounds
-        if pos[0] < 0 or pos[0] >= 9 or pos[1] < 0 or pos[1] >= 9:
+        # Check bounds using grid dimensions from observations
+        width = self.width if self.width is not None else 9  # fallback
+        height = self.height if self.height is not None else 9  # fallback
+        if pos[0] < 0 or pos[0] >= width or pos[1] < 0 or pos[1] >= height:
             return False
             
         # For now, assume most positions are walkable except walls
@@ -382,6 +397,10 @@ class ValueAgent:
         self.current_target = None
         self.path = []
         self.target_door_color = None
+        
+        # Grid dimensions - will be set from observations
+        self.width = None
+        self.height = None
 
         # Track agent's collected keys
         self.collected_keys = set()
@@ -414,6 +433,11 @@ class ValueAgent:
         """Update agent's understanding of the environment"""
         if obs is None:
             return
+            
+        # Update grid dimensions from observations
+        if 'grid_info' in obs and self.width is None:
+            self.width = obs['grid_info']['width']
+            self.height = obs['grid_info']['height']
             
         # Get current achiever position from observations
         new_pos = tuple(obs['achiever_pos'])
@@ -530,8 +554,15 @@ class ValueAgent:
         """
         Run value iteration to compute optimal action for reaching target
         """
-        width, height = 9, 9
+        # Get grid size from instance dimensions
+        width = self.width if self.width is not None else 9  # fallback
+        height = self.height if self.height is not None else 9  # fallback
         n_actions = 4
+        
+        # Get blocker position from observations
+        blocker_pos = None
+        if obs is not None and 'blocker_pos' in obs:
+            blocker_pos = tuple(obs['blocker_pos'])
 
         # Initialize value function
         value_function = np.zeros((width, height))
@@ -557,7 +588,7 @@ class ValueAgent:
                     q_values = []
                     for action in range(n_actions):
                         q_val = self._evaluate_action(
-                            (x, y), action, old_values, target_pos
+                            (x, y), action, old_values, target_pos, width, height, blocker_pos
                         )
                         q_values.append(q_val)
 
@@ -576,7 +607,7 @@ class ValueAgent:
         q_values = []
         for action in range(n_actions):
             q_val = self._evaluate_action(
-                current_pos, action, value_function, target_pos
+                current_pos, action, value_function, target_pos, width, height, blocker_pos
             )
             q_values.append(q_val)
 
@@ -595,7 +626,7 @@ class ValueAgent:
 
         return action
 
-    def _evaluate_action(self, pos, action, value_function, target_pos):
+    def _evaluate_action(self, pos, action, value_function, target_pos, width, height, blocker_pos=None):
         """Evaluate expected value of taking action from position"""
         x, y = pos  # Grid coordinates (x=column, y=row)
         dx, dy = self.actions[action]
@@ -604,12 +635,12 @@ class ValueAgent:
         # Base movement cost
         reward = -self.movement_cost
 
-        # Check bounds
+        # Check bounds using the width/height from value iteration
         if (
             new_pos[0] < 0
-            or new_pos[0] >= 9
+            or new_pos[0] >= width
             or new_pos[1] < 0
-            or new_pos[1] >= 9
+            or new_pos[1] >= height
         ):
             reward -= self.wall_penalty
             next_value = self.gamma * value_function[x, y]  # Stay in current position
@@ -621,11 +652,16 @@ class ValueAgent:
                     self.gamma * value_function[x, y]
                 )  # Stay in current position
             else:
-                # Bonus for reaching target
-                if new_pos == target_pos:
-                    reward += 10.0
+                # Check if new position conflicts with blocker position
+                if blocker_pos is not None and new_pos == blocker_pos:
+                    reward -= self.wall_penalty  # Heavy penalty for trying to move to blocker's position
+                    next_value = self.gamma * value_function[x, y]  # Stay in current position
+                else:
+                    # Bonus for reaching target
+                    if new_pos == target_pos:
+                        reward += 10.0
 
-                next_value = self.gamma * value_function[new_pos[0], new_pos[1]]
+                    next_value = self.gamma * value_function[new_pos[0], new_pos[1]]
 
         return reward + next_value
 
@@ -640,39 +676,26 @@ class ValueAgent:
         return value_action
 
     def _is_walkable(self, pos):
-        """Check if position is walkable (matches KeyDoor environment's can_overlap logic)"""
-        obj = self.grid.get(*pos)
-
-        # Empty cells are walkable
-        if obj is None:
-            return True
-
-        # Keys are walkable (can step on them - automatic pickup)
-        if isinstance(obj, Key):
-            return True
-
-        # Check using class name for compatibility
-        if hasattr(obj, "__class__") and obj.__class__.__name__ == "Key":
-            return True
-
-        # Doors are walkable if they're open or we have the key
-        if isinstance(obj, Door):
-            if obj.is_open:
-                return True
-            # Check if we have the key for locked doors (automatic opening)
-            if obj.is_locked and obj.color in self.collected_keys:
-                return True
-
-        # Check using class name for compatibility
-        if hasattr(obj, "__class__") and obj.__class__.__name__ == "Door":
-            if obj.is_open:
-                return True
-            # Check if we have the key for locked doors (automatic opening)
-            if obj.is_locked and obj.color in self.collected_keys:
-                return True
-
-        # Walls and other objects are not walkable
-        return False
+        """Check if position is walkable using a simplified approach for value iteration"""
+        # For value iteration, we use a simplified walkability check
+        # since we're now observation-based and don't have direct grid access
+        
+        # Check bounds using grid dimensions from observations
+        width = self.width if self.width is not None else 9  # fallback
+        height = self.height if self.height is not None else 9  # fallback
+        if pos[0] < 0 or pos[0] >= width or pos[1] < 0 or pos[1] >= height:
+            return False
+            
+        # For now, assume most positions are walkable except walls (which are at edges)
+        # This is a simplified approach - keys and doors are considered walkable
+        # Walls are typically only at the border positions (0, x) or (width-1, x) etc.
+        if pos[0] == 0 or pos[0] == width-1 or pos[1] == 0 or pos[1] == height-1:
+            # Check if this is a door position (doors on walls are walkable)
+            # This needs to be enhanced when we implement proper visual observation parsing
+            return True  # For now, assume wall positions with doors are walkable
+        
+        # Interior positions are generally walkable
+        return True
 
     def _infer_target_door_color(self, obs=None):
         """Infer target door color from observations."""

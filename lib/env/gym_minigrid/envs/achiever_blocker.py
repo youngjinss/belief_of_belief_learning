@@ -328,18 +328,12 @@ class AchieverBlockerEnv(MiniGridEnv):
 
     def _handle_collision(self, achiever_new_pos, blocker_new_pos):
         """Handle collision between agents (agents cannot overlap or swap positions)"""
-        # Check if agents are trying to occupy the same cell
         if np.array_equal(achiever_new_pos, blocker_new_pos):
-            # Collision detected: both agents stay in their previous positions
-            return self.achiever_prev_pos, self.blocker_prev_pos
-        
-        # Check if agents are trying to swap positions
+            return self.achiever_prev_pos, blocker_new_pos
         elif (np.array_equal(achiever_new_pos, self.blocker_prev_pos) and 
               np.array_equal(blocker_new_pos, self.achiever_prev_pos)):
-            # Position swap detected: both agents stay in their previous positions
             return self.achiever_prev_pos, self.blocker_prev_pos
         else:
-            # No collision
             return achiever_new_pos, blocker_new_pos
 
     def _auto_pickup_key(self, agent_pos):
@@ -414,6 +408,16 @@ class AchieverBlockerEnv(MiniGridEnv):
                 if isinstance(obj, Door) and obj.color == self.target_door_color:
                     return (x, y)
         return None
+    
+    def _get_wall_positions(self):
+        """Get all wall positions"""
+        wall_positions = []
+        for x in range(self.grid.width):
+            for y in range(self.grid.height):
+                obj = self.grid.get(x, y)
+                if obj is not None and obj.type == "wall":
+                    wall_positions.append((x, y))
+        return wall_positions
 
     def _get_observations(self):
         """Generate observations for both agents"""
@@ -447,6 +451,9 @@ class AchieverBlockerEnv(MiniGridEnv):
         # Get door positions  
         door_positions = self._get_door_positions_with_colors()
         
+        # Get wall positions
+        wall_positions = self._get_wall_positions()
+        
         # Get grid size info
         grid_info = {
             'width': self.width,
@@ -462,6 +469,7 @@ class AchieverBlockerEnv(MiniGridEnv):
             'target_door_color': self.target_door_color,
             'key_positions': key_positions,
             'door_positions': door_positions,
+            'wall_positions': wall_positions,
             'grid_info': grid_info
         }
 

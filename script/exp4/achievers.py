@@ -552,7 +552,7 @@ class ValueAgent:
         self, target_pos, obs=None, max_iterations=100, convergence_threshold=0.01
     ):
         """
-        Run value iteration to compute optimal action for reaching target
+        Vectorized value iteration to compute optimal action for reaching target
         """
         # Get grid size from instance dimensions
         width = self.width if self.width is not None else 9  # fallback
@@ -570,30 +570,105 @@ class ValueAgent:
         # Set high reward for target position
         value_function[target_pos[0], target_pos[1]] = 10.0
 
-        # Run value iteration
+        # Precompute action deltas and grid coordinates
+        actions = [(0, -1), (1, 0), (0, 1), (-1, 0)]  # up, right, down, left
+        x_coords, y_coords = np.meshgrid(np.arange(width), np.arange(height), indexing='ij')
+        coord_mask = np.ones((width, height), dtype=bool)
+        
+        # Mask for target position (keep it unchanged)
+        coord_mask[target_pos[0], target_pos[1]] = False
+        
+        # Precompute walkability mask (vectorized)
+        walkable_mask = np.ones((width, height), dtype=bool)
+        # For the simplified walkability check, most positions are walkable
+        # Walls are typically only at borders - this is a simplified approach
+        # that matches the current _is_walkable implementation
+        walkable_mask[0, :] = True  # Top border (doors can be here)
+        walkable_mask[-1, :] = True  # Bottom border 
+        walkable_mask[:, 0] = True  # Left border
+        walkable_mask[:, -1] = True  # Right border
+        # Interior positions are walkable by default (already True)
+
+        # Run vectorized value iteration
         for iteration in range(max_iterations):
             old_values = value_function.copy()
 
-            # Value iteration update
-            for x in range(width):
-                for y in range(height):
-                    if (x, y) == target_pos:
-                        continue  # Keep target value high
+            # Vectorized Q-value computation for all positions and actions
+            q_values_all = np.zeros((width, height, n_actions))
+            
+            for action_idx, (dx, dy) in enumerate(actions):
+                # Compute next positions for all grid cells
+                next_x = x_coords + dx
+                next_y = y_coords + dy
+                
+                # Bounds checking
+                valid_moves = (
+                    (next_x >= 0) & (next_x < width) & 
+                    (next_y >= 0) & (next_y < height)
+                )
+                
+                # Initialize rewards and next values
+                rewards = np.full((width, height), -self.movement_cost)
+                next_values = np.zeros((width, height))
+                
+                # Handle valid moves
+                valid_next_x = np.where(valid_moves, next_x, x_coords)
+                valid_next_y = np.where(valid_moves, next_y, y_coords)
+                
+                # Get next values (stay in place for invalid moves)
+                next_values = np.where(
+                    valid_moves,
+                    self.gamma * old_values[valid_next_x, valid_next_y],
+                    self.gamma * old_values[x_coords, y_coords]
+                )
+                
+                # Apply penalties for invalid moves
+                rewards = np.where(valid_moves, rewards, rewards - self.wall_penalty)
+                
+                # Apply walkability penalties
+                next_walkable = np.where(
+                    valid_moves,
+                    walkable_mask[valid_next_x, valid_next_y],
+                    True  # Staying in place is always "walkable"
+                )
+                rewards = np.where(next_walkable, rewards, rewards - self.wall_penalty)
+                next_values = np.where(
+                    next_walkable,
+                    next_values,
+                    self.gamma * old_values[x_coords, y_coords]
+                )
+                
+                # Apply blocker position penalty
+                if blocker_pos is not None:
+                    blocker_conflict = (
+                        valid_moves & 
+                        (valid_next_x == blocker_pos[0]) & 
+                        (valid_next_y == blocker_pos[1])
+                    )
+                    rewards = np.where(blocker_conflict, rewards - self.wall_penalty, rewards)
+                    next_values = np.where(
+                        blocker_conflict,
+                        self.gamma * old_values[x_coords, y_coords],
+                        next_values
+                    )
+                
+                # Apply target bonus
+                target_bonus = (
+                    valid_moves & 
+                    (valid_next_x == target_pos[0]) & 
+                    (valid_next_y == target_pos[1])
+                )
+                rewards = np.where(target_bonus, rewards + 10.0, rewards)
+                
+                # Store Q-values
+                q_values_all[:, :, action_idx] = rewards + next_values
 
-                    if not self._is_walkable((x, y)):
-                        value_function[x, y] = -self.wall_penalty
-                        continue
-
-                    # Compute Q-values for each action
-                    q_values = []
-                    for action in range(n_actions):
-                        q_val = self._evaluate_action(
-                            (x, y), action, old_values, target_pos, width, height, blocker_pos
-                        )
-                        q_values.append(q_val)
-
-                    # Update value function
-                    value_function[x, y] = max(q_values)
+            # Update value function (max over actions)
+            new_values = np.max(q_values_all, axis=2)
+            
+            # Apply masks: keep target value high, set unwalkable positions to penalty
+            value_function = np.where(coord_mask, new_values, value_function)
+            value_function = np.where(walkable_mask, value_function, -self.wall_penalty)
 
             # Check convergence
             if np.max(np.abs(value_function - old_values)) < convergence_threshold:

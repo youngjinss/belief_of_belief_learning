@@ -27,7 +27,7 @@ class Config:
         self.gif_output = None  # Filename for saving gif (without .gif extension)
 
         # Data generation settings
-        self.n_games = 100  # Number of games to generate for ToMnet data
+        self.n_games = 300  # Number of games to generate for ToMnet data
         self.save_dir = "data"  # Base directory to save generated data
 
         # Experiment settings

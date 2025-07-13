@@ -18,8 +18,8 @@ from data_generation import DataReader
 from evaluate import load_model
 
 """
-Visualization tools for KeyDoor ToMnet experiment
-Adapted from ToMnetF experiment5 for KeyDoor environment
+Visualization tools for AchieverBlocker ToMnet experiment
+Adapted from ToMnetF experiment5 for multi-agent AchieverBlocker environment
 """
 
 
@@ -56,7 +56,7 @@ def plot_accuracy_by_n_past(
     )
     ax1.set_xlabel("Number of Past Episodes (N_past)", fontsize=12)
     ax1.set_ylabel("Accuracy", fontsize=12)
-    ax1.set_title("KeyDoor: Action Accuracy vs N_past", fontsize=14, fontweight="bold")
+    ax1.set_title("AchieverBlocker: Action Accuracy vs N_past", fontsize=14, fontweight="bold")
     ax1.grid(True, alpha=0.3)
     ax1.set_xlim(-0.5, max(n_past_values) + 0.5)
     ax1.set_ylim(0, 1.0)
@@ -84,7 +84,7 @@ def plot_accuracy_by_n_past(
     )
     ax2.set_xlabel("Number of Past Episodes (N_past)", fontsize=12)
     ax2.set_ylabel("F1 Score", fontsize=12)
-    ax2.set_title("KeyDoor: F1 Score vs N_past", fontsize=14, fontweight="bold")
+    ax2.set_title("AchieverBlocker: F1 Score vs N_past", fontsize=14, fontweight="bold")
     ax2.grid(True, alpha=0.3)
     ax2.set_xlim(-0.5, max(n_past_values) + 0.5)
     ax2.set_ylim(0, 1.0)
@@ -106,7 +106,7 @@ def plot_accuracy_by_n_past(
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
         plt.savefig(
-            os.path.join(output_dir, "keydoor_accuracy_by_n_past.png"),
+            os.path.join(output_dir, "achieverblocker_accuracy_by_n_past.png"),
             dpi=300,
             bbox_inches="tight",
         )
@@ -114,7 +114,7 @@ def plot_accuracy_by_n_past(
     plt.show()
 
     # Print summary statistics
-    print("\nKeyDoor Accuracy by N_past Summary:")
+    print("\nAchieverBlocker Accuracy by N_past Summary:")
     print("-" * 40)
     for n in n_past_values:
         print(
@@ -149,9 +149,9 @@ def plot_accuracy_heatmap_by_n_past(results_by_n_past, output_dir=None, config=N
             ["Up", "Right", "Down", "Left", "Stay", "Pickup", "Toggle"][:num_actions],
         )
     else:
-        # Use default values if config is not provided
-        num_actions = 7
-        action_names = ["Up", "Right", "Down", "Left", "Stay", "Pickup", "Toggle"][
+        # Use default values if config is not provided (AchieverBlocker has mixed actions)
+        num_actions = 8  # Combined achiever (0-6) and blocker (0-5) actions
+        action_names = ["Up", "Right", "Down", "Left", "Stay", "Pickup", "Toggle", "Broken"][
             :num_actions
         ]
 
@@ -212,7 +212,7 @@ def plot_accuracy_heatmap_by_n_past(results_by_n_past, output_dir=None, config=N
     )
 
     ax.set_title(
-        "KeyDoor: Per-Action Accuracy by N_past", fontsize=14, fontweight="bold"
+        "AchieverBlocker: Per-Action Accuracy by N_past", fontsize=14, fontweight="bold"
     )
     ax.set_xlabel("Action Type", fontsize=12)
     ax.set_ylabel("Number of Past Episodes", fontsize=12)
@@ -223,7 +223,7 @@ def plot_accuracy_heatmap_by_n_past(results_by_n_past, output_dir=None, config=N
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
         plt.savefig(
-            os.path.join(output_dir, "keydoor_accuracy_heatmap_by_n_past.png"),
+            os.path.join(output_dir, "achieverblocker_accuracy_heatmap_by_n_past.png"),
             dpi=300,
             bbox_inches="tight",
         )
@@ -276,7 +276,7 @@ def plot_training_curves(history_path, output_dir, config=None, experiment_no=No
         ax3, ax4 = axes[1]
 
     fig.suptitle(
-        f"KeyDoor ToMnet Training History (Experiment {experiment_no})", fontsize=16
+        f"AchieverBlocker ToMnet Training History (Experiment {experiment_no})", fontsize=16
     )
 
     epochs = history["epoch"]
@@ -491,7 +491,7 @@ def plot_training_curves(history_path, output_dir, config=None, experiment_no=No
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
         plt.savefig(
-            os.path.join(output_dir, f"keydoor_training_curves_exp{experiment_no}.png"),
+            os.path.join(output_dir, f"achieverblocker_training_curves_exp{experiment_no}.png"),
             dpi=300,
             bbox_inches="tight",
         )
@@ -499,7 +499,7 @@ def plot_training_curves(history_path, output_dir, config=None, experiment_no=No
     plt.show()
 
     # Print training summary
-    print(f"\nKeyDoor Training Summary (Experiment {experiment_no}):")
+    print(f"\nAchieverBlocker Training Summary (Experiment {experiment_no}):")
     print("-" * 50)
     print(f"Total epochs: {len(history['epoch'])}")
     print(f"Best validation loss: {min(history['val_loss']):.4f}")
@@ -554,7 +554,7 @@ def plot_confusion_matrix(
     action_config = config.get_action_config()
     action_names = action_config.get(
         "action_names",
-        ["Left", "Right", "Forward", "Pick_up", "Drop", "Toggle", "Done"],
+        ["Up", "Right", "Down", "Left", "Stay", "Pickup", "Toggle", "Broken"],
     )
 
     # Plot confusion matrix
@@ -570,7 +570,7 @@ def plot_confusion_matrix(
     )
 
     ax.set_title(
-        f"KeyDoor: Confusion Matrix (Experiment {experiment_no})",
+        f"AchieverBlocker: Confusion Matrix (Experiment {experiment_no})",
         fontsize=14,
         fontweight="bold",
     )
@@ -584,7 +584,7 @@ def plot_confusion_matrix(
         os.makedirs(output_dir, exist_ok=True)
         plt.savefig(
             os.path.join(
-                output_dir, f"keydoor_confusion_matrix_exp{experiment_no}.png"
+                output_dir, f"achieverblocker_confusion_matrix_exp{experiment_no}.png"
             ),
             dpi=300,
             bbox_inches="tight",
@@ -593,7 +593,7 @@ def plot_confusion_matrix(
     plt.show()
 
     # Print confusion matrix statistics
-    print(f"\nKeyDoor Confusion Matrix Statistics (Experiment {experiment_no}):")
+    print(f"\nAchieverBlocker Confusion Matrix Statistics (Experiment {experiment_no}):")
     print("-" * 60)
     for i, action in enumerate(action_names):
         if i < len(cm):
@@ -637,13 +637,13 @@ def plot_action_likelihood(
     action_config = config.get_action_config()
     action_names = action_config.get(
         "action_names",
-        ["Left", "Right", "Forward", "Pick_up", "Drop", "Toggle", "Done"],
+        ["Up", "Right", "Down", "Left", "Stay", "Pickup", "Toggle", "Broken"],
     )
 
     # Create figure with subplots
     fig, axes = plt.subplots(2, 4, figsize=(16, 8))
     fig.suptitle(
-        f"KeyDoor: Action Likelihood Distributions (Experiment {experiment_no})",
+        f"AchieverBlocker: Action Likelihood Distributions (Experiment {experiment_no})",
         fontsize=16,
     )
 
@@ -693,7 +693,7 @@ def plot_action_likelihood(
         os.makedirs(output_dir, exist_ok=True)
         plt.savefig(
             os.path.join(
-                output_dir, f"keydoor_action_likelihood_exp{experiment_no}.png"
+                output_dir, f"achieverblocker_action_likelihood_exp{experiment_no}.png"
             ),
             dpi=300,
             bbox_inches="tight",
@@ -832,7 +832,7 @@ def plot_character_embeddings(
     # Create subplots
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
     fig.suptitle(
-        f"KeyDoor: Character Embeddings (Experiment {experiment_no})", fontsize=16
+        f"AchieverBlocker: Character Embeddings (Experiment {experiment_no})", fontsize=16
     )
 
     # Get goal information from config
@@ -1034,7 +1034,7 @@ def plot_character_embeddings(
         os.makedirs(output_dir, exist_ok=True)
         plt.savefig(
             os.path.join(
-                output_dir, f"keydoor_character_embeddings_exp{experiment_no}.png"
+                output_dir, f"achieverblocker_character_embeddings_exp{experiment_no}.png"
             ),
             dpi=300,
             bbox_inches="tight",
@@ -1042,7 +1042,7 @@ def plot_character_embeddings(
 
     plt.show()
 
-    print(f"\nKeyDoor Character Embeddings Analysis (Experiment {experiment_no}):")
+    print(f"\nAchieverBlocker Character Embeddings Analysis (Experiment {experiment_no}):")
     print("-" * 60)
     print(f"Total samples collected: {len(embeddings)}")
     print(
@@ -1101,7 +1101,7 @@ def create_additional_visualizations(
     if experiment_no is None:
         experiment_no = config.experiment_no
 
-    print("Creating additional KeyDoor visualizations...")
+    print("Creating additional AchieverBlocker visualizations...")
 
     # Create output directory
     os.makedirs(output_dir, exist_ok=True)
@@ -1123,7 +1123,7 @@ def create_additional_visualizations(
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="Visualize KeyDoor ToMnet results")
+    parser = argparse.ArgumentParser(description="Visualize AchieverBlocker ToMnet results")
     parser.add_argument(
         "--config_override",
         action="store_true",
@@ -1157,7 +1157,7 @@ if __name__ == "__main__":
     # Create plot directory
     os.makedirs(plot_dir, exist_ok=True)
 
-    print(f"Creating KeyDoor visualizations for experiment {experiment_no}")
+    print(f"Creating AchieverBlocker visualizations for experiment {experiment_no}")
     print(f"Results directory: {results_dir}")
     print(f"Plot directory: {plot_dir}")
 

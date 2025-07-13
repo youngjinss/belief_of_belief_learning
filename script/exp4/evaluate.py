@@ -20,8 +20,8 @@ from train import prepare_data_for_training, generate_past_episodes_from_batch
 from data_generation import DataReader
 
 """
-Evaluation and metrics for KeyDoor ToMnet experiment
-Adapted from ToMnetF experiment5 for KeyDoor environment
+Evaluation and metrics for AchieverBlocker ToMnet experiment
+Adapted from ToMnetF experiment5 for multi-agent AchieverBlocker environment
 """
 
 
@@ -371,12 +371,14 @@ def evaluate_model(
         targets, predictions, average="weighted"
     )
 
-    # Force confusion matrix to be 7x7 for KeyDoor (actions 0-6)
-    conf_matrix = confusion_matrix(targets, predictions, labels=list(range(7)))
+    # Force confusion matrix to be for AchieverBlocker (actions vary by agent type)
+    # Determine max action from data to handle both achiever and blocker actions
+    max_action = max(np.max(targets), np.max(predictions)) + 1
+    conf_matrix = confusion_matrix(targets, predictions, labels=list(range(max_action)))
 
-    # Action-wise accuracy - KeyDoor has 7 actions
+    # Action-wise accuracy - AchieverBlocker has variable actions based on agent type
     action_accuracy = {}
-    for action in range(7):  # 7 actions in KeyDoor
+    for action in range(max_action):
         mask = targets == action
         if np.sum(mask) > 0:
             action_acc = accuracy_score(targets[mask], predictions[mask])
@@ -418,7 +420,7 @@ def evaluate_model(
     return metrics
 
 
-def evaluate_keydoor_model(
+def evaluate_achieverblocker_model(
     config=None,
     model_path=None,
     test_data_dir=None,
@@ -426,7 +428,7 @@ def evaluate_keydoor_model(
     plot_type="basic",
 ):
     """
-    Perform evaluation on KeyDoor ToMnet model
+    Perform evaluation on AchieverBlocker ToMnet model
 
     Args:
         config: Config object containing all evaluation parameters
@@ -449,8 +451,8 @@ def evaluate_keydoor_model(
     if test_data_dir is None:
         # Generate path from config
         env_name = config.get_env_name()
-        agent_type = config.agent_type
-        test_data_dir = f"./data/{env_name}/{agent_type}/test"
+        agent_pair = config.get_agent_pair_name()
+        test_data_dir = f"./data/{env_name}/{agent_pair}/test"
 
     if results_dir is None:
         results_dir = config.result_dir
@@ -467,7 +469,7 @@ def evaluate_keydoor_model(
 
     os.makedirs(results_dir, exist_ok=True)
 
-    print(f"Evaluating KeyDoor ToMnet model")
+    print(f"Evaluating AchieverBlocker ToMnet model")
     print(f"Model: {model_path}")
     print(f"Test data: {test_data_dir}")
     print(f"Device: {device}")
@@ -713,8 +715,8 @@ def analyze_action_likelihood(
     if test_loader is None:
         # Load test data
         env_name = config.get_env_name().replace("MiniGrid-", "").replace("-v1", "")
-        agent_type = config.agent_type
-        test_data_dir_default = f"./data/{env_name}/{agent_type}/test"
+        agent_pair = config.get_agent_pair_name()
+        test_data_dir_default = f"./data/{env_name}/{agent_pair}/test"
 
         # Check if processed test data exists, if not generate it
         processed_test_data_path = os.path.join(
@@ -770,7 +772,9 @@ def analyze_action_likelihood(
         )
 
     model.eval()
-    action_likelihoods = {i: [] for i in range(7)}  # 7 actions in KeyDoor
+    # Determine max action space from data for AchieverBlocker
+    max_action = 8  # Default for AchieverBlocker (7 achiever + 6 blocker actions max)
+    action_likelihoods = {i: [] for i in range(max_action)}
 
     sample_count = 0
     with torch.no_grad():
@@ -846,7 +850,7 @@ def analyze_action_likelihood(
                     break
 
                 action = action_targets[i].item()
-                if action < 7:  # Ensure valid action
+                if action < max_action:  # Ensure valid action
                     likelihood = probabilities[i, action].item()
                     action_likelihoods[action].append(likelihood)
                 sample_count += 1
@@ -879,7 +883,7 @@ def analyze_action_likelihood(
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="Evaluate KeyDoor ToMnet model")
+    parser = argparse.ArgumentParser(description="Evaluate AchieverBlocker ToMnet model")
     parser.add_argument(
         "--config_override",
         action="store_true",
@@ -923,7 +927,7 @@ if __name__ == "__main__":
         config.update_from_args(args)
 
     # Run evaluation (now handles n_past and embeddings internally)
-    results = evaluate_keydoor_model(
+    results = evaluate_achieverblocker_model(
         config=config,
         model_path=args.model_path,
         test_data_dir=args.test_data_dir,

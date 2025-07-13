@@ -974,7 +974,10 @@ def train_tomnet(
             raise ValueError(f"No samples found in {data_dir}")
 
         # Prepare data from multi-agent samples with shuffling
-        data = prepare_data_for_training(samples, grid_size=config.width)
+        max_steps = config.env_variants[config.env_size]["max_steps"]
+        data = prepare_data_for_training(
+            samples, grid_size=config.width, max_trajectory_length=max_steps
+        )
 
         # Save processed data for future use
         print(f"Saving processed data to: {processed_data_path}")
@@ -994,7 +997,10 @@ def train_tomnet(
         samples = data_reader.load_processed_data(processed_data_path)
 
         # Convert loaded samples to training data format
-        data = prepare_data_for_training(samples, grid_size=config.width)
+        max_steps = config.env_variants[config.env_size]["max_steps"]
+        data = prepare_data_for_training(
+            samples, grid_size=config.width, max_trajectory_length=max_steps
+        )
 
     # Log data shapes for verification
     print(f"Data shapes:")

@@ -980,9 +980,9 @@ def train_tomnet(
             samples, grid_size=config.width, max_trajectory_length=max_steps
         )
 
-        # Save processed data for future use
-        print(f"Saving processed data to: {processed_data_path}")
-        data_reader.save_processed_data(data, processed_data_path)
+        # Save raw samples for future use
+        print(f"Saving raw samples to: {processed_data_path}")
+        data_reader.save_processed_data(samples, processed_data_path)
     else:
         print("Loading existing processed data...")
         from data_generation import DataGenerator as MultiAgentDataReader

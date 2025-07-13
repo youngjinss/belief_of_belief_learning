@@ -48,10 +48,10 @@ class Config:
 
         # Environment variants
         self.env_variants = {
-            "3x3": {"grid_size": 3, "max_steps": 100},
-            "5x5": {"grid_size": 5, "max_steps": 200},
-            "9x9": {"grid_size": 9, "max_steps": 500},
-            "11x11": {"grid_size": 11, "max_steps": 1000},
+            "3x3": {"grid_size": 3, "max_steps": 30},
+            "5x5": {"grid_size": 5, "max_steps": 30},
+            "9x9": {"grid_size": 9, "max_steps": 30},
+            "11x11": {"grid_size": 11, "max_steps": 70},
         }
 
         # Achiever configurations

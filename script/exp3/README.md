@@ -20,15 +20,20 @@ The implementation follows the ToMnet architecture for theory of mind modeling w
 ```
 script/exp3/
 ├── config.py              # Configuration class with all parameters
-├── generate.py             # Trajectory data generation
+├── generate.py            # Trajectory data generation
 ├── train.py               # ToMnet model training
 ├── evaluate.py            # Model evaluation and metrics
 ├── visualize.py           # Result visualization and plotting
+├── visualize_sr.py        # Successor representation visualization
 ├── tomnet.py              # ToMnet model architecture
 ├── agents.py              # Agent implementations (A*, Value, Random)
 ├── data_generation.py     # Data processing utilities
-└── shell/exp3/
-    └── run_exp3.sh        # Complete automation script
+├── simulate_game.py       # Single game simulation with GUI
+├── simulate_trajectory.py # Trajectory simulation and visualization
+└── backup/                # Backup files for testing
+    ├── simple_test.py
+    ├── test_keydoor.py
+    └── visualize_gotodoor.py
 ```
 
 ## Key Features
@@ -63,46 +68,51 @@ script/exp3/
 ### 1. Data Generation
 ```bash
 # Generate training data (100k games by default)
-python script/exp3/generate.py --config_override
+python script/exp3/generate.py
 
-# Generate test data 
-python script/exp3/generate.py --config_override --n_games 2000 --random_seed 123 --test_data
+# Generate test data with custom parameters
+python script/exp3/generate.py --n_games 2000 --random_seed 123 --test_data
 
 # Different agent types
-python script/exp3/generate.py --config_override --agent_type astar
-python script/exp3/generate.py --config_override --agent_type random
+python script/exp3/generate.py --agent_type astar
+python script/exp3/generate.py --agent_type random
+python script/exp3/generate.py --agent_type value
 ```
 
-### 2. Model Training
+### 2. Game Simulation & Visualization
+```bash
+# Run single game with visualization
+python script/exp3/simulate_game.py --episodes 1 --render --agent_type value
+
+# Simulate trajectory and save visualization
+python script/exp3/simulate_trajectory.py --episodes 5 --gif_output keydoor_demo
+
+# Visualize successor representation
+python script/exp3/visualize_sr.py --data_file data/MiniGrid-KeyDoor-9x9-v0/value/test0.txt
+```
+
+### 3. Model Training
 ```bash
 # Train with default config (value agent, 9x9 environment)
-python script/exp3/train.py --config_override --save_dir ./results/exp3/
+python script/exp3/train.py --save_dir ./results/exp3/
 
-# Custom training
-python script/exp3/train.py --config_override \
+# Custom training with specific parameters
+python script/exp3/train.py \
     --epochs 100 --batch_size 1024 --lr 0.0001 \
     --device cuda:0 --save_dir ./results/exp3/
 ```
 
-### 3. Model Evaluation  
+### 4. Model Evaluation  
 ```bash
-python script/exp3/evaluate.py --config_override \
+# Evaluate trained model
+python script/exp3/evaluate.py \
     --model_path ./results/exp3/best_model.pth \
+    --result_dir ./results/exp3/
+
+# Generate visualizations
+python script/exp3/visualize.py \
     --result_dir ./results/exp3/ \
     --plot_type all
-```
-
-### 4. Complete Pipeline
-```bash
-# Automated full pipeline
-bash shell/exp3/run_exp3.sh all
-
-# Individual stages
-bash shell/exp3/run_exp3.sh data_generation
-bash shell/exp3/run_exp3.sh test_data_generation  
-bash shell/exp3/run_exp3.sh train
-bash shell/exp3/run_exp3.sh evaluate
-bash shell/exp3/run_exp3.sh visualize
 ```
 
 ## Configuration
@@ -161,22 +171,23 @@ data/
 
 ### Trajectory File Format
 Each trajectory file contains:
-- **Grid states**: 9x9x9 tensor (OHLCV + position distributions)
-- **Actions**: 7-dimensional action space
-- **Goals**: Goal preferences and rankings
-- **Rewards**: Dynamic goal rewards
-- **Costs**: Variable door costs
-- **Successor representation**: Multi-gamma spatial maps
+- **Maze representation**: 9x9 grid with object encoding (walls, keys, doors, agent)
+- **Actions**: 7-dimensional action space [up, right, down, left, stay, pickup, toggle]
+- **Agent positions**: (x, y) coordinates and heading direction
+- **Inventory state**: Key collection status
+- **Goal information**: Goal preferences and rankings for each color
+- **Rewards**: Dynamic goal-based rewards
+- **Successor representation**: Multi-gamma spatial value maps
 
 ## Model Training
 
 ### Architecture Options
 ```bash
 # Benchmark model (CharNet + PredNet only)
-python script/exp3/train.py --config_override --use_mentalnet False
+python script/exp3/train.py --use_mentalnet False
 
 # Proposed model (CharNet + MentalNet + PredNet)  
-python script/exp3/train.py --config_override --use_mentalnet True
+python script/exp3/train.py --use_mentalnet True
 ```
 
 ### Loss Components
@@ -243,26 +254,26 @@ python script/exp3/train.py --config_override --use_mentalnet True
 - **Vectorized metrics**: Fast batch evaluation
 - **Memory management**: Efficient large dataset handling
 
-## Shell Script Automation
+## Simulation and Visualization Features
 
-The `shell/exp3/run_exp3.sh` provides complete automation:
+### Interactive Game Simulation
+The `simulate_game.py` script provides real-time game visualization:
+- **GUI rendering**: Watch agent behavior in real-time
+- **Multiple agent types**: Test different strategies (A*, Value, Random)
+- **GIF generation**: Save gameplay as animated GIFs
+- **Episode configuration**: Control number of episodes and visualization settings
 
-```bash
-# Full pipeline with logging
-nohup bash shell/exp3/run_exp3.sh all > exp3.log 2>&1 &
+### Trajectory Analysis
+The `simulate_trajectory.py` script offers detailed trajectory analysis:
+- **Maze visualization**: Convert environment to text-based maze format
+- **Action logging**: Track all agent decisions and movements
+- **State transitions**: Analyze environment changes over time
 
-# Monitor progress
-tail -f exp3.log
-
-# Check specific logs
-ls log/exp3/[timestamp]/
-```
-
-### Features
-- **Timestamped logging**: Separate logs for each run
-- **Progress tracking**: Real-time status updates
-- **Error handling**: Graceful failure management
-- **Flexible execution**: Run individual stages or complete pipeline
+### Successor Representation Visualization
+The `visualize_sr.py` script displays spatial reasoning patterns:
+- **Multi-gamma SR maps**: Visualize different time horizons
+- **Overlay on maze**: Show SR values in context of environment layout
+- **Heatmap visualization**: Color-coded representation of spatial values
 
 ## Troubleshooting
 
@@ -270,16 +281,22 @@ ls log/exp3/[timestamp]/
 
 1. **CUDA out of memory**:
    ```bash
-   python script/exp3/train.py --config_override --batch_size 512 --device cuda:0
+   python script/exp3/train.py --batch_size 512 --device cuda:0
    ```
 
 2. **No data found**:
    ```bash
-   # Check data paths
-   python script/exp3/generate.py --config_override --n_games 10
+   # Generate a small dataset for testing
+   python script/exp3/generate.py --n_games 100
    ```
 
-3. **Processed data corruption**:
+3. **Environment import errors**:
+   ```bash
+   # Test environment installation
+   python script/exp3/simulate_game.py --episodes 1
+   ```
+
+4. **Processed data corruption**:
    ```bash
    # Remove cached files to regenerate
    rm data/MiniGrid-KeyDoor-9x9-v0/value/processed_data_exp3.pkl

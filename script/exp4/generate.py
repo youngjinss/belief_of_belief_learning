@@ -357,6 +357,19 @@ def save_game_with_labels(
             f"Trajectory length: {len(trajectory_data['achiever_positions']) - 1}\n"
         )
 
+        # Pre-calculate blocker interaction result for final step
+        blocker_inferred_goal = getattr(blocker_agent, 'target_door_color', None)
+        actual_target_door = getattr(env, 'target_door_color', None)
+        
+        # Determine blocker interaction result
+        if blocker_inferred_goal and actual_target_door:
+            if blocker_inferred_goal == actual_target_door:
+                final_blocker_interaction = "1"  # Success
+            else:
+                final_blocker_interaction = "0"  # Fail
+        else:
+            final_blocker_interaction = "X"  # No interaction
+
         # Write trajectory with 2-agent actions and interactions
         for i in range(len(trajectory_data["achiever_actions"])):
             achiever_pos = trajectory_data["achiever_positions"][i]
@@ -396,8 +409,11 @@ def save_game_with_labels(
                         achiever_interaction = color_map.get(door_color, "X")
                         break
 
-            # Blocker just blocks, no special interactions for now
-            blocker_interaction = "X"
+            # For blocker: show interaction result only in the final step
+            if i == len(trajectory_data["achiever_actions"]) - 1:
+                blocker_interaction = final_blocker_interaction
+            else:
+                blocker_interaction = "X"
 
             f.write(
                 f"[{achiever_pos[0]}, {achiever_pos[1]}][{blocker_pos[0]}, {blocker_pos[1]}] : {achiever_action},{blocker_action} : {achiever_interaction},{blocker_interaction}\n"
@@ -447,9 +463,30 @@ def save_game_with_labels(
 
         # Section 3: Blocker
         f.write("Blocker:\n")
-        # For now, blocker doesn't have sophisticated goal inference
-        # But we'll add a placeholder for future development
-        f.write("Infer Goal: " + str(env.target_door_color) + "\n")
+        
+        # Get blocker's inferred goal and actual target door
+        blocker_inferred_goal = getattr(blocker_agent, 'target_door_color', None)
+        actual_target_door = getattr(env, 'target_door_color', None)
+        
+        # Write inferred goal
+        if blocker_inferred_goal:
+            f.write("Infer Goal: " + str(blocker_inferred_goal) + "\n")
+        else:
+            f.write("Infer Goal: X\n")  # No inference made
+        
+        # Determine interaction result
+        # 1 = Success (correct door inference)
+        # 0 = Fail (incorrect door inference) 
+        # X = No interaction (no inference made)
+        if blocker_inferred_goal and actual_target_door:
+            if blocker_inferred_goal == actual_target_door:
+                interaction_result = "1"  # Success - correct inference
+            else:
+                interaction_result = "0"  # Fail - incorrect inference
+        else:
+            interaction_result = "X"  # No interaction
+        
+        f.write("Interaction: " + interaction_result + "\n")
 
         # Save blocker SR data per timestep
         f.write("SR_Data_Per_Timestep:\n")

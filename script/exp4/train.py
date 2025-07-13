@@ -982,13 +982,6 @@ def train_tomnet(
         )
 
         # Save processed training data for future use
-        print(f"Saving processed training data to: {processed_data_path}")
-        print(f"DEBUG BEFORE SAVE:")
-        print(f"  Type of data: {type(data)}")
-        print(f"  Keys in data: {list(data.keys()) if isinstance(data, dict) else 'Not a dict'}")
-        if isinstance(data, dict) and 'trajectories' in data:
-            print(f"  Trajectories shape: {data['trajectories'].shape}")
-            print(f"  Trajectories type: {type(data['trajectories'])}")
         with open(processed_data_path, 'wb') as f:
             pickle.dump(data, f)
         print(f"  Successfully saved to {processed_data_path}")
@@ -997,12 +990,6 @@ def train_tomnet(
         # Load pre-processed training data directly
         with open(processed_data_path, 'rb') as f:
             data = pickle.load(f)
-        print(f"DEBUG AFTER LOAD:")
-        print(f"  Type of data: {type(data)}")
-        print(f"  Keys in data: {list(data.keys()) if isinstance(data, dict) else 'Not a dict'}")
-        if isinstance(data, dict) and 'trajectories' in data:
-            print(f"  Trajectories shape: {data['trajectories'].shape}")
-            print(f"  Trajectories type: {type(data['trajectories'])}")
         print(f"  Successfully loaded from {processed_data_path}")
 
     # Log data shapes for verification

@@ -8,6 +8,7 @@ import numpy as np
 from tqdm import tqdm
 from datetime import datetime
 import time
+import pickle
 
 # Add current directory to path
 sys.path.append(os.path.dirname(__file__))
@@ -980,28 +981,29 @@ def train_tomnet(
             samples, grid_size=config.width, max_trajectory_length=max_steps
         )
 
-        # Save raw samples for future use
-        print(f"Saving raw samples to: {processed_data_path}")
-        data_reader.save_processed_data(samples, processed_data_path)
+        # Save processed training data for future use
+        print(f"Saving processed training data to: {processed_data_path}")
+        print(f"DEBUG BEFORE SAVE:")
+        print(f"  Type of data: {type(data)}")
+        print(f"  Keys in data: {list(data.keys()) if isinstance(data, dict) else 'Not a dict'}")
+        if isinstance(data, dict) and 'trajectories' in data:
+            print(f"  Trajectories shape: {data['trajectories'].shape}")
+            print(f"  Trajectories type: {type(data['trajectories'])}")
+        with open(processed_data_path, 'wb') as f:
+            pickle.dump(data, f)
+        print(f"  Successfully saved to {processed_data_path}")
     else:
         print("Loading existing processed data...")
-        from data_generation import DataGenerator as MultiAgentDataReader
-
-        data_reader = MultiAgentDataReader(
-            time_step=time_step,
-            w=config.width,
-            h=config.height,
-            d=data_config.get("maze_depth", 9),
-            config=config,
-        )
-
-        samples = data_reader.load_processed_data(processed_data_path)
-
-        # Convert loaded samples to training data format
-        max_steps = config.env_variants[config.env_size]["max_steps"]
-        data = prepare_data_for_training(
-            samples, grid_size=config.width, max_trajectory_length=max_steps
-        )
+        # Load pre-processed training data directly
+        with open(processed_data_path, 'rb') as f:
+            data = pickle.load(f)
+        print(f"DEBUG AFTER LOAD:")
+        print(f"  Type of data: {type(data)}")
+        print(f"  Keys in data: {list(data.keys()) if isinstance(data, dict) else 'Not a dict'}")
+        if isinstance(data, dict) and 'trajectories' in data:
+            print(f"  Trajectories shape: {data['trajectories'].shape}")
+            print(f"  Trajectories type: {type(data['trajectories'])}")
+        print(f"  Successfully loaded from {processed_data_path}")
 
     # Log data shapes for verification
     print(f"Data shapes:")

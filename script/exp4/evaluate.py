@@ -502,12 +502,11 @@ def evaluate_achieverblocker_model(
             raise ValueError(f"No test games found in {test_data_dir}")
 
         # Prepare test data using trajectory slicing (exactly like training)
+        max_steps = config.env_variants[config.env_size]["max_steps"]
         test_data = prepare_data_for_training(
             test_games,
             min_timestep=6,  # Same as training
-            max_trajectory_length=data_config[
-                "time_step"
-            ],  # Use time_step (20) not max_moves (50)
+            max_trajectory_length=max_steps
         )
 
         # Save processed test data for future use
@@ -735,12 +734,11 @@ def analyze_action_likelihood(
                 experiment_no=config.experiment_no,
             )
             test_games = data_reader.ReadAllGames(test_data_dir_default)
+            max_steps = config.env_variants[config.env_size]["max_steps"]
             test_data = prepare_data_for_training(
                 test_games,
                 min_timestep=6,  # Same as training
-                max_trajectory_length=data_config[
-                    "time_step"
-                ],  # Use time_step (20) not max_moves (50)
+                max_trajectory_length=max_steps
             )
 
             # Save processed test data for future use

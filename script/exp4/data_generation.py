@@ -492,11 +492,14 @@ class DataGenerator:
     def save_processed_data(self, samples: List[Dict[str, Any]], output_path: str):
         """Save processed samples to pickle file"""
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
-
-        with open(output_path, "wb") as f:
-            pickle.dump(samples, f)
-
-        print(f"Saved {len(samples)} samples to {output_path}")
+        
+        try:
+            with open(output_path, "wb") as f:
+                pickle.dump(samples, f)
+        except Exception as e:
+            print(f"Failed to save samples: {e}")
+        else:
+            print(f"Saved {len(samples)} samples to {output_path}.")
 
     def load_processed_data(self, input_path: str) -> List[Dict[str, Any]]:
         """Load processed samples from pickle file"""

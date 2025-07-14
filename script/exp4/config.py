@@ -29,7 +29,7 @@ class Config:
         self.gif_output = None  # Filename for saving gif (without .gif extension)
 
         # Data generation settings
-        self.n_games = 50000  # Number of games to generate for ToMnet data
+        self.n_games = 100000  # Number of games to generate for ToMnet data
         self.save_dir = "data"  # Base directory to save generated data
         
         # Debug/test settings
@@ -146,8 +146,8 @@ class Config:
 
         # Training configuration
         self.training_config = {
-            "batch_size": 1024,
-            "epochs": 200,
+            "batch_size": 2048,
+            "epochs": 300,
             "lr": 0.0001,
             "weight_decay": 0.001,
             "training_proportion": 0.9,
@@ -164,10 +164,10 @@ class Config:
         # Model architecture
         self.model_config = {
             "use_mentalnet": True,  # False: experiment5-style (CharNet→PredNet), True: original 3-stage (CharNet→MentalNet→PredNet)
-            "residual_blocks": 7,
+            "residual_blocks": 10,
             "n_echar": 128,
             "n_ement": 128,
-            "out_channels": 64,
+            "out_channels": 128,
             "channels_in": 9,  # 8 original channels + 1 heading direction channel
             "current_state_channels": 8,  # For MentalNet: 8 original channels (no heading direction)
             "achiever_action_space": 7,  # up, right, down, left, stay, pickup, toggle
@@ -175,8 +175,8 @@ class Config:
             "goal_space": 4,
             "env_width": self.width,
             "env_height": self.height,
-            "hidden_size_lstm": 64,
-            "fc_layer_sizes": [64, 32],
+            "hidden_size_lstm": 128,
+            "fc_layer_sizes": [128, 32],
             "kernel_size": 3,
             "padding": 1,
             "stride": 1,

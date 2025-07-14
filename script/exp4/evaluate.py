@@ -408,62 +408,62 @@ def evaluate_model(
                     # Skip this batch and continue
                     continue
 
-    # Data is already in numpy arrays - no conversion needed
-    predictions = all_predictions
-    targets = all_targets
-    probabilities = all_probabilities
+        # Data is already in numpy arrays - no conversion needed
+        predictions = all_predictions
+        targets = all_targets
+        probabilities = all_probabilities
 
-    # Calculate metrics
-    accuracy = accuracy_score(targets, predictions)
-    precision, recall, f1, _ = precision_recall_fscore_support(
-        targets, predictions, average="weighted", zero_division=0
-    )
+        # Calculate metrics
+        accuracy = accuracy_score(targets, predictions)
+        precision, recall, f1, _ = precision_recall_fscore_support(
+            targets, predictions, average="weighted", zero_division=0
+        )
 
-    # Force confusion matrix to be for AchieverBlocker (actions vary by agent type)
-    # Determine max action from data to handle both achiever and blocker actions
-    max_action = max(np.max(targets), np.max(predictions)) + 1
-    conf_matrix = confusion_matrix(targets, predictions, labels=list(range(max_action)))
+        # Force confusion matrix to be for AchieverBlocker (actions vary by agent type)
+        # Determine max action from data to handle both achiever and blocker actions
+        max_action = max(np.max(targets), np.max(predictions)) + 1
+        conf_matrix = confusion_matrix(targets, predictions, labels=list(range(max_action)))
 
-    # Action-wise accuracy - AchieverBlocker has variable actions based on agent type
-    action_accuracy = {}
-    for action in range(max_action):
-        mask = targets == action
-        if np.sum(mask) > 0:
-            action_acc = accuracy_score(targets[mask], predictions[mask])
-            action_accuracy[f"action_{action}"] = float(action_acc)
+        # Action-wise accuracy - AchieverBlocker has variable actions based on agent type
+        action_accuracy = {}
+        for action in range(max_action):
+            mask = targets == action
+            if np.sum(mask) > 0:
+                action_acc = accuracy_score(targets[mask], predictions[mask])
+                action_accuracy[f"action_{action}"] = float(action_acc)
 
-    # Confidence statistics
-    confidence_stats = {
-        "mean_confidence": float(np.mean(np.max(probabilities, axis=1))),
-        "std_confidence": float(np.std(np.max(probabilities, axis=1))),
-        "min_confidence": float(np.min(np.max(probabilities, axis=1))),
-        "max_confidence": float(np.max(np.max(probabilities, axis=1))),
-    }
-
-    metrics = {
-        "accuracy": float(accuracy),
-        "precision": float(precision),
-        "recall": float(recall),
-        "f1_score": float(f1),
-        "confusion_matrix": conf_matrix.tolist(),
-        "action_accuracy": action_accuracy,
-        "confidence_stats": confidence_stats,
-        "n_samples": len(targets),
-    }
-
-    # Save predictions if requested
-    if save_predictions and output_dir:
-        os.makedirs(output_dir, exist_ok=True)
-        predictions_data = {
-            "predictions": predictions.tolist(),
-            "targets": targets.tolist(),
-            "probabilities": probabilities.tolist(),
-            "metrics": metrics,
+        # Confidence statistics
+        confidence_stats = {
+            "mean_confidence": float(np.mean(np.max(probabilities, axis=1))),
+            "std_confidence": float(np.std(np.max(probabilities, axis=1))),
+            "min_confidence": float(np.min(np.max(probabilities, axis=1))),
+            "max_confidence": float(np.max(np.max(probabilities, axis=1))),
         }
-        pred_path = os.path.join(output_dir, "predictions.pkl")
-        with open(pred_path, "wb") as f:
-            pickle.dump(predictions_data, f)
-        print(f"Predictions saved to: {pred_path}")
+
+        metrics = {
+            "accuracy": float(accuracy),
+            "precision": float(precision),
+            "recall": float(recall),
+            "f1_score": float(f1),
+            "confusion_matrix": conf_matrix.tolist(),
+            "action_accuracy": action_accuracy,
+            "confidence_stats": confidence_stats,
+            "n_samples": len(targets),
+        }
+
+        # Save predictions if requested
+        if save_predictions and output_dir:
+            os.makedirs(output_dir, exist_ok=True)
+            predictions_data = {
+                "predictions": predictions.tolist(),
+                "targets": targets.tolist(),
+                "probabilities": probabilities.tolist(),
+                "metrics": metrics,
+            }
+            pred_path = os.path.join(output_dir, "predictions.pkl")
+            with open(pred_path, "wb") as f:
+                pickle.dump(predictions_data, f)
+            print(f"Predictions saved to: {pred_path}")
 
         return metrics
     

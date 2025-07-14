@@ -548,6 +548,10 @@ class DataGenerator:
 
         return stats
 
+    def ReadAllGames(self, data_dir: str) -> List[Dict[str, Any]]:
+        """Compatibility method for evaluate.py - wraps process_directory"""
+        return self.process_directory(data_dir)
+
 
 if __name__ == "__main__":
     import argparse

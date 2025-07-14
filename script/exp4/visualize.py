@@ -14,7 +14,7 @@ from torch.utils.data import DataLoader, TensorDataset
 
 from config import Config
 from train import prepare_data_for_training, generate_past_episodes_from_batch
-from data_generation import DataReader
+from data_generation import DataGenerator as DataReader
 from evaluate import load_model
 
 """
@@ -1284,7 +1284,7 @@ if __name__ == "__main__":
 
         # Load model and test data for character embedding visualization
         from evaluate import load_model
-        from data_generation import DataReader
+        from data_generation import DataGenerator as DataReader
         from train import prepare_data_for_training
         from torch.utils.data import DataLoader, TensorDataset
         import torch

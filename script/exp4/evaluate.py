@@ -17,7 +17,7 @@ sys.path.append(os.path.dirname(__file__))
 from tomnet import ToMnet, create_model
 from config import Config
 from train import prepare_data_for_training, generate_past_episodes_from_batch
-from data_generation import DataReader
+from data_generation import DataGenerator as DataReader
 
 """
 Evaluation and metrics for AchieverBlocker ToMnet experiment

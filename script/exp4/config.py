@@ -1,3 +1,5 @@
+import torch
+
 class Config:
     def __init__(self):
         # Environment settings
@@ -449,6 +451,12 @@ class Config:
             "epochs": 5,  # Reduced from 200
             "gradient_accumulation_steps": 1,  # Reduced from 2
         })
+        
+        # Auto-detect device for debug mode
+        if not torch.cuda.is_available():
+            self.training_config["device"] = "cpu"
+            self.training_config["use_parallel"] = False
+            self.training_config["use_amp"] = False  # Disable AMP for CPU
         
         # Reduce data processing settings
         self.data_config.update({

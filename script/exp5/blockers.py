@@ -652,6 +652,10 @@ class RuleBasedAgent:
         if self.final_target_color is None:
             self._infer_final_target_door(obs)
 
+        # Ensure we have a valid final target before proceeding
+        if self.final_target_pos is None:
+            return 4  # Stay if we couldn't infer target
+
         # If we're at the final target door, break it
         if self._at_final_target_door():
             self.phase = 4
@@ -680,9 +684,8 @@ class RuleBasedAgent:
         self.initial_target_color = np.random.choice(color_map)
         
         # Find the position of the selected door
-        self.initial_target_pos = self._find_door_position_from_obs(
-            self.initial_target_color, obs
-        )
+        door_pos = self._find_door_position_from_obs(self.initial_target_color, obs)
+        self.initial_target_pos = tuple(door_pos) if door_pos else None
         
         # Plan path to initial target door if position is found
         if self.initial_target_pos:
@@ -694,21 +697,23 @@ class RuleBasedAgent:
         """Check if blocker is at the initial target door position."""
         if self.initial_target_pos is None:
             return False
-        return self.blocker_pos == self.initial_target_pos
+        # Ensure both positions are tuples for comparison
+        return tuple(self.blocker_pos) == tuple(self.initial_target_pos)
 
     def _at_final_target_door(self):
         """Check if blocker is at the final target door position."""
         if self.final_target_pos is None:
             return False
-        return self.blocker_pos == self.final_target_pos
+        # Ensure both positions are tuples for comparison
+        return tuple(self.blocker_pos) == tuple(self.final_target_pos)
 
     def _navigate_to_initial_door(self, obs=None):
         """Navigate to initial target door following planned path."""
-        return self._navigate_to_door_generic(self.initial_target_pos, obs)
+        return self._navigate_to_door_generic(self.initial_target_pos, obs, is_final=False)
 
     def _navigate_to_final_door(self, obs=None):
         """Navigate to final target door following planned path."""
-        return self._navigate_to_door_generic(self.final_target_pos, obs)
+        return self._navigate_to_door_generic(self.final_target_pos, obs, is_final=True)
 
     def _check_achiever_key_pickup(self, obs):
         """Check if achiever has picked up any key."""
@@ -732,9 +737,8 @@ class RuleBasedAgent:
             if first_key_idx is not None and first_key_idx < len(color_map):
                 first_key_color = color_map[first_key_idx]
                 self.final_target_color = first_key_color
-                self.final_target_pos = self._find_door_position_from_obs(
-                    first_key_color, obs
-                )
+                door_pos = self._find_door_position_from_obs(first_key_color, obs)
+                self.final_target_pos = tuple(door_pos) if door_pos else None
 
                 # Plan path to final target door
                 if self.final_target_pos:

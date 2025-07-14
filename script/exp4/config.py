@@ -570,8 +570,6 @@ class Config:
             self.training_config["device"] = args.device
         if hasattr(args, "optimizer") and args.optimizer is not None:
             self.training_config["optimizer"] = args.optimizer
-        if hasattr(args, "use_parallel") and args.use_parallel is not None:
-            self.training_config["use_parallel"] = args.use_parallel
         if hasattr(args, "device_ids") and args.device_ids is not None:
             self.training_config["device_ids"] = args.device_ids
 

@@ -288,7 +288,7 @@ class Config:
                 "combined_figsize": (20, 12),
                 "alpha": 0.6,
                 "marker_size": 50,
-            }
+            },
         }
 
     def get_experiment_config(self):

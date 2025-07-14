@@ -983,13 +983,13 @@ def train_tomnet(
         )
 
         # Save processed training data for future use
-        with open(processed_data_path, 'wb') as f:
+        with open(processed_data_path, "wb") as f:
             pickle.dump(data, f)
         print(f"  Successfully saved to {processed_data_path}")
     else:
         print("Loading existing processed data...")
         # Load pre-processed training data directly
-        with open(processed_data_path, 'rb') as f:
+        with open(processed_data_path, "rb") as f:
             data = pickle.load(f)
         print(f"  Successfully loaded from {processed_data_path}")
 

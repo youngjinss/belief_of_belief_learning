@@ -514,18 +514,18 @@ def evaluate_achieverblocker_model(
         test_data = prepare_data_for_training(
             test_games,
             min_timestep=6,  # Same as training
-            max_trajectory_length=data_config.get("time_step", 500)
+            max_trajectory_length=data_config.get("time_step", 500),
         )
 
         # Save processed test data for future use
         print(f"Saving processed test data to: {processed_test_data_path}")
-        with open(processed_test_data_path, 'wb') as f:
+        with open(processed_test_data_path, "wb") as f:
             pickle.dump(test_data, f)
         print(f"  Successfully saved to {processed_test_data_path}")
     else:
         print("Loading existing processed data...")
         # Load pre-processed training data directly
-        with open(processed_test_data_path, 'rb') as f:
+        with open(processed_test_data_path, "rb") as f:
             data = pickle.load(f)
         print(f"  Successfully loaded from {processed_test_data_path}")
 
@@ -742,22 +742,22 @@ def analyze_action_likelihood(
             test_data = prepare_data_for_training(
                 test_games,
                 min_timestep=6,  # Same as training
-                max_trajectory_length=data_config.get("time_step", 500)
+                max_trajectory_length=data_config.get("time_step", 500),
             )
 
             # Save processed test data for future use
             print(f"Saving processed test data to: {processed_test_data_path}")
             # Save processed training data for future use
-            with open(processed_test_data_path, 'wb') as f:
+            with open(processed_test_data_path, "wb") as f:
                 pickle.dump(test_data, f)
             print(f"  Successfully saved to {processed_test_data_path}")
         else:
             print("Loading existing processed data...")
             # Load pre-processed training data directly
-            with open(processed_test_data_path, 'rb') as f:
+            with open(processed_test_data_path, "rb") as f:
                 test_data = pickle.load(f)
             print(f"  Successfully loaded from {processed_test_data_path}")
-            
+
         test_dataset = TensorDataset(
             test_data["trajectories"],
             test_data["actions"],

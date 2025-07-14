@@ -751,7 +751,7 @@ def plot_character_embeddings(
 
     if experiment_no is None:
         experiment_no = config.experiment_no
-    
+
     # Get visualization config
     vis_config = config.get_visualization_config()
     agent_colors = vis_config["agent_colors"]
@@ -760,25 +760,25 @@ def plot_character_embeddings(
     goal_names = vis_config["goal_names"]
     goal_letters = vis_config["goal_letters"]
     embedding_plots = vis_config["embedding_plots"]
-    
+
     plt.style.use("seaborn-v0_8")
 
     # Load processed test data to get agent information
     print("Loading processed test data to extract agent and goal information...")
-    
+
     env_name = config.get_env_name()
     agent_pair = config.get_agent_pair_name()
     test_data_dir = f"./data/{env_name}/{agent_pair}/test"
-    
+
     processed_test_data_path = os.path.join(
         test_data_dir, f"processed_test_data_exp{experiment_no}.pkl"
     )
-    
+
     if not os.path.exists(processed_test_data_path):
         print(f"Error: Processed test data not found at {processed_test_data_path}")
         print("Please run the evaluation script first to generate processed data.")
         return
-    
+
     # Load agent and goal information from original processed data
     data_reader = DataGenerator(
         time_step=config.get_data_config().get("time_step", 500),
@@ -787,58 +787,66 @@ def plot_character_embeddings(
         d=config.get_data_config().get("maze_depth", 9),
         config=config,
     )
-    
+
     processed_data = data_reader.load_processed_data(processed_test_data_path)
-    print(f"Loaded processed data with {processed_data['trajectories'].shape[0]} samples")
-    
+    print(
+        f"Loaded processed data with {processed_data['trajectories'].shape[0]} samples"
+    )
+
     # Extract agent labels and goal labels from processed tensors
     # agents tensor: 0=achiever, 1=blocker
-    agent_indices = processed_data['agents'].numpy()
-    agent_labels = np.array(['achiever' if idx == 0 else 'blocker' for idx in agent_indices])
-    
+    agent_indices = processed_data["agents"].numpy()
+    agent_labels = np.array(
+        ["achiever" if idx == 0 else "blocker" for idx in agent_indices]
+    )
+
     # goals tensor: one-hot encoded [A, B, C, D]
-    goals_tensor = processed_data['goals'].numpy()
+    goals_tensor = processed_data["goals"].numpy()
     goal_labels = np.argmax(goals_tensor, axis=1)  # Convert one-hot to indices
-    
+
     print(f"Agent distribution: {np.unique(agent_labels, return_counts=True)}")
     print(f"Goal distribution: {np.unique(goal_labels, return_counts=True)}")
 
     # Extract character embeddings using the model
     model.eval()
     embeddings = []
-    
+
     # Get the data tensors
-    trajectories_tensor = processed_data['trajectories']
-    goals_tensor = processed_data['goals']
-    goal_ranks_tensor = processed_data['goal_ranks']
-    agents_tensor = processed_data['agents']
-    
+    trajectories_tensor = processed_data["trajectories"]
+    goals_tensor = processed_data["goals"]
+    goal_ranks_tensor = processed_data["goal_ranks"]
+    agents_tensor = processed_data["agents"]
+
     if n_samples is not None:
         # Limit samples if specified
-        indices = np.random.choice(len(agent_labels), min(n_samples, len(agent_labels)), replace=False)
+        indices = np.random.choice(
+            len(agent_labels), min(n_samples, len(agent_labels)), replace=False
+        )
         trajectories_tensor = trajectories_tensor[indices]
-        goals_tensor = goals_tensor[indices] 
+        goals_tensor = goals_tensor[indices]
         goal_ranks_tensor = goal_ranks_tensor[indices]
         agents_tensor = agents_tensor[indices]
         agent_labels = agent_labels[indices]
         goal_labels = goal_labels[indices]
-    
+
     print(f"Extracting character embeddings for {len(agent_labels)} samples...")
-    
+
     with torch.no_grad():
         for i in range(len(agent_labels)):
             if i % 1000 == 0:
                 print(f"Processing sample {i+1}/{len(agent_labels)}")
-            
+
             try:
                 # Get single sample tensors
-                trajectory = trajectories_tensor[i:i+1].to(device)  # [1, seq_len, channels, height, width]
-                goal_ranks = goal_ranks_tensor[i:i+1].to(device)  # [1, 4]
-                agents = agents_tensor[i:i+1].to(device)  # [1]
-                
+                trajectory = trajectories_tensor[i : i + 1].to(
+                    device
+                )  # [1, seq_len, channels, height, width]
+                goal_ranks = goal_ranks_tensor[i : i + 1].to(device)  # [1, 4]
+                agents = agents_tensor[i : i + 1].to(device)  # [1]
+
                 # Generate past episodes for this sample
                 n_past_config = config.get_n_past_evaluation_config()
-                
+
                 past_episodes = generate_past_episodes_from_batch(
                     trajectories=trajectory,
                     goals=goal_ranks,
@@ -849,48 +857,58 @@ def plot_character_embeddings(
                     max_n_past=n_past_config["n_past_max"],
                     rank_threshold=1,
                 )
-                
+
                 # Extract character embedding
                 char_embedding = model.get_character_embedding(past_episodes)
                 embeddings.append(char_embedding.cpu().numpy().flatten())
-                
+
             except Exception as e:
                 print(f"Error processing sample {i}: {e}")
-                # Add zero embedding as placeholder  
+                # Add zero embedding as placeholder
                 embeddings.append(np.zeros(64))  # Assuming 64-dim embeddings
                 continue
-    
+
     embeddings = np.array(embeddings)
     print(f"Extracted embeddings shape: {embeddings.shape}")
-    
+
     if len(embeddings) == 0:
         print("No embeddings to visualize!")
         return
-    
+
     # Create the three types of plots
-    _plot_agent_based_embeddings(embeddings, agent_labels, goal_labels, config, output_dir, experiment_no)
-    _plot_goal_based_embeddings(embeddings, agent_labels, goal_labels, config, output_dir, experiment_no)
-    _plot_separate_agent_goal_embeddings(embeddings, agent_labels, goal_labels, config, output_dir, experiment_no)
+    _plot_agent_based_embeddings(
+        embeddings, agent_labels, goal_labels, config, output_dir, experiment_no
+    )
+    _plot_goal_based_embeddings(
+        embeddings, agent_labels, goal_labels, config, output_dir, experiment_no
+    )
+    _plot_separate_agent_goal_embeddings(
+        embeddings, agent_labels, goal_labels, config, output_dir, experiment_no
+    )
 
 
-def _plot_agent_based_embeddings(embeddings, agent_labels, goal_labels, config, output_dir, experiment_no):
+def _plot_agent_based_embeddings(
+    embeddings, agent_labels, goal_labels, config, output_dir, experiment_no
+):
     """Plot embeddings colored by agent type (achiever vs blocker)"""
     vis_config = config.get_visualization_config()
-    agent_colors = vis_config["agent_colors"] 
+    agent_colors = vis_config["agent_colors"]
     agent_names = vis_config["agent_names"]
     embedding_plots = vis_config["embedding_plots"]
-    
+
     print("\nCreating agent-based embedding plots...")
-    
+
     # Create figure with PCA and t-SNE subplots
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=embedding_plots["pca_figsize"])
-    fig.suptitle(f"Character Embeddings by Agent Type (Experiment {experiment_no})", fontsize=16)
-    
+    fig.suptitle(
+        f"Character Embeddings by Agent Type (Experiment {experiment_no})", fontsize=16
+    )
+
     # PCA visualization
     if embeddings.shape[1] > 2:
         pca = PCA(n_components=2)
         embeddings_pca = pca.fit_transform(embeddings)
-        
+
         unique_agents = np.unique(agent_labels)
         for i, agent in enumerate(unique_agents):
             mask = agent_labels == agent
@@ -904,20 +922,20 @@ def _plot_agent_based_embeddings(embeddings, agent_labels, goal_labels, config, 
                     c=color,
                     label=f"{name} (n={agent_count})",
                     alpha=embedding_plots["alpha"],
-                    s=embedding_plots["marker_size"]
+                    s=embedding_plots["marker_size"],
                 )
-        
+
         ax1.set_title(f"PCA by Agent Type")
         ax1.set_xlabel(f"PC1 ({pca.explained_variance_ratio_[0]:.2%} variance)")
         ax1.set_ylabel(f"PC2 ({pca.explained_variance_ratio_[1]:.2%} variance)")
         ax1.legend()
         ax1.grid(True, alpha=0.3)
-    
+
     # t-SNE visualization
     if len(embeddings) > 50:
         tsne = TSNE(n_components=2, random_state=42)
         embeddings_tsne = tsne.fit_transform(embeddings)
-        
+
         unique_agents = np.unique(agent_labels)
         for i, agent in enumerate(unique_agents):
             mask = agent_labels == agent
@@ -931,40 +949,49 @@ def _plot_agent_based_embeddings(embeddings, agent_labels, goal_labels, config, 
                     c=color,
                     label=f"{name} (n={agent_count})",
                     alpha=embedding_plots["alpha"],
-                    s=embedding_plots["marker_size"]
+                    s=embedding_plots["marker_size"],
                 )
-        
+
         ax2.set_title(f"t-SNE by Agent Type")
         ax2.set_xlabel("t-SNE 1")
         ax2.set_ylabel("t-SNE 2")
         ax2.legend()
         ax2.grid(True, alpha=0.3)
-    
+
     plt.tight_layout()
     os.makedirs(output_dir, exist_ok=True)
-    plt.savefig(os.path.join(output_dir, f"character_embeddings_by_agent_exp{experiment_no}.png"), 
-                dpi=300, bbox_inches='tight')
+    plt.savefig(
+        os.path.join(
+            output_dir, f"character_embeddings_by_agent_exp{experiment_no}.png"
+        ),
+        dpi=300,
+        bbox_inches="tight",
+    )
     plt.close()
 
 
-def _plot_goal_based_embeddings(embeddings, agent_labels, goal_labels, config, output_dir, experiment_no):
+def _plot_goal_based_embeddings(
+    embeddings, agent_labels, goal_labels, config, output_dir, experiment_no
+):
     """Plot embeddings colored by goal type (red, green, blue, yellow)"""
     vis_config = config.get_visualization_config()
     goal_colors = vis_config["goal_colors"]
     goal_names = vis_config["goal_names"]
     embedding_plots = vis_config["embedding_plots"]
-    
+
     print("\nCreating goal-based embedding plots...")
-    
+
     # Create figure with PCA and t-SNE subplots
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=embedding_plots["pca_figsize"])
-    fig.suptitle(f"Character Embeddings by Goal Type (Experiment {experiment_no})", fontsize=16)
-    
+    fig.suptitle(
+        f"Character Embeddings by Goal Type (Experiment {experiment_no})", fontsize=16
+    )
+
     # PCA visualization
     if embeddings.shape[1] > 2:
         pca = PCA(n_components=2)
         embeddings_pca = pca.fit_transform(embeddings)
-        
+
         unique_goals = np.unique(goal_labels)
         for goal in unique_goals:
             mask = goal_labels == goal
@@ -978,20 +1005,20 @@ def _plot_goal_based_embeddings(embeddings, agent_labels, goal_labels, config, o
                     c=color,
                     label=f"{name} (n={goal_count})",
                     alpha=embedding_plots["alpha"],
-                    s=embedding_plots["marker_size"]
+                    s=embedding_plots["marker_size"],
                 )
-        
+
         ax1.set_title(f"PCA by Goal Type")
         ax1.set_xlabel(f"PC1 ({pca.explained_variance_ratio_[0]:.2%} variance)")
         ax1.set_ylabel(f"PC2 ({pca.explained_variance_ratio_[1]:.2%} variance)")
         ax1.legend()
         ax1.grid(True, alpha=0.3)
-    
+
     # t-SNE visualization
     if len(embeddings) > 50:
         tsne = TSNE(n_components=2, random_state=42)
         embeddings_tsne = tsne.fit_transform(embeddings)
-        
+
         unique_goals = np.unique(goal_labels)
         for goal in unique_goals:
             mask = goal_labels == goal
@@ -1005,114 +1032,139 @@ def _plot_goal_based_embeddings(embeddings, agent_labels, goal_labels, config, o
                     c=color,
                     label=f"{name} (n={goal_count})",
                     alpha=embedding_plots["alpha"],
-                    s=embedding_plots["marker_size"]
+                    s=embedding_plots["marker_size"],
                 )
-        
+
         ax2.set_title(f"t-SNE by Goal Type")
         ax2.set_xlabel("t-SNE 1")
         ax2.set_ylabel("t-SNE 2")
         ax2.legend()
         ax2.grid(True, alpha=0.3)
-    
+
     plt.tight_layout()
     os.makedirs(output_dir, exist_ok=True)
-    plt.savefig(os.path.join(output_dir, f"character_embeddings_by_goal_exp{experiment_no}.png"), 
-                dpi=300, bbox_inches='tight')
+    plt.savefig(
+        os.path.join(
+            output_dir, f"character_embeddings_by_goal_exp{experiment_no}.png"
+        ),
+        dpi=300,
+        bbox_inches="tight",
+    )
     plt.close()
 
 
-def _plot_separate_agent_goal_embeddings(embeddings, agent_labels, goal_labels, config, output_dir, experiment_no):
+def _plot_separate_agent_goal_embeddings(
+    embeddings, agent_labels, goal_labels, config, output_dir, experiment_no
+):
     """Plot separate embeddings for achiever goals and blocker goals"""
     vis_config = config.get_visualization_config()
     goal_colors = vis_config["goal_colors"]
     goal_names = vis_config["goal_names"]
     embedding_plots = vis_config["embedding_plots"]
-    
+
     print("\nCreating separate agent-goal embedding plots...")
-    
+
     # Create figure with 2x2 subplots (PCA and t-SNE for each agent)
     fig, axes = plt.subplots(2, 2, figsize=embedding_plots["combined_figsize"])
-    fig.suptitle(f"Character Embeddings: Achiever vs Blocker Goals (Experiment {experiment_no})", fontsize=16)
-    
+    fig.suptitle(
+        f"Character Embeddings: Achiever vs Blocker Goals (Experiment {experiment_no})",
+        fontsize=16,
+    )
+
     agents = ["achiever", "blocker"]
-    
+
     for agent_idx, agent in enumerate(agents):
         agent_mask = agent_labels == agent
         agent_embeddings = embeddings[agent_mask]
         agent_goals = goal_labels[agent_mask]
-        
+
         if len(agent_embeddings) == 0:
             print(f"No embeddings found for {agent}")
             continue
-        
+
         print(f"Processing {agent}: {len(agent_embeddings)} embeddings")
-        
+
         # PCA for this agent
         ax_pca = axes[agent_idx, 0]
         if agent_embeddings.shape[1] > 2:
             pca = PCA(n_components=2)
             agent_embeddings_pca = pca.fit_transform(agent_embeddings)
-            
+
             unique_goals = np.unique(agent_goals)
             for goal in unique_goals:
                 goal_mask = agent_goals == goal
                 goal_count = np.sum(goal_mask)
                 if goal_count > 0:
                     color = goal_colors[goal] if goal < len(goal_colors) else f"C{goal}"
-                    name = goal_names[goal] if goal < len(goal_names) else f"Goal {goal}"
+                    name = (
+                        goal_names[goal] if goal < len(goal_names) else f"Goal {goal}"
+                    )
                     ax_pca.scatter(
                         agent_embeddings_pca[goal_mask, 0],
                         agent_embeddings_pca[goal_mask, 1],
                         c=color,
                         label=f"{name} (n={goal_count})",
                         alpha=embedding_plots["alpha"],
-                        s=embedding_plots["marker_size"]
+                        s=embedding_plots["marker_size"],
                     )
-            
+
             ax_pca.set_title(f"PCA: {agent.capitalize()} Goals")
             ax_pca.set_xlabel(f"PC1 ({pca.explained_variance_ratio_[0]:.2%})")
             ax_pca.set_ylabel(f"PC2 ({pca.explained_variance_ratio_[1]:.2%})")
             ax_pca.legend(fontsize=8)
             ax_pca.grid(True, alpha=0.3)
-        
+
         # t-SNE for this agent
         ax_tsne = axes[agent_idx, 1]
         if len(agent_embeddings) > 30:  # Minimum samples for t-SNE
             tsne = TSNE(n_components=2, random_state=42)
             agent_embeddings_tsne = tsne.fit_transform(agent_embeddings)
-            
+
             unique_goals = np.unique(agent_goals)
             for goal in unique_goals:
                 goal_mask = agent_goals == goal
                 goal_count = np.sum(goal_mask)
                 if goal_count > 0:
                     color = goal_colors[goal] if goal < len(goal_colors) else f"C{goal}"
-                    name = goal_names[goal] if goal < len(goal_names) else f"Goal {goal}"
+                    name = (
+                        goal_names[goal] if goal < len(goal_names) else f"Goal {goal}"
+                    )
                     ax_tsne.scatter(
                         agent_embeddings_tsne[goal_mask, 0],
                         agent_embeddings_tsne[goal_mask, 1],
                         c=color,
                         label=f"{name} (n={goal_count})",
                         alpha=embedding_plots["alpha"],
-                        s=embedding_plots["marker_size"]
+                        s=embedding_plots["marker_size"],
                     )
-            
+
             ax_tsne.set_title(f"t-SNE: {agent.capitalize()} Goals")
             ax_tsne.set_xlabel("t-SNE 1")
             ax_tsne.set_ylabel("t-SNE 2")
             ax_tsne.legend(fontsize=8)
             ax_tsne.grid(True, alpha=0.3)
         else:
-            ax_tsne.text(0.5, 0.5, f"Insufficient samples\nfor t-SNE ({len(agent_embeddings)})", 
-                        ha="center", va="center", transform=ax_tsne.transAxes)
+            ax_tsne.text(
+                0.5,
+                0.5,
+                f"Insufficient samples\nfor t-SNE ({len(agent_embeddings)})",
+                ha="center",
+                va="center",
+                transform=ax_tsne.transAxes,
+            )
             ax_tsne.set_title(f"t-SNE: {agent.capitalize()} Goals")
-    
+
     plt.tight_layout()
     os.makedirs(output_dir, exist_ok=True)
-    plt.savefig(os.path.join(output_dir, f"character_embeddings_separate_agents_exp{experiment_no}.png"), 
-                dpi=300, bbox_inches='tight')
+    plt.savefig(
+        os.path.join(
+            output_dir, f"character_embeddings_separate_agents_exp{experiment_no}.png"
+        ),
+        dpi=300,
+        bbox_inches="tight",
+    )
     plt.close()
-    
+
     print(f"All embedding plots saved to {output_dir}")
 
 
@@ -1683,15 +1735,21 @@ if __name__ == "__main__":
         device = "cuda" if torch.cuda.is_available() else "cpu"
         # Get model paths from config
         model_config = config.get_model_config()
-        
+
         # Also check parent directory in case results_dir is timestamped
-        parent_results_dir = os.path.dirname(results_dir) if os.path.basename(results_dir).replace('_', '').replace('-','').isdigit() else results_dir
-        
+        parent_results_dir = (
+            os.path.dirname(results_dir)
+            if os.path.basename(results_dir).replace("_", "").replace("-", "").isdigit()
+            else results_dir
+        )
+
         possible_model_paths = model_config.get(
             "possible_model_paths",
             [
                 os.path.join(results_dir, "best_model.pth"),
-                os.path.join(parent_results_dir, "best_model.pth"),  # Check parent for timestamped dirs
+                os.path.join(
+                    parent_results_dir, "best_model.pth"
+                ),  # Check parent for timestamped dirs
                 os.path.join(results_dir, "model.pth"),
                 os.path.join(parent_results_dir, "model.pth"),
                 os.path.join(results_dir, "figure5_goal_directed_alpha0.01_model.pth"),
@@ -1724,32 +1782,43 @@ if __name__ == "__main__":
 
             # First check if processed test data already exists from evaluation
             processed_test_data_path = None
-            
+
             # Get test data path from config
             env_name = config.get_env_name()
             agent_pair = config.get_agent_pair_name()
             test_data_dir_from_config = f"./data/{env_name}/{agent_pair}/test"
-            
+
             possible_processed_paths = [
-                os.path.join(results_dir, f"processed_test_data_exp{experiment_no}.pkl"),
-                os.path.join(parent_results_dir, f"processed_test_data_exp{experiment_no}.pkl"),
-                os.path.join(test_data_dir_from_config, f"processed_test_data_exp{experiment_no}.pkl"),  # From config
+                os.path.join(
+                    results_dir, f"processed_test_data_exp{experiment_no}.pkl"
+                ),
+                os.path.join(
+                    parent_results_dir, f"processed_test_data_exp{experiment_no}.pkl"
+                ),
+                os.path.join(
+                    test_data_dir_from_config,
+                    f"processed_test_data_exp{experiment_no}.pkl",
+                ),  # From config
                 os.path.join(results_dir, "predictions.pkl"),  # Contains processed data
                 os.path.join(parent_results_dir, "predictions.pkl"),
                 os.path.join(parent_results_dir, "test_evaluation", "predictions.pkl"),
             ]
-            
+
             for path in possible_processed_paths:
                 if os.path.exists(path):
                     processed_test_data_path = path
                     break
-            
+
             test_data = None
-            
-            if processed_test_data_path and processed_test_data_path.endswith("predictions.pkl"):
+
+            if processed_test_data_path and processed_test_data_path.endswith(
+                "predictions.pkl"
+            ):
                 # Load from predictions.pkl which contains the processed data
-                print(f"Loading processed test data from predictions: {processed_test_data_path}")
-                with open(processed_test_data_path, 'rb') as f:
+                print(
+                    f"Loading processed test data from predictions: {processed_test_data_path}"
+                )
+                with open(processed_test_data_path, "rb") as f:
                     pred_data = pickle.load(f)
                 # predictions.pkl doesn't contain the full tensor data needed for embeddings
                 # Fall back to raw test data loading
@@ -1757,7 +1826,7 @@ if __name__ == "__main__":
             elif processed_test_data_path:
                 print(f"Loading processed test data: {processed_test_data_path}")
                 test_data = data_reader.load_processed_data(processed_test_data_path)
-            
+
             if test_data is None:
                 # Try to find test data directory for raw data processing
                 data_config = config.get_data_config()
@@ -1766,7 +1835,11 @@ if __name__ == "__main__":
                     [
                         test_data_dir_from_config,  # Primary path from config
                         os.path.join(os.path.dirname(results_dir), "test"),
-                        config.test_data_dir if hasattr(config, "test_data_dir") else None,
+                        (
+                            config.test_data_dir
+                            if hasattr(config, "test_data_dir")
+                            else None
+                        ),
                         os.path.join(results_dir, "test"),
                     ],
                 )
@@ -1838,7 +1911,9 @@ if __name__ == "__main__":
                 else:
                     print("No test games found for character embedding visualization")
             else:
-                print(f"Test data directory not found. Tried: {test_data_dirs if 'test_data_dirs' in locals() else 'None'}")
+                print(
+                    f"Test data directory not found. Tried: {test_data_dirs if 'test_data_dirs' in locals() else 'None'}"
+                )
         else:
             print(f"Model file not found: {model_path}")
 

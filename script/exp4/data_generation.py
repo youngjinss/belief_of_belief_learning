@@ -492,7 +492,7 @@ class DataGenerator:
     def save_processed_data(self, samples: List[Dict[str, Any]], output_path: str):
         """Save processed samples to pickle file"""
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        
+
         try:
             with open(output_path, "wb") as f:
                 pickle.dump(samples, f)

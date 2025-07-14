@@ -65,73 +65,73 @@ def load_model(model_path, device, model_kwargs):
         # Try to load model configuration from saved files
         model_dir = os.path.dirname(model_path)
 
-    # First try to load model_config.json
-    model_config_path = os.path.join(model_dir, "model_config.json")
-    if os.path.exists(model_config_path):
-        print(f"Loading model configuration from: {model_config_path}")
-        with open(model_config_path, "r") as f:
-            saved_model_kwargs = json.load(f)
-        # Use saved configuration instead of passed kwargs
-        model_kwargs = saved_model_kwargs
-    else:
-        # Fallback: try to load full_config.json
-        full_config_path = os.path.join(model_dir, "full_config.json")
-        if os.path.exists(full_config_path):
-            print(f"Loading model configuration from full config: {full_config_path}")
-            with open(full_config_path, "r") as f:
-                full_config = json.load(f)
-                if "model_config" in full_config:
-                    # Extract model kwargs from model_config
-                    model_config = full_config["model_config"]
-                    model_kwargs = {
-                        "use_mentalnet": model_config.get("use_mentalnet", False),
-                        "batch": model_kwargs.get(
-                            "batch", 32
-                        ),  # Keep batch size from current config
-                        "residual_blocks": model_config.get("residual_blocks", 3),
-                        "n_echar": model_config.get("n_echar", 64),
-                        "n_ement": model_config.get("n_ement", 64),
-                        "out_channels": model_config.get("out_channels", 32),
-                        "channels_in": model_config.get("channels_in", 9),
-                        "current_state_channels": model_config.get(
-                            "current_state_channels", 8
-                        ),
-                        "time_step": model_kwargs.get("time_step", 500),
-                        "action_space": model_config.get("action_space", 7),
-                        "goal_space": model_config.get("goal_space", 4),
-                        "max_n_past": model_kwargs.get("max_n_past", 10),
-                        "use_n_past": model_kwargs.get("use_n_past", True),
-                        "env_width": model_config.get("env_width", 9),
-                        "env_height": model_config.get("env_height", 9),
-                        "hidden_size_lstm": model_config.get("hidden_size_lstm", 64),
-                    }
+        # First try to load model_config.json
+        model_config_path = os.path.join(model_dir, "model_config.json")
+        if os.path.exists(model_config_path):
+            print(f"Loading model configuration from: {model_config_path}")
+            with open(model_config_path, "r") as f:
+                saved_model_kwargs = json.load(f)
+            # Use saved configuration instead of passed kwargs
+            model_kwargs = saved_model_kwargs
         else:
-            print(
-                f"Warning: No saved model configuration found. Using provided kwargs."
-            )
+            # Fallback: try to load full_config.json
+            full_config_path = os.path.join(model_dir, "full_config.json")
+            if os.path.exists(full_config_path):
+                print(f"Loading model configuration from full config: {full_config_path}")
+                with open(full_config_path, "r") as f:
+                    full_config = json.load(f)
+                    if "model_config" in full_config:
+                        # Extract model kwargs from model_config
+                        model_config = full_config["model_config"]
+                        model_kwargs = {
+                            "use_mentalnet": model_config.get("use_mentalnet", False),
+                            "batch": model_kwargs.get(
+                                "batch", 32
+                            ),  # Keep batch size from current config
+                            "residual_blocks": model_config.get("residual_blocks", 3),
+                            "n_echar": model_config.get("n_echar", 64),
+                            "n_ement": model_config.get("n_ement", 64),
+                            "out_channels": model_config.get("out_channels", 32),
+                            "channels_in": model_config.get("channels_in", 9),
+                            "current_state_channels": model_config.get(
+                                "current_state_channels", 8
+                            ),
+                            "time_step": model_kwargs.get("time_step", 500),
+                            "action_space": model_config.get("action_space", 7),
+                            "goal_space": model_config.get("goal_space", 4),
+                            "max_n_past": model_kwargs.get("max_n_past", 10),
+                            "use_n_past": model_kwargs.get("use_n_past", True),
+                            "env_width": model_config.get("env_width", 9),
+                            "env_height": model_config.get("env_height", 9),
+                            "hidden_size_lstm": model_config.get("hidden_size_lstm", 64),
+                        }
+            else:
+                print(
+                    f"Warning: No saved model configuration found. Using provided kwargs."
+                )
 
-    print(
-        f"Model configuration: use_mentalnet={model_kwargs.get('use_mentalnet', False)}"
-    )
-    model = create_model(model_kwargs)
+        print(
+            f"Model configuration: use_mentalnet={model_kwargs.get('use_mentalnet', False)}"
+        )
+        model = create_model(model_kwargs)
 
-    # Load checkpoint
-    checkpoint = torch.load(model_path, map_location=device)
+        # Load checkpoint
+        checkpoint = torch.load(model_path, map_location=device)
 
-    # Handle different checkpoint formats
-    if "model_state_dict" in checkpoint:
-        # Checkpoint format with optimizer state
-        model.load_state_dict(checkpoint["model_state_dict"])
-    elif isinstance(checkpoint, dict) and "model_state_dict" not in checkpoint:
-        # Direct state dict format
-        model.load_state_dict(checkpoint)
-    else:
-        # Fallback: assume it's a direct state dict
-        model.load_state_dict(checkpoint)
+        # Handle different checkpoint formats
+        if "model_state_dict" in checkpoint:
+            # Checkpoint format with optimizer state
+            model.load_state_dict(checkpoint["model_state_dict"])
+        elif isinstance(checkpoint, dict) and "model_state_dict" not in checkpoint:
+            # Direct state dict format
+            model.load_state_dict(checkpoint)
+        else:
+            # Fallback: assume it's a direct state dict
+            model.load_state_dict(checkpoint)
 
-        model.to(device)
-        model.eval()
-        return model
+            model.to(device)
+            model.eval()
+            return model
     
     except Exception as e:
         print(f"Error loading model from {model_path}: {str(e)}")
@@ -310,91 +310,91 @@ def evaluate_model(
         with torch.no_grad():
             for batch_idx, batch in enumerate(test_loader):
                 try:
-            # Unpack all data including goal_ranks
-            (
-                trajectories,
-                actions,
-                goals,
-                goal_ranks,
-                agents,
-                consumption_labels,
-                sr_labels,
-            ) = batch
-            
-            batch_size = trajectories.size(0)
-            
-            # Optimized GPU transfers with non_blocking for better performance
-            trajectories = trajectories.to(device, non_blocking=True)
-            actions = actions.to(device, non_blocking=True)
-            goals = goals.to(device, non_blocking=True)
-            goal_ranks = goal_ranks.to(device, non_blocking=True)
-            agents = agents.to(device, non_blocking=True)
+                    # Unpack all data including goal_ranks
+                    (
+                        trajectories,
+                        actions,
+                        goals,
+                        goal_ranks,
+                        agents,
+                        consumption_labels,
+                        sr_labels,
+                    ) = batch
+                    
+                    batch_size = trajectories.size(0)
+                    
+                    # Optimized GPU transfers with non_blocking for better performance
+                    trajectories = trajectories.to(device, non_blocking=True)
+                    actions = actions.to(device, non_blocking=True)
+                    goals = goals.to(device, non_blocking=True)
+                    goal_ranks = goal_ranks.to(device, non_blocking=True)
+                    agents = agents.to(device, non_blocking=True)
 
-            # Generate past episodes using goal_ranks (same as training)
-            past_episodes = generate_past_episodes_from_batch(
-                trajectories,
-                goal_ranks,  # Use goal_ranks instead of goals to match training
-                agents,
-                batch_size,
-                n_past_min=data_config.get("n_past_min", 1) if data_config else 1,
-                n_past_max=data_config.get("n_past_max", 1) if data_config else 1,
-                max_n_past=data_config.get("max_n_past", 1) if data_config else 1,
-                rank_threshold=(
-                    data_config.get("rank_threshold", 1) if data_config else 1
-                ),
-            )
+                    # Generate past episodes using goal_ranks (same as training)
+                    past_episodes = generate_past_episodes_from_batch(
+                        trajectories,
+                        goal_ranks,  # Use goal_ranks instead of goals to match training
+                        agents,
+                        batch_size,
+                        n_past_min=data_config.get("n_past_min", 1) if data_config else 1,
+                        n_past_max=data_config.get("n_past_max", 1) if data_config else 1,
+                        max_n_past=data_config.get("max_n_past", 1) if data_config else 1,
+                        rank_threshold=(
+                            data_config.get("rank_threshold", 1) if data_config else 1
+                        ),
+                    )
 
-            # With trajectory slicing, we use dynamic timesteps
-            # Each sample has a different effective length, stored in actions[:,0]
+                    # With trajectory slicing, we use dynamic timesteps
+                    # Each sample has a different effective length, stored in actions[:,0]
 
-            # For trajectory slicing, use the action at index 0 (the target action for this slice)
-            action_targets = actions[:, 0]  # Target action for each sliced trajectory
+                    # For trajectory slicing, use the action at index 0 (the target action for this slice)
+                    action_targets = actions[:, 0]  # Target action for each sliced trajectory
 
-            # Optimized trajectory length calculation
-            effective_lengths = _calculate_trajectory_lengths(trajectories)
+                    # Optimized trajectory length calculation
+                    effective_lengths = _calculate_trajectory_lengths(trajectories)
 
-            # Use trajectory without heading direction for MentalNet (first 8 channels only)
-            current_state_channels = (
-                data_config.get("current_state_channels", 8) if data_config else 8
-            )
-            recent_trajectory = trajectories[
-                :, :, :current_state_channels
-            ]  # [batch_size, seq_len, 8, height, width]
+                    # Use trajectory without heading direction for MentalNet (first 8 channels only)
+                    current_state_channels = (
+                        data_config.get("current_state_channels", 8) if data_config else 8
+                    )
+                    recent_trajectory = trajectories[
+                        :, :, :current_state_channels
+                    ]  # [batch_size, seq_len, 8, height, width]
 
-            # Extract current state for PredNet (last non-padded timestep)
-            current_state = torch.zeros(
-                batch_size,
-                current_state_channels,
-                trajectories.size(3),
-                trajectories.size(4),
-                device=device,
-            )
+                    # Extract current state for PredNet (last non-padded timestep)
+                    current_state = torch.zeros(
+                        batch_size,
+                        current_state_channels,
+                        trajectories.size(3),
+                        trajectories.size(4),
+                        device=device,
+                    )
 
-            # Vectorized: Extract current state using advanced indexing on the same device
-            batch_indices = torch.arange(batch_size, device=trajectories.device)
-            last_timesteps = torch.tensor(
-                [max(0, length - 1) for length in effective_lengths],
-                device=trajectories.device,
-            )
+                    # Vectorized: Extract current state using advanced indexing on the same device
+                    batch_indices = torch.arange(batch_size, device=trajectories.device)
+                    last_timesteps = torch.tensor(
+                        [max(0, length - 1) for length in effective_lengths],
+                        device=trajectories.device,
+                    )
 
-            # Extract current state using advanced indexing
-            current_state = trajectories[
-                batch_indices, last_timesteps, :current_state_channels
-            ]
+                    # Extract current state using advanced indexing
+                    current_state = trajectories[
+                        batch_indices, last_timesteps, :current_state_channels
+                    ]
 
-            # Model forward pass (model returns 7 outputs)
-            (
-                action_logits,
-                goal_logits,
-                agent_logits,
-                consumption_logits,
-                sr_pred,
-                char_emb,
-                mental_state,
-            ) = model(past_episodes, recent_trajectory, current_state)
-            # Get predictions
-            probabilities = F.softmax(action_logits, dim=1)
-            _, predicted = torch.max(action_logits, 1)
+                    # Model forward pass (model returns 7 outputs)
+                    (
+                        action_logits,
+                        goal_logits,
+                        agent_logits,
+                        consumption_logits,
+                        sr_pred,
+                        char_emb,
+                        mental_state,
+                    ) = model(past_episodes, recent_trajectory, current_state)
+                    # Get predictions
+                    probabilities = F.softmax(action_logits, dim=1)
+                    _, predicted = torch.max(action_logits, 1)
 
                     # Efficiently store predictions in pre-allocated arrays
                     batch_end = sample_idx + batch_size

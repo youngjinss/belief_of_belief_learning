@@ -147,6 +147,8 @@ class Config:
             "weight_decay": 0.001,
             "training_proportion": 0.9,
             "device": "cuda:3",
+            "device_ids": [2, 3],  # GPU IDs for parallel training
+            "use_parallel": True,  # Enable parallel GPU training
             "optimizer": "adam",
         }
 
@@ -524,6 +526,10 @@ class Config:
             self.training_config["device"] = args.device
         if hasattr(args, "optimizer") and args.optimizer is not None:
             self.training_config["optimizer"] = args.optimizer
+        if hasattr(args, "use_parallel") and args.use_parallel is not None:
+            self.training_config["use_parallel"] = args.use_parallel
+        if hasattr(args, "device_ids") and args.device_ids is not None:
+            self.training_config["device_ids"] = args.device_ids
 
         # Model architecture
         if hasattr(args, "residual_blocks") and args.residual_blocks is not None:

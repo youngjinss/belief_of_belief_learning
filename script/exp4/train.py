@@ -127,15 +127,25 @@ class EarlyStopping:
             self.best_loss = val_loss
             self.counter = 0
             if self.restore_best_weights:
-                self.best_weights = {
-                    k: v.clone() for k, v in model.state_dict().items()
-                }
+                # Handle DataParallel models
+                if isinstance(model, torch.nn.DataParallel):
+                    self.best_weights = {
+                        k: v.clone() for k, v in model.module.state_dict().items()
+                    }
+                else:
+                    self.best_weights = {
+                        k: v.clone() for k, v in model.state_dict().items()
+                    }
         else:
             self.counter += 1
 
         if self.counter >= self.patience:
             if self.restore_best_weights and self.best_weights is not None:
-                model.load_state_dict(self.best_weights)
+                # Handle DataParallel models
+                if isinstance(model, torch.nn.DataParallel):
+                    model.module.load_state_dict(self.best_weights)
+                else:
+                    model.load_state_dict(self.best_weights)
             return True
         return False
 
@@ -927,6 +937,7 @@ def train_tomnet(
     model_config = config.get_model_config()
     data_config = config.get_data_config()
     training_process_config = config.get_training_process_config()
+    training_config = config.get_training_config()
 
     batch_size = training_kwargs["batch_size"]
     epochs = training_kwargs["epochs"]
@@ -937,6 +948,10 @@ def train_tomnet(
     device = training_kwargs["device"]
     patience = training_kwargs["patience"]
     min_delta = training_kwargs["min_delta"]
+    
+    # Get parallel training configuration
+    use_parallel = training_config.get("use_parallel", False)
+    device_ids = training_config.get("device_ids", [2, 3])
     # Setup
     experiment_save_dir = save_dir
     os.makedirs(experiment_save_dir, exist_ok=True)
@@ -944,10 +959,26 @@ def train_tomnet(
     # Device setup
     if device == "auto":
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        primary_device_id = 0 if torch.cuda.is_available() else None
     else:
         device = torch.device(device)
+        # Extract device ID from device string (e.g., "cuda:3" -> 3)
+        if "cuda:" in str(device):
+            primary_device_id = int(str(device).split(":")[1])
+        else:
+            primary_device_id = 0
 
-    print(f"Using device: {device}")
+    # Setup for parallel training
+    if use_parallel and torch.cuda.is_available() and len(device_ids) > 1:
+        print(f"Using parallel training on GPUs: {device_ids}")
+        print(f"Primary device: cuda:{device_ids[0]}")
+        # Set primary device for model initialization
+        primary_device = torch.device(f"cuda:{device_ids[0]}")
+        device = primary_device
+    else:
+        print(f"Using single device: {device}")
+        use_parallel = False
+        
     print(f"Results will be saved to: {experiment_save_dir}")
 
     # Check if processed data exists, if not generate it
@@ -1024,9 +1055,16 @@ def train_tomnet(
     )
 
     # Create data loaders
-    # Adjust batch size if dataset is too small
-    effective_batch_size = min(batch_size, len(train_dataset))
-    effective_val_batch_size = min(batch_size, len(val_dataset))
+    # Adjust batch size if dataset is too small and for parallel training
+    if use_parallel and len(device_ids) > 1:
+        # Increase batch size for parallel training (distribute across GPUs)
+        parallel_batch_size = batch_size * len(device_ids)
+        effective_batch_size = min(parallel_batch_size, len(train_dataset))
+        effective_val_batch_size = min(parallel_batch_size, len(val_dataset))
+        print(f"Parallel training: increasing batch size from {batch_size} to {parallel_batch_size}")
+    else:
+        effective_batch_size = min(batch_size, len(train_dataset))
+        effective_val_batch_size = min(batch_size, len(val_dataset))
 
     train_loader = DataLoader(
         train_dataset, batch_size=effective_batch_size, shuffle=True, drop_last=False
@@ -1053,7 +1091,17 @@ def train_tomnet(
     model = create_model(model_kwargs_updated)
     model = model.to(device)
 
-    print(f"Model created with {count_parameters(model):,} parameters")
+    # Setup parallel training if enabled
+    if use_parallel and torch.cuda.is_available() and len(device_ids) > 1:
+        print(f"Wrapping model with DataParallel for GPUs: {device_ids}")
+        model = torch.nn.DataParallel(model, device_ids=device_ids)
+
+    # Count parameters correctly for DataParallel
+    if isinstance(model, torch.nn.DataParallel):
+        param_count = count_parameters(model.module)
+    else:
+        param_count = count_parameters(model)
+    print(f"Model created with {param_count:,} parameters")
 
     # Loss function and optimizer
     loss_fn = ToMnetLoss(
@@ -1189,9 +1237,15 @@ def train_tomnet(
         # Save best model
         if val_metrics["loss"] < best_val_loss:
             best_val_loss = val_metrics["loss"]
-            torch.save(
-                model.state_dict(), os.path.join(experiment_save_dir, "best_model.pth")
-            )
+            # Save model correctly for DataParallel
+            if isinstance(model, torch.nn.DataParallel):
+                torch.save(
+                    model.module.state_dict(), os.path.join(experiment_save_dir, "best_model.pth")
+                )
+            else:
+                torch.save(
+                    model.state_dict(), os.path.join(experiment_save_dir, "best_model.pth")
+                )
             print(f"New best model saved (val_loss: {best_val_loss:.4f})")
 
         # Early stopping
@@ -1224,7 +1278,10 @@ def train_tomnet(
     save_training_plots(history, experiment_save_dir)
 
     # Save final model
-    torch.save(model.state_dict(), os.path.join(experiment_save_dir, "final_model.pth"))
+    if isinstance(model, torch.nn.DataParallel):
+        torch.save(model.module.state_dict(), os.path.join(experiment_save_dir, "final_model.pth"))
+    else:
+        torch.save(model.state_dict(), os.path.join(experiment_save_dir, "final_model.pth"))
 
     # Save data statistics
     stats = data_reader.get_statistics(samples)
@@ -1279,6 +1336,8 @@ if __name__ == "__main__":
     )
     parser.add_argument("--device", type=str, help="Device to use (auto, cpu, cuda)")
     parser.add_argument("--optimizer", type=str, help="Optimizer type (adam)")
+    parser.add_argument("--use_parallel", action="store_true", help="Enable parallel GPU training")
+    parser.add_argument("--device_ids", nargs="+", type=int, help="GPU device IDs for parallel training (e.g., 2 3)")
 
     # Model architecture
     parser.add_argument("--residual_blocks", type=int, help="Number of residual blocks")

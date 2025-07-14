@@ -364,7 +364,7 @@ def save_game_with_labels(
         blocker_inferred_goal = getattr(blocker_agent, "target_door_color", None)
         actual_target_door = getattr(env, "target_door_color", None)
 
-        # Determine blocker interaction result
+        # Determine blocker interaction result --> 어차피 blocker도 한번만 들어가니까 가능...
         if blocker_inferred_goal and actual_target_door:
             if blocker_inferred_goal == actual_target_door:
                 final_blocker_interaction = "1"  # Success

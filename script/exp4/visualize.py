@@ -849,7 +849,7 @@ def plot_character_embeddings(
 
                 past_episodes = generate_past_episodes_from_batch(
                     trajectories=trajectory,
-                    goals=goal_ranks,
+                    goal_ranks=goal_ranks,
                     agents=agents,
                     batch_size=1,
                     n_past_min=n_past_config["n_past_min"],
@@ -1742,19 +1742,31 @@ if __name__ == "__main__":
             if os.path.basename(results_dir).replace("_", "").replace("-", "").isdigit()
             else results_dir
         )
+        
+        # Also search for models in other timestamped directories within parent
+        import glob
+        parent_timestamped_dirs = []
+        if parent_results_dir != results_dir:
+            pattern = os.path.join(parent_results_dir, "20*")
+            parent_timestamped_dirs = glob.glob(pattern)
 
         possible_model_paths = model_config.get(
             "possible_model_paths",
             [
                 os.path.join(results_dir, "best_model.pth"),
-                os.path.join(
-                    parent_results_dir, "best_model.pth"
-                ),  # Check parent for timestamped dirs
+                os.path.join(parent_results_dir, "best_model.pth"),  # Check parent for timestamped dirs
                 os.path.join(results_dir, "model.pth"),
                 os.path.join(parent_results_dir, "model.pth"),
                 os.path.join(results_dir, "figure5_goal_directed_alpha0.01_model.pth"),
             ],
         )
+        
+        # Add paths from other timestamped directories
+        for timestamped_dir in parent_timestamped_dirs:
+            possible_model_paths.extend([
+                os.path.join(timestamped_dir, "best_model.pth"),
+                os.path.join(timestamped_dir, "model.pth"),
+            ])
 
         # Add any additional model paths from config
         if "additional_model_paths" in model_config:

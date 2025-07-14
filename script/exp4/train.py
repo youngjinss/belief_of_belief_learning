@@ -9,6 +9,8 @@ from tqdm import tqdm
 from datetime import datetime
 import time
 import pickle
+import gc
+from torch.amp import autocast, GradScaler
 
 # Add current directory to path
 sys.path.append(os.path.dirname(__file__))
@@ -411,6 +413,9 @@ def train_epoch(
     data_config=None,
     training_process_config=None,
     model_config=None,
+    scaler=None,
+    gradient_accumulation_steps=1,
+    device_type='cuda',
 ):
     """
     Train for one epoch
@@ -437,6 +442,7 @@ def train_epoch(
     correct_goals = 0
     correct_agents = 0
     total_samples = 0
+    accumulation_loss = 0
 
     for batch_idx, batch in enumerate(train_loader):
         # Unpack multi-agent data
@@ -517,47 +523,105 @@ def train_epoch(
         agent_targets = agents
         consumption_targets = consumption_labels
 
-        optimizer.zero_grad()
+        # Zero gradients only at start of accumulation
+        if batch_idx % gradient_accumulation_steps == 0:
+            optimizer.zero_grad()
 
-        # Forward pass - CharNet gets past_episodes, MentalNet gets recent_trajectory, PredNet gets current_state
-        action_logits, goal_logits, agent_logits, consumption_logits, sr_pred, _, _ = (
-            model(past_episodes, recent_trajectory, current_state)
-        )
+        # Forward pass with AMP if enabled
+        if scaler is not None:
+            with autocast(device_type):
+                action_logits, goal_logits, agent_logits, consumption_logits, sr_pred, _, _ = (
+                    model(past_episodes, recent_trajectory, current_state)
+                )
+                
+                sr_targets = sr_labels
+                
+                # Compute loss with all components including agent prediction
+                (
+                    total_loss_batch,
+                    action_loss_batch,
+                    goal_loss_batch,
+                    agent_loss_batch,
+                    consumption_loss_batch,
+                    sr_loss_batch,
+                ) = loss_fn(
+                    action_logits,
+                    goal_logits,
+                    agent_logits,
+                    consumption_logits,
+                    sr_pred,
+                    action_targets,
+                    goal_targets,
+                    agent_targets,
+                    consumption_targets,
+                    sr_targets,
+                )
+                
+                # Scale loss for gradient accumulation
+                total_loss_batch = total_loss_batch / gradient_accumulation_steps
+            
+            # Backward pass with AMP
+            scaler.scale(total_loss_batch).backward()
+        else:
+            # Regular forward pass
+            action_logits, goal_logits, agent_logits, consumption_logits, sr_pred, _, _ = (
+                model(past_episodes, recent_trajectory, current_state)
+            )
+            
+            sr_targets = sr_labels
+            
+            # Compute loss with all components including agent prediction
+            (
+                total_loss_batch,
+                action_loss_batch,
+                goal_loss_batch,
+                agent_loss_batch,
+                consumption_loss_batch,
+                sr_loss_batch,
+            ) = loss_fn(
+                action_logits,
+                goal_logits,
+                agent_logits,
+                consumption_logits,
+                sr_pred,
+                action_targets,
+                goal_targets,
+                agent_targets,
+                consumption_targets,
+                sr_targets,
+            )
+            
+            # Scale loss for gradient accumulation
+            total_loss_batch = total_loss_batch / gradient_accumulation_steps
+            
+            # Regular backward pass
+            total_loss_batch.backward()
 
-        # Use loaded SR labels as targets
-        sr_targets = sr_labels
+        # Accumulate loss for reporting (unscaled)
+        accumulation_loss += total_loss_batch.item() * gradient_accumulation_steps
 
-        # Compute loss with all components including agent prediction
-        (
-            total_loss_batch,
-            action_loss_batch,
-            goal_loss_batch,
-            agent_loss_batch,
-            consumption_loss_batch,
-            sr_loss_batch,
-        ) = loss_fn(
-            action_logits,
-            goal_logits,
-            agent_logits,
-            consumption_logits,
-            sr_pred,
-            action_targets,
-            goal_targets,
-            agent_targets,
-            consumption_targets,
-            sr_targets,
-        )
+        # Optimizer step with gradient accumulation
+        if (batch_idx + 1) % gradient_accumulation_steps == 0 or (batch_idx + 1) == len(train_loader):
+            max_grad_norm = (
+                training_process_config["max_grad_norm"] if training_process_config else 1.0
+            )
+            
+            if scaler is not None:
+                # AMP gradient clipping and step
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=max_grad_norm)
+                scaler.step(optimizer)
+                scaler.update()
+            else:
+                # Regular gradient clipping and step
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=max_grad_norm)
+                optimizer.step()
+            
+            # Clear gradients for next accumulation
+            optimizer.zero_grad()
 
-        # Backward pass
-        total_loss_batch.backward()
-        max_grad_norm = (
-            training_process_config["max_grad_norm"] if training_process_config else 1.0
-        )
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=max_grad_norm)
-        optimizer.step()
-
-        # Update metrics
-        total_loss += total_loss_batch.item()
+        # Update metrics (use unscaled values for reporting)
+        total_loss += total_loss_batch.item() * gradient_accumulation_steps
         total_action_loss += action_loss_batch.item()
         total_goal_loss += goal_loss_batch.item()
         total_agent_loss += agent_loss_batch.item()  # Track agent loss
@@ -575,6 +639,11 @@ def train_epoch(
             (predicted_agents == agent_targets).sum().item()
         )  # Track agent accuracy
         total_samples += batch_size
+        
+        # Memory cleanup for large batches
+        if batch_idx % 10 == 0:
+            torch.cuda.empty_cache()
+            gc.collect()
 
     num_batches = len(train_loader)
     avg_loss = total_loss / num_batches if num_batches > 0 else 0
@@ -610,6 +679,8 @@ def validate_epoch(
     max_n_past=5,
     data_config=None,
     model_config=None,
+    scaler=None,
+    device_type='cuda',
 ):
     """
     Validate for one epoch
@@ -736,16 +807,29 @@ def validate_epoch(
             consumption_targets = consumption_labels
             sr_targets = sr_labels
 
-            # Forward pass - CharNet gets past_episodes, MentalNet gets recent_trajectory, PredNet gets current_state
-            (
-                action_logits,
-                goal_logits,
-                agent_logits,
-                consumption_logits,
-                sr_pred,
-                _,
-                _,
-            ) = model(past_episodes, recent_trajectory, current_state)
+            # Forward pass with AMP if enabled
+            if scaler is not None:
+                with autocast(device_type):
+                    (
+                        action_logits,
+                        goal_logits,
+                        agent_logits,
+                        consumption_logits,
+                        sr_pred,
+                        _,
+                        _,
+                    ) = model(past_episodes, recent_trajectory, current_state)
+            else:
+                # Regular forward pass
+                (
+                    action_logits,
+                    goal_logits,
+                    agent_logits,
+                    consumption_logits,
+                    sr_pred,
+                    _,
+                    _,
+                ) = model(past_episodes, recent_trajectory, current_state)
 
             # Compute loss with all components including agent prediction
             (
@@ -952,6 +1036,12 @@ def train_tomnet(
     # Get parallel training configuration
     use_parallel = training_config.get("use_parallel", False)
     device_ids = training_config.get("device_ids", [2, 3])
+    
+    # Memory and computation optimization settings
+    use_amp = training_config.get("use_amp", True)  # Automatic Mixed Precision
+    gradient_accumulation_steps = training_config.get("gradient_accumulation_steps", 1)
+    pin_memory = training_config.get("pin_memory", True)
+    num_workers = training_config.get("num_workers", 4)
     # Setup
     experiment_save_dir = save_dir
     os.makedirs(experiment_save_dir, exist_ok=True)
@@ -978,7 +1068,16 @@ def train_tomnet(
     else:
         print(f"Using single device: {device}")
         use_parallel = False
+    
+    # Memory optimization setup
+    if torch.cuda.is_available():
+        # Clear GPU cache
+        torch.cuda.empty_cache()
+        print(f"GPU memory allocated: {torch.cuda.memory_allocated(device) / 1024**3:.2f} GB")
+        print(f"GPU memory reserved: {torch.cuda.memory_reserved(device) / 1024**3:.2f} GB")
         
+    print(f"Using AMP (Automatic Mixed Precision): {use_amp}")
+    print(f"Gradient accumulation steps: {gradient_accumulation_steps}")
     print(f"Results will be saved to: {experiment_save_dir}")
 
     # Check if processed data exists, if not generate it
@@ -1067,10 +1166,22 @@ def train_tomnet(
         effective_val_batch_size = min(batch_size, len(val_dataset))
 
     train_loader = DataLoader(
-        train_dataset, batch_size=effective_batch_size, shuffle=True, drop_last=False
+        train_dataset, 
+        batch_size=effective_batch_size, 
+        shuffle=True, 
+        drop_last=False,
+        pin_memory=pin_memory,
+        num_workers=num_workers,
+        persistent_workers=True if num_workers > 0 else False
     )
     val_loader = DataLoader(
-        val_dataset, batch_size=effective_val_batch_size, shuffle=False, drop_last=False
+        val_dataset, 
+        batch_size=effective_val_batch_size, 
+        shuffle=False, 
+        drop_last=False,
+        pin_memory=pin_memory,
+        num_workers=num_workers,
+        persistent_workers=True if num_workers > 0 else False
     )
 
     print(f"Training samples: {len(train_dataset)}")
@@ -1114,6 +1225,10 @@ def train_tomnet(
     optimizer = torch.optim.Adam(
         model.parameters(), lr=lr, weight_decay=config.training_config["weight_decay"]
     )
+    
+    # Initialize AMP scaler for mixed precision training
+    device_type = 'cuda' if torch.cuda.is_available() and 'cuda' in str(device) else 'cpu'
+    scaler = GradScaler(device_type) if use_amp and device_type == 'cuda' else None
 
     # Early stopping
     early_stopping = EarlyStopping(
@@ -1165,11 +1280,14 @@ def train_tomnet(
             data_config,
             training_process_config,
             model_config,
+            scaler,
+            gradient_accumulation_steps,
+            device_type,
         )
 
         # Validation
         val_metrics = validate_epoch(
-            model, val_loader, loss_fn, device, max_n_past, data_config, model_config
+            model, val_loader, loss_fn, device, max_n_past, data_config, model_config, scaler, device_type
         )
 
         epoch_time = time.time() - epoch_start_time
@@ -1283,10 +1401,16 @@ def train_tomnet(
     else:
         torch.save(model.state_dict(), os.path.join(experiment_save_dir, "final_model.pth"))
 
-    # Save data statistics
-    stats = data_reader.get_statistics(samples)
-    with open(os.path.join(experiment_save_dir, "data_statistics.json"), "w") as f:
-        json.dump(stats, f, indent=2)
+    # Save data statistics if data_reader is available
+    try:
+        if 'data_reader' in locals() and 'samples' in locals():
+            stats = data_reader.get_statistics(samples)
+            with open(os.path.join(experiment_save_dir, "data_statistics.json"), "w") as f:
+                json.dump(stats, f, indent=2)
+        else:
+            print("Skipping data statistics - using pre-processed data")
+    except Exception as e:
+        print(f"Warning: Could not save data statistics: {e}")
 
     print(f"\nTraining completed!")
     print(f"Results saved to: {experiment_save_dir}")
@@ -1338,6 +1462,7 @@ if __name__ == "__main__":
     parser.add_argument("--optimizer", type=str, help="Optimizer type (adam)")
     parser.add_argument("--use_parallel", action="store_true", help="Enable parallel GPU training")
     parser.add_argument("--device_ids", nargs="+", type=int, help="GPU device IDs for parallel training (e.g., 2 3)")
+    parser.add_argument("--debug", action="store_true", help="Enable debug mode with small-scale settings")
 
     # Model architecture
     parser.add_argument("--residual_blocks", type=int, help="Number of residual blocks")
@@ -1384,6 +1509,8 @@ if __name__ == "__main__":
 
     # Create config and update from args if override is enabled
     config = Config()
+    if args.debug:
+        config.enable_debug_mode()
     if args.config_override:
         config.update_from_args(args)
 

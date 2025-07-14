@@ -29,6 +29,9 @@ class Config:
         # Data generation settings
         self.n_games = 50000  # Number of games to generate for ToMnet data
         self.save_dir = "data"  # Base directory to save generated data
+        
+        # Debug/test settings
+        self.debug_mode = False  # Enable for small-scale testing
 
         # Experiment settings
         self.experiment_name = "exp4"
@@ -149,6 +152,10 @@ class Config:
             "device": "cuda:3",
             "device_ids": [2, 3],  # GPU IDs for parallel training
             "use_parallel": True,  # Enable parallel GPU training
+            "use_amp": True,  # Automatic Mixed Precision for memory and speed
+            "gradient_accumulation_steps": 2,  # Accumulate gradients over multiple batches
+            "pin_memory": True,  # Pin memory for faster data transfer
+            "num_workers": 4,  # Number of dataloader workers
             "optimizer": "adam",
         }
 
@@ -428,6 +435,35 @@ class Config:
     def get_n_past_evaluation_config(self):
         """Get N_past evaluation configuration"""
         return self.n_past_evaluation.copy()
+        
+    def enable_debug_mode(self):
+        """Enable debug mode with smaller scale settings for testing"""
+        self.debug_mode = True
+        
+        # Reduce data generation for testing
+        self.n_games = 100  # Reduced from 50000
+        
+        # Reduce training settings for faster testing
+        self.training_config.update({
+            "batch_size": 64,  # Reduced from 1024
+            "epochs": 5,  # Reduced from 200
+            "gradient_accumulation_steps": 1,  # Reduced from 2
+        })
+        
+        # Reduce data processing settings
+        self.data_config.update({
+            "max_moves": 20,  # Reduced from 50
+            "time_step": 5,  # Reduced from 10
+        })
+        
+        # Reduce model complexity slightly
+        self.model_config.update({
+            "residual_blocks": 3,  # Reduced from 5
+            "n_echar": 64,  # Reduced from 128
+            "n_ement": 64,  # Reduced from 128
+        })
+        
+        print("Debug mode enabled: Using smaller scale settings for testing")
 
     def get_model_kwargs(self):
         """Get model initialization parameters"""

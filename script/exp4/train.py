@@ -1058,21 +1058,53 @@ def train_tomnet(
 
     # Setup for parallel training
     if use_parallel and torch.cuda.is_available() and len(device_ids) > 1:
-        print(f"Using parallel training on GPUs: {device_ids}")
-        print(f"Primary device: cuda:{device_ids[0]}")
-        # Set primary device for model initialization
-        primary_device = torch.device(f"cuda:{device_ids[0]}")
-        device = primary_device
+        # Check which GPUs are actually available
+        available_gpus = []
+        for gpu_id in device_ids:
+            if gpu_id < torch.cuda.device_count():
+                torch.cuda.set_device(gpu_id)
+                # Test GPU memory
+                test_tensor = torch.zeros(1, device=f'cuda:{gpu_id}')
+                available_gpus.append(gpu_id)
+                del test_tensor
+                torch.cuda.empty_cache()
+        
+        if len(available_gpus) > 1:
+            print(f"Using parallel training on GPUs: {available_gpus}")
+            print(f"Primary device: cuda:{available_gpus[0]}")
+            device_ids = available_gpus  # Use only available GPUs
+            primary_device = torch.device(f"cuda:{available_gpus[0]}")
+            device = primary_device
+        else:
+            print(f"Only {len(available_gpus)} GPU(s) available, using single GPU training")
+            if available_gpus:
+                device = torch.device(f"cuda:{available_gpus[0]}")
+                print(f"Using single device: {device}")
+            use_parallel = False
     else:
         print(f"Using single device: {device}")
         use_parallel = False
     
     # Memory optimization setup
     if torch.cuda.is_available():
-        # Clear GPU cache
-        torch.cuda.empty_cache()
+        # Clear GPU cache on all available devices
+        for i in range(torch.cuda.device_count()):
+            torch.cuda.set_device(i)
+            torch.cuda.empty_cache()
+        
+        # Set back to primary device
+        torch.cuda.set_device(device)
         print(f"GPU memory allocated: {torch.cuda.memory_allocated(device) / 1024**3:.2f} GB")
         print(f"GPU memory reserved: {torch.cuda.memory_reserved(device) / 1024**3:.2f} GB")
+        
+        # Check if we need to reduce batch size due to larger model
+        total_memory = torch.cuda.get_device_properties(device).total_memory / 1024**3
+        allocated_memory = torch.cuda.memory_allocated(device) / 1024**3
+        available_memory = total_memory - allocated_memory
+        print(f"Available GPU memory: {available_memory:.2f} GB")
+        
+        if available_memory < 2.0:  # Less than 2GB available
+            print("Warning: Low GPU memory detected. Consider reducing batch size or model complexity.")
         
     print(f"Using AMP (Automatic Mixed Precision): {use_amp}")
     print(f"Gradient accumulation steps: {gradient_accumulation_steps}")
@@ -1162,6 +1194,16 @@ def train_tomnet(
     else:
         effective_batch_size = min(batch_size, len(train_dataset))
         effective_val_batch_size = min(batch_size, len(val_dataset))
+        
+        # Dynamic batch size reduction for memory optimization
+        if torch.cuda.is_available():
+            available_memory = (torch.cuda.get_device_properties(device).total_memory - 
+                              torch.cuda.memory_allocated(device)) / 1024**3
+            if available_memory < 3.0 and effective_batch_size > 256:
+                new_batch_size = max(256, effective_batch_size // 2)
+                print(f"Reducing batch size from {effective_batch_size} to {new_batch_size} due to memory constraints")
+                effective_batch_size = new_batch_size
+                effective_val_batch_size = min(new_batch_size, len(val_dataset))
 
     train_loader = DataLoader(
         train_dataset, 
@@ -1197,8 +1239,12 @@ def train_tomnet(
     model_kwargs_updated["current_state_channels"] = model_config.get(
         "current_state_channels", 8
     )
+    
     model = create_model(model_kwargs_updated)
     model = model.to(device)
+    
+    if torch.cuda.is_available():
+        print(f"Model loaded to GPU. Memory after model: {torch.cuda.memory_allocated(device) / 1024**3:.2f} GB")
 
     # Setup parallel training if enabled
     if use_parallel and torch.cuda.is_available() and len(device_ids) > 1:
@@ -1399,15 +1445,12 @@ def train_tomnet(
         torch.save(model.state_dict(), os.path.join(experiment_save_dir, "final_model.pth"))
 
     # Save data statistics if data_reader is available
-    try:
-        if 'data_reader' in locals() and 'samples' in locals():
-            stats = data_reader.get_statistics(samples)
-            with open(os.path.join(experiment_save_dir, "data_statistics.json"), "w") as f:
-                json.dump(stats, f, indent=2)
-        else:
-            print("Skipping data statistics - using pre-processed data")
-    except Exception as e:
-        print(f"Warning: Could not save data statistics: {e}")
+    if 'data_reader' in locals() and 'samples' in locals():
+        stats = data_reader.get_statistics(samples)
+        with open(os.path.join(experiment_save_dir, "data_statistics.json"), "w") as f:
+            json.dump(stats, f, indent=2)
+    else:
+        print("Skipping data statistics - using pre-processed data")
 
     print(f"\nTraining completed!")
     print(f"Results saved to: {experiment_save_dir}")

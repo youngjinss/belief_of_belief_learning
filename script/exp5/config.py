@@ -115,6 +115,7 @@ class Config:
                 "gamma": 0.99,
                 "temperature": 0.1,
                 "action_space": 6,
+                "stay_probability": 0.7,
             },
             "rule_based": {
                 "observability": "full",
@@ -123,6 +124,7 @@ class Config:
                 "gamma": 0.99,
                 "temperature": 0.1,
                 "action_space": 6,
+                "stay_probability": 0.7,
             },
         }
 

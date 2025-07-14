@@ -675,9 +675,13 @@ def run_single_game(game_id, config_dict, save_dir):
     elif blocker_type == "goal_direct":
         blocker_agent = BlockerGoalDirectAgent()
     elif blocker_type == "randomly_selected":
-        blocker_agent = BlockerRandomlySelectedAgent()
+        blocker_config = config_dict.get("blocker_configs", {}).get("randomly_selected", {})
+        stay_probability = blocker_config.get("stay_probability", 0.7)
+        blocker_agent = BlockerRandomlySelectedAgent(stay_probability=stay_probability)
     elif blocker_type == "rule_based":
-        blocker_agent = BlockerRuleBasedAgent()
+        blocker_config = config_dict.get("blocker_configs", {}).get("rule_based", {})
+        stay_probability = blocker_config.get("stay_probability", 0.7)
+        blocker_agent = BlockerRuleBasedAgent(stay_probability=stay_probability)
     else:
         raise ValueError(f"Unknown blocker type: {blocker_type}")
 

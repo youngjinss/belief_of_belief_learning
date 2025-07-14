@@ -65,7 +65,7 @@ class RandomlySelectedAgent:
     3. Use break action (5) to end game
     """
 
-    def __init__(self):
+    def __init__(self, stay_probability=0.7):
         """
         Initialize randomly selected blocker agent.
         """
@@ -81,6 +81,9 @@ class RandomlySelectedAgent:
         # Grid dimensions - will be set from observations
         self.width = None
         self.height = None
+        
+        # Stay probability during navigation
+        self.stay_probability = stay_probability
 
     def get_action(self, obs):
         """
@@ -232,6 +235,10 @@ class RandomlySelectedAgent:
 
             if not self.path_to_door:
                 return 4  # Stay if no path
+
+        # Use stay probability to decide whether to stay or move
+        if np.random.random() < self.stay_probability:
+            return 4  # Stay
 
         # Get next position in path
         target_pos = self.path_to_door[self.current_path_index]
@@ -538,7 +545,7 @@ class RuleBasedAgent:
     6. Use break action (5) to end game
     """
 
-    def __init__(self):
+    def __init__(self, stay_probability=0.7):
         """Initialize rule-based blocker agent."""
         # Phase 1: Initial random target
         self.initial_target_color = None
@@ -563,6 +570,9 @@ class RuleBasedAgent:
         # Grid dimensions - will be set from observations
         self.width = None
         self.height = None
+        
+        # Stay probability during navigation
+        self.stay_probability = stay_probability
 
     def get_action(self, obs):
         """
@@ -796,6 +806,10 @@ class RuleBasedAgent:
 
             if not self.path_to_door:
                 return 4  # Stay if no path
+
+        # Use stay probability to decide whether to stay or move
+        if np.random.random() < self.stay_probability:
+            return 4  # Stay
 
         # Get next position in path
         target_pos_in_path = self.path_to_door[self.current_path_index]

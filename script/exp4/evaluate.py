@@ -526,7 +526,7 @@ def evaluate_achieverblocker_model(
         print("Loading existing processed data...")
         # Load pre-processed training data directly
         with open(processed_test_data_path, "rb") as f:
-            data = pickle.load(f)
+            test_data = pickle.load(f)
         print(f"  Successfully loaded from {processed_test_data_path}")
 
     # Log test data shapes for verification

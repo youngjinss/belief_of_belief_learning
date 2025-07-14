@@ -197,10 +197,10 @@ class AchieverBlockerEnv(MiniGridEnv):
         
         # Get proposed new positions
         achiever_new_pos, achiever_new_dir = self._get_new_position(
-            self.achiever_pos, self.achiever_dir, achiever_action
+            self.achiever_pos, self.achiever_dir, achiever_action, "achiever"
         )
         blocker_new_pos, blocker_new_dir = self._get_new_position(
-            self.blocker_pos, self.blocker_dir, blocker_action
+            self.blocker_pos, self.blocker_dir, blocker_action, "blocker"
         )
         
         # Handle collision (agents cannot overlap)
@@ -292,7 +292,7 @@ class AchieverBlockerEnv(MiniGridEnv):
         
         return obs, rewards, terminated, truncated, info
 
-    def _get_new_position(self, current_pos, current_dir, action):
+    def _get_new_position(self, current_pos, current_dir, action, agent_type="achiever"):
         """Calculate new position based on action (direct movement)"""
         new_pos = current_pos.copy()
         new_dir = current_dir  # Direction doesn't change in this environment
@@ -321,8 +321,24 @@ class AchieverBlockerEnv(MiniGridEnv):
             
         # Check walls and objects
         cell = self.grid.get(*new_pos)
-        if cell is not None and not cell.can_overlap():
-            new_pos = current_pos  # Stay in place if cannot overlap
+        if cell is not None:
+            # Special handling for doors based on agent type
+            if isinstance(cell, Door):
+                if agent_type == "blocker":
+                    # Blockers can always walk on doors to block them
+                    pass  # Allow movement
+                elif agent_type == "achiever":
+                    # Achievers follow original door overlap logic
+                    if not cell.can_overlap():
+                        new_pos = current_pos  # Stay in place if cannot overlap
+                else:
+                    # Default behavior for other objects
+                    if not cell.can_overlap():
+                        new_pos = current_pos  # Stay in place if cannot overlap
+            else:
+                # Non-door objects use standard overlap check
+                if not cell.can_overlap():
+                    new_pos = current_pos  # Stay in place if cannot overlap
             
         return new_pos, new_dir
 

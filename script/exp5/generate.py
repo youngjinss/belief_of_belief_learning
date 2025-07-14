@@ -32,6 +32,8 @@ from script.exp5.achievers import (
 from script.exp5.blockers import (
     RandomAgent as BlockerRandomAgent,
     GoalDirectAgent as BlockerGoalDirectAgent,
+    RandomlySelectedAgent as BlockerRandomlySelectedAgent,
+    RuleBasedAgent as BlockerRuleBasedAgent,
 )
 from script.exp5.config import Config
 
@@ -672,6 +674,10 @@ def run_single_game(game_id, config_dict, save_dir):
         blocker_agent = BlockerRandomAgent()
     elif blocker_type == "goal_direct":
         blocker_agent = BlockerGoalDirectAgent()
+    elif blocker_type == "randomly_selected":
+        blocker_agent = BlockerRandomlySelectedAgent()
+    elif blocker_type == "rule_based":
+        blocker_agent = BlockerRuleBasedAgent()
     else:
         raise ValueError(f"Unknown blocker type: {blocker_type}")
 
@@ -949,7 +955,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--blocker_type",
         type=str,
-        choices=["random", "goal_direct"],
+        choices=["random", "goal_direct", "randomly_selected", "rule_based"],
         default=None,
         help="Type of blocker agent to use",
     )

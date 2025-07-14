@@ -63,6 +63,8 @@ script/exp5/
 #### Blocker Agents
 - **GoalDirect Agent**: Infers achiever goals from observed key collection patterns
 - **Random Agent**: Baseline blocking behavior
+- **RandomlySelected Agent**: Level-0 reasoning - randomly selects target door and blocks it
+- **RuleBased Agent**: Level-1 reasoning - first blocks random door, then infers target from achiever's key and blocks actual target
 
 ## Quick Start
 
@@ -77,6 +79,8 @@ python script/exp5/generate.py --n_games 2000 --achiever_type astar --blocker_ty
 # Generate data for all agent combinations
 python script/exp5/generate.py --achiever_type value --blocker_type goal_direct
 python script/exp5/generate.py --achiever_type astar --blocker_type random
+python script/exp5/generate.py --achiever_type value --blocker_type randomly_selected
+python script/exp5/generate.py --achiever_type astar --blocker_type rule_based
 ```
 
 ### 2. Multi-Agent Game Simulation
@@ -123,7 +127,7 @@ All parameters are centralized in `config.py` for multi-agent experiments:
 ```python
 self.env_name = "MiniGrid-AchieverBlocker-{size}-v1"
 self.achiever_type = "value"      # "astar", "random", "value"
-self.blocker_type = "goal_direct" # "random", "goal_direct"
+self.blocker_type = "goal_direct" # "random", "goal_direct", "randomly_selected", "rule_based"
 self.width = 9
 self.height = 9
 self.max_steps = 500

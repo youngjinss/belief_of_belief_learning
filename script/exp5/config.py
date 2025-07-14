@@ -14,7 +14,7 @@ class Config:
 
         # Agent settings
         self.achiever_type = "value"  # Options: "astar", "random", "value"
-        self.blocker_type = "goal_direct"  # Options: "random", "goal_direct"
+        self.blocker_type = "rule_based"  # Options: "random", "goal_direct", "randomly_selected", "rule_based"
         self.observability = "full"  # Options: "full", "partial"
         self.movement_prob = 0.8  # For random agent
 
@@ -29,7 +29,7 @@ class Config:
         self.gif_output = None  # Filename for saving gif (without .gif extension)
 
         # Data generation settings
-        self.n_games = 100000  # Number of games to generate for ToMnet data
+        self.n_games = 500  # Number of games to generate for ToMnet data
         self.save_dir = "data"  # Base directory to save generated data
         
         # Debug/test settings
@@ -101,6 +101,22 @@ class Config:
                 "action_space": 6,
             },
             "goal_direct": {
+                "observability": "full",
+                "movement_cost": 0.05,
+                "wall_penalty": 10.0,
+                "gamma": 0.99,
+                "temperature": 0.1,
+                "action_space": 6,
+            },
+            "randomly_selected": {
+                "observability": "full",
+                "movement_cost": 0.05,
+                "wall_penalty": 10.0,
+                "gamma": 0.99,
+                "temperature": 0.1,
+                "action_space": 6,
+            },
+            "rule_based": {
                 "observability": "full",
                 "movement_cost": 0.05,
                 "wall_penalty": 10.0,
@@ -669,7 +685,7 @@ class Config:
         """Validate configuration"""
         if self.achiever_type not in ["astar", "random", "value"]:
             raise ValueError(f"Invalid achiever_type: {self.achiever_type}")
-        if self.blocker_type not in ["random", "goal_direct"]:
+        if self.blocker_type not in ["random", "goal_direct", "randomly_selected", "rule_based"]:
             raise ValueError(f"Invalid blocker_type: {self.blocker_type}")
 
         if self.env_size not in ["3x3", "5x5", "9x9", "11x11"]:

@@ -2,6 +2,7 @@ import sys
 import json
 import os
 import pickle
+import warnings
 
 from sklearn.metrics import (
     accuracy_score,
@@ -12,6 +13,9 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
+
+# Suppress sklearn warnings
+warnings.filterwarnings("ignore", category=UserWarning, module="sklearn")
 
 sys.path.append(os.path.dirname(__file__))
 from tomnet import ToMnet, create_model
@@ -136,7 +140,7 @@ def evaluate_model_with_n_past(
                     actions,
                     goals,
                     goal_ranks,
-                    goal_rewards,
+                    agents,
                     consumption_labels,
                     sr_labels,
                 ) = batch
@@ -144,6 +148,7 @@ def evaluate_model_with_n_past(
                 actions = actions.to(device)
                 goals = goals.to(device)
                 goal_ranks = goal_ranks.to(device)
+                agents = agents.to(device)
 
                 batch_size = trajectories.size(0)
 
@@ -151,6 +156,7 @@ def evaluate_model_with_n_past(
                 past_episodes = generate_past_episodes_from_batch(
                     trajectories,
                     goal_ranks,  # Use goal_ranks to match training
+                    agents,
                     batch_size,
                     n_past,
                     n_past,
@@ -193,8 +199,8 @@ def evaluate_model_with_n_past(
                     :, 0
                 ]  # Target action for each sliced trajectory
 
-                # Model forward pass (model returns 6 outputs)
-                action_logits, _, _, _, _, _ = model(
+                # Model forward pass (model returns 7 outputs)
+                action_logits, _, _, _, _, _, _ = model(
                     past_episodes, recent_trajectory, current_state
                 )
 
@@ -207,7 +213,7 @@ def evaluate_model_with_n_past(
         # Calculate metrics
         accuracy = accuracy_score(all_targets, all_predictions)
         precision, recall, f1, _ = precision_recall_fscore_support(
-            all_targets, all_predictions, average="weighted"
+            all_targets, all_predictions, average="weighted", zero_division=0
         )
 
         results_by_n_past[n_past] = {
@@ -260,7 +266,7 @@ def evaluate_model(
                 actions,
                 goals,
                 goal_ranks,
-                goal_rewards,
+                agents,
                 consumption_labels,
                 sr_labels,
             ) = batch
@@ -268,6 +274,7 @@ def evaluate_model(
             actions = actions.to(device)
             goals = goals.to(device)
             goal_ranks = goal_ranks.to(device)
+            agents = agents.to(device)
 
             batch_size = trajectories.size(0)
 
@@ -275,6 +282,7 @@ def evaluate_model(
             past_episodes = generate_past_episodes_from_batch(
                 trajectories,
                 goal_ranks,  # Use goal_ranks instead of goals to match training
+                agents,
                 batch_size,
                 n_past_min=data_config.get("n_past_min", 1) if data_config else 1,
                 n_past_max=data_config.get("n_past_max", 1) if data_config else 1,
@@ -343,10 +351,11 @@ def evaluate_model(
                 batch_indices, last_timesteps, :current_state_channels
             ]
 
-            # Model forward pass (model returns 6 outputs)
+            # Model forward pass (model returns 7 outputs)
             (
                 action_logits,
                 goal_logits,
+                agent_logits,
                 consumption_logits,
                 sr_pred,
                 char_emb,
@@ -368,7 +377,7 @@ def evaluate_model(
     # Calculate metrics
     accuracy = accuracy_score(targets, predictions)
     precision, recall, f1, _ = precision_recall_fscore_support(
-        targets, predictions, average="weighted"
+        targets, predictions, average="weighted", zero_division=0
     )
 
     # Force confusion matrix to be for AchieverBlocker (actions vary by agent type)
@@ -494,7 +503,7 @@ def evaluate_achieverblocker_model(
             w=config.width,
             h=config.height,
             d=data_config.get("maze_depth", 9),
-            experiment_no=config.experiment_no,
+            config=config,
         )
         test_games = data_reader.ReadAllGames(test_data_dir)
 
@@ -502,26 +511,23 @@ def evaluate_achieverblocker_model(
             raise ValueError(f"No test games found in {test_data_dir}")
 
         # Prepare test data using trajectory slicing (exactly like training)
-        max_steps = config.env_variants[config.env_size]["max_steps"]
         test_data = prepare_data_for_training(
             test_games,
             min_timestep=6,  # Same as training
-            max_trajectory_length=max_steps
+            max_trajectory_length=data_config.get("time_step", 500)
         )
 
         # Save processed test data for future use
         print(f"Saving processed test data to: {processed_test_data_path}")
-        data_reader.save_processed_data(test_data, processed_test_data_path)
+        with open(processed_test_data_path, 'wb') as f:
+            pickle.dump(test_data, f)
+        print(f"  Successfully saved to {processed_test_data_path}")
     else:
-        print("Loading existing processed test data...")
-        data_reader = DataReader(
-            time_step=data_config.get("time_step", 500),
-            w=config.width,
-            h=config.height,
-            d=data_config.get("maze_depth", 9),
-            experiment_no=config.experiment_no,
-        )
-        test_data = data_reader.load_processed_data(processed_test_data_path)
+        print("Loading existing processed data...")
+        # Load pre-processed training data directly
+        with open(processed_test_data_path, 'rb') as f:
+            data = pickle.load(f)
+        print(f"  Successfully loaded from {processed_test_data_path}")
 
     # Log test data shapes for verification
     print(f"Test data shapes:")
@@ -529,7 +535,6 @@ def evaluate_achieverblocker_model(
     print(f"Actions: {test_data['actions'].shape}")
     print(f"Goals: {test_data['goals'].shape}")
     print(f"Goal ranks: {test_data['goal_ranks'].shape}")
-    print(f"Goal rewards: {test_data['goal_rewards'].shape}")
     print(f"Consumption labels: {test_data['consumption_labels'].shape}")
     print(f"SR labels: {test_data['sr_labels'].shape}")
 
@@ -539,7 +544,7 @@ def evaluate_achieverblocker_model(
         test_data["actions"],
         test_data["goals"],
         test_data["goal_ranks"],
-        test_data["goal_rewards"],
+        test_data["agents"],
         test_data["consumption_labels"],
         test_data["sr_labels"],
     )
@@ -731,35 +736,33 @@ def analyze_action_likelihood(
                 w=config.width,
                 h=config.height,
                 d=data_config.get("maze_depth", 9),
-                experiment_no=config.experiment_no,
+                config=config,
             )
             test_games = data_reader.ReadAllGames(test_data_dir_default)
-            max_steps = config.env_variants[config.env_size]["max_steps"]
             test_data = prepare_data_for_training(
                 test_games,
                 min_timestep=6,  # Same as training
-                max_trajectory_length=max_steps
+                max_trajectory_length=data_config.get("time_step", 500)
             )
 
             # Save processed test data for future use
             print(f"Saving processed test data to: {processed_test_data_path}")
-            data_reader.save_processed_data(test_data, processed_test_data_path)
+            # Save processed training data for future use
+            with open(processed_test_data_path, 'wb') as f:
+                pickle.dump(test_data, f)
+            print(f"  Successfully saved to {processed_test_data_path}")
         else:
-            print("Loading existing processed test data...")
-            data_reader = DataReader(
-                time_step=data_config.get("time_step", 500),
-                w=config.width,
-                h=config.height,
-                d=data_config.get("maze_depth", 9),
-                experiment_no=config.experiment_no,
-            )
-            test_data = data_reader.load_processed_data(processed_test_data_path)
+            print("Loading existing processed data...")
+            # Load pre-processed training data directly
+            with open(processed_test_data_path, 'rb') as f:
+                test_data = pickle.load(f)
+            print(f"  Successfully loaded from {processed_test_data_path}")
+            
         test_dataset = TensorDataset(
             test_data["trajectories"],
             test_data["actions"],
             test_data["goals"],
             test_data["goal_ranks"],
-            test_data["goal_rewards"],
             test_data["consumption_labels"],
             test_data["sr_labels"],
         )
@@ -786,7 +789,7 @@ def analyze_action_likelihood(
                 actions,
                 goals,
                 goal_ranks,
-                goal_rewards,
+                agents,
                 consumption_labels,
                 sr_labels,
             ) = batch
@@ -794,6 +797,7 @@ def analyze_action_likelihood(
             actions = actions.to(device)
             goals = goals.to(device)
             goal_ranks = goal_ranks.to(device)
+            agents = agents.to(device)
 
             batch_size = trajectories.size(0)
 
@@ -801,6 +805,7 @@ def analyze_action_likelihood(
             past_episodes = generate_past_episodes_from_batch(
                 trajectories,
                 goal_ranks,  # Use goal_ranks to match training
+                agents,
                 batch_size,
                 n_past_min=data_config.get("n_past_min", 1),
                 n_past_max=data_config.get("n_past_max", 1),
@@ -837,8 +842,8 @@ def analyze_action_likelihood(
             # Get action targets - use actions[:, 0] for trajectory slicing
             action_targets = actions[:, 0]  # Target action for each sliced trajectory
 
-            # Model forward pass (model returns 6 outputs)
-            action_logits, _, _, _, _, _ = model(
+            # Model forward pass (model returns 7 outputs)
+            action_logits, _, _, _, _, _, _ = model(
                 past_episodes, recent_trajectory, current_state
             )
             probabilities = F.softmax(action_logits, dim=1)

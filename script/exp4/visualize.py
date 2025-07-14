@@ -1,6 +1,7 @@
 import os
 import json
 import pickle
+import warnings
 import matplotlib.pyplot as plt
 
 import numpy as np
@@ -11,6 +12,10 @@ from sklearn.manifold import TSNE
 import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
+
+# Suppress sklearn and matplotlib warnings
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 from config import Config
 from train import prepare_data_for_training, generate_past_episodes_from_batch
@@ -780,25 +785,20 @@ def plot_character_embeddings(
         w=config.width,
         h=config.height,
         d=config.get_data_config().get("maze_depth", 9),
-        experiment_no=experiment_no,
+        config=config,
     )
     
-    original_samples = data_reader.load_processed_data(processed_test_data_path)
-    print(f"Loaded {len(original_samples)} original samples with agent information")
+    processed_data = data_reader.load_processed_data(processed_test_data_path)
+    print(f"Loaded processed data with {processed_data['trajectories'].shape[0]} samples")
     
-    # Extract agent labels and goal labels
-    agent_labels = []
-    goal_labels = []
+    # Extract agent labels and goal labels from processed tensors
+    # agents tensor: 0=achiever, 1=blocker
+    agent_indices = processed_data['agents'].numpy()
+    agent_labels = np.array(['achiever' if idx == 0 else 'blocker' for idx in agent_indices])
     
-    for sample in original_samples:
-        agent_labels.append(sample["agent"])
-        # Convert goal letter to index (A=0, B=1, C=2, D=3)
-        goal_letter = sample["intended_goal"]
-        goal_idx = goal_letters.index(goal_letter) if goal_letter in goal_letters else 0
-        goal_labels.append(goal_idx)
-    
-    agent_labels = np.array(agent_labels)
-    goal_labels = np.array(goal_labels)
+    # goals tensor: one-hot encoded [A, B, C, D]
+    goals_tensor = processed_data['goals'].numpy()
+    goal_labels = np.argmax(goals_tensor, axis=1)  # Convert one-hot to indices
     
     print(f"Agent distribution: {np.unique(agent_labels, return_counts=True)}")
     print(f"Goal distribution: {np.unique(goal_labels, return_counts=True)}")
@@ -807,36 +807,42 @@ def plot_character_embeddings(
     model.eval()
     embeddings = []
     
+    # Get the data tensors
+    trajectories_tensor = processed_data['trajectories']
+    goals_tensor = processed_data['goals']
+    goal_ranks_tensor = processed_data['goal_ranks']
+    agents_tensor = processed_data['agents']
+    
     if n_samples is not None:
         # Limit samples if specified
-        indices = np.random.choice(len(original_samples), min(n_samples, len(original_samples)), replace=False)
-        selected_samples = [original_samples[i] for i in indices]
+        indices = np.random.choice(len(agent_labels), min(n_samples, len(agent_labels)), replace=False)
+        trajectories_tensor = trajectories_tensor[indices]
+        goals_tensor = goals_tensor[indices] 
+        goal_ranks_tensor = goal_ranks_tensor[indices]
+        agents_tensor = agents_tensor[indices]
         agent_labels = agent_labels[indices]
         goal_labels = goal_labels[indices]
-    else:
-        selected_samples = original_samples
     
-    print(f"Extracting character embeddings for {len(selected_samples)} samples...")
+    print(f"Extracting character embeddings for {len(agent_labels)} samples...")
     
     with torch.no_grad():
-        for i, sample in enumerate(selected_samples):
+        for i in range(len(agent_labels)):
             if i % 1000 == 0:
-                print(f"Processing sample {i+1}/{len(selected_samples)}")
+                print(f"Processing sample {i+1}/{len(agent_labels)}")
             
             try:
-                # Convert sample data to tensors
-                trajectory = torch.from_numpy(sample["trajectory"]).unsqueeze(0).to(device)
-                goal = torch.from_numpy(sample["goal"]).unsqueeze(0).to(device)
+                # Get single sample tensors
+                trajectory = trajectories_tensor[i:i+1].to(device)  # [1, seq_len, channels, height, width]
+                goal_ranks = goal_ranks_tensor[i:i+1].to(device)  # [1, 4]
+                agents = agents_tensor[i:i+1].to(device)  # [1]
                 
                 # Generate past episodes for this sample
                 n_past_config = config.get_n_past_evaluation_config()
                 
-                # Create goal_ranks tensor (use goal for compatibility)
-                goal_ranks = goal.clone()
-                
                 past_episodes = generate_past_episodes_from_batch(
                     trajectories=trajectory,
                     goals=goal_ranks,
+                    agents=agents,
                     batch_size=1,
                     n_past_min=n_past_config["n_past_min"],
                     n_past_max=n_past_config["n_past_max"],
@@ -850,7 +856,7 @@ def plot_character_embeddings(
                 
             except Exception as e:
                 print(f"Error processing sample {i}: {e}")
-                # Add zero embedding as placeholder
+                # Add zero embedding as placeholder  
                 embeddings.append(np.zeros(64))  # Assuming 64-dim embeddings
                 continue
     
@@ -1163,7 +1169,6 @@ def plot_character_embeddings_old(
                     actions,
                     goals,
                     goal_ranks,
-                    goal_rewards,
                     consumption_labels,
                     sr_labels,
                 ) = batch
@@ -1678,11 +1683,17 @@ if __name__ == "__main__":
         device = "cuda" if torch.cuda.is_available() else "cpu"
         # Get model paths from config
         model_config = config.get_model_config()
+        
+        # Also check parent directory in case results_dir is timestamped
+        parent_results_dir = os.path.dirname(results_dir) if os.path.basename(results_dir).replace('_', '').replace('-','').isdigit() else results_dir
+        
         possible_model_paths = model_config.get(
             "possible_model_paths",
             [
                 os.path.join(results_dir, "best_model.pth"),
+                os.path.join(parent_results_dir, "best_model.pth"),  # Check parent for timestamped dirs
                 os.path.join(results_dir, "model.pth"),
+                os.path.join(parent_results_dir, "model.pth"),
                 os.path.join(results_dir, "figure5_goal_directed_alpha0.01_model.pth"),
             ],
         )
@@ -1702,34 +1713,98 @@ if __name__ == "__main__":
             model = load_model(model_path, device, model_kwargs)
 
             # Load test data
+            data_config = config.get_data_config()
             data_reader = DataReader(
-                time_step=config.get_data_config().get("time_step", 500),
+                time_step=data_config.get("time_step", 500),
                 w=config.width,
                 h=config.height,
-                d=config.get_data_config().get("maze_depth", 9),
-                experiment_no=config.experiment_no,
+                d=data_config.get("maze_depth", 9),
+                config=config,
             )
 
-            # Try to find test data directory
-            data_config = config.get_data_config()
-            test_data_dirs = data_config.get(
-                "test_data_dirs",
-                [
-                    os.path.join(os.path.dirname(results_dir), "test"),
-                    config.test_data_dir if hasattr(config, "test_data_dir") else None,
-                    os.path.join(results_dir, "test"),
-                ],
-            )
-            # Filter out None values
-            test_data_dirs = [d for d in test_data_dirs if d is not None]
-
-            test_data_dir = None
-            for tdd in test_data_dirs:
-                if os.path.exists(tdd):
-                    test_data_dir = tdd
+            # First check if processed test data already exists from evaluation
+            processed_test_data_path = None
+            
+            # Get test data path from config
+            env_name = config.get_env_name()
+            agent_pair = config.get_agent_pair_name()
+            test_data_dir_from_config = f"./data/{env_name}/{agent_pair}/test"
+            
+            possible_processed_paths = [
+                os.path.join(results_dir, f"processed_test_data_exp{experiment_no}.pkl"),
+                os.path.join(parent_results_dir, f"processed_test_data_exp{experiment_no}.pkl"),
+                os.path.join(test_data_dir_from_config, f"processed_test_data_exp{experiment_no}.pkl"),  # From config
+                os.path.join(results_dir, "predictions.pkl"),  # Contains processed data
+                os.path.join(parent_results_dir, "predictions.pkl"),
+                os.path.join(parent_results_dir, "test_evaluation", "predictions.pkl"),
+            ]
+            
+            for path in possible_processed_paths:
+                if os.path.exists(path):
+                    processed_test_data_path = path
                     break
+            
+            test_data = None
+            
+            if processed_test_data_path and processed_test_data_path.endswith("predictions.pkl"):
+                # Load from predictions.pkl which contains the processed data
+                print(f"Loading processed test data from predictions: {processed_test_data_path}")
+                with open(processed_test_data_path, 'rb') as f:
+                    pred_data = pickle.load(f)
+                # predictions.pkl doesn't contain the full tensor data needed for embeddings
+                # Fall back to raw test data loading
+                processed_test_data_path = None
+            elif processed_test_data_path:
+                print(f"Loading processed test data: {processed_test_data_path}")
+                test_data = data_reader.load_processed_data(processed_test_data_path)
+            
+            if test_data is None:
+                # Try to find test data directory for raw data processing
+                data_config = config.get_data_config()
+                test_data_dirs = data_config.get(
+                    "test_data_dirs",
+                    [
+                        test_data_dir_from_config,  # Primary path from config
+                        os.path.join(os.path.dirname(results_dir), "test"),
+                        config.test_data_dir if hasattr(config, "test_data_dir") else None,
+                        os.path.join(results_dir, "test"),
+                    ],
+                )
+                # Filter out None values
+                test_data_dirs = [d for d in test_data_dirs if d is not None]
 
-            if test_data_dir:
+                test_data_dir = None
+                for tdd in test_data_dirs:
+                    if os.path.exists(tdd):
+                        test_data_dir = tdd
+                        break
+
+            if test_data:
+                # Use existing processed test data
+                test_dataset = TensorDataset(
+                    test_data["trajectories"],
+                    test_data["actions"],
+                    test_data["goals"],
+                    test_data["goal_ranks"],
+                    test_data["agents"],
+                    test_data["consumption_labels"],
+                    test_data["sr_labels"],
+                )
+                test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
+
+                # Create character embeddings plot
+                plot_character_embeddings(
+                    model,
+                    test_loader,
+                    device,
+                    plot_dir,
+                    config,
+                    experiment_no,
+                    n_samples=None,
+                )
+                print("Character embedding visualization completed!")
+            elif test_data_dir:
+                # Process raw test data
                 test_games = data_reader.ReadAllGames(test_data_dir)
                 if test_games:
                     data_config = config.get_data_config()
@@ -1743,7 +1818,7 @@ if __name__ == "__main__":
                         test_data["actions"],
                         test_data["goals"],
                         test_data["goal_ranks"],
-                        test_data["goal_rewards"],
+                        test_data["agents"],
                         test_data["consumption_labels"],
                         test_data["sr_labels"],
                     )
@@ -1763,7 +1838,7 @@ if __name__ == "__main__":
                 else:
                     print("No test games found for character embedding visualization")
             else:
-                print(f"Test data directory not found. Tried: {test_data_dirs}")
+                print(f"Test data directory not found. Tried: {test_data_dirs if 'test_data_dirs' in locals() else 'None'}")
         else:
             print(f"Model file not found: {model_path}")
 

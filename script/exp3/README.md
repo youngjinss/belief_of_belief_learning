@@ -331,3 +331,8 @@ Ensure you have:
 ## Citation
 
 This implementation extends ToMnet architecture for multi-agent belief modeling in discrete navigation environments.
+
+### Experiment History:
+
+- 20250712_035356 -> A* single-agent
+- 20250712_152012 -> value single-agent

@@ -310,3 +310,6 @@ python script/exp4/train.py --use_mentalnet True
    # Test environment with simple simulation
    python script/exp4/simulate_game.py --episodes 1
    ```
+
+### Experiment History:
+- 20250714_021705 -> multi-agent value vs goaldirected

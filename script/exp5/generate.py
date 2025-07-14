@@ -362,18 +362,29 @@ def save_game_with_labels(
             f"Trajectory length: {len(trajectory_data['achiever_positions']) - 1}\n"
         )
 
-        # Pre-calculate blocker interaction result for final step
+        # Calculate blocker interaction result once (will be reused later)
         blocker_inferred_goal = getattr(blocker_agent, "target_door_color", None)
         actual_target_door = getattr(env, "target_door_color", None)
 
         # Determine blocker interaction result
         if blocker_inferred_goal and actual_target_door:
-            if blocker_inferred_goal == actual_target_door:
-                final_blocker_interaction = "1"  # Success
+            correct_inference = blocker_inferred_goal == actual_target_door
+            reached_and_broke_door = False
+            
+            if correct_inference:
+                target_door_pos = env._get_target_door_position()
+                if target_door_pos and len(trajectory_data["blocker_actions"]) > 0:
+                    last_blocker_pos = trajectory_data["blocker_positions"][-1]
+                    last_blocker_action = trajectory_data["blocker_actions"][-1]
+                    if tuple(last_blocker_pos) == tuple(target_door_pos) and last_blocker_action == 5:
+                        reached_and_broke_door = True
+            
+            if correct_inference and reached_and_broke_door:
+                blocker_interaction_result = "1"  # Success
             else:
-                final_blocker_interaction = "0"  # Fail
+                blocker_interaction_result = "0"  # Fail
         else:
-            final_blocker_interaction = "X"  # No interaction
+            blocker_interaction_result = "X"  # No interaction
 
         # Write trajectory with 2-agent actions and interactions
         for i in range(len(trajectory_data["achiever_actions"])):
@@ -416,7 +427,7 @@ def save_game_with_labels(
 
             # For blocker: show interaction result only in the final step
             if i == len(trajectory_data["achiever_actions"]) - 1:
-                blocker_interaction = final_blocker_interaction
+                blocker_interaction = blocker_interaction_result
             else:
                 blocker_interaction = "X"
 
@@ -479,19 +490,8 @@ def save_game_with_labels(
         else:
             f.write("Infer Goal: X\n")  # No inference made
 
-        # Determine interaction result
-        # 1 = Success (correct door inference)
-        # 0 = Fail (incorrect door inference)
-        # X = No interaction (no inference made)
-        if blocker_inferred_goal and actual_target_door:
-            if blocker_inferred_goal == actual_target_door:
-                interaction_result = "1"  # Success - correct inference
-            else:
-                interaction_result = "0"  # Fail - incorrect inference
-        else:
-            interaction_result = "X"  # No interaction
-
-        f.write("Interaction: " + interaction_result + "\n")
+        # Use the pre-calculated blocker interaction result
+        f.write("Interaction: " + blocker_interaction_result + "\n")
 
         # Save blocker SR data per timestep
         f.write("SR_Data_Per_Timestep:\n")

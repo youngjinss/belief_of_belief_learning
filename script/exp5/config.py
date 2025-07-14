@@ -14,7 +14,7 @@ class Config:
 
         # Agent settings
         self.achiever_type = "value"  # Options: "astar", "random", "value"
-        self.blocker_type = "rule_based"  # Options: "random", "goal_direct", "randomly_selected", "rule_based"
+        self.blocker_types = ["randomly_selected", "rule_based"]  # Options: "random", "goal_direct", "randomly_selected", "rule_based"
         self.observability = "full"  # Options: "full", "partial"
         self.movement_prob = 0.8  # For random agent
 
@@ -25,7 +25,7 @@ class Config:
         self.debug = False
 
         # Output settings
-        self.output_dir = "script/exp5/results"
+        self.output_dir = "script/exp5/re sults"
         self.gif_output = None  # Filename for saving gif (without .gif extension)
 
         # Data generation settings
@@ -91,6 +91,14 @@ class Config:
                 "temperature": 0.5,
                 "action_space": 7,
             },
+        }
+
+        # Blocker type mapping for output format
+        self.blocker_type_map = {
+            "randomly_selected": 0,
+            "rule_based": 1,
+            "random": 2,
+            "goal_direct": 3
         }
 
         # Blocker configurations
@@ -247,7 +255,8 @@ class Config:
 
     def get_agent_pair_name(self):
         """Get agent pair name for directory structure"""
-        return f"{self.achiever_type}_{self.blocker_type}"
+        blocker_types_str = "_".join(self.blocker_types)
+        return f"{self.achiever_type}_{blocker_types_str}"
 
     def get_data_path(self, is_test=False):
         """
@@ -262,7 +271,7 @@ class Config:
         import os
 
         env_name = self.get_env_name()
-        agent_combination = f"{self.achiever_type}_{self.blocker_type}"
+        agent_combination = self.get_agent_pair_name()
         base_path = os.path.join(self.save_dir, env_name, agent_combination)
 
         if is_test:
@@ -287,7 +296,7 @@ class Config:
         """Get agent configuration"""
         base_config = {
             "achiever_type": self.achiever_type,
-            "blocker_type": self.blocker_type,
+            "blocker_types": self.blocker_types,
             "observability": self.observability,
         }
 
@@ -536,7 +545,7 @@ class Config:
         if hasattr(args, "achiever_type") and args.achiever_type is not None:
             self.achiever_type = args.achiever_type
         if hasattr(args, "blocker_type") and args.blocker_type is not None:
-            self.blocker_type = args.blocker_type
+            self.blocker_types = [args.blocker_type]  # Convert single type to list for backward compatibility
         # Backward compatibility
         if hasattr(args, "agent_type") and args.agent_type is not None:
             self.achiever_type = args.agent_type
@@ -687,8 +696,10 @@ class Config:
         """Validate configuration"""
         if self.achiever_type not in ["astar", "random", "value"]:
             raise ValueError(f"Invalid achiever_type: {self.achiever_type}")
-        if self.blocker_type not in ["random", "goal_direct", "randomly_selected", "rule_based"]:
-            raise ValueError(f"Invalid blocker_type: {self.blocker_type}")
+        valid_blocker_types = ["random", "goal_direct", "randomly_selected", "rule_based"]
+        for blocker_type in self.blocker_types:
+            if blocker_type not in valid_blocker_types:
+                raise ValueError(f"Invalid blocker_type: {blocker_type}")
 
         if self.env_size not in ["3x3", "5x5", "9x9", "11x11"]:
             raise ValueError(f"Invalid env_size: {self.env_size}")
@@ -761,7 +772,7 @@ class Config:
         return f"""AchieverBlocker Experiment Configuration:
   Environment: {self.get_env_name()}
   Achiever Type: {self.achiever_type}
-  Blocker Type: {self.blocker_type}
+  Blocker Types: {', '.join(self.blocker_types)}
   Observability: {self.observability}
   Episodes: {self.episodes}
   Max Steps: {self.max_steps}

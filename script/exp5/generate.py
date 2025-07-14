@@ -319,6 +319,8 @@ def save_game_with_labels(
     goal_rewards=None,
     game_costs=None,
     trajectory_data=None,
+    blocker_type=None,
+    config_dict=None,
 ):
     """
     Save game data with SR and consumption labels for 2-agent environment
@@ -479,6 +481,15 @@ def save_game_with_labels(
 
         # Section 3: Blocker
         f.write("Blocker:\n")
+        
+        # Write blocker type
+        if blocker_type:
+            # Get blocker type map from config_dict if available
+            blocker_type_map = config_dict.get("blocker_type_map", {})
+            blocker_type_id = blocker_type_map.get(blocker_type, -1)
+            f.write(f"Type: {blocker_type_id}\n")
+        else:
+            f.write("Type: -1\n")  # Unknown type
 
         # Get blocker's inferred goal and actual target door
         blocker_inferred_goal = getattr(blocker_agent, "target_door_color", None)
@@ -603,7 +614,7 @@ def generate_game_costs(config_dict, game_id):
     return {colors[i]: costs[i] for i in range(len(colors))}
 
 
-def run_single_game(game_id, config_dict, save_dir):
+def run_single_game(game_id, config_dict, save_dir, blocker_type=None):
     """
     Run a single AchieverBlocker game simulation
 
@@ -611,6 +622,7 @@ def run_single_game(game_id, config_dict, save_dir):
         game_id: Unique identifier for this game
         config_dict: Dictionary containing config parameters
         save_dir: Directory to save game data
+        blocker_type: Specific blocker type to use for this game
 
     Returns:
         game_id: For tracking completion
@@ -669,21 +681,22 @@ def run_single_game(game_id, config_dict, save_dir):
         raise ValueError(f"Unknown achiever type: {achiever_type}")
 
     # Create blocker agent
-    blocker_type = config_dict["blocker_type"]
-    if blocker_type == "random":
+    # Use passed blocker_type if provided, otherwise use config default
+    current_blocker_type = blocker_type if blocker_type else config_dict["blocker_types"][0]
+    if current_blocker_type == "random":
         blocker_agent = BlockerRandomAgent()
-    elif blocker_type == "goal_direct":
+    elif current_blocker_type == "goal_direct":
         blocker_agent = BlockerGoalDirectAgent()
-    elif blocker_type == "randomly_selected":
+    elif current_blocker_type == "randomly_selected":
         blocker_config = config_dict.get("blocker_configs", {}).get("randomly_selected", {})
         stay_probability = blocker_config.get("stay_probability", 0.7)
         blocker_agent = BlockerRandomlySelectedAgent(stay_probability=stay_probability)
-    elif blocker_type == "rule_based":
+    elif current_blocker_type == "rule_based":
         blocker_config = config_dict.get("blocker_configs", {}).get("rule_based", {})
         stay_probability = blocker_config.get("stay_probability", 0.7)
         blocker_agent = BlockerRuleBasedAgent(stay_probability=stay_probability)
     else:
-        raise ValueError(f"Unknown blocker type: {blocker_type}")
+        raise ValueError(f"Unknown blocker type: {current_blocker_type}")
 
     # Reset agents
     achiever_agent.reset()
@@ -820,9 +833,27 @@ def run_single_game(game_id, config_dict, save_dir):
         goal_rewards=goal_rewards,
         game_costs=game_costs,
         trajectory_data=trajectory_data,
+        blocker_type=current_blocker_type,
+        config_dict=config_dict,
     )
 
     return game_id
+
+
+def run_single_game_with_blocker(game_assignment, config_dict, save_dir):
+    """
+    Wrapper function for multiprocessing that unpacks game assignment
+    
+    Args:
+        game_assignment: Tuple of (game_id, blocker_type)
+        config_dict: Dictionary containing config parameters
+        save_dir: Directory to save game data
+    
+    Returns:
+        game_id: For tracking completion
+    """
+    game_id, blocker_type = game_assignment
+    return run_single_game(game_id, config_dict, save_dir, blocker_type)
 
 
 def generate_trajectories(
@@ -846,7 +877,7 @@ def generate_trajectories(
         f"Generating {n_games} AchieverBlocker trajectories with random seed: {random_seed}"
     )
     print(f"Achiever type: {config.achiever_type}")
-    print(f"Blocker type: {config.blocker_type}")
+    print(f"Blocker types: {', '.join(config.blocker_types)}")
     print(f"Environment size: {config.env_size}")
 
     # Create save directory based on environment name and agent types
@@ -886,7 +917,7 @@ def generate_trajectories(
         "max_steps": config.max_steps,
         "observability": config.observability,
         "achiever_type": config.achiever_type,
-        "blocker_type": config.blocker_type,
+        "blocker_types": config.blocker_types,
         "base_random_seed": random_seed,
         # Agent-specific configs (complete configurations)
         "achiever_configs": config.achiever_configs,
@@ -902,20 +933,40 @@ def generate_trajectories(
         "random_movement_prob": config.achiever_configs.get("random", {}).get(
             "movement_prob", 0.8
         ),
+        # Blocker type mapping
+        "blocker_type_map": config.blocker_type_map,
     }
+
+    # Distribute games across blocker types
+    blocker_types = config.blocker_types
+    n_blocker_types = len(blocker_types)
+    games_per_blocker = n_games // n_blocker_types
+    
+    # Create game assignments
+    game_assignments = []
+    for i in range(n_games):
+        blocker_type_idx = i % n_blocker_types
+        blocker_type = blocker_types[blocker_type_idx]
+        game_assignments.append((i, blocker_type))
+    
+    print(f"Distributing {n_games} games across {n_blocker_types} blocker types:")
+    for blocker_type in blocker_types:
+        count = sum(1 for _, bt in game_assignments if bt == blocker_type)
+        print(f"  {blocker_type}: {count} games")
 
     # Create partial function with fixed arguments
     game_func = partial(
-        run_single_game, config_dict=config_dict, save_dir=config.save_dir
+        run_single_game_with_blocker, 
+        config_dict=config_dict, 
+        save_dir=config.save_dir
     )
 
     # Run games in parallel
     with mp.Pool(processes=n_processes) as pool:
         # Use imap for progress tracking
-        game_ids = range(n_games)
         results = []
 
-        for i, result in enumerate(pool.imap(game_func, game_ids)):
+        for i, result in enumerate(pool.imap(game_func, game_assignments)):
             results.append(result)
             if (i + 1) % 5000 == 0 or (i + 1) == n_games:
                 print(f"Generated {i + 1}/{n_games} games")
@@ -927,7 +978,7 @@ def generate_trajectories(
     print(f"Generated {n_games} games successfully using {n_processes} processes!")
     print(f"Data saved to: {config.save_dir}")
     print(
-        f"Environment: {config.get_env_name()}, Achiever: {config.achiever_type}, Blocker: {config.blocker_type}"
+        f"Environment: {config.get_env_name()}, Achiever: {config.achiever_type}, Blockers: {', '.join(config.blocker_types)}"
     )
 
 

@@ -10,7 +10,7 @@ from datetime import datetime
 import time
 import pickle
 import gc
-from torch.amp import autocast, GradScaler
+from torch.cuda.amp import autocast, GradScaler
 
 # Add current directory to path
 sys.path.append(os.path.dirname(__file__))
@@ -415,7 +415,6 @@ def train_epoch(
     model_config=None,
     scaler=None,
     gradient_accumulation_steps=1,
-    device_type='cuda',
 ):
     """
     Train for one epoch
@@ -529,7 +528,7 @@ def train_epoch(
 
         # Forward pass with AMP if enabled
         if scaler is not None:
-            with autocast(device_type):
+            with autocast():
                 action_logits, goal_logits, agent_logits, consumption_logits, sr_pred, _, _ = (
                     model(past_episodes, recent_trajectory, current_state)
                 )
@@ -680,7 +679,6 @@ def validate_epoch(
     data_config=None,
     model_config=None,
     scaler=None,
-    device_type='cuda',
 ):
     """
     Validate for one epoch
@@ -809,7 +807,7 @@ def validate_epoch(
 
             # Forward pass with AMP if enabled
             if scaler is not None:
-                with autocast(device_type):
+                with autocast():
                     (
                         action_logits,
                         goal_logits,
@@ -1228,7 +1226,7 @@ def train_tomnet(
     
     # Initialize AMP scaler for mixed precision training
     device_type = 'cuda' if torch.cuda.is_available() and 'cuda' in str(device) else 'cpu'
-    scaler = GradScaler(device_type) if use_amp and device_type == 'cuda' else None
+    scaler = GradScaler() if use_amp and device_type == 'cuda' else None
 
     # Early stopping
     early_stopping = EarlyStopping(
@@ -1282,12 +1280,11 @@ def train_tomnet(
             model_config,
             scaler,
             gradient_accumulation_steps,
-            device_type,
         )
 
         # Validation
         val_metrics = validate_epoch(
-            model, val_loader, loss_fn, device, max_n_past, data_config, model_config, scaler, device_type
+            model, val_loader, loss_fn, device, max_n_past, data_config, model_config, scaler
         )
 
         epoch_time = time.time() - epoch_start_time

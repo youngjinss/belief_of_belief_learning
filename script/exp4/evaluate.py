@@ -128,9 +128,10 @@ def load_model(model_path, device, model_kwargs):
         # Fallback: assume it's a direct state dict
         model.load_state_dict(checkpoint)
 
-        model.to(device)
-        model.eval()
-        
+    # Move model to device and set to eval mode (always execute this)
+    model.to(device)
+    model.eval()
+    
     return model
 
 

@@ -29,7 +29,7 @@ class Config:
         self.gif_output = None  # Filename for saving gif (without .gif extension)
 
         # Data generation settings
-        self.n_games = 500  # Number of games to generate for ToMnet data
+        self.n_games = 300  # Number of games to generate for ToMnet data
         self.save_dir = "data"  # Base directory to save generated data
         
         # Debug/test settings
@@ -115,7 +115,7 @@ class Config:
                 "gamma": 0.99,
                 "temperature": 0.1,
                 "action_space": 6,
-                "stay_probability": 0.7,
+                "stay_probability": 0.5,
             },
             "rule_based": {
                 "observability": "full",
@@ -124,7 +124,7 @@ class Config:
                 "gamma": 0.99,
                 "temperature": 0.1,
                 "action_space": 6,
-                "stay_probability": 0.7,
+                "stay_probability": 0.5,
             },
         }
 

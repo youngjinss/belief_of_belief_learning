@@ -537,11 +537,11 @@ class RuleBasedAgent:
     Level-1 Reasoning Algorithm
 
     Strategy:
-    1. Select the target color randomly (1st)
-    2. Navigate to target door.
+    1. Select the target color randomly (1st) -> bluffing
+    2. Navigate to target door (with stay_probability)
     3. Stay in front of target door until achiever picks up first key
-    4. Infer target door color from achiever's first key (2nd)
-    5. Navigate to target door
+    4. Infer target door color from achiever's first key (2nd) -> real inferring
+    5. Navigate to target door (without stay_probability)
     6. Use break action (5) to end game
     """
 
@@ -573,6 +573,23 @@ class RuleBasedAgent:
         
         # Stay probability during navigation
         self.stay_probability = stay_probability
+
+    @property
+    def target_door_color(self):
+        """
+        Get the current target door color for interaction checking.
+        
+        Constraint: Once final inference happens (after achiever picks up key),
+        this should be fixed to the inferred color and not change anymore.
+        
+        Returns:
+            str: Current target door color (initial random or final inferred)
+        """
+        # Once final target is inferred and fixed, always return that
+        if self.final_target_color is not None:
+            return self.final_target_color
+        # Otherwise return initial random target
+        return self.initial_target_color
 
     def get_action(self, obs):
         """
@@ -797,7 +814,7 @@ class RuleBasedAgent:
         # All other positions are walkable (keys, empty spaces, other doors)
         return True
 
-    def _navigate_to_door_generic(self, target_pos, obs=None):
+    def _navigate_to_door_generic(self, target_pos, obs=None, is_final=False):
         """Navigate to target door following planned path."""
         if not self.path_to_door or self.current_path_index >= len(self.path_to_door):
             # Recalculate path if needed
@@ -808,7 +825,7 @@ class RuleBasedAgent:
                 return 4  # Stay if no path
 
         # Use stay probability to decide whether to stay or move
-        if np.random.random() < self.stay_probability:
+        if np.random.random() < self.stay_probability and not is_final:
             return 4  # Stay
 
         # Get next position in path

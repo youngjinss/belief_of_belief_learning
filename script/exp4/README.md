@@ -314,3 +314,4 @@ python script/exp4/train.py --use_mentalnet True
 ### Experiment History:
 - 20250714_021705 -> multi-agent value vs goaldirected (small parameter)
 - 20250714_182233 -> multi-agent value vs goaldirected (large parameter) with 2 GPU
+->> 버그 있었음 (generate.py에 blocker의 interaction 조건이 의도와 다름, blocker-door 좌표가 같아야하고, broken(5)를 선택해야 "0", "1"로 분류가 가능한데, 지금은 그렇게 안되어 있었음 (추론 잘 하면 끝)))

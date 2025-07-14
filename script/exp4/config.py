@@ -272,6 +272,19 @@ class Config:
             "render": self.render,
             "debug": self.debug,
             "gif_output": self.gif_output,
+            # Character embedding visualization settings
+            "agent_colors": ["blue", "orange"],  # achiever, blocker
+            "agent_names": ["Achiever", "Blocker"],
+            "goal_colors": ["red", "green", "blue", "yellow"],
+            "goal_names": ["Red", "Green", "Blue", "Yellow"],
+            "goal_letters": ["A", "B", "C", "D"],
+            "embedding_plots": {
+                "pca_figsize": (20, 6),
+                "tsne_figsize": (20, 6),
+                "combined_figsize": (20, 12),
+                "alpha": 0.6,
+                "marker_size": 50,
+            }
         }
 
     def get_experiment_config(self):

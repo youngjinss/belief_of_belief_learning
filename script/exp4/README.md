@@ -312,4 +312,5 @@ python script/exp4/train.py --use_mentalnet True
    ```
 
 ### Experiment History:
-- 20250714_021705 -> multi-agent value vs goaldirected
+- 20250714_021705 -> multi-agent value vs goaldirected (small parameter)
+- 20250714_182233 -> multi-agent value vs goaldirected (large parameter) with 2 GPU

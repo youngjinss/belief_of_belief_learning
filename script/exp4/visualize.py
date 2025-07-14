@@ -14,7 +14,7 @@ from torch.utils.data import DataLoader, TensorDataset
 
 from config import Config
 from train import prepare_data_for_training, generate_past_episodes_from_batch
-from data_generation import DataGenerator as DataReader
+from data_generation import DataGenerator as DataReader, DataGenerator
 from evaluate import load_model
 
 """

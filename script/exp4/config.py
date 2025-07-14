@@ -216,6 +216,10 @@ class Config:
         """Get full environment name"""
         return self.env_name.format(size=self.env_size)
 
+    def get_agent_pair_name(self):
+        """Get agent pair name for directory structure"""
+        return f"{self.achiever_type}_{self.blocker_type}"
+
     def get_data_path(self, is_test=False):
         """
         Get data path based on environment name and agent types

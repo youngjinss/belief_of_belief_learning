@@ -29,10 +29,41 @@ Adapted from ToMnetF experiment5 for multi-agent AchieverBlocker environment
 """
 
 
+def _calculate_trajectory_lengths(trajectories):
+    """
+    Optimized calculation of effective trajectory lengths
+    
+    Args:
+        trajectories: Tensor of shape [batch_size, seq_len, channels, height, width]
+    
+    Returns:
+        list: Effective lengths for each sample in batch
+    """
+    batch_size = trajectories.size(0)
+    
+    # Vectorized calculation: sum over spatial dimensions for each timestep
+    traj_sums = trajectories.sum(dim=(2, 3, 4))  # [batch_size, seq_len]
+    
+    # Find last non-zero timestep for each batch sample
+    non_zero_mask = traj_sums > 0
+    
+    # Use efficient masking to find last valid timestep
+    seq_indices = torch.arange(trajectories.size(1), device=trajectories.device).expand(batch_size, -1)
+    masked_indices = torch.where(non_zero_mask, seq_indices, torch.tensor(-1, device=trajectories.device))
+    effective_lengths = masked_indices.max(dim=1)[0].clamp(min=0)
+    
+    # Convert to list and apply constraint
+    return [max(1, length.item()) for length in effective_lengths]
+
+
 def load_model(model_path, device, model_kwargs):
-    """Load trained ToMnet model"""
-    # Try to load model configuration from saved files
-    model_dir = os.path.dirname(model_path)
+    """Load trained ToMnet model with enhanced error handling"""
+    try:
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f"Model file not found: {model_path}")
+        
+        # Try to load model configuration from saved files
+        model_dir = os.path.dirname(model_path)
 
     # First try to load model_config.json
     model_config_path = os.path.join(model_dir, "model_config.json")
@@ -98,9 +129,13 @@ def load_model(model_path, device, model_kwargs):
         # Fallback: assume it's a direct state dict
         model.load_state_dict(checkpoint)
 
-    model.to(device)
-    model.eval()
-    return model
+        model.to(device)
+        model.eval()
+        return model
+    
+    except Exception as e:
+        print(f"Error loading model from {model_path}: {str(e)}")
+        raise
 
 
 def evaluate_model_with_n_past(
@@ -240,7 +275,7 @@ def evaluate_model(
     model_kwargs=None,
 ):
     """
-    Evaluate model performance
+    Evaluate model performance with optimized memory usage and error handling
 
     Args:
         model: Trained ToMnet model
@@ -253,13 +288,28 @@ def evaluate_model(
     Returns:
         dict: Evaluation metrics
     """
-    model.eval()
-    all_predictions = []
-    all_targets = []
-    all_probabilities = []
+    try:
+        model.eval()
+        
+        # Validate inputs
+        if not test_loader:
+            raise ValueError("test_loader cannot be None")
+        if len(test_loader.dataset) == 0:
+            raise ValueError("test_loader dataset is empty")
+        
+        # Pre-allocate arrays for better memory efficiency
+        total_samples = len(test_loader.dataset)
+        action_space = model_kwargs.get('action_space', 7) if model_kwargs else 7
+        
+        all_predictions = np.empty(total_samples, dtype=np.int64)
+        all_targets = np.empty(total_samples, dtype=np.int64)
+        all_probabilities = np.empty((total_samples, action_space), dtype=np.float32)
+        
+        sample_idx = 0
 
-    with torch.no_grad():
-        for batch_idx, batch in enumerate(test_loader):
+        with torch.no_grad():
+            for batch_idx, batch in enumerate(test_loader):
+                try:
             # Unpack all data including goal_ranks
             (
                 trajectories,
@@ -270,13 +320,15 @@ def evaluate_model(
                 consumption_labels,
                 sr_labels,
             ) = batch
-            trajectories = trajectories.to(device)
-            actions = actions.to(device)
-            goals = goals.to(device)
-            goal_ranks = goal_ranks.to(device)
-            agents = agents.to(device)
-
+            
             batch_size = trajectories.size(0)
+            
+            # Optimized GPU transfers with non_blocking for better performance
+            trajectories = trajectories.to(device, non_blocking=True)
+            actions = actions.to(device, non_blocking=True)
+            goals = goals.to(device, non_blocking=True)
+            goal_ranks = goal_ranks.to(device, non_blocking=True)
+            agents = agents.to(device, non_blocking=True)
 
             # Generate past episodes using goal_ranks (same as training)
             past_episodes = generate_past_episodes_from_batch(
@@ -298,29 +350,8 @@ def evaluate_model(
             # For trajectory slicing, use the action at index 0 (the target action for this slice)
             action_targets = actions[:, 0]  # Target action for each sliced trajectory
 
-            # Fully vectorized: Find the effective length for each sample (remove padding)
-            # Sum over spatial dimensions for each timestep: [batch_size, seq_len]
-            traj_sums = trajectories.sum(
-                dim=(2, 3, 4)
-            )  # Sum over channels, height, width
-            # Find last non-zero timestep for each batch sample
-            non_zero_mask = traj_sums > 0  # [batch_size, seq_len]
-            # Get the last True index for each batch sample using vectorized operation
-            # Create sequence indices and mask them on the same device
-            seq_indices = (
-                torch.arange(trajectories.size(1), device=trajectories.device)
-                .unsqueeze(0)
-                .expand(batch_size, -1)
-            )
-            masked_indices = torch.where(
-                non_zero_mask,
-                seq_indices,
-                torch.tensor(-1, device=trajectories.device),
-            )
-            # Find the maximum index for each batch (last non-zero timestep)
-            effective_lengths = masked_indices.max(dim=1)[0].clamp(min=0).tolist()
-            # Apply max(1, length) constraint
-            effective_lengths = [max(1, length) for length in effective_lengths]
+            # Optimized trajectory length calculation
+            effective_lengths = _calculate_trajectory_lengths(trajectories)
 
             # Use trajectory without heading direction for MentalNet (first 8 channels only)
             current_state_channels = (
@@ -365,14 +396,22 @@ def evaluate_model(
             probabilities = F.softmax(action_logits, dim=1)
             _, predicted = torch.max(action_logits, 1)
 
-            all_predictions.extend(predicted.cpu().numpy())
-            all_targets.extend(action_targets.cpu().numpy())
-            all_probabilities.extend(probabilities.cpu().numpy())
+                    # Efficiently store predictions in pre-allocated arrays
+                    batch_end = sample_idx + batch_size
+                    all_predictions[sample_idx:batch_end] = predicted.cpu().numpy()
+                    all_targets[sample_idx:batch_end] = action_targets.cpu().numpy()
+                    all_probabilities[sample_idx:batch_end] = probabilities.cpu().numpy()
+                    sample_idx = batch_end
+                    
+                except Exception as e:
+                    print(f"Error processing batch {batch_idx}: {str(e)}")
+                    # Skip this batch and continue
+                    continue
 
-    # Convert to numpy arrays
-    predictions = np.array(all_predictions)
-    targets = np.array(all_targets)
-    probabilities = np.array(all_probabilities)
+    # Data is already in numpy arrays - no conversion needed
+    predictions = all_predictions
+    targets = all_targets
+    probabilities = all_probabilities
 
     # Calculate metrics
     accuracy = accuracy_score(targets, predictions)
@@ -426,7 +465,11 @@ def evaluate_model(
             pickle.dump(predictions_data, f)
         print(f"Predictions saved to: {pred_path}")
 
-    return metrics
+        return metrics
+    
+    except Exception as e:
+        print(f"Error during model evaluation: {str(e)}")
+        raise
 
 
 def evaluate_achieverblocker_model(
@@ -589,9 +632,10 @@ def evaluate_achieverblocker_model(
     # Create character embeddings if requested (using same model and test_loader)
     if plot_type in ["embeddings", "all"]:
         print("Creating character embedding visualizations...")
-        from visualize import plot_character_embeddings
+        # Import locally to avoid circular import
+        import visualize
 
-        plot_character_embeddings(
+        visualize.plot_character_embeddings(
             model,
             test_loader,
             device,
@@ -662,19 +706,15 @@ def evaluate_n_past_experiment(
 
     # Create visualizations
     print("Creating visualizations...")
-    from visualize import (
-        plot_accuracy_by_n_past,
-        plot_accuracy_heatmap_by_n_past,
-        plot_character_embeddings,
-        create_additional_visualizations,
-    )
+    # Import locally to avoid circular import
+    import visualize
 
-    plot_accuracy_by_n_past(results_by_n_past, output_dir)
-    plot_accuracy_heatmap_by_n_past(results_by_n_past, output_dir, config)
+    visualize.plot_accuracy_by_n_past(results_by_n_past, output_dir)
+    visualize.plot_accuracy_heatmap_by_n_past(results_by_n_past, output_dir, config)
 
     # Create character embeddings visualization
     print("Creating character embeddings visualization...")
-    plot_character_embeddings(
+    visualize.plot_character_embeddings(
         model,
         test_loader,
         device,

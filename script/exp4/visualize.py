@@ -2,6 +2,10 @@ import os
 import json
 import pickle
 import warnings
+
+# Set matplotlib backend before importing pyplot to avoid display issues
+import matplotlib
+matplotlib.use('Agg')  # Use non-interactive backend
 import matplotlib.pyplot as plt
 
 import numpy as np
@@ -20,12 +24,14 @@ warnings.filterwarnings("ignore", category=RuntimeWarning)
 from config import Config
 from train import prepare_data_for_training, generate_past_episodes_from_batch
 from data_generation import DataGenerator as DataReader, DataGenerator
-from evaluate import load_model
+# Remove circular import - load_model will be imported locally when needed
 
 """
 Visualization tools for AchieverBlocker ToMnet experiment
 Adapted from ToMnetF experiment5 for multi-agent AchieverBlocker environment
 """
+
+# No caching - keep it simple and reliable
 
 
 def plot_accuracy_by_n_past(
@@ -831,41 +837,49 @@ def plot_character_embeddings(
 
     print(f"Extracting character embeddings for {len(agent_labels)} samples...")
 
+    # Optimized batch processing for character embeddings
+    batch_size = 32  # Process in batches for better GPU utilization
+    n_past_config = config.get_n_past_evaluation_config()
+    
     with torch.no_grad():
-        for i in range(len(agent_labels)):
-            if i % 1000 == 0:
-                print(f"Processing sample {i+1}/{len(agent_labels)}")
+        for start_idx in range(0, len(agent_labels), batch_size):
+            end_idx = min(start_idx + batch_size, len(agent_labels))
+            
+            if start_idx % (batch_size * 10) == 0:
+                print(f"Processing batch {start_idx//batch_size + 1}/{(len(agent_labels) + batch_size - 1)//batch_size}")
 
             try:
-                # Get single sample tensors
-                trajectory = trajectories_tensor[i : i + 1].to(
-                    device
-                )  # [1, seq_len, channels, height, width]
-                goal_ranks = goal_ranks_tensor[i : i + 1].to(device)  # [1, 4]
-                agents = agents_tensor[i : i + 1].to(device)  # [1]
+                # Get batch tensors
+                batch_trajectories = trajectories_tensor[start_idx:end_idx].to(device)
+                batch_goal_ranks = goal_ranks_tensor[start_idx:end_idx].to(device)
+                batch_agents = agents_tensor[start_idx:end_idx].to(device)
+                current_batch_size = end_idx - start_idx
 
-                # Generate past episodes for this sample
-                n_past_config = config.get_n_past_evaluation_config()
-
+                # Generate past episodes for this batch
                 past_episodes = generate_past_episodes_from_batch(
-                    trajectories=trajectory,
-                    goal_ranks=goal_ranks,
-                    agents=agents,
-                    batch_size=1,
+                    trajectories=batch_trajectories,
+                    goal_ranks=batch_goal_ranks,
+                    agents=batch_agents,
+                    batch_size=current_batch_size,
                     n_past_min=n_past_config["n_past_min"],
                     n_past_max=n_past_config["n_past_max"],
                     max_n_past=n_past_config["n_past_max"],
                     rank_threshold=1,
                 )
 
-                # Extract character embedding
-                char_embedding = model.get_character_embedding(past_episodes)
-                embeddings.append(char_embedding.cpu().numpy().flatten())
+                # Extract character embeddings for the entire batch
+                char_embeddings = model.get_character_embedding(past_episodes)
+                
+                # Add batch embeddings to list
+                for emb in char_embeddings.cpu().numpy():
+                    embeddings.append(emb.flatten())
 
             except Exception as e:
-                print(f"Error processing sample {i}: {e}")
-                # Add zero embedding as placeholder
-                embeddings.append(np.zeros(64))  # Assuming 64-dim embeddings
+                print(f"Error processing batch starting at {start_idx}: {e}")
+                # Add zero embeddings as placeholders for the entire batch
+                embedding_dim = 64  # Default embedding dimension
+                for _ in range(current_batch_size):
+                    embeddings.append(np.zeros(embedding_dim))
                 continue
 
     embeddings = np.array(embeddings)
@@ -906,6 +920,7 @@ def _plot_agent_based_embeddings(
 
     # PCA visualization
     if embeddings.shape[1] > 2:
+        print("Computing PCA...")
         pca = PCA(n_components=2)
         embeddings_pca = pca.fit_transform(embeddings)
 
@@ -931,9 +946,18 @@ def _plot_agent_based_embeddings(
         ax1.legend()
         ax1.grid(True, alpha=0.3)
 
-    # t-SNE visualization
+    # t-SNE visualization with optimized parameters
     if len(embeddings) > 50:
-        tsne = TSNE(n_components=2, random_state=42)
+        print("Computing t-SNE (this may take a while)...")
+        # Use faster t-SNE parameters for better performance
+        tsne = TSNE(
+            n_components=2, 
+            random_state=42, 
+            perplexity=min(30, len(embeddings)//4),  # Adaptive perplexity
+            n_iter=300,  # Reduced iterations for speed
+            early_exaggeration=12,
+            learning_rate='auto'
+        )
         embeddings_tsne = tsne.fit_transform(embeddings)
 
         unique_agents = np.unique(agent_labels)
@@ -989,6 +1013,7 @@ def _plot_goal_based_embeddings(
 
     # PCA visualization
     if embeddings.shape[1] > 2:
+        print("Computing PCA...")
         pca = PCA(n_components=2)
         embeddings_pca = pca.fit_transform(embeddings)
 
@@ -1014,9 +1039,18 @@ def _plot_goal_based_embeddings(
         ax1.legend()
         ax1.grid(True, alpha=0.3)
 
-    # t-SNE visualization
+    # t-SNE visualization with optimized parameters
     if len(embeddings) > 50:
-        tsne = TSNE(n_components=2, random_state=42)
+        print("Computing t-SNE (this may take a while)...")
+        # Use faster t-SNE parameters for better performance
+        tsne = TSNE(
+            n_components=2, 
+            random_state=42, 
+            perplexity=min(30, len(embeddings)//4),  # Adaptive perplexity
+            n_iter=300,  # Reduced iterations for speed
+            early_exaggeration=12,
+            learning_rate='auto'
+        )
         embeddings_tsne = tsne.fit_transform(embeddings)
 
         unique_goals = np.unique(goal_labels)
@@ -1726,6 +1760,7 @@ if __name__ == "__main__":
         print("Creating character embedding visualizations...")
 
         # Load model and test data for character embedding visualization
+        # Import load_model locally to avoid circular import
         from evaluate import load_model
         from data_generation import DataGenerator as DataReader
         from train import prepare_data_for_training

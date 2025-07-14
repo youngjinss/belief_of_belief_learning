@@ -152,7 +152,7 @@ class Config:
             "weight_decay": 0.001,
             "training_proportion": 0.9,
             "device": "cuda:3",
-            "device_ids": [2, 3],  # GPU IDs for parallel training
+            "device_ids": [3, 2],  # GPU IDs for parallel training
             "use_parallel": True,  # Enable parallel GPU training
             "use_amp": True,  # Automatic Mixed Precision for memory and speed
             "gradient_accumulation_steps": 2,  # Accumulate gradients over multiple batches

@@ -410,6 +410,7 @@ class Level0ValueAchiever(BaseValueAgent):
         movement_cost=0.01,
         wall_penalty=2.0,
         conflict_penalty=2.0,
+        consumption_penalty=1.0,
         gamma=0.99,
         temperature=0.1,
         q_value_clip=100,
@@ -420,9 +421,11 @@ class Level0ValueAchiever(BaseValueAgent):
             movement_cost=movement_cost,
             wall_penalty=wall_penalty,
             conflict_penalty=conflict_penalty,
+            consumption_penalty=consumption_penalty,
             gamma=gamma,
             temperature=temperature,
             q_value_clip=q_value_clip,
+            role='achiever',
         )
 
         # Achiever-specific attributes
@@ -473,6 +476,8 @@ class Level0ValueAchiever(BaseValueAgent):
         # Infer target door color from observations
         if self.target_door_color is None:
             self.target_door_color = self._infer_target_door_color(obs)
+            # Set target door color in base class for consumption penalty
+            self.set_target_door_color(self.target_door_color)
 
         target_key_color = self.target_door_color
 
@@ -590,6 +595,7 @@ class Level1ValueAchiever(BaseValueAgent):
         movement_cost=0.01,
         wall_penalty=2.0,
         conflict_penalty=2.0,
+        consumption_penalty=1.0,
         gamma=0.99,
         temperature=0.1,
         q_value_clip=100,
@@ -600,9 +606,11 @@ class Level1ValueAchiever(BaseValueAgent):
             movement_cost=movement_cost,
             wall_penalty=wall_penalty,
             conflict_penalty=conflict_penalty,
+            consumption_penalty=consumption_penalty,
             gamma=gamma,
             temperature=temperature,
             q_value_clip=q_value_clip,
+            role='achiever',
         )
 
         # Achiever-specific attributes
@@ -657,6 +665,8 @@ class Level1ValueAchiever(BaseValueAgent):
         # Infer target door color from observations
         if self.target_door_color is None:
             self.target_door_color = self._infer_target_door_color(obs)
+            # Set target door color in base class for consumption penalty
+            self.set_target_door_color(self.target_door_color)
 
         # Select decoy key color if not already selected
         if self.decoy_key_color is None:

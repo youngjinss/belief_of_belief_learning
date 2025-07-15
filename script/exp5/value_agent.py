@@ -34,6 +34,7 @@ class BaseValueAgent:
         movement_cost=0.01,
         wall_penalty=2.0,
         conflict_penalty=2.0,
+        consumption_penalty=1.0,
         gamma=0.99,
         temperature=0.1,
         q_value_clip=100,
@@ -47,6 +48,7 @@ class BaseValueAgent:
             movement_cost (float): Cost per movement action
             wall_penalty (float): Penalty for hitting walls or invalid moves
             conflict_penalty (float): Penalty for agent conflicts
+            consumption_penalty (float): Penalty for key consumption actions (pickup/toggle)
             gamma (float): Discount factor for future rewards
             temperature (float): Temperature for softmax action selection (0 = deterministic)
             q_value_clip (float): Range for Q-value clipping [-q_value_clip, q_value_clip]
@@ -64,9 +66,16 @@ class BaseValueAgent:
         self.movement_cost = movement_cost
         self.wall_penalty = wall_penalty
         self.conflict_penalty = conflict_penalty
+        self.consumption_penalty = consumption_penalty
         self.gamma = gamma
         self.temperature = temperature
         self.q_value_clip = q_value_clip
+        
+        # Set role type for consumption penalty application
+        self.role = kwargs.get('role', 'achiever')  # Default to achiever
+        
+        # Target door color for consumption penalty (preferred key)
+        self.target_door_color = kwargs.get('target_door_color', None)
 
         # Value function and policy
         self.value_function = None
@@ -109,7 +118,7 @@ class BaseValueAgent:
         self, target_pos, obs=None, max_iterations=100, convergence_threshold=0.01
     ):
         """
-        Vectorized value iteration to compute optimal action for reaching target
+        Highly optimized vectorized value iteration to compute optimal action
 
         Args:
             target_pos (tuple): Target position (x, y)
@@ -120,220 +129,247 @@ class BaseValueAgent:
         Returns:
             int: Optimal action index (0-3 for movement directions)
         """
-        # Get grid size from instance dimensions
-        width = self.width if self.width is not None else 9  # fallback
-        height = self.height if self.height is not None else 9  # fallback
+        # Get grid size and constants
+        width = self.width if self.width is not None else 9
+        height = self.height if self.height is not None else 9
         n_actions = 4
-
-        # Get opponent position from observations (for conflict penalty)
+        
+        # Get opponent position once
         opponent_pos = self._get_opponent_position(obs)
-
-        # Initialize value function
-        value_function = np.zeros((width, height))
-
-        # Set high reward for target position
+        
+        # Precompute all grid coordinates and action deltas
+        x_coords, y_coords = np.meshgrid(np.arange(width), np.arange(height), indexing="ij")
+        actions = np.array([(0, -1), (1, 0), (0, 1), (-1, 0)])  # up, right, down, left
+        
+        # Precompute walkability mask using actual grid data
+        walkable_mask = self._compute_walkability_mask(width, height)
+        
+        # Initialize value function with target reward
+        value_function = np.zeros((width, height), dtype=np.float32)
         value_function[target_pos[0], target_pos[1]] = 10.0
-
-        # Precompute action deltas and grid coordinates
-        actions = [(0, -1), (1, 0), (0, 1), (-1, 0)]  # up, right, down, left
-        x_coords, y_coords = np.meshgrid(
-            np.arange(width), np.arange(height), indexing="ij"
-        )
-        coord_mask = np.ones((width, height), dtype=bool)
-
-        # Mask for target position (keep it unchanged)
-        coord_mask[target_pos[0], target_pos[1]] = False
-
-        # Precompute walkability mask (vectorized)
-        walkable_mask = np.ones((width, height), dtype=bool)
-        # For the simplified walkability check, most positions are walkable
-        # Walls are typically only at borders - this is a simplified approach
-        walkable_mask[0, :] = True  # Top border (doors can be here)
-        walkable_mask[-1, :] = True  # Bottom border
-        walkable_mask[:, 0] = True  # Left border
-        walkable_mask[:, -1] = True  # Right border
-        # Interior positions are walkable by default (already True)
-
-        # Run vectorized value iteration
+        
+        # Precompute consumption penalty mask for achievers
+        consumption_mask = self._compute_consumption_mask(width, height) if self.role == 'achiever' else None
+        
+        # Precompute all next positions for all actions at once
+        next_positions = np.zeros((width, height, n_actions, 2), dtype=np.int32)
+        valid_moves = np.zeros((width, height, n_actions), dtype=bool)
+        
+        for action_idx, (dx, dy) in enumerate(actions):
+            next_x = x_coords + dx
+            next_y = y_coords + dy
+            next_positions[:, :, action_idx, 0] = next_x
+            next_positions[:, :, action_idx, 1] = next_y
+            valid_moves[:, :, action_idx] = (
+                (next_x >= 0) & (next_x < width) & (next_y >= 0) & (next_y < height)
+            )
+        
+        # Run optimized value iteration
         for iteration in range(max_iterations):
             old_values = value_function.copy()
-
-            # Vectorized Q-value computation for all positions and actions
-            q_values_all = np.zeros((width, height, n_actions))
-
-            for action_idx, (dx, dy) in enumerate(actions):
-                # Compute next positions for all grid cells
-                next_x = x_coords + dx
-                next_y = y_coords + dy
-
-                # Bounds checking
-                valid_moves = (
-                    (next_x >= 0) & (next_x < width) & (next_y >= 0) & (next_y < height)
-                )
-
-                # Initialize rewards and next values
-                rewards = np.full((width, height), -self.movement_cost)
-                next_values = np.zeros((width, height))
-
-                # Handle valid moves
-                valid_next_x = np.where(valid_moves, next_x, x_coords)
-                valid_next_y = np.where(valid_moves, next_y, y_coords)
-
-                # Get next values (stay in place for invalid moves)
-                next_values = np.where(
-                    valid_moves,
-                    self.gamma * old_values[valid_next_x, valid_next_y],
-                    self.gamma * old_values[x_coords, y_coords],
-                )
-
-                # Apply penalties for invalid moves
-                rewards = np.where(valid_moves, rewards, rewards - self.wall_penalty)
-
-                # Apply walkability penalties
-                next_walkable = np.where(
-                    valid_moves,
-                    walkable_mask[valid_next_x, valid_next_y],
-                    True,  # Staying in place is always "walkable"
-                )
-                rewards = np.where(next_walkable, rewards, rewards - self.wall_penalty)
-                next_values = np.where(
-                    next_walkable,
-                    next_values,
-                    self.gamma * old_values[x_coords, y_coords],
-                )
-
-                # Apply opponent position penalty
-                if opponent_pos is not None:
-                    opponent_conflict = (
-                        valid_moves
-                        & (valid_next_x == opponent_pos[0])
-                        & (valid_next_y == opponent_pos[1])
-                    )
-                    rewards = np.where(
-                        opponent_conflict, rewards - self.conflict_penalty, rewards
-                    )
-                    next_values = np.where(
-                        opponent_conflict,
-                        self.gamma * old_values[x_coords, y_coords],
-                        next_values,
-                    )
-
-                # Apply target bonus
-                target_bonus = (
-                    valid_moves
-                    & (valid_next_x == target_pos[0])
-                    & (valid_next_y == target_pos[1])
-                )
-                rewards = np.where(target_bonus, rewards + 10.0, rewards)
-
-                # Store Q-values
-                q_values_all[:, :, action_idx] = rewards + next_values
-
-            # Update value function (max over actions)
+            
+            # Vectorized Q-value computation for all positions and actions simultaneously
+            q_values_all = self._compute_q_values_vectorized(
+                value_function, next_positions, valid_moves, walkable_mask, 
+                consumption_mask, opponent_pos, target_pos, x_coords, y_coords
+            )
+            
+            # Update value function
             new_values = np.max(q_values_all, axis=2)
-
-            # Apply masks: keep target value high, set unwalkable positions to penalty
-            value_function = np.where(coord_mask, new_values, value_function)
-            value_function = np.where(walkable_mask, value_function, -self.wall_penalty)
-
-            # Check convergence
+            
+            # Keep target value high and penalize unwalkable positions
+            new_values[target_pos[0], target_pos[1]] = 10.0
+            value_function = np.where(walkable_mask, new_values, -self.wall_penalty)
+            
+            # Check convergence with vectorized operations
             if np.max(np.abs(value_function - old_values)) < convergence_threshold:
                 break
-
-        # Get optimal action for current position
+        
+        # Get optimal action for current position using vectorized evaluation
         if not self._is_walkable(self.agent_pos):
             return None
-
-        current_pos = self.agent_pos
-        q_values = []
-        for action in range(n_actions):
-            q_val = self._evaluate_action(
-                current_pos,
-                action,
-                value_function,
-                target_pos,
-                width,
-                height,
-                opponent_pos,
+            
+        return self._select_action_vectorized(value_function, target_pos, opponent_pos)
+    
+    def _compute_walkability_mask(self, width, height):
+        """Compute walkability mask using actual grid data"""
+        if self.grid is None:
+            return np.ones((width, height), dtype=bool)
+            
+        walkable_mask = np.ones((width, height), dtype=bool)
+        for x in range(width):
+            for y in range(height):
+                if not self._is_walkable((x, y)):
+                    walkable_mask[x, y] = False
+        return walkable_mask
+    
+    def _compute_consumption_mask(self, width, height):
+        """Compute consumption penalty mask for non-preferred keys"""
+        if self.grid is None or self.target_door_color is None:
+            return np.zeros((width, height), dtype=np.float32)
+            
+        consumption_mask = np.zeros((width, height), dtype=np.float32)
+        for x in range(width):
+            for y in range(height):
+                if self._is_non_preferred_key_at_position((x, y)):
+                    consumption_mask[x, y] = self.consumption_penalty
+        return consumption_mask
+    
+    def _compute_q_values_vectorized(self, value_function, next_positions, valid_moves, 
+                                   walkable_mask, consumption_mask, opponent_pos, target_pos, 
+                                   x_coords, y_coords):
+        """Vectorized Q-value computation for all positions and actions"""
+        width, height, n_actions = next_positions.shape[:3]
+        q_values = np.zeros((width, height, n_actions), dtype=np.float32)
+        
+        for action_idx in range(n_actions):
+            # Get next positions for this action
+            next_x = next_positions[:, :, action_idx, 0]
+            next_y = next_positions[:, :, action_idx, 1]
+            valid = valid_moves[:, :, action_idx]
+            
+            # Base movement cost
+            rewards = np.full((width, height), -self.movement_cost, dtype=np.float32)
+            
+            # Handle valid moves
+            valid_next_x = np.where(valid, next_x, x_coords)
+            valid_next_y = np.where(valid, next_y, y_coords)
+            
+            # Get next values
+            next_values = np.where(
+                valid,
+                self.gamma * value_function[valid_next_x, valid_next_y],
+                self.gamma * value_function[x_coords, y_coords]
             )
-            q_values.append(q_val)
-
-        # Choose action with softmax policy
-        if self.temperature > 0:
-            q_values = np.array(q_values)
-            q_values_clipped = np.clip(q_values, -self.q_value_clip, self.q_value_clip)
-
-            # Numerically stable softmax
-            # Step 1: Scale by temperature
-            scaled_q = q_values_clipped / self.temperature
-            # Step 2: Subtract max to prevent overflow (stable softmax)
-            scaled_q_shifted = scaled_q - np.max(scaled_q)
-            # Step 3: Compute exponentials (now safe from overflow)
-            exp_q = np.exp(scaled_q_shifted)
-            # Step 4: Normalize to get probabilities
-            action_probs = exp_q / np.sum(exp_q)
-
-            # Check for numerical issues
-            if (
-                np.any(np.isnan(action_probs))
-                or np.any(np.isinf(action_probs))
-                or np.sum(action_probs) == 0
-            ):
-                # Fallback to uniform random action
-                action = np.random.choice(n_actions)
+            
+            # Apply penalties vectorized
+            # Invalid move penalty
+            rewards = np.where(valid, rewards, rewards - self.wall_penalty)
+            
+            # Walkability penalty
+            next_walkable = np.where(valid, walkable_mask[valid_next_x, valid_next_y], True)
+            rewards = np.where(next_walkable, rewards, rewards - self.wall_penalty)
+            next_values = np.where(
+                next_walkable, next_values, self.gamma * value_function[x_coords, y_coords]
+            )
+            
+            # Consumption penalty for non-preferred keys
+            if consumption_mask is not None:
+                consumption_penalty = np.where(
+                    valid, consumption_mask[valid_next_x, valid_next_y], 0
+                )
+                rewards -= consumption_penalty
+            
+            # Opponent conflict penalty
+            if opponent_pos is not None:
+                opponent_conflict = (
+                    valid & (valid_next_x == opponent_pos[0]) & (valid_next_y == opponent_pos[1])
+                )
+                rewards = np.where(opponent_conflict, rewards - self.conflict_penalty, rewards)
+                next_values = np.where(
+                    opponent_conflict, self.gamma * value_function[x_coords, y_coords], next_values
+                )
+            
+            # Target bonus
+            target_bonus = (
+                valid & (valid_next_x == target_pos[0]) & (valid_next_y == target_pos[1])
+            )
+            rewards = np.where(target_bonus, rewards + 10.0, rewards)
+            
+            # Store Q-values
+            q_values[:, :, action_idx] = rewards + next_values
+        
+        return q_values
+    
+    def _select_action_vectorized(self, value_function, target_pos, opponent_pos):
+        """Vectorized action selection using precomputed Q-values"""
+        current_pos = self.agent_pos
+        x, y = current_pos
+        
+        # Compute Q-values for current position only
+        q_values = np.zeros(4, dtype=np.float32)
+        
+        for action in range(4):
+            dx, dy = self.actions[action]
+            new_pos = (x + dx, y + dy)
+            
+            # Base reward
+            reward = -self.movement_cost
+            
+            # Check bounds
+            if new_pos[0] < 0 or new_pos[0] >= self.width or new_pos[1] < 0 or new_pos[1] >= self.height:
+                reward -= self.wall_penalty
+                next_value = self.gamma * value_function[x, y]
             else:
-                # Sample action stochastically
-                action = np.random.choice(n_actions, p=action_probs)
+                # Check walkability
+                if not self._is_walkable(new_pos):
+                    reward -= self.wall_penalty
+                    next_value = self.gamma * value_function[x, y]
+                else:
+                    # Consumption penalty
+                    if self.role == 'achiever' and self._is_non_preferred_key_at_position(new_pos):
+                        reward -= self.consumption_penalty
+                    
+                    # Opponent conflict
+                    if opponent_pos is not None and new_pos == opponent_pos:
+                        reward -= self.conflict_penalty
+                        next_value = self.gamma * value_function[x, y]
+                    else:
+                        # Target bonus
+                        if new_pos == target_pos:
+                            reward += 10.0
+                        next_value = self.gamma * value_function[new_pos[0], new_pos[1]]
+            
+            q_values[action] = reward + next_value
+        
+        # Action selection with optimized softmax
+        if self.temperature > 0:
+            q_values_clipped = np.clip(q_values, -self.q_value_clip, self.q_value_clip)
+            scaled_q = q_values_clipped / self.temperature
+            scaled_q_shifted = scaled_q - np.max(scaled_q)
+            exp_q = np.exp(scaled_q_shifted)
+            action_probs = exp_q / np.sum(exp_q)
+            
+            # Check for numerical issues
+            if np.any(np.isnan(action_probs)) or np.sum(action_probs) == 0:
+                return np.random.choice(4)
+            return np.random.choice(4, p=action_probs)
         else:
-            # Deterministic policy
-            action = np.argmax(q_values)
-
-        return action
+            return np.argmax(q_values)
 
     def _evaluate_action(
         self, pos, action, value_function, target_pos, width, height, opponent_pos=None
     ):
-        """Evaluate expected value of taking action from position"""
-        x, y = pos  # Grid coordinates (x=column, y=row)
+        """Optimized action evaluation with early returns"""
+        x, y = pos
         dx, dy = self.actions[action]
         new_pos = (x + dx, y + dy)
 
         # Base movement cost
         reward = -self.movement_cost
-
-        # Check bounds using the width/height from value iteration
-        if (
-            new_pos[0] < 0
-            or new_pos[0] >= width
-            or new_pos[1] < 0
-            or new_pos[1] >= height
-        ):
-            reward -= self.wall_penalty
-            next_value = self.gamma * value_function[x, y]  # Stay in current position
-        else:
-            # Check if position is walkable
-            if not self._is_walkable(new_pos):
-                reward -= self.wall_penalty
-                next_value = (
-                    self.gamma * value_function[x, y]
-                )  # Stay in current position
-            else:
-                # Check if new position conflicts with opponent position
-                if opponent_pos is not None and new_pos == opponent_pos:
-                    reward -= (
-                        self.conflict_penalty
-                    )  # Heavy penalty for trying to move to opponent's position
-                    next_value = (
-                        self.gamma * value_function[x, y]
-                    )  # Stay in current position
-                else:
-                    # Bonus for reaching target
-                    if new_pos == target_pos:
-                        reward += 10.0
-
-                    next_value = self.gamma * value_function[new_pos[0], new_pos[1]]
-
-        return reward + next_value
+        
+        # Check bounds first (most common case)
+        if new_pos[0] < 0 or new_pos[0] >= width or new_pos[1] < 0 or new_pos[1] >= height:
+            return reward - self.wall_penalty + self.gamma * value_function[x, y]
+        
+        # Check walkability
+        if not self._is_walkable(new_pos):
+            return reward - self.wall_penalty + self.gamma * value_function[x, y]
+        
+        # Check opponent conflict
+        if opponent_pos is not None and new_pos == opponent_pos:
+            return reward - self.conflict_penalty + self.gamma * value_function[x, y]
+        
+        # Apply consumption penalty for non-preferred keys (achiever only)
+        if self.role == 'achiever' and self.target_door_color is not None:
+            if self._is_non_preferred_key_at_position(new_pos):
+                reward -= self.consumption_penalty
+        
+        # Target bonus
+        if new_pos == target_pos:
+            reward += 10.0
+        
+        return reward + self.gamma * value_function[new_pos[0], new_pos[1]]
 
     def _get_opponent_position(self, obs):
         """Get opponent position from observations - to be overridden by subclasses"""
@@ -385,6 +421,30 @@ class BaseValueAgent:
 
         # Convert value iteration action to MiniGrid action
         return self._convert_to_minigrid_action(optimal_action)
+    
+    def set_target_door_color(self, color):
+        """Set the target door color (preferred key)"""
+        self.target_door_color = color
+        
+    def _is_non_preferred_key_at_position(self, pos):
+        """Check if there's a non-preferred key at the given position"""
+        if self.grid is None or self.target_door_color is None:
+            return False
+            
+        # Check if position is within bounds
+        width = self.width if self.width is not None else 9
+        height = self.height if self.height is not None else 9
+        if pos[0] < 0 or pos[0] >= width or pos[1] < 0 or pos[1] >= height:
+            return False
+            
+        # Check if there's a key at this position
+        from gym_minigrid.minigrid import Key
+        cell = self.grid.get(pos[0], pos[1])
+        if isinstance(cell, Key):
+            # Return True if it's NOT the preferred key color
+            return cell.color != self.target_door_color
+            
+        return False
 
     def reset(self):
         """Reset agent state for new episode"""

@@ -240,15 +240,15 @@ class AchieverBlockerEnv(MiniGridEnv):
             if blocker_pos_tuple in door_positions:
                 door = self.grid.get(*self.blocker_pos)
                 if isinstance(door, Door):
-                    terminated = True
-                    
                     # Check if blocker blocked the correct target door
                     if door.color == self.target_door_color:
+                        terminated = True  # Game ends only if blocker breaks actual target door
                         blocker_reward += 1.0   # Success: blocked target door
                         achiever_reward -= 1.0  # Penalty for achiever
                     else:
+                        # Wrong door: give penalty but continue game
                         blocker_reward -= 1.0   # Failure: blocked wrong door
-                        achiever_reward += 0.5  # Small reward for achiever
+                        # Game continues, no termination
         
         # Check if achiever opened target door
         if not terminated:  # Only check if game hasn't ended due to blocker's "done"

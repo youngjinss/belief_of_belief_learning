@@ -364,29 +364,43 @@ def save_game_with_labels(
             f"Trajectory length: {len(trajectory_data['achiever_positions']) - 1}\n"
         )
 
-        # Calculate blocker interaction result once (will be reused later)
-        blocker_inferred_goal = getattr(blocker_agent, "target_door_color", None)
+        # Get environment and agent information for multi-attempt processing
         actual_target_door = getattr(env, "target_door_color", None)
-
-        # Determine blocker interaction result
-        if blocker_inferred_goal and actual_target_door:
-            correct_inference = blocker_inferred_goal == actual_target_door
-            reached_and_broke_door = False
+        
+        # Process trajectory to find all blocker break attempts
+        blocker_break_attempts = []
+        
+        # Get all door positions from environment using the built-in method
+        door_positions = env._get_door_positions_with_colors()
+        
+        for i in range(len(trajectory_data["blocker_actions"])):
+            blocker_action = trajectory_data["blocker_actions"][i]
+            blocker_pos = trajectory_data["blocker_positions"][i]
             
-            if correct_inference:
-                target_door_pos = env._get_target_door_position()
-                if target_door_pos and len(trajectory_data["blocker_actions"]) > 0:
-                    last_blocker_pos = trajectory_data["blocker_positions"][-1]
-                    last_blocker_action = trajectory_data["blocker_actions"][-1]
-                    if tuple(last_blocker_pos) == tuple(target_door_pos) and last_blocker_action == 5:
-                        reached_and_broke_door = True
-            
-            if correct_inference and reached_and_broke_door:
-                blocker_interaction_result = "1"  # Success
-            else:
-                blocker_interaction_result = "0"  # Fail
+            # Check if blocker used break action (5) at a door position
+            if blocker_action == 5:
+                # Check which door (if any) the blocker is breaking
+                blocker_pos_tuple = tuple(blocker_pos)
+                for door_color, door_pos in door_positions.items():
+                    if door_pos and blocker_pos_tuple == tuple(door_pos):
+                        blocker_break_attempts.append({
+                            "step": i,
+                            "door_color": door_color,
+                            "is_target_door": door_color == actual_target_door
+                        })
+                        break
+        
+        # Determine overall blocker interaction result based on attempts
+        if not blocker_break_attempts:
+            # No break attempts made
+            blocker_interaction_result = "X"
         else:
-            blocker_interaction_result = "X"  # No interaction
+            # Check if any attempt was successful (broke actual target door)
+            successful_attempts = [attempt for attempt in blocker_break_attempts if attempt["is_target_door"]]
+            if successful_attempts:
+                blocker_interaction_result = "1"  # Success: broke actual target door
+            else:
+                blocker_interaction_result = "0"  # Failure: attempted but broke wrong door(s)
 
         # Write trajectory with 2-agent actions and interactions
         for i in range(len(trajectory_data["achiever_actions"])):
@@ -427,11 +441,16 @@ def save_game_with_labels(
                         achiever_interaction = color_map.get(door_color, "X")
                         break
 
-            # For blocker: show interaction result only in the final step
-            if i == len(trajectory_data["achiever_actions"]) - 1:
-                blocker_interaction = blocker_interaction_result
-            else:
-                blocker_interaction = "X"
+            # For blocker: check if this step is a break attempt
+            blocker_interaction = "X"  # Default no interaction
+            for attempt in blocker_break_attempts:
+                if attempt["step"] == i:
+                    # This step is a break attempt
+                    if attempt["is_target_door"]:
+                        blocker_interaction = "1"  # Success: broke actual target door
+                    else:
+                        blocker_interaction = "0"  # Failure: broke wrong door
+                    break
 
             f.write(
                 f"[{achiever_pos[0]}, {achiever_pos[1]}][{blocker_pos[0]}, {blocker_pos[1]}] : {achiever_action},{blocker_action} : {achiever_interaction},{blocker_interaction}\n"
@@ -857,7 +876,7 @@ def run_single_game_with_blocker(game_assignment, config_dict, save_dir):
 
 
 def generate_trajectories(
-    config=None, random_seed=42, n_processes=None, test_data=False
+    config=None, random_seed=42, n_processes=None, test_data=False, n_games=None
 ):
     """
     Generate trajectories for AchieverBlocker environment in ToMnet format
@@ -867,11 +886,12 @@ def generate_trajectories(
         random_seed: Random seed for environment generation
         n_processes: Number of parallel processes
         test_data: If True, saves data to test subdirectory
+        n_games: Number of games to generate (overrides config if provided)
     """
     if config is None:
         config = Config()
 
-    n_games = config.n_games
+    n_games = n_games if n_games is not None else config.n_games
 
     print(
         f"Generating {n_games} AchieverBlocker trajectories with random seed: {random_seed}"
@@ -940,7 +960,6 @@ def generate_trajectories(
     # Distribute games across blocker types
     blocker_types = config.blocker_types
     n_blocker_types = len(blocker_types)
-    games_per_blocker = n_games // n_blocker_types
     
     # Create game assignments
     game_assignments = []
@@ -1052,4 +1071,5 @@ if __name__ == "__main__":
         random_seed=args.random_seed,
         n_processes=args.n_processes,
         test_data=args.test_data,
+        n_games=args.n_games,
     )

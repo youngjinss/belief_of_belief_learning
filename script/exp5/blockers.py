@@ -58,7 +58,7 @@ class RandomlySelectedAgent:
     """
     Randomly selected Blocker Agent for AchieverBlocker environment.
     Level-0 Reasoning Algorithm
-    
+
     Strategy (Multi-attempt):
     1. Select the target color randomly from remaining doors
     2. Navigate to target door
@@ -82,10 +82,10 @@ class RandomlySelectedAgent:
         # Grid dimensions - will be set from observations
         self.width = None
         self.height = None
-        
+
         # Stay probability during navigation
         self.stay_probability = stay_probability
-        
+
         # Multi-attempt tracking
         self.tried_doors = set()  # Track which doors have been attempted
         self.available_doors = {"red", "green", "blue", "yellow"}
@@ -153,20 +153,20 @@ class RandomlySelectedAgent:
         """Select target door color randomly from remaining untried doors."""
         # Get remaining doors that haven't been tried
         remaining_doors = list(self.available_doors - self.tried_doors)
-        
+
         if not remaining_doors:
             # All doors have been tried, reset and start over
             self.tried_doors.clear()
             remaining_doors = list(self.available_doors)
-        
+
         # Randomly select a door color from remaining doors
         self.target_door_color = np.random.choice(remaining_doors)
-        
+
         # Find the position of the selected door
         self.target_door_pos = self._find_door_position_from_obs(
             self.target_door_color, obs
         )
-        
+
         # Plan path to target door if position is found
         if self.target_door_pos:
             self.path_to_door = self._find_path_to_door(obs)
@@ -321,7 +321,7 @@ class RandomlySelectedAgent:
         self.just_attempted_break = False
         self.last_action = None
         # Keep width/height since they don't change between episodes
-    
+
 
 class GoalDirectAgent:
     """
@@ -567,8 +567,8 @@ class GoalDirectAgent:
         # Keep width/height since they don't change between episodes
         # self.width = None
         # self.height = None
-    
-    
+
+
 class RuleBasedAgent:
     """
     Rule-based Blocker Agent for AchieverBlocker environment.
@@ -576,7 +576,7 @@ class RuleBasedAgent:
 
     Multi-attempt Strategy:
     1. Select random door color (bluffing) -> navigate to it
-    2. Stay at door until achiever picks up first key  
+    2. Stay at door until achiever picks up first key
     3. Store observed key color in observed_keys list
     4. Infer target door from first observed key -> navigate and break
     5. If game continues (wrong door), remove first observed key
@@ -590,29 +590,31 @@ class RuleBasedAgent:
         self.initial_target_color = None
         self.initial_target_pos = None
         self.initial_target_selected = False
-        
+
         # Phase 2: Final inferred target
         self.final_target_color = None
         self.final_target_pos = None
         self.achiever_has_key = False
-        
+
         # Navigation state
         self.path_to_door = []
         self.current_path_index = 0
         self.grid = None
         self.blocker_pos = None
         self.achiever_pos = None
-        
+
         # Phase tracking
-        self.phase = 1  # 1: go to random door, 2: stay at door, 3: go to inferred door, 4: break
+        self.phase = (
+            1  # 1: go to random door, 2: stay at door, 3: go to inferred door, 4: break
+        )
 
         # Grid dimensions - will be set from observations
         self.width = None
         self.height = None
-        
+
         # Stay probability during navigation
         self.stay_probability = stay_probability
-        
+
         # Multi-attempt tracking
         self.observed_keys = []  # Track keys observed from achiever
         self.current_key_index = 0  # Index of current key being used for inference
@@ -623,10 +625,10 @@ class RuleBasedAgent:
     def target_door_color(self):
         """
         Get the current target door color for interaction checking.
-        
+
         Constraint: Once final inference happens (after achiever picks up key),
         this should be fixed to the inferred color and not change anymore.
-        
+
         Returns:
             str: Current target door color (initial random or final inferred)
         """
@@ -681,14 +683,14 @@ class RuleBasedAgent:
         if self.phase == 1:
             if not self.initial_target_selected:
                 self._select_initial_random_target(obs)
-            
+
             # Check if we've reached the initial target door
             if self._at_initial_target_door():
                 self.phase = 2  # Move to waiting phase
                 return 4  # Stay at the door
             else:
                 return self._navigate_to_initial_door(obs)
-        
+
         # Phase 2: Stay at initial door until achiever picks up key
         elif self.phase == 2:
             if self.achiever_has_key:
@@ -696,17 +698,17 @@ class RuleBasedAgent:
                 return self._handle_phase_3(obs)
             else:
                 return 4  # Stay and wait
-        
+
         # Phase 3: Infer final target from achiever's key and navigate to it
         elif self.phase == 3:
             return self._handle_phase_3(obs)
-        
+
         # Phase 4: Break the final door
         elif self.phase == 4:
             self.just_attempted_break = True
             self.last_action = 5
             return 5  # Break action
-        
+
         return 4  # Default: stay
 
     def _handle_phase_3(self, obs):
@@ -742,14 +744,14 @@ class RuleBasedAgent:
     def _select_initial_random_target(self, obs):
         """Select initial target door color randomly."""
         color_map = ["red", "green", "blue", "yellow"]
-        
+
         # Randomly select a door color
         self.initial_target_color = np.random.choice(color_map)
-        
+
         # Find the position of the selected door
         door_pos = self._find_door_position_from_obs(self.initial_target_color, obs)
         self.initial_target_pos = tuple(door_pos) if door_pos else None
-        
+
         # Plan path to initial target door if position is found
         if self.initial_target_pos:
             self.path_to_door = self._find_path_to_door(self.initial_target_pos, obs)
@@ -772,7 +774,9 @@ class RuleBasedAgent:
 
     def _navigate_to_initial_door(self, obs=None):
         """Navigate to initial target door following planned path."""
-        return self._navigate_to_door_generic(self.initial_target_pos, obs, is_final=False)
+        return self._navigate_to_door_generic(
+            self.initial_target_pos, obs, is_final=False
+        )
 
     def _navigate_to_final_door(self, obs=None):
         """Navigate to final target door following planned path."""
@@ -805,7 +809,9 @@ class RuleBasedAgent:
 
                 # Plan path to final target door
                 if self.final_target_pos:
-                    self.path_to_door = self._find_path_to_door(self.final_target_pos, obs)
+                    self.path_to_door = self._find_path_to_door(
+                        self.final_target_pos, obs
+                    )
                     self.current_path_index = 0
 
     def _find_door_position_from_obs(self, color, obs):
@@ -851,7 +857,9 @@ class RuleBasedAgent:
                 if 0 <= nx < grid_size and 0 <= ny < grid_size:
                     if (nx, ny) not in visited:
                         # Check if position is walkable
-                        if self._is_walkable_position(nx, ny, wall_positions, target_pos, obs):
+                        if self._is_walkable_position(
+                            nx, ny, wall_positions, target_pos, obs
+                        ):
                             visited.add((nx, ny))
                             new_path = path + [(nx, ny)]
 
@@ -933,28 +941,28 @@ class RuleBasedAgent:
         self.initial_target_color = None
         self.initial_target_pos = None
         self.initial_target_selected = False
-        
+
         # Phase 2: Final inferred target
         self.final_target_color = None
         self.final_target_pos = None
         self.achiever_has_key = False
-        
+
         # Navigation state
         self.path_to_door = []
         self.current_path_index = 0
         self.grid = None
         self.blocker_pos = None
         self.achiever_pos = None
-        
+
         # Phase tracking
         self.phase = 1
-        
+
         # Reset multi-attempt state
         self.observed_keys.clear()
         self.current_key_index = 0
         self.just_attempted_break = False
         self.last_action = None
-        
+
         # Keep width/height since they don't change between episodes
 
     def _check_and_store_achiever_keys(self, obs):
@@ -962,25 +970,29 @@ class RuleBasedAgent:
         if obs and "achiever_keys" in obs:
             achiever_keys = obs["achiever_keys"]
             color_map = ["red", "green", "blue", "yellow"]
-            
+
             # Find any keys the achiever has and store color names
             for i, has_key in enumerate(achiever_keys):
                 if has_key > 0 and i < len(color_map):
                     key_color = color_map[i]
                     if key_color not in self.observed_keys:
                         self.observed_keys.append(key_color)
-            
+
             # Update achiever_has_key flag for backward compatibility
-            if len(achiever_keys) > 0 and achiever_keys.sum() > 0 and not self.achiever_has_key:
+            if (
+                len(achiever_keys) > 0
+                and achiever_keys.sum() > 0
+                and not self.achiever_has_key
+            ):
                 self.achiever_has_key = True
-    
+
     def _infer_final_target_from_observed_keys(self, obs):
         """Infer final target door color from current observed key."""
         if self.current_key_index < len(self.observed_keys):
             # Use the key at current_key_index for inference
             key_color = self.observed_keys[self.current_key_index]
             self.final_target_color = key_color
-            
+
             # Find position of inferred door
             self.final_target_pos = self._find_door_position_from_obs(
                 self.final_target_color, obs

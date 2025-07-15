@@ -32,26 +32,30 @@ Adapted from ToMnetF experiment5 for multi-agent AchieverBlocker environment
 def _calculate_trajectory_lengths(trajectories):
     """
     Optimized calculation of effective trajectory lengths
-    
+
     Args:
         trajectories: Tensor of shape [batch_size, seq_len, channels, height, width]
-    
+
     Returns:
         list: Effective lengths for each sample in batch
     """
     batch_size = trajectories.size(0)
-    
+
     # Vectorized calculation: sum over spatial dimensions for each timestep
     traj_sums = trajectories.sum(dim=(2, 3, 4))  # [batch_size, seq_len]
-    
+
     # Find last non-zero timestep for each batch sample
     non_zero_mask = traj_sums > 0
-    
+
     # Use efficient masking to find last valid timestep
-    seq_indices = torch.arange(trajectories.size(1), device=trajectories.device).expand(batch_size, -1)
-    masked_indices = torch.where(non_zero_mask, seq_indices, torch.tensor(-1, device=trajectories.device))
+    seq_indices = torch.arange(trajectories.size(1), device=trajectories.device).expand(
+        batch_size, -1
+    )
+    masked_indices = torch.where(
+        non_zero_mask, seq_indices, torch.tensor(-1, device=trajectories.device)
+    )
     effective_lengths = masked_indices.max(dim=1)[0].clamp(min=0)
-    
+
     # Convert to list and apply constraint
     return [max(1, length.item()) for length in effective_lengths]
 
@@ -60,7 +64,7 @@ def load_model(model_path, device, model_kwargs):
     """Load trained ToMnet model with enhanced error handling"""
     if not os.path.exists(model_path):
         raise FileNotFoundError(f"Model file not found: {model_path}")
-    
+
     # Try to load model configuration from saved files
     model_dir = os.path.dirname(model_path)
 
@@ -131,7 +135,7 @@ def load_model(model_path, device, model_kwargs):
     # Move model to device and set to eval mode (always execute this)
     model.to(device)
     model.eval()
-    
+
     return model
 
 
@@ -288,26 +292,26 @@ def evaluate_model(
     """
     try:
         model.eval()
-        
+
         # Validate inputs
         if not test_loader:
             raise ValueError("test_loader cannot be None")
         if len(test_loader.dataset) == 0:
             raise ValueError("test_loader dataset is empty")
-        
+
         # Pre-allocate arrays for better memory efficiency
         total_samples = len(test_loader.dataset)
-        action_space = model_kwargs.get('action_space', 7) if model_kwargs else 7
-        
+        action_space = model_kwargs.get("action_space", 7) if model_kwargs else 7
+
         all_predictions = np.empty(total_samples, dtype=np.int64)
         all_targets = np.empty(total_samples, dtype=np.int64)
         all_probabilities = np.empty((total_samples, action_space), dtype=np.float32)
-        
+
         sample_idx = 0
 
         with torch.no_grad():
             for _, batch in enumerate(test_loader):
-                
+
                 # Unpack all data including goal_ranks and types
                 (
                     trajectories,
@@ -319,9 +323,9 @@ def evaluate_model(
                     consumption_labels,
                     sr_labels,
                 ) = batch
-                
+
                 batch_size = trajectories.size(0)
-                
+
                 # Optimized GPU transfers with non_blocking for better performance
                 trajectories = trajectories.to(device, non_blocking=True)
                 actions = actions.to(device, non_blocking=True)
@@ -347,7 +351,9 @@ def evaluate_model(
                 # Each sample has a different effective length, stored in actions[:,0]
 
                 # For trajectory slicing, use the action at index 0 (the target action for this slice)
-                action_targets = actions[:, 0]  # Target action for each sliced trajectory
+                action_targets = actions[
+                    :, 0
+                ]  # Target action for each sliced trajectory
 
                 # Optimized trajectory length calculation
                 effective_lengths = _calculate_trajectory_lengths(trajectories)
@@ -417,7 +423,9 @@ def evaluate_model(
         # Force confusion matrix to be for AchieverBlocker (actions vary by agent type)
         # Determine max action from data to handle both achiever and blocker actions
         max_action = max(np.max(targets), np.max(predictions)) + 1
-        conf_matrix = confusion_matrix(targets, predictions, labels=list(range(max_action)))
+        conf_matrix = confusion_matrix(
+            targets, predictions, labels=list(range(max_action))
+        )
 
         # Action-wise accuracy - AchieverBlocker has variable actions based on agent type
         action_accuracy = {}
@@ -461,7 +469,7 @@ def evaluate_model(
             print(f"Predictions saved to: {pred_path}")
 
         return metrics
-    
+
     except Exception as e:
         print(f"Error during model evaluation: {str(e)}")
         raise

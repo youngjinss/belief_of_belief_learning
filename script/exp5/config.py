@@ -1,5 +1,6 @@
 import torch
 
+
 class Config:
     def __init__(self):
         # Environment settings
@@ -14,7 +15,10 @@ class Config:
 
         # Agent settings
         self.achiever_type = "value"  # Options: "astar", "random", "value"
-        self.blocker_types = ["randomly_selected", "rule_based"]  # Options: "random", "goal_direct", "randomly_selected", "rule_based"
+        self.blocker_types = [
+            "randomly_selected",
+            "rule_based",
+        ]  # Options: "random", "goal_direct", "randomly_selected", "rule_based"
         self.observability = "full"  # Options: "full", "partial"
         self.movement_prob = 0.8  # For random agent
 
@@ -31,7 +35,7 @@ class Config:
         # Data generation settings
         self.n_games = 60000  # Number of games to generate for ToMnet data
         self.save_dir = "data"  # Base directory to save generated data
-        
+
         # Debug/test settings
         self.debug_mode = False  # Enable for small-scale testing
 
@@ -98,7 +102,7 @@ class Config:
             "randomly_selected": 0,
             "rule_based": 1,
             "random": 2,
-            "goal_direct": 3
+            "goal_direct": 3,
         }
 
         # Blocker configurations
@@ -464,40 +468,46 @@ class Config:
     def get_n_past_evaluation_config(self):
         """Get N_past evaluation configuration"""
         return self.n_past_evaluation.copy()
-        
+
     def enable_debug_mode(self):
         """Enable debug mode with smaller scale settings for testing"""
         self.debug_mode = True
-        
+
         # Reduce data generation for testing
         self.n_games = 100  # Reduced from 50000
-        
+
         # Reduce training settings for faster testing
-        self.training_config.update({
-            "batch_size": 64,  # Reduced from 1024
-            "epochs": 5,  # Reduced from 200
-            "gradient_accumulation_steps": 1,  # Reduced from 2
-        })
-        
+        self.training_config.update(
+            {
+                "batch_size": 64,  # Reduced from 1024
+                "epochs": 5,  # Reduced from 200
+                "gradient_accumulation_steps": 1,  # Reduced from 2
+            }
+        )
+
         # Auto-detect device for debug mode
         if not torch.cuda.is_available():
             self.training_config["device"] = "cpu"
             self.training_config["use_parallel"] = False
             self.training_config["use_amp"] = False  # Disable AMP for CPU
-        
+
         # Reduce data processing settings
-        self.data_config.update({
-            "max_moves": 20,  # Reduced from 50
-            "time_step": 5,  # Reduced from 10
-        })
-        
+        self.data_config.update(
+            {
+                "max_moves": 20,  # Reduced from 50
+                "time_step": 5,  # Reduced from 10
+            }
+        )
+
         # Reduce model complexity slightly
-        self.model_config.update({
-            "residual_blocks": 3,  # Reduced from 5
-            "n_echar": 64,  # Reduced from 128
-            "n_ement": 64,  # Reduced from 128
-        })
-        
+        self.model_config.update(
+            {
+                "residual_blocks": 3,  # Reduced from 5
+                "n_echar": 64,  # Reduced from 128
+                "n_ement": 64,  # Reduced from 128
+            }
+        )
+
         print("Debug mode enabled: Using smaller scale settings for testing")
 
     def get_model_kwargs(self):
@@ -545,7 +555,9 @@ class Config:
         if hasattr(args, "achiever_type") and args.achiever_type is not None:
             self.achiever_type = args.achiever_type
         if hasattr(args, "blocker_type") and args.blocker_type is not None:
-            self.blocker_types = [args.blocker_type]  # Convert single type to list for backward compatibility
+            self.blocker_types = [
+                args.blocker_type
+            ]  # Convert single type to list for backward compatibility
         # Backward compatibility
         if hasattr(args, "agent_type") and args.agent_type is not None:
             self.achiever_type = args.agent_type
@@ -696,7 +708,12 @@ class Config:
         """Validate configuration"""
         if self.achiever_type not in ["astar", "random", "value"]:
             raise ValueError(f"Invalid achiever_type: {self.achiever_type}")
-        valid_blocker_types = ["random", "goal_direct", "randomly_selected", "rule_based"]
+        valid_blocker_types = [
+            "random",
+            "goal_direct",
+            "randomly_selected",
+            "rule_based",
+        ]
         for blocker_type in self.blocker_types:
             if blocker_type not in valid_blocker_types:
                 raise ValueError(f"Invalid blocker_type: {blocker_type}")

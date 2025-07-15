@@ -305,7 +305,9 @@ def prepare_data_for_training(
         trajectory = sample["trajectory"]  # [seq_len, channels, height, width]
         goal_tensor = sample["goal"]  # [4] one-hot encoded
         agent_type = sample["agent"]  # 'achiever' or 'blocker'
-        type_label = sample["type"]  # 0 for randomly select / achiever, 1 for rule-based blocker
+        type_label = sample[
+            "type"
+        ]  # 0 for randomly select / achiever, 1 for rule-based blocker
         consumption = sample["consumption_labels"]  # [8] consumption labels
         sr_data_per_timestep = sample.get("sr_data_per_timestep", {})
 
@@ -540,12 +542,19 @@ def train_epoch(
         # Forward pass with AMP if enabled
         if scaler is not None:
             with autocast():
-                action_logits, goal_logits, agent_logits, type_logits, consumption_logits, sr_pred, _, _ = (
-                    model(past_episodes, recent_trajectory, current_state)
-                )
-                
+                (
+                    action_logits,
+                    goal_logits,
+                    agent_logits,
+                    type_logits,
+                    consumption_logits,
+                    sr_pred,
+                    _,
+                    _,
+                ) = model(past_episodes, recent_trajectory, current_state)
+
                 sr_targets = sr_labels
-                
+
                 # Compute loss with all components including agent and type prediction
                 (
                     total_loss_batch,
@@ -569,20 +578,27 @@ def train_epoch(
                     consumption_targets,
                     sr_targets,
                 )
-                
+
                 # Scale loss for gradient accumulation
                 total_loss_batch = total_loss_batch / gradient_accumulation_steps
-            
+
             # Backward pass with AMP
             scaler.scale(total_loss_batch).backward()
         else:
             # Regular forward pass
-            action_logits, goal_logits, agent_logits, type_logits, consumption_logits, sr_pred, _, _ = (
-                model(past_episodes, recent_trajectory, current_state)
-            )
-            
+            (
+                action_logits,
+                goal_logits,
+                agent_logits,
+                type_logits,
+                consumption_logits,
+                sr_pred,
+                _,
+                _,
+            ) = model(past_episodes, recent_trajectory, current_state)
+
             sr_targets = sr_labels
-            
+
             # Compute loss with all components including agent and type prediction
             (
                 total_loss_batch,
@@ -606,10 +622,10 @@ def train_epoch(
                 consumption_targets,
                 sr_targets,
             )
-            
+
             # Scale loss for gradient accumulation
             total_loss_batch = total_loss_batch / gradient_accumulation_steps
-            
+
             # Regular backward pass
             total_loss_batch.backward()
 
@@ -617,22 +633,30 @@ def train_epoch(
         accumulation_loss += total_loss_batch.item() * gradient_accumulation_steps
 
         # Optimizer step with gradient accumulation
-        if (batch_idx + 1) % gradient_accumulation_steps == 0 or (batch_idx + 1) == len(train_loader):
+        if (batch_idx + 1) % gradient_accumulation_steps == 0 or (batch_idx + 1) == len(
+            train_loader
+        ):
             max_grad_norm = (
-                training_process_config["max_grad_norm"] if training_process_config else 1.0
+                training_process_config["max_grad_norm"]
+                if training_process_config
+                else 1.0
             )
-            
+
             if scaler is not None:
                 # AMP gradient clipping and step
                 scaler.unscale_(optimizer)
-                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=max_grad_norm)
+                torch.nn.utils.clip_grad_norm_(
+                    model.parameters(), max_norm=max_grad_norm
+                )
                 scaler.step(optimizer)
                 scaler.update()
             else:
                 # Regular gradient clipping and step
-                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=max_grad_norm)
+                torch.nn.utils.clip_grad_norm_(
+                    model.parameters(), max_norm=max_grad_norm
+                )
                 optimizer.step()
-            
+
             # Clear gradients for next accumulation
             optimizer.zero_grad()
 
@@ -660,7 +684,7 @@ def train_epoch(
             (predicted_types == type_targets).sum().item()
         )  # Track type accuracy
         total_samples += batch_size
-        
+
         # Memory cleanup for large batches
         if batch_idx % 10 == 0:
             torch.cuda.empty_cache()
@@ -1073,11 +1097,11 @@ def train_tomnet(
     device = training_kwargs["device"]
     patience = training_kwargs["patience"]
     min_delta = training_kwargs["min_delta"]
-    
+
     # Get parallel training configuration
     use_parallel = training_config.get("use_parallel", False)
     device_ids = training_config.get("device_ids", [2, 3])
-    
+
     # Memory and computation optimization settings
     use_amp = training_config.get("use_amp", True)  # Automatic Mixed Precision
     gradient_accumulation_steps = training_config.get("gradient_accumulation_steps", 1)
@@ -1107,11 +1131,11 @@ def train_tomnet(
             if gpu_id < torch.cuda.device_count():
                 torch.cuda.set_device(gpu_id)
                 # Test GPU memory
-                test_tensor = torch.zeros(1, device=f'cuda:{gpu_id}')
+                test_tensor = torch.zeros(1, device=f"cuda:{gpu_id}")
                 available_gpus.append(gpu_id)
                 del test_tensor
                 torch.cuda.empty_cache()
-        
+
         if len(available_gpus) > 1:
             print(f"Using parallel training on GPUs: {available_gpus}")
             print(f"Primary device: cuda:{available_gpus[0]}")
@@ -1119,7 +1143,9 @@ def train_tomnet(
             primary_device = torch.device(f"cuda:{available_gpus[0]}")
             device = primary_device
         else:
-            print(f"Only {len(available_gpus)} GPU(s) available, using single GPU training")
+            print(
+                f"Only {len(available_gpus)} GPU(s) available, using single GPU training"
+            )
             if available_gpus:
                 device = torch.device(f"cuda:{available_gpus[0]}")
                 print(f"Using single device: {device}")
@@ -1127,28 +1153,34 @@ def train_tomnet(
     else:
         print(f"Using single device: {device}")
         use_parallel = False
-    
+
     # Memory optimization setup
     if torch.cuda.is_available():
         # Clear GPU cache on all available devices
         for i in range(torch.cuda.device_count()):
             torch.cuda.set_device(i)
             torch.cuda.empty_cache()
-        
+
         # Set back to primary device
         torch.cuda.set_device(device)
-        print(f"GPU memory allocated: {torch.cuda.memory_allocated(device) / 1024**3:.2f} GB")
-        print(f"GPU memory reserved: {torch.cuda.memory_reserved(device) / 1024**3:.2f} GB")
-        
+        print(
+            f"GPU memory allocated: {torch.cuda.memory_allocated(device) / 1024**3:.2f} GB"
+        )
+        print(
+            f"GPU memory reserved: {torch.cuda.memory_reserved(device) / 1024**3:.2f} GB"
+        )
+
         # Check if we need to reduce batch size due to larger model
         total_memory = torch.cuda.get_device_properties(device).total_memory / 1024**3
         allocated_memory = torch.cuda.memory_allocated(device) / 1024**3
         available_memory = total_memory - allocated_memory
         print(f"Available GPU memory: {available_memory:.2f} GB")
-        
+
         if available_memory < 2.0:  # Less than 2GB available
-            print("Warning: Low GPU memory detected. Consider reducing batch size or model complexity.")
-        
+            print(
+                "Warning: Low GPU memory detected. Consider reducing batch size or model complexity."
+            )
+
     print(f"Using AMP (Automatic Mixed Precision): {use_amp}")
     print(f"Gradient accumulation steps: {gradient_accumulation_steps}")
     print(f"Results will be saved to: {experiment_save_dir}")
@@ -1235,38 +1267,44 @@ def train_tomnet(
         parallel_batch_size = batch_size * len(device_ids)
         effective_batch_size = min(parallel_batch_size, len(train_dataset))
         effective_val_batch_size = min(parallel_batch_size, len(val_dataset))
-        print(f"Parallel training: increasing batch size from {batch_size} to {parallel_batch_size}")
+        print(
+            f"Parallel training: increasing batch size from {batch_size} to {parallel_batch_size}"
+        )
     else:
         effective_batch_size = min(batch_size, len(train_dataset))
         effective_val_batch_size = min(batch_size, len(val_dataset))
-        
+
         # Dynamic batch size reduction for memory optimization
         if torch.cuda.is_available():
-            available_memory = (torch.cuda.get_device_properties(device).total_memory - 
-                              torch.cuda.memory_allocated(device)) / 1024**3
+            available_memory = (
+                torch.cuda.get_device_properties(device).total_memory
+                - torch.cuda.memory_allocated(device)
+            ) / 1024**3
             if available_memory < 3.0 and effective_batch_size > 256:
                 new_batch_size = max(256, effective_batch_size // 2)
-                print(f"Reducing batch size from {effective_batch_size} to {new_batch_size} due to memory constraints")
+                print(
+                    f"Reducing batch size from {effective_batch_size} to {new_batch_size} due to memory constraints"
+                )
                 effective_batch_size = new_batch_size
                 effective_val_batch_size = min(new_batch_size, len(val_dataset))
 
     train_loader = DataLoader(
-        train_dataset, 
-        batch_size=effective_batch_size, 
-        shuffle=True, 
+        train_dataset,
+        batch_size=effective_batch_size,
+        shuffle=True,
         drop_last=False,
         pin_memory=pin_memory,
         num_workers=num_workers,
-        persistent_workers=True if num_workers > 0 else False
+        persistent_workers=True if num_workers > 0 else False,
     )
     val_loader = DataLoader(
-        val_dataset, 
-        batch_size=effective_val_batch_size, 
-        shuffle=False, 
+        val_dataset,
+        batch_size=effective_val_batch_size,
+        shuffle=False,
         drop_last=False,
         pin_memory=pin_memory,
         num_workers=num_workers,
-        persistent_workers=True if num_workers > 0 else False
+        persistent_workers=True if num_workers > 0 else False,
     )
 
     print(f"Training samples: {len(train_dataset)}")
@@ -1284,12 +1322,14 @@ def train_tomnet(
     model_kwargs_updated["current_state_channels"] = model_config.get(
         "current_state_channels", 8
     )
-    
+
     model = create_model(model_kwargs_updated)
     model = model.to(device)
-    
+
     if torch.cuda.is_available():
-        print(f"Model loaded to GPU. Memory after model: {torch.cuda.memory_allocated(device) / 1024**3:.2f} GB")
+        print(
+            f"Model loaded to GPU. Memory after model: {torch.cuda.memory_allocated(device) / 1024**3:.2f} GB"
+        )
 
     # Setup parallel training if enabled
     if use_parallel and torch.cuda.is_available() and len(device_ids) > 1:
@@ -1315,10 +1355,12 @@ def train_tomnet(
     optimizer = torch.optim.Adam(
         model.parameters(), lr=lr, weight_decay=config.training_config["weight_decay"]
     )
-    
+
     # Initialize AMP scaler for mixed precision training
-    device_type = 'cuda' if torch.cuda.is_available() and 'cuda' in str(device) else 'cpu'
-    scaler = GradScaler() if use_amp and device_type == 'cuda' else None
+    device_type = (
+        "cuda" if torch.cuda.is_available() and "cuda" in str(device) else "cpu"
+    )
+    scaler = GradScaler() if use_amp and device_type == "cuda" else None
 
     # Early stopping
     early_stopping = EarlyStopping(
@@ -1380,7 +1422,14 @@ def train_tomnet(
 
         # Validation
         val_metrics = validate_epoch(
-            model, val_loader, loss_fn, device, max_n_past, data_config, model_config, scaler
+            model,
+            val_loader,
+            loss_fn,
+            device,
+            max_n_past,
+            data_config,
+            model_config,
+            scaler,
         )
 
         epoch_time = time.time() - epoch_start_time
@@ -1439,9 +1488,7 @@ def train_tomnet(
         print(
             f"  Agent Acc - Train: {train_agent_acc:.4f}% | Val: {val_agent_acc:.4f}%"
         )
-        print(
-            f"  Type Acc - Train: {train_type_acc:.4f}% | Val: {val_type_acc:.4f}%"
-        )
+        print(f"  Type Acc - Train: {train_type_acc:.4f}% | Val: {val_type_acc:.4f}%")
         print(
             f"  Train - Action: {train_action_loss:.4f} | Agent: {train_agent_loss:.4f} | Type: {train_type_loss:.4f} | Consumption: {train_consumption_loss:.4f} | SR: {train_sr_loss:.4f}"
         )
@@ -1462,11 +1509,13 @@ def train_tomnet(
             # Save model correctly for DataParallel
             if isinstance(model, torch.nn.DataParallel):
                 torch.save(
-                    model.module.state_dict(), os.path.join(experiment_save_dir, "best_model.pth")
+                    model.module.state_dict(),
+                    os.path.join(experiment_save_dir, "best_model.pth"),
                 )
             else:
                 torch.save(
-                    model.state_dict(), os.path.join(experiment_save_dir, "best_model.pth")
+                    model.state_dict(),
+                    os.path.join(experiment_save_dir, "best_model.pth"),
                 )
             print(f"New best model saved (val_loss: {best_val_loss:.4f})")
 
@@ -1501,12 +1550,17 @@ def train_tomnet(
 
     # Save final model
     if isinstance(model, torch.nn.DataParallel):
-        torch.save(model.module.state_dict(), os.path.join(experiment_save_dir, "final_model.pth"))
+        torch.save(
+            model.module.state_dict(),
+            os.path.join(experiment_save_dir, "final_model.pth"),
+        )
     else:
-        torch.save(model.state_dict(), os.path.join(experiment_save_dir, "final_model.pth"))
+        torch.save(
+            model.state_dict(), os.path.join(experiment_save_dir, "final_model.pth")
+        )
 
     # Save data statistics if data_reader is available
-    if 'data_reader' in locals() and 'samples' in locals():
+    if "data_reader" in locals() and "samples" in locals():
         stats = data_reader.get_statistics(samples)
         with open(os.path.join(experiment_save_dir, "data_statistics.json"), "w") as f:
             json.dump(stats, f, indent=2)
@@ -1561,9 +1615,20 @@ if __name__ == "__main__":
     )
     parser.add_argument("--device", type=str, help="Device to use (auto, cpu, cuda)")
     parser.add_argument("--optimizer", type=str, help="Optimizer type (adam)")
-    parser.add_argument("--use_parallel", action="store_true", help="Enable parallel GPU training")
-    parser.add_argument("--device_ids", nargs="+", type=int, help="GPU device IDs for parallel training (e.g., 2 3)")
-    parser.add_argument("--debug", action="store_true", help="Enable debug mode with small-scale settings")
+    parser.add_argument(
+        "--use_parallel", action="store_true", help="Enable parallel GPU training"
+    )
+    parser.add_argument(
+        "--device_ids",
+        nargs="+",
+        type=int,
+        help="GPU device IDs for parallel training (e.g., 2 3)",
+    )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Enable debug mode with small-scale settings",
+    )
 
     # Model architecture
     parser.add_argument("--residual_blocks", type=int, help="Number of residual blocks")

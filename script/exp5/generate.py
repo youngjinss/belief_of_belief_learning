@@ -366,41 +366,49 @@ def save_game_with_labels(
 
         # Get environment and agent information for multi-attempt processing
         actual_target_door = getattr(env, "target_door_color", None)
-        
+
         # Process trajectory to find all blocker break attempts
         blocker_break_attempts = []
-        
+
         # Get all door positions from environment using the built-in method
         door_positions = env._get_door_positions_with_colors()
-        
+
         for i in range(len(trajectory_data["blocker_actions"])):
             blocker_action = trajectory_data["blocker_actions"][i]
             blocker_pos = trajectory_data["blocker_positions"][i]
-            
+
             # Check if blocker used break action (5) at a door position
             if blocker_action == 5:
                 # Check which door (if any) the blocker is breaking
                 blocker_pos_tuple = tuple(blocker_pos)
                 for door_color, door_pos in door_positions.items():
                     if door_pos and blocker_pos_tuple == tuple(door_pos):
-                        blocker_break_attempts.append({
-                            "step": i,
-                            "door_color": door_color,
-                            "is_target_door": door_color == actual_target_door
-                        })
+                        blocker_break_attempts.append(
+                            {
+                                "step": i,
+                                "door_color": door_color,
+                                "is_target_door": door_color == actual_target_door,
+                            }
+                        )
                         break
-        
+
         # Determine overall blocker interaction result based on attempts
         if not blocker_break_attempts:
             # No break attempts made
             blocker_interaction_result = "X"
         else:
             # Check if any attempt was successful (broke actual target door)
-            successful_attempts = [attempt for attempt in blocker_break_attempts if attempt["is_target_door"]]
+            successful_attempts = [
+                attempt
+                for attempt in blocker_break_attempts
+                if attempt["is_target_door"]
+            ]
             if successful_attempts:
                 blocker_interaction_result = "1"  # Success: broke actual target door
             else:
-                blocker_interaction_result = "0"  # Failure: attempted but broke wrong door(s)
+                blocker_interaction_result = (
+                    "0"  # Failure: attempted but broke wrong door(s)
+                )
 
         # Write trajectory with 2-agent actions and interactions
         for i in range(len(trajectory_data["achiever_actions"])):
@@ -500,7 +508,7 @@ def save_game_with_labels(
 
         # Section 3: Blocker
         f.write("Blocker:\n")
-        
+
         # Write blocker type
         if blocker_type:
             # Get blocker type map from config_dict if available
@@ -701,13 +709,17 @@ def run_single_game(game_id, config_dict, save_dir, blocker_type=None):
 
     # Create blocker agent
     # Use passed blocker_type if provided, otherwise use config default
-    current_blocker_type = blocker_type if blocker_type else config_dict["blocker_types"][0]
+    current_blocker_type = (
+        blocker_type if blocker_type else config_dict["blocker_types"][0]
+    )
     if current_blocker_type == "random":
         blocker_agent = BlockerRandomAgent()
     elif current_blocker_type == "goal_direct":
         blocker_agent = BlockerGoalDirectAgent()
     elif current_blocker_type == "randomly_selected":
-        blocker_config = config_dict.get("blocker_configs", {}).get("randomly_selected", {})
+        blocker_config = config_dict.get("blocker_configs", {}).get(
+            "randomly_selected", {}
+        )
         stay_probability = blocker_config.get("stay_probability", 0.7)
         blocker_agent = BlockerRandomlySelectedAgent(stay_probability=stay_probability)
     elif current_blocker_type == "rule_based":
@@ -862,12 +874,12 @@ def run_single_game(game_id, config_dict, save_dir, blocker_type=None):
 def run_single_game_with_blocker(game_assignment, config_dict, save_dir):
     """
     Wrapper function for multiprocessing that unpacks game assignment
-    
+
     Args:
         game_assignment: Tuple of (game_id, blocker_type)
         config_dict: Dictionary containing config parameters
         save_dir: Directory to save game data
-    
+
     Returns:
         game_id: For tracking completion
     """
@@ -960,14 +972,14 @@ def generate_trajectories(
     # Distribute games across blocker types
     blocker_types = config.blocker_types
     n_blocker_types = len(blocker_types)
-    
+
     # Create game assignments
     game_assignments = []
     for i in range(n_games):
         blocker_type_idx = i % n_blocker_types
         blocker_type = blocker_types[blocker_type_idx]
         game_assignments.append((i, blocker_type))
-    
+
     print(f"Distributing {n_games} games across {n_blocker_types} blocker types:")
     for blocker_type in blocker_types:
         count = sum(1 for _, bt in game_assignments if bt == blocker_type)
@@ -975,9 +987,7 @@ def generate_trajectories(
 
     # Create partial function with fixed arguments
     game_func = partial(
-        run_single_game_with_blocker, 
-        config_dict=config_dict, 
-        save_dir=config.save_dir
+        run_single_game_with_blocker, config_dict=config_dict, save_dir=config.save_dir
     )
 
     # Run games in parallel

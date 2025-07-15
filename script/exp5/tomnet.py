@@ -683,7 +683,14 @@ class PredNet(nn.Module):
         sr_pred = F.softmax(sr_pred, dim=2)
         sr_pred = sr_pred.view(batch_size, channels, height, width)
 
-        return action_logits, goal_logits, agent_logits, type_logits, consumption_logits, sr_pred
+        return (
+            action_logits,
+            goal_logits,
+            agent_logits,
+            type_logits,
+            consumption_logits,
+            sr_pred,
+        )
 
 
 class ToMnet(nn.Module):
@@ -804,9 +811,14 @@ class ToMnet(nn.Module):
             mental_state = self.mental_net(recent_trajectory, recent_actions)
 
             # PredNet with mental state
-            action_logits, goal_logits, agent_logits, type_logits, consumption_logits, sr_pred = (
-                self.pred_net(mental_state, character_embedding, current_state_for_pred)
-            )
+            (
+                action_logits,
+                goal_logits,
+                agent_logits,
+                type_logits,
+                consumption_logits,
+                sr_pred,
+            ) = self.pred_net(mental_state, character_embedding, current_state_for_pred)
         else:
             # 2b. Fixed 2-stage architecture: CharNet → PredNet (like experiment5)
 
@@ -821,9 +833,14 @@ class ToMnet(nn.Module):
             mixed_data = torch.cat([current_state_for_pred, e_char_spatial], dim=1)
 
             # PredNet processes mixed data directly
-            action_logits, goal_logits, agent_logits, type_logits, consumption_logits, sr_pred = (
-                self.pred_net.forward_direct(mixed_data)
-            )
+            (
+                action_logits,
+                goal_logits,
+                agent_logits,
+                type_logits,
+                consumption_logits,
+                sr_pred,
+            ) = self.pred_net.forward_direct(mixed_data)
 
             # Create dummy mental_state for compatibility
             mental_state = torch.zeros(
@@ -942,7 +959,15 @@ class ToMnetLoss(nn.Module):
             + self.sr_weight * sr_loss
         )
 
-        return total_loss, action_loss, goal_loss, agent_loss, type_loss, consumption_loss, sr_loss
+        return (
+            total_loss,
+            action_loss,
+            goal_loss,
+            agent_loss,
+            type_loss,
+            consumption_loss,
+            sr_loss,
+        )
 
 
 # Utility functions

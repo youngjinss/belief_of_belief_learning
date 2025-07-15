@@ -5,7 +5,8 @@ import warnings
 
 # Set matplotlib backend before importing pyplot to avoid display issues
 import matplotlib
-matplotlib.use('Agg')  # Use non-interactive backend
+
+matplotlib.use("Agg")  # Use non-interactive backend
 import matplotlib.pyplot as plt
 
 import numpy as np
@@ -24,6 +25,7 @@ warnings.filterwarnings("ignore", category=RuntimeWarning)
 from config import Config
 from train import prepare_data_for_training, generate_past_episodes_from_batch
 from data_generation import DataGenerator as DataReader, DataGenerator
+
 # Remove circular import - load_model will be imported locally when needed
 
 """
@@ -809,7 +811,7 @@ def plot_character_embeddings(
     # goals tensor: one-hot encoded [A, B, C, D]
     goals_tensor = processed_data["goals"].numpy()
     goal_labels = np.argmax(goals_tensor, axis=1)  # Convert one-hot to indices
-    
+
     # types tensor: 0 for achievers (always), 0 or 1 for blockers (0=randomly select, 1=rule-based)
     types_tensor = processed_data["types"].numpy()
     type_labels = types_tensor.astype(int)
@@ -847,13 +849,15 @@ def plot_character_embeddings(
     # Optimized batch processing for character embeddings
     batch_size = 32  # Process in batches for better GPU utilization
     n_past_config = config.get_n_past_evaluation_config()
-    
+
     with torch.no_grad():
         for start_idx in range(0, len(agent_labels), batch_size):
             end_idx = min(start_idx + batch_size, len(agent_labels))
-            
+
             if start_idx % (batch_size * 10) == 0:
-                print(f"Processing batch {start_idx//batch_size + 1}/{(len(agent_labels) + batch_size - 1)//batch_size}")
+                print(
+                    f"Processing batch {start_idx//batch_size + 1}/{(len(agent_labels) + batch_size - 1)//batch_size}"
+                )
 
             try:
                 # Get batch tensors
@@ -876,7 +880,7 @@ def plot_character_embeddings(
 
                 # Extract character embeddings for the entire batch
                 char_embeddings = model.get_character_embedding(past_episodes)
-                
+
                 # Add batch embeddings to list
                 for emb in char_embeddings.cpu().numpy():
                     embeddings.append(emb.flatten())
@@ -907,7 +911,13 @@ def plot_character_embeddings(
         embeddings, agent_labels, goal_labels, config, output_dir, experiment_no
     )
     _plot_type_based_embeddings_for_blockers(
-        embeddings, agent_labels, goal_labels, type_labels, config, output_dir, experiment_no
+        embeddings,
+        agent_labels,
+        goal_labels,
+        type_labels,
+        config,
+        output_dir,
+        experiment_no,
     )
 
 
@@ -961,12 +971,12 @@ def _plot_agent_based_embeddings(
         print("Computing t-SNE (this may take a while)...")
         # Use faster t-SNE parameters for better performance
         tsne = TSNE(
-            n_components=2, 
-            random_state=42, 
-            perplexity=min(30, len(embeddings)//4),  # Adaptive perplexity
+            n_components=2,
+            random_state=42,
+            perplexity=min(30, len(embeddings) // 4),  # Adaptive perplexity
             n_iter=300,  # Reduced iterations for speed
             early_exaggeration=12,
-            learning_rate='auto'
+            learning_rate="auto",
         )
         embeddings_tsne = tsne.fit_transform(embeddings)
 
@@ -1054,12 +1064,12 @@ def _plot_goal_based_embeddings(
         print("Computing t-SNE (this may take a while)...")
         # Use faster t-SNE parameters for better performance
         tsne = TSNE(
-            n_components=2, 
-            random_state=42, 
-            perplexity=min(30, len(embeddings)//4),  # Adaptive perplexity
+            n_components=2,
+            random_state=42,
+            perplexity=min(30, len(embeddings) // 4),  # Adaptive perplexity
             n_iter=300,  # Reduced iterations for speed
             early_exaggeration=12,
-            learning_rate='auto'
+            learning_rate="auto",
         )
         embeddings_tsne = tsne.fit_transform(embeddings)
 
@@ -1213,7 +1223,13 @@ def _plot_separate_agent_goal_embeddings(
 
 
 def _plot_type_based_embeddings_for_blockers(
-    embeddings, agent_labels, goal_labels, type_labels, config, output_dir, experiment_no
+    embeddings,
+    agent_labels,
+    goal_labels,
+    type_labels,
+    config,
+    output_dir,
+    experiment_no,
 ):
     """Plot embeddings colored by Type, constrained to Blocker agents only"""
     vis_config = config.get_visualization_config()
@@ -1225,7 +1241,7 @@ def _plot_type_based_embeddings_for_blockers(
     blocker_mask = agent_labels == "blocker"
     blocker_embeddings = embeddings[blocker_mask]
     blocker_types = type_labels[blocker_mask]
-    
+
     if len(blocker_embeddings) == 0:
         print("No blocker samples found for Type visualization")
         return
@@ -1236,7 +1252,8 @@ def _plot_type_based_embeddings_for_blockers(
     # Create figure with PCA and t-SNE subplots
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=embedding_plots["pca_figsize"])
     fig.suptitle(
-        f"Character Embeddings by Blocker Type (Experiment {experiment_no})", fontsize=16
+        f"Character Embeddings by Blocker Type (Experiment {experiment_no})",
+        fontsize=16,
     )
 
     # Type colors and names
@@ -1274,7 +1291,11 @@ def _plot_type_based_embeddings_for_blockers(
     # t-SNE visualization
     if len(blocker_embeddings) > 30:  # Minimum samples for t-SNE
         print("Computing t-SNE for blocker types...")
-        tsne = TSNE(n_components=2, random_state=42, perplexity=min(30, len(blocker_embeddings)//4))
+        tsne = TSNE(
+            n_components=2,
+            random_state=42,
+            perplexity=min(30, len(blocker_embeddings) // 4),
+        )
         embeddings_tsne = tsne.fit_transform(blocker_embeddings)
 
         unique_types = np.unique(blocker_types)
@@ -1315,7 +1336,9 @@ def _plot_type_based_embeddings_for_blockers(
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
         plt.savefig(
-            os.path.join(output_dir, f"character_embeddings_blocker_type_exp{experiment_no}.png"),
+            os.path.join(
+                output_dir, f"character_embeddings_blocker_type_exp{experiment_no}.png"
+            ),
             dpi=300,
             bbox_inches="tight",
         )
@@ -1400,7 +1423,9 @@ def plot_character_embeddings_old(
                     n_past_min=n_past_config["n_past_min"],
                     n_past_max=n_past_config["n_past_max"],
                     max_n_past=n_past_config["n_past_max"],
-                    rank_threshold=config.get_data_config().get("rank_threshold", 4),  # exp5 parameter
+                    rank_threshold=config.get_data_config().get(
+                        "rank_threshold", 4
+                    ),  # exp5 parameter
                 )
 
                 # Use KeyDoor exp5 native character embedding method
@@ -1903,9 +1928,10 @@ if __name__ == "__main__":
             if os.path.basename(results_dir).replace("_", "").replace("-", "").isdigit()
             else results_dir
         )
-        
+
         # Also search for models in other timestamped directories within parent
         import glob
+
         parent_timestamped_dirs = []
         if parent_results_dir != results_dir:
             pattern = os.path.join(parent_results_dir, "20*")
@@ -1915,19 +1941,23 @@ if __name__ == "__main__":
             "possible_model_paths",
             [
                 os.path.join(results_dir, "best_model.pth"),
-                os.path.join(parent_results_dir, "best_model.pth"),  # Check parent for timestamped dirs
+                os.path.join(
+                    parent_results_dir, "best_model.pth"
+                ),  # Check parent for timestamped dirs
                 os.path.join(results_dir, "model.pth"),
                 os.path.join(parent_results_dir, "model.pth"),
                 os.path.join(results_dir, "figure5_goal_directed_alpha0.01_model.pth"),
             ],
         )
-        
+
         # Add paths from other timestamped directories
         for timestamped_dir in parent_timestamped_dirs:
-            possible_model_paths.extend([
-                os.path.join(timestamped_dir, "best_model.pth"),
-                os.path.join(timestamped_dir, "model.pth"),
-            ])
+            possible_model_paths.extend(
+                [
+                    os.path.join(timestamped_dir, "best_model.pth"),
+                    os.path.join(timestamped_dir, "model.pth"),
+                ]
+            )
 
         # Add any additional model paths from config
         if "additional_model_paths" in model_config:

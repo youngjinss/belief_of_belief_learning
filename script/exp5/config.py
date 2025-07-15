@@ -14,7 +14,7 @@ class Config:
         self.seed = 42
 
         # Agent settings
-        self.n_games_per_type = 1000  # Number of games to generate for ToMnet data
+        self.n_games_per_type = 3000  # Number of games to generate for ToMnet data
         self.achiever_types = {
             "value": self.n_games_per_type,
             "astar": self.n_games_per_type,
@@ -62,7 +62,7 @@ class Config:
         self.env_variants = {
             "3x3": {"grid_size": 3, "max_steps": 20},
             "5x5": {"grid_size": 5, "max_steps": 25},
-            "9x9": {"grid_size": 9, "max_steps": 30},
+            "9x9": {"grid_size": 9, "max_steps": 50},
             "11x11": {"grid_size": 11, "max_steps": 70},
         }
         

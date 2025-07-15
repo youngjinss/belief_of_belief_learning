@@ -135,7 +135,8 @@ class InteractionAnalyzer:
             'trajectory_lengths': [],
             'parsed_files': 0,
             'failed_files': 0,
-            'need_to_examine_files': []  # Store files that need examination
+            'need_to_examine_files': [],  # Store files that need examination
+            'min_trajectory_files': []  # Store files with minimum trajectory length
         }
         
         print(f"Analyzing {dir_name}...")
@@ -171,6 +172,24 @@ class InteractionAnalyzer:
             # Track trajectory lengths
             if data['trajectory_length'] is not None:
                 results['trajectory_lengths'].append(data['trajectory_length'])
+        
+        # Find files with minimum trajectory length
+        if results['trajectory_lengths']:
+            min_length = min(results['trajectory_lengths'])
+            
+            # Second pass to find all files with minimum length
+            for txt_file in txt_files:
+                data = self.parse_trajectory_file(txt_file)
+                if (data is not None and 
+                    data['trajectory_length'] is not None and 
+                    data['trajectory_length'] == min_length):
+                    results['min_trajectory_files'].append({
+                        'filename': data['filename'],
+                        'trajectory_length': data['trajectory_length'],
+                        'winner': data['winner'],
+                        'last_achiever': data['last_achiever_interaction'],
+                        'last_blocker': data['last_blocker_interaction']
+                    })
         
         return results
     
@@ -257,6 +276,15 @@ class InteractionAnalyzer:
                           f"last achiever: {file_info['last_achiever']}, "
                           f"last blocker: {file_info['last_blocker']})")
             
+            # Print files with minimum trajectory length
+            if results['min_trajectory_files']:
+                min_length = results['min_trajectory_files'][0]['trajectory_length']
+                print(f"\nFiles with minimum trajectory length ({min_length} steps):")
+                for file_info in results['min_trajectory_files']:
+                    print(f"  {file_info['filename']} (winner: {file_info['winner']}, "
+                          f"last achiever: {file_info['last_achiever']}, "
+                          f"last blocker: {file_info['last_blocker']})")
+            
             print()
     
     def save_detailed_report(self, all_results, output_file):
@@ -306,6 +334,15 @@ class InteractionAnalyzer:
                     f.write("\nFiles that need examination:\n")
                     for file_info in results['need_to_examine_files']:
                         f.write(f"  {file_info['filename']} (length: {file_info['trajectory_length']}, "
+                                f"last achiever: {file_info['last_achiever']}, "
+                                f"last blocker: {file_info['last_blocker']})\n")
+                
+                # List files with minimum trajectory length
+                if results['min_trajectory_files']:
+                    min_length = results['min_trajectory_files'][0]['trajectory_length']
+                    f.write(f"\nFiles with minimum trajectory length ({min_length} steps):\n")
+                    for file_info in results['min_trajectory_files']:
+                        f.write(f"  {file_info['filename']} (winner: {file_info['winner']}, "
                                 f"last achiever: {file_info['last_achiever']}, "
                                 f"last blocker: {file_info['last_blocker']})\n")
                 

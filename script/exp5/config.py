@@ -29,7 +29,7 @@ class Config:
         self.gif_output = None  # Filename for saving gif (without .gif extension)
 
         # Data generation settings
-        self.n_games = 100000  # Number of games to generate for ToMnet data
+        self.n_games = 60000  # Number of games to generate for ToMnet data
         self.save_dir = "data"  # Base directory to save generated data
         
         # Debug/test settings
@@ -172,7 +172,7 @@ class Config:
 
         # Training configuration
         self.training_config = {
-            "batch_size": 1024,
+            "batch_size": 750,
             "epochs": 300,
             "lr": 0.0001,
             "weight_decay": 0.001,
@@ -191,8 +191,8 @@ class Config:
         self.model_config = {
             "use_mentalnet": True,  # False: experiment5-style (CharNet→PredNet), True: original 3-stage (CharNet→MentalNet→PredNet)
             "residual_blocks": 5,
-            "n_echar": 256,
-            "n_ement": 256,
+            "n_echar": 128,
+            "n_ement": 128,
             "out_channels": 64,
             "channels_in": 9,  # 8 original channels + 1 heading direction channel
             "current_state_channels": 8,  # For MentalNet: 8 original channels (no heading direction)
@@ -211,7 +211,7 @@ class Config:
         # Data processing configuration
         self.data_config = {
             "max_moves": 50,  # Maximum moves per trajectory (equivalent to experiment5)
-            "time_step": 39,  # Time step for model processing (equivalent to experiment5)
+            "time_step": 30,  # Time step for model processing (equivalent to experiment5)
             "max_n_past": 1,  # Maximum past episodes (matching experiment5)
             "n_past_min": 1,  # Minimum past episodes (matching experiment5)
             "n_past_max": 1,  # Maximum past episodes for sampling (matching experiment5)

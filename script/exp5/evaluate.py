@@ -233,7 +233,7 @@ def evaluate_model_with_n_past(
                 ]  # Target action for each sliced trajectory
 
                 # Model forward pass (model returns 7 outputs)
-                action_logits, _, _, _, _, _, _ = model(
+                action_logits, _, _, _, _, _, _, _ = model(
                     past_episodes, recent_trajectory, current_state
                 )
 
@@ -384,6 +384,7 @@ def evaluate_model(
                 # Model forward pass (model returns 7 outputs)
                 (
                     action_logits,
+                    _,
                     _,
                     _,
                     _,
@@ -882,7 +883,7 @@ def analyze_action_likelihood(
             action_targets = actions[:, 0]  # Target action for each sliced trajectory
 
             # Model forward pass (model returns 7 outputs)
-            action_logits, _, _, _, _, _, _ = model(
+            action_logits, _, _, _, _, _, _, _ = model(
                 past_episodes, recent_trajectory, current_state
             )
             probabilities = F.softmax(action_logits, dim=1)

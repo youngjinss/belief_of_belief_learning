@@ -1053,7 +1053,7 @@ def train_tomnet(
     # Set data_dir based on config if not provided
     if data_dir is None:
         env_name = config.get_env_name()
-        agent_type = f"{config.achiever_type}_{config.blocker_type}"
+        agent_type = config.get_agent_pair_name()
         data_dir = f"./data/{env_name}/{agent_type}/"
 
     # Extract parameters from config

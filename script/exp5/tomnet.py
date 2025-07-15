@@ -571,6 +571,9 @@ class PredNet(nn.Module):
         # Agent prediction head (2 outputs: 0=achiever, 1=blocker)
         self.fc3_agent = nn.Linear(out_channels, 2)
 
+        # Type prediction head (2 outputs: 0=randomly select, 1=rule-based)
+        self.fc3_type = nn.Linear(out_channels, 2)
+
         # Consumption prediction head (8 outputs: 4 keys + 4 doors)
         self.fc3_consumption = nn.Linear(out_channels, 8)
 
@@ -596,7 +599,7 @@ class PredNet(nn.Module):
             current_state: (batch_size, current_state_channels, height, width)
 
         Returns:
-            action_logits, goal_logits, agent_logits, consumption_logits, sr_pred
+            action_logits, goal_logits, agent_logits, type_logits, consumption_logits, sr_pred
         """
         batch_size, _, height, width = current_state.shape
 
@@ -634,7 +637,7 @@ class PredNet(nn.Module):
             mixed_data: (batch_size, current_state_channels + n_echar, height, width)
 
         Returns:
-            action_logits, goal_logits, agent_logits, consumption_logits, sr_pred
+            action_logits, goal_logits, agent_logits, type_logits, consumption_logits, sr_pred
         """
         return self._forward_shared(mixed_data)
 
@@ -666,6 +669,7 @@ class PredNet(nn.Module):
         action_logits = self.fc3_action(x_pooled)
         goal_logits = self.fc3_goal(x_pooled)
         agent_logits = self.fc3_agent(x_pooled)
+        type_logits = self.fc3_type(x_pooled)
         consumption_logits = self.fc3_consumption(x_pooled)
 
         # SR prediction (using spatial features)
@@ -679,7 +683,7 @@ class PredNet(nn.Module):
         sr_pred = F.softmax(sr_pred, dim=2)
         sr_pred = sr_pred.view(batch_size, channels, height, width)
 
-        return action_logits, goal_logits, agent_logits, consumption_logits, sr_pred
+        return action_logits, goal_logits, agent_logits, type_logits, consumption_logits, sr_pred
 
 
 class ToMnet(nn.Module):
@@ -769,7 +773,7 @@ class ToMnet(nn.Module):
             current_state: (batch_size, channels, height, width) - for PredNet
 
         Returns:
-            action_logits, goal_logits, agent_logits, consumption_logits, sr_pred, character_embedding, mental_state
+            action_logits, goal_logits, agent_logits, type_logits, consumption_logits, sr_pred, character_embedding, mental_state
         """
         # 1. Character network - processes past episodes (same for both architectures)
         if self.use_n_past and past_trajectories is not None:
@@ -800,7 +804,7 @@ class ToMnet(nn.Module):
             mental_state = self.mental_net(recent_trajectory, recent_actions)
 
             # PredNet with mental state
-            action_logits, goal_logits, agent_logits, consumption_logits, sr_pred = (
+            action_logits, goal_logits, agent_logits, type_logits, consumption_logits, sr_pred = (
                 self.pred_net(mental_state, character_embedding, current_state_for_pred)
             )
         else:
@@ -817,7 +821,7 @@ class ToMnet(nn.Module):
             mixed_data = torch.cat([current_state_for_pred, e_char_spatial], dim=1)
 
             # PredNet processes mixed data directly
-            action_logits, goal_logits, agent_logits, consumption_logits, sr_pred = (
+            action_logits, goal_logits, agent_logits, type_logits, consumption_logits, sr_pred = (
                 self.pred_net.forward_direct(mixed_data)
             )
 
@@ -830,6 +834,7 @@ class ToMnet(nn.Module):
             action_logits,
             goal_logits,
             agent_logits,
+            type_logits,
             consumption_logits,
             sr_pred,
             character_embedding,
@@ -839,7 +844,7 @@ class ToMnet(nn.Module):
     def predict_action(self, past_trajectories, recent_trajectory, current_state):
         """Predict next action"""
         with torch.no_grad():
-            action_logits, _, _, _, _, _, _ = self.forward(
+            action_logits, _, _, _, _, _, _, _ = self.forward(
                 past_trajectories, recent_trajectory, current_state
             )
             return F.softmax(action_logits, dim=1)
@@ -847,7 +852,7 @@ class ToMnet(nn.Module):
     def predict_goal(self, past_trajectories, recent_trajectory, current_state):
         """Predict goal"""
         with torch.no_grad():
-            _, goal_logits, _, _, _, _, _ = self.forward(
+            _, goal_logits, _, _, _, _, _, _ = self.forward(
                 past_trajectories, recent_trajectory, current_state
             )
             return F.softmax(goal_logits, dim=1)
@@ -882,6 +887,7 @@ class ToMnetLoss(nn.Module):
         action_weight=1.0,
         goal_weight=1.0,
         agent_weight=1.0,
+        type_weight=1.0,
         consumption_weight=1.0,
         sr_weight=1.0,
     ):
@@ -889,11 +895,13 @@ class ToMnetLoss(nn.Module):
         self.action_weight = action_weight
         self.goal_weight = goal_weight
         self.agent_weight = agent_weight
+        self.type_weight = type_weight
         self.consumption_weight = consumption_weight
         self.sr_weight = sr_weight
         self.action_loss = nn.CrossEntropyLoss()
         self.goal_loss = nn.CrossEntropyLoss()
         self.agent_loss = nn.CrossEntropyLoss()
+        self.type_loss = nn.CrossEntropyLoss()
         self.consumption_loss = nn.BCEWithLogitsLoss()
 
     def forward(
@@ -901,11 +909,13 @@ class ToMnetLoss(nn.Module):
         action_logits,
         goal_logits,
         agent_logits,
+        type_logits,
         consumption_logits,
         sr_pred,
         action_targets,
         goal_targets,
         agent_targets,
+        type_targets,
         consumption_targets,
         sr_targets,
     ):
@@ -913,6 +923,7 @@ class ToMnetLoss(nn.Module):
         action_loss = self.action_loss(action_logits, action_targets)
         goal_loss = self.goal_loss(goal_logits, goal_targets)
         agent_loss = self.agent_loss(agent_logits, agent_targets)
+        type_loss = self.type_loss(type_logits, type_targets)
         consumption_loss = self.consumption_loss(
             consumption_logits, consumption_targets
         )
@@ -926,11 +937,12 @@ class ToMnetLoss(nn.Module):
             self.action_weight * action_loss
             + self.goal_weight * goal_loss
             + self.agent_weight * agent_loss
+            + self.type_weight * type_loss
             + self.consumption_weight * consumption_loss
             + self.sr_weight * sr_loss
         )
 
-        return total_loss, action_loss, goal_loss, agent_loss, consumption_loss, sr_loss
+        return total_loss, action_loss, goal_loss, agent_loss, type_loss, consumption_loss, sr_loss
 
 
 # Utility functions

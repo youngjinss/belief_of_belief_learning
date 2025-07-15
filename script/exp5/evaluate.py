@@ -166,13 +166,14 @@ def evaluate_model_with_n_past(
 
         with torch.no_grad():
             for _, batch in enumerate(test_loader):
-                # Unpack all data including goal_ranks
+                # Unpack all data including goal_ranks and types
                 (
                     trajectories,
                     actions,
                     goals,
                     goal_ranks,
                     agents,
+                    types,
                     consumption_labels,
                     sr_labels,
                 ) = batch
@@ -194,7 +195,7 @@ def evaluate_model_with_n_past(
                     n_past,
                     n_past_max,
                     rank_threshold=(
-                        data_config.get("rank_threshold", 1) if data_config else 1
+                        data_config.get("rank_threshold", 4) if data_config else 4
                     ),
                 )
 
@@ -307,15 +308,16 @@ def evaluate_model(
         with torch.no_grad():
             for _, batch in enumerate(test_loader):
                 
-                # Unpack all data including goal_ranks
+                # Unpack all data including goal_ranks and types
                 (
                     trajectories,
                     actions,
                     goals,
                     goal_ranks,
                     agents,
-                    _,
-                    _,
+                    types,
+                    consumption_labels,
+                    sr_labels,
                 ) = batch
                 
                 batch_size = trajectories.size(0)
@@ -337,7 +339,7 @@ def evaluate_model(
                     n_past_max=data_config.get("n_past_max", 1) if data_config else 1,
                     max_n_past=data_config.get("max_n_past", 1) if data_config else 1,
                     rank_threshold=(
-                        data_config.get("rank_threshold", 1) if data_config else 1
+                        data_config.get("rank_threshold", 4) if data_config else 4
                     ),
                 )
 
@@ -581,6 +583,7 @@ def evaluate_achieverblocker_model(
         test_data["goals"],
         test_data["goal_ranks"],
         test_data["agents"],
+        test_data["types"],
         test_data["consumption_labels"],
         test_data["sr_labels"],
     )
@@ -796,6 +799,8 @@ def analyze_action_likelihood(
             test_data["actions"],
             test_data["goals"],
             test_data["goal_ranks"],
+            test_data["agents"],
+            test_data["types"],
             test_data["consumption_labels"],
             test_data["sr_labels"],
         )
@@ -816,13 +821,14 @@ def analyze_action_likelihood(
             if sample_count >= n_samples:
                 break
 
-            # Unpack all data including goal_ranks
+            # Unpack all data including goal_ranks and types
             (
                 trajectories,
                 actions,
                 goals,
                 goal_ranks,
                 agents,
+                types,
                 consumption_labels,
                 sr_labels,
             ) = batch
@@ -843,7 +849,7 @@ def analyze_action_likelihood(
                 n_past_min=data_config.get("n_past_min", 1),
                 n_past_max=data_config.get("n_past_max", 1),
                 max_n_past=data_config.get("max_n_past", 1),
-                rank_threshold=data_config.get("rank_threshold", 1),
+                rank_threshold=data_config.get("rank_threshold", 4),
             )
 
             # Use dynamic trajectory slicing (same as training)

@@ -294,6 +294,7 @@ def prepare_data_for_training(
     goals = []
     goal_ranks = []
     agents = []
+    types = []
     consumption_labels = []
     sr_labels = []
 
@@ -304,6 +305,7 @@ def prepare_data_for_training(
         trajectory = sample["trajectory"]  # [seq_len, channels, height, width]
         goal_tensor = sample["goal"]  # [4] one-hot encoded
         agent_type = sample["agent"]  # 'achiever' or 'blocker'
+        type_label = sample["type"]  # 0 for randomly select / achiever, 1 for rule-based blocker
         consumption = sample["consumption_labels"]  # [8] consumption labels
         sr_data_per_timestep = sample.get("sr_data_per_timestep", {})
 
@@ -371,6 +373,7 @@ def prepare_data_for_training(
             goals.append(goal_tensor)
             goal_ranks.append(goal_rank)
             agents.append(agent_label)
+            types.append(type_label)
             consumption_labels.append(consumption)
             sr_labels.append(sr_dense)
 
@@ -380,6 +383,7 @@ def prepare_data_for_training(
     goals = torch.tensor(np.array(goals), dtype=torch.float32)
     goal_ranks = torch.tensor(np.array(goal_ranks), dtype=torch.long)
     agents = torch.tensor(np.array(agents), dtype=torch.long)
+    types = torch.tensor(np.array(types), dtype=torch.long)
     consumption_labels = torch.tensor(np.array(consumption_labels), dtype=torch.float32)
     sr_labels = torch.tensor(np.array(sr_labels), dtype=torch.float32)
 
@@ -389,6 +393,7 @@ def prepare_data_for_training(
     print(f"  Goals: {goals.shape}")
     print(f"  Goal ranks: {goal_ranks.shape}")
     print(f"  Agents: {agents.shape}")
+    print(f"  Types: {types.shape}")
     print(f"  Consumption labels: {consumption_labels.shape}")
     print(f"  SR labels: {sr_labels.shape}")
 
@@ -398,6 +403,7 @@ def prepare_data_for_training(
         "goals": goals,
         "goal_ranks": goal_ranks,
         "agents": agents,
+        "types": types,
         "consumption_labels": consumption_labels,
         "sr_labels": sr_labels,
     }
@@ -435,11 +441,13 @@ def train_epoch(
     total_action_loss = 0
     total_goal_loss = 0
     total_agent_loss = 0
+    total_type_loss = 0
     total_consumption_loss = 0
     total_sr_loss = 0
     correct_actions = 0
     correct_goals = 0
     correct_agents = 0
+    correct_types = 0
     total_samples = 0
     accumulation_loss = 0
 
@@ -451,6 +459,7 @@ def train_epoch(
             goals,
             goal_ranks,
             agents,
+            types,
             consumption_labels,
             sr_labels,
         ) = batch
@@ -460,6 +469,7 @@ def train_epoch(
         goals = goals.to(device)
         goal_ranks = goal_ranks.to(device)
         agents = agents.to(device)
+        types = types.to(device)
         consumption_labels = consumption_labels.to(device)
         sr_labels = sr_labels.to(device)
 
@@ -520,6 +530,7 @@ def train_epoch(
             goal_targets = goals
 
         agent_targets = agents
+        type_targets = types
         consumption_targets = consumption_labels
 
         # Zero gradients only at start of accumulation
@@ -529,29 +540,32 @@ def train_epoch(
         # Forward pass with AMP if enabled
         if scaler is not None:
             with autocast():
-                action_logits, goal_logits, agent_logits, consumption_logits, sr_pred, _, _ = (
+                action_logits, goal_logits, agent_logits, type_logits, consumption_logits, sr_pred, _, _ = (
                     model(past_episodes, recent_trajectory, current_state)
                 )
                 
                 sr_targets = sr_labels
                 
-                # Compute loss with all components including agent prediction
+                # Compute loss with all components including agent and type prediction
                 (
                     total_loss_batch,
                     action_loss_batch,
                     goal_loss_batch,
                     agent_loss_batch,
+                    type_loss_batch,
                     consumption_loss_batch,
                     sr_loss_batch,
                 ) = loss_fn(
                     action_logits,
                     goal_logits,
                     agent_logits,
+                    type_logits,
                     consumption_logits,
                     sr_pred,
                     action_targets,
                     goal_targets,
                     agent_targets,
+                    type_targets,
                     consumption_targets,
                     sr_targets,
                 )
@@ -563,29 +577,32 @@ def train_epoch(
             scaler.scale(total_loss_batch).backward()
         else:
             # Regular forward pass
-            action_logits, goal_logits, agent_logits, consumption_logits, sr_pred, _, _ = (
+            action_logits, goal_logits, agent_logits, type_logits, consumption_logits, sr_pred, _, _ = (
                 model(past_episodes, recent_trajectory, current_state)
             )
             
             sr_targets = sr_labels
             
-            # Compute loss with all components including agent prediction
+            # Compute loss with all components including agent and type prediction
             (
                 total_loss_batch,
                 action_loss_batch,
                 goal_loss_batch,
                 agent_loss_batch,
+                type_loss_batch,
                 consumption_loss_batch,
                 sr_loss_batch,
             ) = loss_fn(
                 action_logits,
                 goal_logits,
                 agent_logits,
+                type_logits,
                 consumption_logits,
                 sr_pred,
                 action_targets,
                 goal_targets,
                 agent_targets,
+                type_targets,
                 consumption_targets,
                 sr_targets,
             )
@@ -624,6 +641,7 @@ def train_epoch(
         total_action_loss += action_loss_batch.item()
         total_goal_loss += goal_loss_batch.item()
         total_agent_loss += agent_loss_batch.item()  # Track agent loss
+        total_type_loss += type_loss_batch.item()  # Track type loss
         total_consumption_loss += consumption_loss_batch.item()
         total_sr_loss += sr_loss_batch.item()
 
@@ -631,12 +649,16 @@ def train_epoch(
         _, predicted_actions = torch.max(action_logits, 1)
         _, predicted_goals = torch.max(goal_logits, 1)
         _, predicted_agents = torch.max(agent_logits, 1)
+        _, predicted_types = torch.max(type_logits, 1)
 
         correct_actions += (predicted_actions == action_targets).sum().item()
         correct_goals += (predicted_goals == goal_targets).sum().item()
         correct_agents += (
             (predicted_agents == agent_targets).sum().item()
         )  # Track agent accuracy
+        correct_types += (
+            (predicted_types == type_targets).sum().item()
+        )  # Track type accuracy
         total_samples += batch_size
         
         # Memory cleanup for large batches
@@ -649,6 +671,7 @@ def train_epoch(
     avg_action_loss = total_action_loss / num_batches if num_batches > 0 else 0
     avg_goal_loss = total_goal_loss / num_batches if num_batches > 0 else 0
     avg_agent_loss = total_agent_loss / num_batches if num_batches > 0 else 0
+    avg_type_loss = total_type_loss / num_batches if num_batches > 0 else 0
     avg_consumption_loss = (
         total_consumption_loss / num_batches if num_batches > 0 else 0
     )
@@ -656,17 +679,20 @@ def train_epoch(
     action_accuracy = correct_actions / total_samples
     goal_accuracy = correct_goals / total_samples
     agent_accuracy = correct_agents / total_samples
+    type_accuracy = correct_types / total_samples
 
     return {
         "loss": avg_loss,
         "action_loss": avg_action_loss,
         "goal_loss": avg_goal_loss,
         "agent_loss": avg_agent_loss,
+        "type_loss": avg_type_loss,
         "consumption_loss": avg_consumption_loss,
         "sr_loss": avg_sr_loss,
         "action_accuracy": action_accuracy,
         "goal_accuracy": goal_accuracy,
         "agent_accuracy": agent_accuracy,
+        "type_accuracy": type_accuracy,
     }
 
 
@@ -698,11 +724,13 @@ def validate_epoch(
     total_action_loss = 0
     total_goal_loss = 0
     total_agent_loss = 0
+    total_type_loss = 0
     total_consumption_loss = 0
     total_sr_loss = 0
     correct_actions = 0
     correct_goals = 0
     correct_agents = 0
+    correct_types = 0
     total_samples = 0
 
     with torch.no_grad():
@@ -714,6 +742,7 @@ def validate_epoch(
                 goals,
                 goal_ranks,
                 agents,
+                types,
                 consumption_labels,
                 sr_labels,
             ) = batch
@@ -723,6 +752,7 @@ def validate_epoch(
             goals = goals.to(device)
             goal_ranks = goal_ranks.to(device)
             agents = agents.to(device)
+            types = types.to(device)
             consumption_labels = consumption_labels.to(device)
             sr_labels = sr_labels.to(device)
 
@@ -802,6 +832,7 @@ def validate_epoch(
                 goal_targets = goals
 
             agent_targets = agents
+            type_targets = types
             consumption_targets = consumption_labels
             sr_targets = sr_labels
 
@@ -812,6 +843,7 @@ def validate_epoch(
                         action_logits,
                         goal_logits,
                         agent_logits,
+                        type_logits,
                         consumption_logits,
                         sr_pred,
                         _,
@@ -823,29 +855,33 @@ def validate_epoch(
                     action_logits,
                     goal_logits,
                     agent_logits,
+                    type_logits,
                     consumption_logits,
                     sr_pred,
                     _,
                     _,
                 ) = model(past_episodes, recent_trajectory, current_state)
 
-            # Compute loss with all components including agent prediction
+            # Compute loss with all components including agent and type prediction
             (
                 total_loss_batch,
                 action_loss_batch,
                 goal_loss_batch,
                 agent_loss_batch,
+                type_loss_batch,
                 consumption_loss_batch,
                 sr_loss_batch,
             ) = loss_fn(
                 action_logits,
                 goal_logits,
                 agent_logits,
+                type_logits,
                 consumption_logits,
                 sr_pred,
                 action_targets,
                 goal_targets,
                 agent_targets,
+                type_targets,
                 consumption_targets,
                 sr_targets,
             )
@@ -855,6 +891,7 @@ def validate_epoch(
             total_action_loss += action_loss_batch.item()
             total_goal_loss += goal_loss_batch.item()
             total_agent_loss += agent_loss_batch.item()
+            total_type_loss += type_loss_batch.item()
             total_consumption_loss += consumption_loss_batch.item()
             total_sr_loss += sr_loss_batch.item()
 
@@ -862,10 +899,12 @@ def validate_epoch(
             _, predicted_actions = torch.max(action_logits, 1)
             _, predicted_goals = torch.max(goal_logits, 1)
             _, predicted_agents = torch.max(agent_logits, 1)
+            _, predicted_types = torch.max(type_logits, 1)
 
             correct_actions += (predicted_actions == action_targets).sum().item()
             correct_goals += (predicted_goals == goal_targets).sum().item()
             correct_agents += (predicted_agents == agent_targets).sum().item()
+            correct_types += (predicted_types == type_targets).sum().item()
             total_samples += batch_size
 
     num_batches = len(val_loader)
@@ -873,6 +912,7 @@ def validate_epoch(
     avg_action_loss = total_action_loss / num_batches if num_batches > 0 else 0
     avg_goal_loss = total_goal_loss / num_batches if num_batches > 0 else 0
     avg_agent_loss = total_agent_loss / num_batches if num_batches > 0 else 0
+    avg_type_loss = total_type_loss / num_batches if num_batches > 0 else 0
     avg_consumption_loss = (
         total_consumption_loss / num_batches if num_batches > 0 else 0
     )
@@ -880,17 +920,20 @@ def validate_epoch(
     action_accuracy = correct_actions / total_samples
     goal_accuracy = correct_goals / total_samples
     agent_accuracy = correct_agents / total_samples
+    type_accuracy = correct_types / total_samples
 
     return {
         "loss": avg_loss,
         "action_loss": avg_action_loss,
         "goal_loss": avg_goal_loss,
         "agent_loss": avg_agent_loss,
+        "type_loss": avg_type_loss,
         "consumption_loss": avg_consumption_loss,
         "sr_loss": avg_sr_loss,
         "action_accuracy": action_accuracy,
         "goal_accuracy": goal_accuracy,
         "agent_accuracy": agent_accuracy,
+        "type_accuracy": type_accuracy,
     }
 
 
@@ -1160,6 +1203,7 @@ def train_tomnet(
     print(f"Goals: {data['goals'].shape}")
     print(f"Goal ranks: {data['goal_ranks'].shape}")
     print(f"Agents: {data['agents'].shape}")
+    print(f"Types: {data['types'].shape}")
     print(f"Consumption labels: {data['consumption_labels'].shape}")
     print(f"SR labels: {data['sr_labels'].shape}")
 
@@ -1170,6 +1214,7 @@ def train_tomnet(
         data["goals"],
         data["goal_ranks"],
         data["agents"],
+        data["types"],
         data["consumption_labels"],
         data["sr_labels"],
     )
@@ -1263,6 +1308,7 @@ def train_tomnet(
         action_weight=training_process_config["action_weight"],
         goal_weight=training_process_config["goal_weight"],
         agent_weight=training_process_config.get("agent_weight", 1.0),
+        type_weight=training_process_config.get("type_weight", 1.0),
         consumption_weight=training_process_config.get("consumption_weight", 1.0),
         sr_weight=training_process_config.get("sr_weight", 1.0),
     )
@@ -1286,20 +1332,24 @@ def train_tomnet(
         "train_action_loss": [],
         "train_goal_loss": [],
         "train_agent_loss": [],
+        "train_type_loss": [],
         "train_consumption_loss": [],
         "train_sr_loss": [],
         "train_action_accuracy": [],
         "train_goal_accuracy": [],
         "train_agent_accuracy": [],
+        "train_type_accuracy": [],
         "val_loss": [],
         "val_action_loss": [],
         "val_goal_loss": [],
         "val_agent_loss": [],
+        "val_type_loss": [],
         "val_consumption_loss": [],
         "val_sr_loss": [],
         "val_action_accuracy": [],
         "val_goal_accuracy": [],
         "val_agent_accuracy": [],
+        "val_type_accuracy": [],
         "epoch_time": [],
     }
 
@@ -1341,20 +1391,24 @@ def train_tomnet(
         history["train_action_loss"].append(train_metrics["action_loss"])
         history["train_goal_loss"].append(train_metrics["goal_loss"])
         history["train_agent_loss"].append(train_metrics["agent_loss"])
+        history["train_type_loss"].append(train_metrics["type_loss"])
         history["train_consumption_loss"].append(train_metrics["consumption_loss"])
         history["train_sr_loss"].append(train_metrics["sr_loss"])
         history["train_action_accuracy"].append(train_metrics["action_accuracy"])
         history["train_goal_accuracy"].append(train_metrics["goal_accuracy"])
         history["train_agent_accuracy"].append(train_metrics["agent_accuracy"])
+        history["train_type_accuracy"].append(train_metrics["type_accuracy"])
         history["val_loss"].append(val_metrics["loss"])
         history["val_action_loss"].append(val_metrics["action_loss"])
         history["val_goal_loss"].append(val_metrics["goal_loss"])
         history["val_agent_loss"].append(val_metrics["agent_loss"])
+        history["val_type_loss"].append(val_metrics["type_loss"])
         history["val_consumption_loss"].append(val_metrics["consumption_loss"])
         history["val_sr_loss"].append(val_metrics["sr_loss"])
         history["val_action_accuracy"].append(val_metrics["action_accuracy"])
         history["val_goal_accuracy"].append(val_metrics["goal_accuracy"])
         history["val_agent_accuracy"].append(val_metrics["agent_accuracy"])
+        history["val_type_accuracy"].append(val_metrics["type_accuracy"])
         history["epoch_time"].append(epoch_time)
 
         # Print metrics
@@ -1365,12 +1419,16 @@ def train_tomnet(
         val_goal_acc = val_metrics["goal_accuracy"] * 100
         train_agent_acc = train_metrics["agent_accuracy"] * 100
         val_agent_acc = val_metrics["agent_accuracy"] * 100
+        train_type_acc = train_metrics["type_accuracy"] * 100
+        val_type_acc = val_metrics["type_accuracy"] * 100
         train_action_loss = train_metrics["action_loss"]
         train_agent_loss = train_metrics["agent_loss"]
+        train_type_loss = train_metrics["type_loss"]
         train_consumption_loss = train_metrics["consumption_loss"]
         train_sr_loss = train_metrics["sr_loss"]
         val_action_loss = val_metrics["action_loss"]
         val_agent_loss = val_metrics["agent_loss"]
+        val_type_loss = val_metrics["type_loss"]
         val_consumption_loss = val_metrics["consumption_loss"]
         val_sr_loss = val_metrics["sr_loss"]
 
@@ -1382,10 +1440,13 @@ def train_tomnet(
             f"  Agent Acc - Train: {train_agent_acc:.4f}% | Val: {val_agent_acc:.4f}%"
         )
         print(
-            f"  Train - Action: {train_action_loss:.4f} | Agent: {train_agent_loss:.4f} | Consumption: {train_consumption_loss:.4f} | SR: {train_sr_loss:.4f}"
+            f"  Type Acc - Train: {train_type_acc:.4f}% | Val: {val_type_acc:.4f}%"
         )
         print(
-            f"  Val   - Action: {val_action_loss:.4f} | Agent: {val_agent_loss:.4f} | Consumption: {val_consumption_loss:.4f} | SR: {val_sr_loss:.4f}"
+            f"  Train - Action: {train_action_loss:.4f} | Agent: {train_agent_loss:.4f} | Type: {train_type_loss:.4f} | Consumption: {train_consumption_loss:.4f} | SR: {train_sr_loss:.4f}"
+        )
+        print(
+            f"  Val   - Action: {val_action_loss:.4f} | Agent: {val_agent_loss:.4f} | Type: {val_type_loss:.4f} | Consumption: {val_consumption_loss:.4f} | SR: {val_sr_loss:.4f}"
         )
         print("-" * 80)
 

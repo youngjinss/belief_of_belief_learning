@@ -799,7 +799,7 @@ def plot_character_embeddings(
         f"Loaded processed data with {processed_data['trajectories'].shape[0]} samples"
     )
 
-    # Extract agent labels and goal labels from processed tensors
+    # Extract agent labels, goal labels, and types from processed tensors
     # agents tensor: 0=achiever, 1=blocker
     agent_indices = processed_data["agents"].numpy()
     agent_labels = np.array(
@@ -809,6 +809,10 @@ def plot_character_embeddings(
     # goals tensor: one-hot encoded [A, B, C, D]
     goals_tensor = processed_data["goals"].numpy()
     goal_labels = np.argmax(goals_tensor, axis=1)  # Convert one-hot to indices
+    
+    # types tensor: 0 for achievers (always), 0 or 1 for blockers (0=randomly select, 1=rule-based)
+    types_tensor = processed_data["types"].numpy()
+    type_labels = types_tensor.astype(int)
 
     print(f"Agent distribution: {np.unique(agent_labels, return_counts=True)}")
     print(f"Goal distribution: {np.unique(goal_labels, return_counts=True)}")
@@ -822,6 +826,7 @@ def plot_character_embeddings(
     goals_tensor = processed_data["goals"]
     goal_ranks_tensor = processed_data["goal_ranks"]
     agents_tensor = processed_data["agents"]
+    types_tensor_full = processed_data["types"]
 
     if n_samples is not None:
         # Limit samples if specified
@@ -832,8 +837,10 @@ def plot_character_embeddings(
         goals_tensor = goals_tensor[indices]
         goal_ranks_tensor = goal_ranks_tensor[indices]
         agents_tensor = agents_tensor[indices]
+        types_tensor_full = types_tensor_full[indices]
         agent_labels = agent_labels[indices]
         goal_labels = goal_labels[indices]
+        type_labels = type_labels[indices]
 
     print(f"Extracting character embeddings for {len(agent_labels)} samples...")
 
@@ -864,7 +871,7 @@ def plot_character_embeddings(
                     n_past_min=n_past_config["n_past_min"],
                     n_past_max=n_past_config["n_past_max"],
                     max_n_past=n_past_config["n_past_max"],
-                    rank_threshold=1,
+                    rank_threshold=config.get_data_config().get("rank_threshold", 4),
                 )
 
                 # Extract character embeddings for the entire batch
@@ -898,6 +905,9 @@ def plot_character_embeddings(
     )
     _plot_separate_agent_goal_embeddings(
         embeddings, agent_labels, goal_labels, config, output_dir, experiment_no
+    )
+    _plot_type_based_embeddings_for_blockers(
+        embeddings, agent_labels, goal_labels, type_labels, config, output_dir, experiment_no
     )
 
 
@@ -1202,6 +1212,118 @@ def _plot_separate_agent_goal_embeddings(
     print(f"All embedding plots saved to {output_dir}")
 
 
+def _plot_type_based_embeddings_for_blockers(
+    embeddings, agent_labels, goal_labels, type_labels, config, output_dir, experiment_no
+):
+    """Plot embeddings colored by Type, constrained to Blocker agents only"""
+    vis_config = config.get_visualization_config()
+    embedding_plots = vis_config["embedding_plots"]
+
+    print("\nCreating Type-based embedding plots for Blocker agents...")
+
+    # Filter for blocker agents only
+    blocker_mask = agent_labels == "blocker"
+    blocker_embeddings = embeddings[blocker_mask]
+    blocker_types = type_labels[blocker_mask]
+    
+    if len(blocker_embeddings) == 0:
+        print("No blocker samples found for Type visualization")
+        return
+
+    print(f"Found {len(blocker_embeddings)} blocker samples for Type visualization")
+    print(f"Type distribution: {np.unique(blocker_types, return_counts=True)}")
+
+    # Create figure with PCA and t-SNE subplots
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=embedding_plots["pca_figsize"])
+    fig.suptitle(
+        f"Character Embeddings by Blocker Type (Experiment {experiment_no})", fontsize=16
+    )
+
+    # Type colors and names
+    type_colors = ["lightcoral", "darkgreen"]  # 0=randomly select, 1=rule-based
+    type_names = ["Randomly Select", "Rule-based"]
+
+    # PCA visualization
+    if blocker_embeddings.shape[1] > 2:
+        print("Computing PCA for blocker types...")
+        pca = PCA(n_components=2)
+        embeddings_pca = pca.fit_transform(blocker_embeddings)
+
+        unique_types = np.unique(blocker_types)
+        for i, blocker_type in enumerate(unique_types):
+            mask = blocker_types == blocker_type
+            type_count = np.sum(mask)
+            if type_count > 0:
+                color = type_colors[i] if i < len(type_colors) else f"C{i}"
+                name = type_names[i] if i < len(type_names) else f"Type {blocker_type}"
+                ax1.scatter(
+                    embeddings_pca[mask, 0],
+                    embeddings_pca[mask, 1],
+                    c=color,
+                    label=f"{name} (n={type_count})",
+                    alpha=embedding_plots["alpha"],
+                    s=embedding_plots["marker_size"],
+                )
+
+        ax1.set_title(f"PCA by Blocker Type")
+        ax1.set_xlabel(f"PC1 ({pca.explained_variance_ratio_[0]:.2%} variance)")
+        ax1.set_ylabel(f"PC2 ({pca.explained_variance_ratio_[1]:.2%} variance)")
+        ax1.legend()
+        ax1.grid(True, alpha=0.3)
+
+    # t-SNE visualization
+    if len(blocker_embeddings) > 30:  # Minimum samples for t-SNE
+        print("Computing t-SNE for blocker types...")
+        tsne = TSNE(n_components=2, random_state=42, perplexity=min(30, len(blocker_embeddings)//4))
+        embeddings_tsne = tsne.fit_transform(blocker_embeddings)
+
+        unique_types = np.unique(blocker_types)
+        for i, blocker_type in enumerate(unique_types):
+            mask = blocker_types == blocker_type
+            type_count = np.sum(mask)
+            if type_count > 0:
+                color = type_colors[i] if i < len(type_colors) else f"C{i}"
+                name = type_names[i] if i < len(type_names) else f"Type {blocker_type}"
+                ax2.scatter(
+                    embeddings_tsne[mask, 0],
+                    embeddings_tsne[mask, 1],
+                    c=color,
+                    label=f"{name} (n={type_count})",
+                    alpha=embedding_plots["alpha"],
+                    s=embedding_plots["marker_size"],
+                )
+
+        ax2.set_title("t-SNE by Blocker Type")
+        ax2.set_xlabel("t-SNE 1")
+        ax2.set_ylabel("t-SNE 2")
+        ax2.legend()
+        ax2.grid(True, alpha=0.3)
+    else:
+        ax2.text(
+            0.5,
+            0.5,
+            f"Insufficient samples\nfor t-SNE ({len(blocker_embeddings)})",
+            ha="center",
+            va="center",
+            transform=ax2.transAxes,
+        )
+        ax2.set_title("t-SNE by Blocker Type")
+
+    plt.tight_layout()
+
+    # Save plot
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+        plt.savefig(
+            os.path.join(output_dir, f"character_embeddings_blocker_type_exp{experiment_no}.png"),
+            dpi=300,
+            bbox_inches="tight",
+        )
+        print(f"Blocker Type embedding plot saved to {output_dir}")
+
+    plt.close()
+
+
 # Keep the rest of the old function for backward compatibility if needed
 def plot_character_embeddings_old(
     model,
@@ -1248,33 +1370,37 @@ def plot_character_embeddings_old(
                 print(f"Reached target sample count of {n_samples}, stopping...")
                 break
 
-            # Handle KeyDoor exp5 batch format (7 elements) - use native exp5 logic
-            if len(batch) >= 7:
+            # Handle exp5 batch format (8 elements) - use native exp5 logic
+            if len(batch) >= 8:
                 (
                     trajectories,
                     actions,
                     goals,
                     goal_ranks,
+                    agents,
+                    types,
                     consumption_labels,
                     sr_labels,
                 ) = batch
                 trajectories = trajectories.to(device)
                 goals = goals.to(device)
                 goal_ranks = goal_ranks.to(device)
+                agents = agents.to(device)
 
                 batch_size = trajectories.size(0)
 
-                # Use KeyDoor exp5 native logic with goal_ranks (don't force exp5 compatibility)
+                # Use exp5 native logic with goal_ranks (don't force exp5 compatibility)
                 n_past_config = config.get_n_past_evaluation_config()
 
                 past_episodes = generate_past_episodes_from_batch(
                     trajectories=trajectories,
-                    goals=goal_ranks,  # Use goal_ranks as intended in exp5
+                    goal_ranks=goal_ranks,  # Use goal_ranks as intended in exp5
+                    agents=agents,
                     batch_size=batch_size,
                     n_past_min=n_past_config["n_past_min"],
                     n_past_max=n_past_config["n_past_max"],
                     max_n_past=n_past_config["n_past_max"],
-                    rank_threshold=1,  # KeyDoor exp5 parameter
+                    rank_threshold=config.get_data_config().get("rank_threshold", 4),  # exp5 parameter
                 )
 
                 # Use KeyDoor exp5 native character embedding method

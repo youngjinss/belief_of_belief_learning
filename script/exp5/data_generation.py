@@ -232,7 +232,10 @@ class DataGenerator:
                 continue
 
             # Parse blocker data
-            if line.startswith("Infer Goal:"):
+            if line.startswith("Type:"):
+                blocker_data["type"] = int(line.split(":")[1].strip())
+                continue
+            elif line.startswith("Infer Goal:"):
                 blocker_data["inferred_goal"] = line.split(":")[1].strip()
                 continue
             elif line.startswith("Interaction:"):
@@ -306,6 +309,7 @@ class DataGenerator:
             "intended_goal": intended_goal,
             "consumed_goal": consumed_goal,
             "agent": "achiever",
+            "type": 0,  # Achiever type is always 0
             "sr_data_per_timestep": sr_data_per_timestep,
             "filename": parsed_data["filename"],
         }
@@ -316,6 +320,9 @@ class DataGenerator:
         # Get blocker's inferred goal
         inferred_goal_color = parsed_data["blocker_data"]["inferred_goal"]
         inferred_goal_letter = self.COLOR_TO_LETTER.get(inferred_goal_color, "A")
+
+        # Get blocker type (0 - randomly select, 1 - rule-based)
+        blocker_type = parsed_data["blocker_data"].get("type", 0)
 
         # Get interaction result
         interaction_result = parsed_data["blocker_data"]["interaction"]
@@ -368,6 +375,7 @@ class DataGenerator:
             "intended_goal": inferred_goal_letter,
             "consumed_goal": consumed_goal,
             "agent": "blocker",
+            "type": blocker_type,
             "sr_data_per_timestep": sr_data_per_timestep,
             "filename": parsed_data["filename"],
         }

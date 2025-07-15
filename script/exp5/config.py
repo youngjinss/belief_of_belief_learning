@@ -14,13 +14,13 @@ class Config:
         self.seed = 42
 
         # Agent settings
-        self.n_games_per_type = 100  # Number of games to generate for ToMnet data
+        self.n_games_per_type = 1000  # Number of games to generate for ToMnet data
         self.achiever_types = {
             "value": self.n_games_per_type,
             "astar": self.n_games_per_type,
         }  # Options: "astar", "random", "value"
         self.blocker_types = {
-            "random": self.n_games_per_type,
+            "randomly_selected": self.n_games_per_type,
             "rule_based": self.n_games_per_type,
         }  # Options: "random", "goal_direct", "randomly_selected", "rule_based"
         self.observability = "full"  # Options: "full", "partial"

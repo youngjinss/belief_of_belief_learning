@@ -53,8 +53,8 @@ class Config:
 
         # Environment variants
         self.env_variants = {
-            "3x3": {"grid_size": 3, "max_steps": 30},
-            "5x5": {"grid_size": 5, "max_steps": 30},
+            "3x3": {"grid_size": 3, "max_steps": 20},
+            "5x5": {"grid_size": 5, "max_steps": 25},
             "9x9": {"grid_size": 9, "max_steps": 30},
             "11x11": {"grid_size": 11, "max_steps": 70},
         }
@@ -211,7 +211,7 @@ class Config:
         # Data processing configuration
         self.data_config = {
             "max_moves": 50,  # Maximum moves per trajectory (equivalent to experiment5)
-            "time_step": 10,  # Time step for model processing (equivalent to experiment5)
+            "time_step": 39,  # Time step for model processing (equivalent to experiment5)
             "max_n_past": 1,  # Maximum past episodes (matching experiment5)
             "n_past_min": 1,  # Minimum past episodes (matching experiment5)
             "n_past_max": 1,  # Maximum past episodes for sampling (matching experiment5)

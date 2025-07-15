@@ -18,6 +18,7 @@ from lib.utils.seed import set_seed
 # Add current directory for config import
 sys.path.append(os.path.dirname(__file__))
 from config import Config
+from value_agent import BaseValueAgent
 
 # Set seed using Config default value
 config = Config()
@@ -389,7 +390,7 @@ class AStarAgent:
         self.strategy_phase = "collect_key"
 
 
-class Level0ValueAchiever:
+class Level0ValueAchiever(BaseValueAgent):
     """
     Level-0 Value-based Achiever Agent with stochastic action selection using value iteration
     Updated for KeyDoor environment with automatic key pickup and door opening
@@ -411,65 +412,50 @@ class Level0ValueAchiever:
         conflict_penalty=2.0,
         gamma=0.99,
         temperature=0.1,
+        q_value_clip=100,
     ):
-        self.observability = observability
-        self.agent_pos = None
-        self.grid = None
+        # Initialize base class
+        super().__init__(
+            observability=observability,
+            movement_cost=movement_cost,
+            wall_penalty=wall_penalty,
+            conflict_penalty=conflict_penalty,
+            gamma=gamma,
+            temperature=temperature,
+            q_value_clip=q_value_clip
+        )
+        
+        # Achiever-specific attributes
         self.current_target = None
         self.path = []
         self.target_door_color = None
-
-        # Grid dimensions - will be set from observations
-        self.width = None
-        self.height = None
-
-        # Track agent's collected keys
         self.collected_keys = set()
-
-        # Strategy: first collect target key, then go to target door
         self.strategy_phase = "collect_key"  # "collect_key" or "open_door"
 
-        # Value iteration parameters
-        self.movement_cost = movement_cost
-        self.wall_penalty = wall_penalty
-        self.conflict_penalty = conflict_penalty
-        self.gamma = gamma
-        self.temperature = temperature
-
-        # Value function and policy
-        self.value_function = None
-        self.policy = None
-        self.converged = False
-
-        # MiniGrid action mapping: 0=up, 1=right, 2=down, 3=left, 4=stay, 5=pickup, 6=toggle
-        # Value iteration uses 4 movement actions: 0=up, 1=right, 2=down, 3=left
-        # Grid coordinate system: (x, y) where x=column, y=row, positive y is down
-        self.actions = [
-            (0, -1),
-            (1, 0),
-            (0, 1),
-            (-1, 0),
-        ]  # dx, dy for up, right, down, left
+    def _update_agent_position(self, obs):
+        """Update achiever position from observations"""
+        new_pos = tuple(obs["achiever_pos"])
+        if new_pos != self.agent_pos:
+            self.agent_pos = new_pos
+    
+    def _update_grid_reference(self, obs):
+        """Update grid reference from observations"""
+        self.grid = obs["achiever"]
+    
+    def _get_opponent_position(self, obs):
+        """Get blocker position for conflict penalty"""
+        if obs and "blocker_pos" in obs:
+            return tuple(obs["blocker_pos"])
+        return None
 
     def update_observation(self, obs):
         """Update agent's understanding of the environment"""
         if obs is None:
             return
-
-        # Update grid dimensions from observations
-        if "grid_info" in obs and self.width is None:
-            self.width = obs["grid_info"]["width"]
-            self.height = obs["grid_info"]["height"]
-
-        # Get current achiever position from observations
-        new_pos = tuple(obs["achiever_pos"])
-
-        if new_pos != self.agent_pos:
-            self.agent_pos = new_pos
-
-        # Get the grid from achiever's visual observation
-        self.grid = obs["achiever"]
-
+            
+        # Call base class update
+        super().update_observation(obs)
+        
         # Update collected keys based on achiever's key inventory
         achiever_keys_array = obs["achiever_keys"]
         color_map = ["red", "green", "blue", "yellow"]
@@ -517,7 +503,7 @@ class Level0ValueAchiever:
             return 4  # Stay - key pickup is automatic when agent steps on it
 
         # Use value iteration to navigate to key (key will be picked up automatically)
-        return self._navigate_with_value_iteration(target_key_pos, obs)
+        return super()._navigate_with_value_iteration(target_key_pos, obs)
 
     def _open_target_door(self, target_door_color, obs=None):
         """Strategy to open the target door using value iteration"""
@@ -541,7 +527,7 @@ class Level0ValueAchiever:
                 return 4  # Stay - door opening is automatic
 
         # Navigate to door (door will open automatically when agent steps on it)
-        return self._navigate_with_value_iteration(target_door_pos, obs)
+        return super()._navigate_with_value_iteration(target_door_pos, obs)
 
     def _find_object_position(self, obj_type, color, obs=None):
         """Find position of specific object type and color"""
@@ -558,259 +544,6 @@ class Level0ValueAchiever:
                 return obs["door_positions"].get(color, None)
 
         return None
-
-    def _navigate_with_value_iteration(self, target_pos, obs=None):
-        """Navigate using value iteration and convert to MiniGrid actions"""
-        # Run value iteration to get optimal action
-        optimal_action = self._plan_value_iteration(target_pos, obs)
-
-        if optimal_action is None:
-            return 4  # Stay if no action found
-
-        # Convert value iteration action to MiniGrid action
-        return self._convert_to_minigrid_action(optimal_action)
-
-    def _plan_value_iteration(
-        self, target_pos, obs=None, max_iterations=100, convergence_threshold=0.01
-    ):
-        """
-        Vectorized value iteration to compute optimal action for reaching target
-        """
-        # Get grid size from instance dimensions
-        width = self.width if self.width is not None else 9  # fallback
-        height = self.height if self.height is not None else 9  # fallback
-        n_actions = 4
-
-        # Get blocker position from observations
-        blocker_pos = None
-        if obs is not None and "blocker_pos" in obs:
-            blocker_pos = tuple(obs["blocker_pos"])
-
-        # Initialize value function
-        value_function = np.zeros((width, height))
-
-        # Set high reward for target position
-        value_function[target_pos[0], target_pos[1]] = 10.0
-
-        # Precompute action deltas and grid coordinates
-        actions = [(0, -1), (1, 0), (0, 1), (-1, 0)]  # up, right, down, left
-        x_coords, y_coords = np.meshgrid(
-            np.arange(width), np.arange(height), indexing="ij"
-        )
-        coord_mask = np.ones((width, height), dtype=bool)
-
-        # Mask for target position (keep it unchanged)
-        coord_mask[target_pos[0], target_pos[1]] = False
-
-        # Precompute walkability mask (vectorized)
-        walkable_mask = np.ones((width, height), dtype=bool)
-        # For the simplified walkability check, most positions are walkable
-        # Walls are typically only at borders - this is a simplified approach
-        # that matches the current _is_walkable implementation
-        walkable_mask[0, :] = True  # Top border (doors can be here)
-        walkable_mask[-1, :] = True  # Bottom border
-        walkable_mask[:, 0] = True  # Left border
-        walkable_mask[:, -1] = True  # Right border
-        # Interior positions are walkable by default (already True)
-
-        # Run vectorized value iteration
-        for iteration in range(max_iterations):
-            old_values = value_function.copy()
-
-            # Vectorized Q-value computation for all positions and actions
-            q_values_all = np.zeros((width, height, n_actions))
-
-            for action_idx, (dx, dy) in enumerate(actions):
-                # Compute next positions for all grid cells
-                next_x = x_coords + dx
-                next_y = y_coords + dy
-
-                # Bounds checking
-                valid_moves = (
-                    (next_x >= 0) & (next_x < width) & (next_y >= 0) & (next_y < height)
-                )
-
-                # Initialize rewards and next values
-                rewards = np.full((width, height), -self.movement_cost)
-                next_values = np.zeros((width, height))
-
-                # Handle valid moves
-                valid_next_x = np.where(valid_moves, next_x, x_coords)
-                valid_next_y = np.where(valid_moves, next_y, y_coords)
-
-                # Get next values (stay in place for invalid moves)
-                next_values = np.where(
-                    valid_moves,
-                    self.gamma * old_values[valid_next_x, valid_next_y],
-                    self.gamma * old_values[x_coords, y_coords],
-                )
-
-                # Apply penalties for invalid moves
-                rewards = np.where(valid_moves, rewards, rewards - self.wall_penalty)
-
-                # Apply walkability penalties
-                next_walkable = np.where(
-                    valid_moves,
-                    walkable_mask[valid_next_x, valid_next_y],
-                    True,  # Staying in place is always "walkable"
-                )
-                rewards = np.where(next_walkable, rewards, rewards - self.wall_penalty)
-                next_values = np.where(
-                    next_walkable,
-                    next_values,
-                    self.gamma * old_values[x_coords, y_coords],
-                )
-
-                # Apply blocker position penalty
-                if blocker_pos is not None:
-                    blocker_conflict = (
-                        valid_moves
-                        & (valid_next_x == blocker_pos[0])
-                        & (valid_next_y == blocker_pos[1])
-                    )
-                    rewards = np.where(
-                        blocker_conflict, rewards - self.conflict_penalty, rewards
-                    )
-                    next_values = np.where(
-                        blocker_conflict,
-                        self.gamma * old_values[x_coords, y_coords],
-                        next_values,
-                    )
-
-                # Apply target bonus
-                target_bonus = (
-                    valid_moves
-                    & (valid_next_x == target_pos[0])
-                    & (valid_next_y == target_pos[1])
-                )
-                rewards = np.where(target_bonus, rewards + 10.0, rewards)
-
-                # Store Q-values
-                q_values_all[:, :, action_idx] = rewards + next_values
-
-            # Update value function (max over actions)
-            new_values = np.max(q_values_all, axis=2)
-
-            # Apply masks: keep target value high, set unwalkable positions to penalty
-            value_function = np.where(coord_mask, new_values, value_function)
-            value_function = np.where(walkable_mask, value_function, -self.wall_penalty)
-
-            # Check convergence
-            if np.max(np.abs(value_function - old_values)) < convergence_threshold:
-                break
-
-        # Get optimal action for current position
-        if not self._is_walkable(self.agent_pos):
-            return None
-
-        current_pos = self.agent_pos
-        q_values = []
-        for action in range(n_actions):
-            q_val = self._evaluate_action(
-                current_pos,
-                action,
-                value_function,
-                target_pos,
-                width,
-                height,
-                blocker_pos,
-            )
-            q_values.append(q_val)
-
-        # Choose action with softmax policy
-        if self.temperature > 0:
-            q_values = np.array(q_values)
-            q_values_clipped = np.clip(q_values, -100, 100)
-            exp_q = np.exp(q_values_clipped / self.temperature)
-            action_probs = exp_q / np.sum(exp_q)
-
-            # Sample action stochastically
-            action = np.random.choice(n_actions, p=action_probs)
-        else:
-            # Deterministic policy
-            action = np.argmax(q_values)
-
-        return action
-
-    def _evaluate_action(
-        self, pos, action, value_function, target_pos, width, height, blocker_pos=None
-    ):
-        """Evaluate expected value of taking action from position"""
-        x, y = pos  # Grid coordinates (x=column, y=row)
-        dx, dy = self.actions[action]
-        new_pos = (x + dx, y + dy)
-
-        # Base movement cost
-        reward = -self.movement_cost
-
-        # Check bounds using the width/height from value iteration
-        if (
-            new_pos[0] < 0
-            or new_pos[0] >= width
-            or new_pos[1] < 0
-            or new_pos[1] >= height
-        ):
-            reward -= self.wall_penalty
-            next_value = self.gamma * value_function[x, y]  # Stay in current position
-        else:
-            # Check if position is walkable
-            if not self._is_walkable(new_pos):
-                reward -= self.wall_penalty
-                next_value = (
-                    self.gamma * value_function[x, y]
-                )  # Stay in current position
-            else:
-                # Check if new position conflicts with blocker position
-                if blocker_pos is not None and new_pos == blocker_pos:
-                    reward -= (
-                        self.conflict_penalty
-                    )  # Heavy penalty for trying to move to blocker's position
-                    next_value = (
-                        self.gamma * value_function[x, y]
-                    )  # Stay in current position
-                else:
-                    # Bonus for reaching target
-                    if new_pos == target_pos:
-                        reward += 10.0
-
-                    next_value = self.gamma * value_function[new_pos[0], new_pos[1]]
-
-        return reward + next_value
-
-    def _convert_to_minigrid_action(self, value_action):
-        """Convert value iteration action to MiniGrid direct movement action"""
-        if value_action is None:
-            return 4  # Stay
-
-        # Value action directly maps to MiniGrid action for direct movement
-        # value_action: 0=up, 1=right, 2=down, 3=left
-        # MiniGrid actions: 0=up, 1=right, 2=down, 3=left, 4=stay
-        return value_action
-
-    def _is_walkable(self, pos):
-        """Check if position is walkable by parsing the visual grid"""
-        # Check bounds using grid dimensions from observations
-        width = self.width if self.width is not None else 9  # fallback
-        height = self.height if self.height is not None else 9  # fallback
-        if pos[0] < 0 or pos[0] >= width or pos[1] < 0 or pos[1] >= height:
-            return False
-
-        # Parse the visual grid to check if position is walkable
-        if self.grid is not None:
-            # Grid coordinates: pos[0] = x (column), pos[1] = y (row)
-            cell = self.grid.get(pos[0], pos[1])
-            
-            # Walls are not walkable
-            if cell is not None and isinstance(cell, Wall):
-                return False
-            
-            # Empty space (None), keys, and doors are walkable
-            # Keys will be picked up automatically when stepped on
-            # Doors will be opened automatically when stepped on (if agent has key)
-            return True
-        
-        # Fallback: assume walkable if we can't parse the grid
-        return True
 
     def _infer_target_door_color(self, obs=None):
         """Infer target door color from observations."""
@@ -829,19 +562,15 @@ class Level0ValueAchiever:
 
     def reset(self):
         """Reset agent state for new episode"""
-        self.agent_pos = None
-        self.grid = None
+        super().reset()
         self.current_target = None
         self.path = []
         self.collected_keys = set()
         self.strategy_phase = "collect_key"
-        self.value_function = None
-        self.policy = None
-        self.converged = False
         self.target_door_color = None
 
 
-class Level1ValueAchiever:
+class Level1ValueAchiever(BaseValueAgent):
     """
     Level-1 Value-based Achiever Agent with rule-based deception strategies
     Updated for KeyDoor environment with automatic key pickup and door opening
@@ -863,67 +592,54 @@ class Level1ValueAchiever:
         conflict_penalty=2.0,
         gamma=0.99,
         temperature=0.1,
+        q_value_clip=100,
     ):
-        self.observability = observability
-        self.agent_pos = None
-        self.grid = None
+        # Initialize base class
+        super().__init__(
+            observability=observability,
+            movement_cost=movement_cost,
+            wall_penalty=wall_penalty,
+            conflict_penalty=conflict_penalty,
+            gamma=gamma,
+            temperature=temperature,
+            q_value_clip=q_value_clip
+        )
+        
+        # Achiever-specific attributes
         self.current_target = None
         self.path = []
         self.target_door_color = None
-
-        # Grid dimensions - will be set from observations
-        self.width = None
-        self.height = None
-
-        # Track agent's collected keys
         self.collected_keys = set()
-
+        
         # Strategy phases: "collect_decoy_key", "collect_target_key", "open_door"
         self.strategy_phase = "collect_decoy_key"
         self.decoy_key_color = None
         self.decoy_key_collected = False
 
-        # Value iteration parameters
-        self.movement_cost = movement_cost
-        self.wall_penalty = wall_penalty
-        self.conflict_penalty = conflict_penalty
-        self.gamma = gamma
-        self.temperature = temperature
-
-        # Value function and policy
-        self.value_function = None
-        self.policy = None
-        self.converged = False
-
-        # MiniGrid action mapping: 0=up, 1=right, 2=down, 3=left, 4=stay, 5=pickup, 6=toggle
-        # Value iteration uses 4 movement actions: 0=up, 1=right, 2=down, 3=left
-        # Grid coordinate system: (x, y) where x=column, y=row, positive y is down
-        self.actions = [
-            (0, -1),
-            (1, 0),
-            (0, 1),
-            (-1, 0),
-        ]  # dx, dy for up, right, down, left
+    def _update_agent_position(self, obs):
+        """Update achiever position from observations"""
+        new_pos = tuple(obs["achiever_pos"])
+        if new_pos != self.agent_pos:
+            self.agent_pos = new_pos
+    
+    def _update_grid_reference(self, obs):
+        """Update grid reference from observations"""
+        self.grid = obs["achiever"]
+    
+    def _get_opponent_position(self, obs):
+        """Get blocker position for conflict penalty"""
+        if obs and "blocker_pos" in obs:
+            return tuple(obs["blocker_pos"])
+        return None
 
     def update_observation(self, obs):
         """Update agent's understanding of the environment"""
         if obs is None:
             return
-
-        # Update grid dimensions from observations
-        if "grid_info" in obs and self.width is None:
-            self.width = obs["grid_info"]["width"]
-            self.height = obs["grid_info"]["height"]
-
-        # Get current achiever position from observations
-        new_pos = tuple(obs["achiever_pos"])
-
-        if new_pos != self.agent_pos:
-            self.agent_pos = new_pos
-
-        # Get the grid from achiever's visual observation
-        self.grid = obs["achiever"]
-
+            
+        # Call base class update
+        super().update_observation(obs)
+        
         # Update collected keys based on achiever's key inventory
         achiever_keys_array = obs["achiever_keys"]
         color_map = ["red", "green", "blue", "yellow"]
@@ -971,8 +687,10 @@ class Level1ValueAchiever:
     def _select_decoy_key_color(self, obs):
         """Select a decoy key color that is different from target door color"""
         all_colors = ["red", "green", "blue", "yellow"]
-        available_colors = [color for color in all_colors if color != self.target_door_color]
-        
+        available_colors = [
+            color for color in all_colors if color != self.target_door_color
+        ]
+
         if available_colors:
             self.decoy_key_color = np.random.choice(available_colors)
         else:
@@ -991,7 +709,7 @@ class Level1ValueAchiever:
             return 4  # Stay - key pickup is automatic when agent steps on it
 
         # Use value iteration to navigate to key (key will be picked up automatically)
-        return self._navigate_with_value_iteration(target_key_pos, obs)
+        return super()._navigate_with_value_iteration(target_key_pos, obs)
 
     def _open_target_door(self, target_door_color, obs=None):
         """Strategy to open the target door using value iteration"""
@@ -1015,7 +733,7 @@ class Level1ValueAchiever:
                 return 4  # Stay - door opening is automatic
 
         # Navigate to door (door will open automatically when agent steps on it)
-        return self._navigate_with_value_iteration(target_door_pos, obs)
+        return super()._navigate_with_value_iteration(target_door_pos, obs)
 
     def _find_object_position(self, obj_type, color, obs=None):
         """Find position of specific object type and color"""
@@ -1032,259 +750,6 @@ class Level1ValueAchiever:
                 return obs["door_positions"].get(color, None)
 
         return None
-
-    def _navigate_with_value_iteration(self, target_pos, obs=None):
-        """Navigate using value iteration and convert to MiniGrid actions"""
-        # Run value iteration to get optimal action
-        optimal_action = self._plan_value_iteration(target_pos, obs)
-
-        if optimal_action is None:
-            return 4  # Stay if no action found
-
-        # Convert value iteration action to MiniGrid action
-        return self._convert_to_minigrid_action(optimal_action)
-
-    def _plan_value_iteration(
-        self, target_pos, obs=None, max_iterations=100, convergence_threshold=0.01
-    ):
-        """
-        Vectorized value iteration to compute optimal action for reaching target
-        """
-        # Get grid size from instance dimensions
-        width = self.width if self.width is not None else 9  # fallback
-        height = self.height if self.height is not None else 9  # fallback
-        n_actions = 4
-
-        # Get blocker position from observations
-        blocker_pos = None
-        if obs is not None and "blocker_pos" in obs:
-            blocker_pos = tuple(obs["blocker_pos"])
-
-        # Initialize value function
-        value_function = np.zeros((width, height))
-
-        # Set high reward for target position
-        value_function[target_pos[0], target_pos[1]] = 10.0
-
-        # Precompute action deltas and grid coordinates
-        actions = [(0, -1), (1, 0), (0, 1), (-1, 0)]  # up, right, down, left
-        x_coords, y_coords = np.meshgrid(
-            np.arange(width), np.arange(height), indexing="ij"
-        )
-        coord_mask = np.ones((width, height), dtype=bool)
-
-        # Mask for target position (keep it unchanged)
-        coord_mask[target_pos[0], target_pos[1]] = False
-
-        # Precompute walkability mask (vectorized)
-        walkable_mask = np.ones((width, height), dtype=bool)
-        # For the simplified walkability check, most positions are walkable
-        # Walls are typically only at borders - this is a simplified approach
-        # that matches the current _is_walkable implementation
-        walkable_mask[0, :] = True  # Top border (doors can be here)
-        walkable_mask[-1, :] = True  # Bottom border
-        walkable_mask[:, 0] = True  # Left border
-        walkable_mask[:, -1] = True  # Right border
-        # Interior positions are walkable by default (already True)
-
-        # Run vectorized value iteration
-        for iteration in range(max_iterations):
-            old_values = value_function.copy()
-
-            # Vectorized Q-value computation for all positions and actions
-            q_values_all = np.zeros((width, height, n_actions))
-
-            for action_idx, (dx, dy) in enumerate(actions):
-                # Compute next positions for all grid cells
-                next_x = x_coords + dx
-                next_y = y_coords + dy
-
-                # Bounds checking
-                valid_moves = (
-                    (next_x >= 0) & (next_x < width) & (next_y >= 0) & (next_y < height)
-                )
-
-                # Initialize rewards and next values
-                rewards = np.full((width, height), -self.movement_cost)
-                next_values = np.zeros((width, height))
-
-                # Handle valid moves
-                valid_next_x = np.where(valid_moves, next_x, x_coords)
-                valid_next_y = np.where(valid_moves, next_y, y_coords)
-
-                # Get next values (stay in place for invalid moves)
-                next_values = np.where(
-                    valid_moves,
-                    self.gamma * old_values[valid_next_x, valid_next_y],
-                    self.gamma * old_values[x_coords, y_coords],
-                )
-
-                # Apply penalties for invalid moves
-                rewards = np.where(valid_moves, rewards, rewards - self.wall_penalty)
-
-                # Apply walkability penalties
-                next_walkable = np.where(
-                    valid_moves,
-                    walkable_mask[valid_next_x, valid_next_y],
-                    True,  # Staying in place is always "walkable"
-                )
-                rewards = np.where(next_walkable, rewards, rewards - self.wall_penalty)
-                next_values = np.where(
-                    next_walkable,
-                    next_values,
-                    self.gamma * old_values[x_coords, y_coords],
-                )
-
-                # Apply blocker position penalty
-                if blocker_pos is not None:
-                    blocker_conflict = (
-                        valid_moves
-                        & (valid_next_x == blocker_pos[0])
-                        & (valid_next_y == blocker_pos[1])
-                    )
-                    rewards = np.where(
-                        blocker_conflict, rewards - self.conflict_penalty, rewards
-                    )
-                    next_values = np.where(
-                        blocker_conflict,
-                        self.gamma * old_values[x_coords, y_coords],
-                        next_values,
-                    )
-
-                # Apply target bonus
-                target_bonus = (
-                    valid_moves
-                    & (valid_next_x == target_pos[0])
-                    & (valid_next_y == target_pos[1])
-                )
-                rewards = np.where(target_bonus, rewards + 10.0, rewards)
-
-                # Store Q-values
-                q_values_all[:, :, action_idx] = rewards + next_values
-
-            # Update value function (max over actions)
-            new_values = np.max(q_values_all, axis=2)
-
-            # Apply masks: keep target value high, set unwalkable positions to penalty
-            value_function = np.where(coord_mask, new_values, value_function)
-            value_function = np.where(walkable_mask, value_function, -self.wall_penalty)
-
-            # Check convergence
-            if np.max(np.abs(value_function - old_values)) < convergence_threshold:
-                break
-
-        # Get optimal action for current position
-        if not self._is_walkable(self.agent_pos):
-            return None
-
-        current_pos = self.agent_pos
-        q_values = []
-        for action in range(n_actions):
-            q_val = self._evaluate_action(
-                current_pos,
-                action,
-                value_function,
-                target_pos,
-                width,
-                height,
-                blocker_pos,
-            )
-            q_values.append(q_val)
-
-        # Choose action with softmax policy
-        if self.temperature > 0:
-            q_values = np.array(q_values)
-            q_values_clipped = np.clip(q_values, -100, 100)
-            exp_q = np.exp(q_values_clipped / self.temperature)
-            action_probs = exp_q / np.sum(exp_q)
-
-            # Sample action stochastically
-            action = np.random.choice(n_actions, p=action_probs)
-        else:
-            # Deterministic policy
-            action = np.argmax(q_values)
-
-        return action
-
-    def _evaluate_action(
-        self, pos, action, value_function, target_pos, width, height, blocker_pos=None
-    ):
-        """Evaluate expected value of taking action from position"""
-        x, y = pos  # Grid coordinates (x=column, y=row)
-        dx, dy = self.actions[action]
-        new_pos = (x + dx, y + dy)
-
-        # Base movement cost
-        reward = -self.movement_cost
-
-        # Check bounds using the width/height from value iteration
-        if (
-            new_pos[0] < 0
-            or new_pos[0] >= width
-            or new_pos[1] < 0
-            or new_pos[1] >= height
-        ):
-            reward -= self.wall_penalty
-            next_value = self.gamma * value_function[x, y]  # Stay in current position
-        else:
-            # Check if position is walkable
-            if not self._is_walkable(new_pos):
-                reward -= self.wall_penalty
-                next_value = (
-                    self.gamma * value_function[x, y]
-                )  # Stay in current position
-            else:
-                # Check if new position conflicts with blocker position
-                if blocker_pos is not None and new_pos == blocker_pos:
-                    reward -= (
-                        self.conflict_penalty
-                    )  # Heavy penalty for trying to move to blocker's position
-                    next_value = (
-                        self.gamma * value_function[x, y]
-                    )  # Stay in current position
-                else:
-                    # Bonus for reaching target
-                    if new_pos == target_pos:
-                        reward += 10.0
-
-                    next_value = self.gamma * value_function[new_pos[0], new_pos[1]]
-
-        return reward + next_value
-
-    def _convert_to_minigrid_action(self, value_action):
-        """Convert value iteration action to MiniGrid direct movement action"""
-        if value_action is None:
-            return 4  # Stay
-
-        # Value action directly maps to MiniGrid action for direct movement
-        # value_action: 0=up, 1=right, 2=down, 3=left
-        # MiniGrid actions: 0=up, 1=right, 2=down, 3=left, 4=stay
-        return value_action
-
-    def _is_walkable(self, pos):
-        """Check if position is walkable by parsing the visual grid"""
-        # Check bounds using grid dimensions from observations
-        width = self.width if self.width is not None else 9  # fallback
-        height = self.height if self.height is not None else 9  # fallback
-        if pos[0] < 0 or pos[0] >= width or pos[1] < 0 or pos[1] >= height:
-            return False
-
-        # Parse the visual grid to check if position is walkable
-        if self.grid is not None:
-            # Grid coordinates: pos[0] = x (column), pos[1] = y (row)
-            cell = self.grid.get(pos[0], pos[1])
-            
-            # Walls are not walkable
-            if cell is not None and isinstance(cell, Wall):
-                return False
-            
-            # Empty space (None), keys, and doors are walkable
-            # Keys will be picked up automatically when stepped on
-            # Doors will be opened automatically when stepped on (if agent has key)
-            return True
-        
-        # Fallback: assume walkable if we can't parse the grid
-        return True
 
     def _infer_target_door_color(self, obs=None):
         """Infer target door color from observations."""
@@ -1303,17 +768,13 @@ class Level1ValueAchiever:
 
     def reset(self):
         """Reset agent state for new episode"""
-        self.agent_pos = None
-        self.grid = None
+        super().reset()
         self.current_target = None
         self.path = []
         self.collected_keys = set()
         self.strategy_phase = "collect_decoy_key"
         self.decoy_key_color = None
         self.decoy_key_collected = False
-        self.value_function = None
-        self.policy = None
-        self.converged = False
         self.target_door_color = None
 
 

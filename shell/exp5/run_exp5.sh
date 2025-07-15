@@ -147,14 +147,7 @@ run_training() {
     eval $(get_data_paths)
     
     # Run train.py from base directory to maintain correct relative paths
-    python script/exp5/train.py \
-        --save_dir "$RESULTS_DIR" \
-        --data_dir "$TRAIN_DATA_DIR" \
-        --debug \
-        --device "cpu" \
-        --batch_size 64 \
-        --epochs 5 \
-        > "$RUN_LOG_DIR/training.log" 2>&1
+    python script/exp5/train.py --config_override --save_dir "$RESULTS_DIR" > "$RUN_LOG_DIR/training.log" 2>&1
     
     log_step "Training completed"
     

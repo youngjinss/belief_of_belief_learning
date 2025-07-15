@@ -186,8 +186,8 @@ run_evaluation() {
         --plot_type "all" \
         > "$RUN_LOG_DIR/evaluation.log" 2>&1
 
-    # python script/exp5/evaluate.py --model_path "results/exp5/20250715_155007/best_model.pth" --test_data_dir "data/MiniGrid-AchieverBlocker-9x9-v1/value_randomly_selected_rule_based/test" --result_dir "results/exp5/" --plot_type "all" --device "cuda:1"
-    
+    # python script/exp5/evaluate.py --model_path "results/exp5/20250715_155007/best_model.pth" --test_data_dir "data/MiniGrid-AchieverBlocker-9x9-v1/value_randomly_selected_rule_based/test" --result_dir "results/exp5/20250715_155007/" --plot_type "all" --device "cuda:1"
+
     log_step "Evaluation completed"
 
     # Log evaluation summary if available
@@ -225,6 +225,8 @@ run_visualization() {
         --plot_type "all" \
         > "$RUN_LOG_DIR/visualization.log" 2>&1
 
+    # python script/exp5/visualize.py --model_path "results/exp5/20250715_155007/best_model.pth" --test_data_dir "data/MiniGrid-AchieverBlocker-9x9-v1/value_randomly_selected_rule_based/test" --output_dir "results/exp5/20250715_155007/plots/" --plot_type "all" --device "cuda:1"
+    
     log_step "Visualization completed"
     
     # Log visualization summary if available

@@ -351,18 +351,28 @@ class AStarAgent:
         return []  # Return empty path if no path found
 
     def _is_walkable(self, pos):
-        """Check if position is walkable"""
-        # For now, use simplified walkability - most positions are walkable
-        # TODO: This should parse the visual grid observation properly
-
+        """Check if position is walkable by parsing the visual grid"""
         # Check bounds using grid dimensions from observations
         width = self.width if self.width is not None else 9  # fallback
         height = self.height if self.height is not None else 9  # fallback
         if pos[0] < 0 or pos[0] >= width or pos[1] < 0 or pos[1] >= height:
             return False
 
-        # For now, assume most positions are walkable except walls
-        # This is a simplified approach until visual observation parsing is implemented
+        # Parse the visual grid to check if position is walkable
+        if self.grid is not None:
+            # Grid coordinates: pos[0] = x (column), pos[1] = y (row)
+            cell = self.grid.get(pos[0], pos[1])
+            
+            # Walls are not walkable
+            if cell is not None and isinstance(cell, Wall):
+                return False
+            
+            # Empty space (None), keys, and doors are walkable
+            # Keys will be picked up automatically when stepped on
+            # Doors will be opened automatically when stepped on (if agent has key)
+            return True
+        
+        # Fallback: assume walkable if we can't parse the grid
         return True
 
     def _heuristic(self, pos1, pos2):
@@ -775,25 +785,28 @@ class ValueAgent:
         return value_action
 
     def _is_walkable(self, pos):
-        """Check if position is walkable using a simplified approach for value iteration"""
-        # For value iteration, we use a simplified walkability check
-        # since we're now observation-based and don't have direct grid access
-
+        """Check if position is walkable by parsing the visual grid"""
         # Check bounds using grid dimensions from observations
         width = self.width if self.width is not None else 9  # fallback
         height = self.height if self.height is not None else 9  # fallback
         if pos[0] < 0 or pos[0] >= width or pos[1] < 0 or pos[1] >= height:
             return False
 
-        # For now, assume most positions are walkable except walls (which are at edges)
-        # This is a simplified approach - keys and doors are considered walkable
-        # Walls are typically only at the border positions (0, x) or (width-1, x) etc.
-        if pos[0] == 0 or pos[0] == width - 1 or pos[1] == 0 or pos[1] == height - 1:
-            # Check if this is a door position (doors on walls are walkable)
-            # This needs to be enhanced when we implement proper visual observation parsing
-            return True  # For now, assume wall positions with doors are walkable
-
-        # Interior positions are generally walkable
+        # Parse the visual grid to check if position is walkable
+        if self.grid is not None:
+            # Grid coordinates: pos[0] = x (column), pos[1] = y (row)
+            cell = self.grid.get(pos[0], pos[1])
+            
+            # Walls are not walkable
+            if cell is not None and isinstance(cell, Wall):
+                return False
+            
+            # Empty space (None), keys, and doors are walkable
+            # Keys will be picked up automatically when stepped on
+            # Doors will be opened automatically when stepped on (if agent has key)
+            return True
+        
+        # Fallback: assume walkable if we can't parse the grid
         return True
 
     def _infer_target_door_color(self, obs=None):

@@ -89,39 +89,48 @@ run_data_generation() {
     log_step "Using config-based data path generation"
     log_step "Logging data generation output to: $RUN_LOG_DIR/train_data_generation.log"
     
-    # Get data paths from config
-    eval $(get_data_paths)
-    log_step "Train data directory: $TRAIN_DATA_DIR"
-    
-    # Run data_generation.py directly as a script
-    python script/exp5/data_generation.py \
-        --data_dir "$TRAIN_DATA_DIR" \
-        --output_dir "$TRAIN_DATA_DIR/processed" \
-        > "$RUN_LOG_DIR/train_data_generation.log" 2>&1
+    # Run generate.py from base directory to maintain correct relative paths (same as exp4)
+    python script/exp5/generate.py --config_override > "$RUN_LOG_DIR/train_data_generation.log" 2>&1
     
     log_step "Data generation completed"
     
     # Log generation summary if available
     if [ -f "$RUN_LOG_DIR/train_data_generation.log" ]; then
         log_step "Data generation summary:"
-        grep -i "generated.*samples\|success\|completed\|saving.*to\|saved.*samples" "$RUN_LOG_DIR/train_data_generation.log" | tail -5 || true
+        grep -i "generated.*games\|success\|completed\|saving.*to" "$RUN_LOG_DIR/train_data_generation.log" | tail -5 || true
     fi
     
-    # Try to determine the actual path and count processed samples
-    if [ -f "$TRAIN_DATA_DIR/processed/processed_samples.pkl" ]; then
-        log_step "Processed data saved to $TRAIN_DATA_DIR/processed/processed_samples.pkl"
+    # Try to determine the actual path and count files
+    local actual_data_dir=$(grep -o "Data saved to: .*" "$RUN_LOG_DIR/train_data_generation.log" | head -1 | cut -d' ' -f4)
+    if [ -d "$actual_data_dir" ]; then
+        local generated_files=$(find "$actual_data_dir" -name "test*.txt" | wc -l)
+        log_step "Generated $generated_files trajectory files in $actual_data_dir"
     else
-        log_step "Could not find processed data file"
+        log_step "Could not determine generated data directory from logs"
     fi
 }
 
 run_test_data_generation() {
     log_step "Starting test data generation for experiment $EXPERIMENT_NO"
-    log_step "Note: Test data generation uses the same processed data as training"
-    log_step "Test data will be split from the main dataset during evaluation"
+    log_step "Generating $VALIDATION_GAMES test games with random seed $TEST_RANDOM_SEED"
+    log_step "Using config-based test data path generation"
+    log_step "Logging test data generation output to: $RUN_LOG_DIR/test_data_generation.log"
     
-    # For exp5, we use the same processed data and split during training/evaluation
-    log_step "Test data generation completed (using same dataset as training)"
+    # Run generate.py from base directory to maintain correct relative paths (same as exp4)
+    python script/exp5/generate.py --config_override --n_games "$VALIDATION_GAMES" --random_seed "$TEST_RANDOM_SEED" --test_data > "$RUN_LOG_DIR/test_data_generation.log" 2>&1
+
+    # Try to determine the actual test data path from logs and verify files
+    local actual_test_dir=$(grep -o "Data saved to: .*" "$RUN_LOG_DIR/test_data_generation.log" | head -1 | cut -d' ' -f4)
+    if [ -d "$actual_test_dir" ]; then
+        GENERATED_TEST_FILES=$(find "$actual_test_dir" -name "test*.txt" | wc -l)
+        if [ "$GENERATED_TEST_FILES" -eq "$VALIDATION_GAMES" ]; then
+            log_step "Test data generation completed successfully - $GENERATED_TEST_FILES files generated in $actual_test_dir"
+        else
+            log_step "Warning: Expected $VALIDATION_GAMES test files, but found $GENERATED_TEST_FILES in $actual_test_dir"
+        fi
+    else
+        log_step "Could not determine generated test data directory from logs"
+    fi
 }
 
 run_training() {

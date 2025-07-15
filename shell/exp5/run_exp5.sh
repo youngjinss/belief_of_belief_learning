@@ -186,7 +186,7 @@ run_evaluation() {
         --plot_type "all" \
         > "$RUN_LOG_DIR/evaluation.log" 2>&1
 
-    # python script/exp5/evaluate.py --model_path "results/exp5/20250715_155007/best_model.pth" --test_data_dir "data/MiniGrid-AchieverBlocker-9x9-v1/value_randomly_selected_rule_based/test" --result_dir "results/exp5/20250715_155007/" --plot_type "all" --device "cuda:1"
+    # python script/exp5/evaluate.py --config_override --model_path "results/exp5/20250715_155007/best_model.pth" --test_data_dir "data/MiniGrid-AchieverBlocker-9x9-v1/value_randomly_selected_rule_based/test" --result_dir "results/exp5/20250715_155007/" --plot_type "all" --device "cuda:1"
 
     log_step "Evaluation completed"
 
@@ -218,14 +218,9 @@ run_visualization() {
     eval $(get_data_paths)
     
     # Run visualize.py from base directory to maintain correct relative paths
-    python script/exp5/visualize.py \
-        --model_path "$RESULTS_DIR/best_model.pth" \
-        --test_data_dir "$TRAIN_DATA_DIR" \
-        --output_dir "$RESULTS_DIR" \
-        --plot_type "all" \
-        > "$RUN_LOG_DIR/visualization.log" 2>&1
+    python script/exp5/visualize.py --config_override --result_dir "$RESULTS_DIR" --plot_dir "$RESULTS_DIR/plots" --plot_type "all"  > "$RUN_LOG_DIR/visualization.log" 2>&1
 
-    # python script/exp5/visualize.py --model_path "results/exp5/20250715_155007/best_model.pth" --test_data_dir "data/MiniGrid-AchieverBlocker-9x9-v1/value_randomly_selected_rule_based/test" --output_dir "results/exp5/20250715_155007/plots/" --plot_type "all" --device "cuda:1"
+    # python script/exp5/visualize.py --config_override  --result_dir "results/exp5/20250715_155007/" --plot_dir "$results/exp5/20250715_155007/plots" --plot_type "all"
     
     log_step "Visualization completed"
     

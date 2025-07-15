@@ -10,7 +10,7 @@ class Config:
         self.env_size = (
             f"{self.width}x{self.height}"  # Options: "3x3", "5x5", "9x9", "11x11"
         )
-        self.max_steps = 500
+        
         self.seed = 42
 
         # Agent settings
@@ -65,6 +65,9 @@ class Config:
             "9x9": {"grid_size": 9, "max_steps": 30},
             "11x11": {"grid_size": 11, "max_steps": 70},
         }
+        
+        # Set max_steps based on current env_size
+        self.max_steps = self.env_variants[self.env_size]["max_steps"]
 
         # Achiever configurations
         self.achiever_configs = {
@@ -582,10 +585,13 @@ class Config:
             self.episodes = args.episodes
         if hasattr(args, "pause") and args.pause is not None:
             self.pause = args.pause
-        if hasattr(args, "max_steps") and args.max_steps is not None:
-            self.max_steps = args.max_steps
         if hasattr(args, "env_size") and args.env_size is not None:
             self.env_size = args.env_size
+            # Update max_steps based on new env_size
+            self.max_steps = self.env_variants[self.env_size]["max_steps"]
+        if hasattr(args, "max_steps") and args.max_steps is not None:
+            # Allow explicit max_steps override
+            self.max_steps = args.max_steps
             # Update width and height based on env_size
             if self.env_size == "3x3":
                 self.width = 3

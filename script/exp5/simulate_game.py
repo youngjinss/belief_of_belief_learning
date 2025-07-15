@@ -55,6 +55,7 @@ def create_agent(agent_type, env, config):
             wall_penalty=agent_config.get("wall_penalty", 2.0),
             gamma=agent_config.get("gamma", 0.99),
             temperature=agent_config.get("temperature", 0.1),
+            q_value_clip=agent_config.get("q_value_clip", 100),
         )
     elif agent_type == "lv1va":
         agent_config = config.achiever_configs.get("lv1va", {})
@@ -64,6 +65,7 @@ def create_agent(agent_type, env, config):
             wall_penalty=agent_config.get("wall_penalty", 2.0),
             gamma=agent_config.get("gamma", 0.99),
             temperature=agent_config.get("temperature", 0.1),
+            q_value_clip=agent_config.get("q_value_clip", 100),
         )
     elif agent_type == "value":
         agent_config = config.achiever_configs.get("value", {})
@@ -73,6 +75,7 @@ def create_agent(agent_type, env, config):
             wall_penalty=agent_config.get("wall_penalty", 2.0),
             gamma=agent_config.get("gamma", 0.99),
             temperature=agent_config.get("temperature", 0.1),
+            q_value_clip=agent_config.get("q_value_clip", 100),
         )
     else:
         raise ValueError(f"Unknown agent type: {agent_type}")

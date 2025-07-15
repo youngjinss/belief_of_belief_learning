@@ -613,9 +613,9 @@ class Level0ValueBlocker(BaseValueAgent):
             conflict_penalty=conflict_penalty,
             gamma=gamma,
             temperature=temperature,
-            q_value_clip=q_value_clip
+            q_value_clip=q_value_clip,
         )
-        
+
         # Blocker-specific attributes
         self.target_inferred_color = None
         self.target_door_pos = None
@@ -639,11 +639,11 @@ class Level0ValueBlocker(BaseValueAgent):
         new_pos = tuple(obs["blocker_pos"])
         if new_pos != self.agent_pos:
             self.agent_pos = new_pos
-    
+
     def _update_grid_reference(self, obs):
         """Update grid reference from observations"""
         self.grid = obs["blocker"]
-    
+
     def _get_opponent_position(self, obs):
         """Get achiever position for conflict penalty"""
         if obs and "achiever_pos" in obs:
@@ -654,10 +654,10 @@ class Level0ValueBlocker(BaseValueAgent):
         """Update agent's understanding of the environment"""
         if obs is None:
             return
-            
+
         # Call base class update
         super().update_observation(obs)
-        
+
         # Update blocker-specific state
         self.blocker_pos = self.agent_pos
         self.achiever_pos = self._get_opponent_position(obs)
@@ -818,9 +818,9 @@ class Level1ValueBlocker(BaseValueAgent):
             conflict_penalty=conflict_penalty,
             gamma=gamma,
             temperature=temperature,
-            q_value_clip=q_value_clip
+            q_value_clip=q_value_clip,
         )
-        
+
         # Phase 1: Initial random target
         self.initial_target_color = None
         self.initial_target_pos = None
@@ -856,11 +856,11 @@ class Level1ValueBlocker(BaseValueAgent):
         new_pos = tuple(obs["blocker_pos"])
         if new_pos != self.agent_pos:
             self.agent_pos = new_pos
-    
+
     def _update_grid_reference(self, obs):
         """Update grid reference from observations"""
         self.grid = obs["blocker"]
-    
+
     def _get_opponent_position(self, obs):
         """Get achiever position for conflict penalty"""
         if obs and "achiever_pos" in obs:
@@ -871,10 +871,10 @@ class Level1ValueBlocker(BaseValueAgent):
         """Update agent's understanding of the environment"""
         if obs is None:
             return
-            
+
         # Call base class update
         super().update_observation(obs)
-        
+
         # Update blocker-specific state
         self.blocker_pos = self.agent_pos
         self.achiever_pos = self._get_opponent_position(obs)

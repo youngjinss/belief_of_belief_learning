@@ -709,6 +709,7 @@ def run_single_game(game_id, config_dict, save_dir, blocker_type=None):
             conflict_penalty=agent_config.get("conflict_penalty", 2.0),
             gamma=agent_config.get("gamma", 0.99),
             temperature=agent_config.get("temperature", 0.1),
+            q_value_clip=agent_config.get("q_value_clip", 100),
         )
     elif achiever_type == "lv1va":
         agent_config = config_dict.get("achiever_configs", {}).get("lv1va", {})
@@ -719,6 +720,7 @@ def run_single_game(game_id, config_dict, save_dir, blocker_type=None):
             conflict_penalty=agent_config.get("conflict_penalty", 2.0),
             gamma=agent_config.get("gamma", 0.99),
             temperature=agent_config.get("temperature", 0.1),
+            q_value_clip=agent_config.get("q_value_clip", 100),
         )
     elif achiever_type == "value":
         agent_config = config_dict.get("achiever_configs", {}).get("value", {})
@@ -728,6 +730,7 @@ def run_single_game(game_id, config_dict, save_dir, blocker_type=None):
             wall_penalty=agent_config.get("wall_penalty", 2.0),
             gamma=agent_config.get("gamma", 0.99),
             temperature=agent_config.get("temperature", 0.1),
+            q_value_clip=agent_config.get("q_value_clip", 100),
         )
     elif achiever_type == "random":
         achiever_agent = AchieverRandomAgent(
@@ -746,8 +749,8 @@ def run_single_game(game_id, config_dict, save_dir, blocker_type=None):
         blocker_agent = BlockerRandomAgent()
     elif current_blocker_type == "goal_direct":
         blocker_agent = BlockerGoalDirectAgent()
-    elif current_blocker_type == "l0vb":
-        blocker_config = config_dict.get("blocker_configs", {}).get("l0vb", {})
+    elif current_blocker_type == "lv0vb":
+        blocker_config = config_dict.get("blocker_configs", {}).get("lv0vb", {})
         blocker_agent = Level0ValueBlocker(
             stay_probability=blocker_config.get("stay_probability", 0.7),
             movement_cost=blocker_config.get("movement_cost", 0.01),
@@ -755,9 +758,10 @@ def run_single_game(game_id, config_dict, save_dir, blocker_type=None):
             conflict_penalty=blocker_config.get("conflict_penalty", 2.0),
             gamma=blocker_config.get("gamma", 0.99),
             temperature=blocker_config.get("temperature", 0.1),
+            q_value_clip=blocker_config.get("q_value_clip", 100),
         )
-    elif current_blocker_type == "l1vb":
-        blocker_config = config_dict.get("blocker_configs", {}).get("l1vb", {})
+    elif current_blocker_type == "lv1vb":
+        blocker_config = config_dict.get("blocker_configs", {}).get("lv1vb", {})
         blocker_agent = Level1ValueBlocker(
             stay_probability=blocker_config.get("stay_probability", 0.7),
             movement_cost=blocker_config.get("movement_cost", 0.01),
@@ -765,6 +769,7 @@ def run_single_game(game_id, config_dict, save_dir, blocker_type=None):
             conflict_penalty=blocker_config.get("conflict_penalty", 2.0),
             gamma=blocker_config.get("gamma", 0.99),
             temperature=blocker_config.get("temperature", 0.1),
+            q_value_clip=blocker_config.get("q_value_clip", 100),
         )
     elif current_blocker_type == "randomly_selected":
         blocker_config = config_dict.get("blocker_configs", {}).get(
@@ -1117,7 +1122,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "--blocker_type",
         type=str,
-        choices=["l0vb", "l1vb", "random", "goal_direct", "randomly_selected", "rule_based"],
+        choices=[
+            "lv0vb",
+            "lv1vb",
+            "random",
+            "goal_direct",
+            "randomly_selected",
+            "rule_based",
+        ],
         default=None,
         help="Type of blocker agent to use",
     )

@@ -363,16 +363,16 @@ class AStarAgent:
         if self.grid is not None:
             # Grid coordinates: pos[0] = x (column), pos[1] = y (row)
             cell = self.grid.get(pos[0], pos[1])
-            
+
             # Walls are not walkable
             if cell is not None and isinstance(cell, Wall):
                 return False
-            
+
             # Empty space (None), keys, and doors are walkable
             # Keys will be picked up automatically when stepped on
             # Doors will be opened automatically when stepped on (if agent has key)
             return True
-        
+
         # Fallback: assume walkable if we can't parse the grid
         return True
 
@@ -422,9 +422,9 @@ class Level0ValueAchiever(BaseValueAgent):
             conflict_penalty=conflict_penalty,
             gamma=gamma,
             temperature=temperature,
-            q_value_clip=q_value_clip
+            q_value_clip=q_value_clip,
         )
-        
+
         # Achiever-specific attributes
         self.current_target = None
         self.path = []
@@ -437,11 +437,11 @@ class Level0ValueAchiever(BaseValueAgent):
         new_pos = tuple(obs["achiever_pos"])
         if new_pos != self.agent_pos:
             self.agent_pos = new_pos
-    
+
     def _update_grid_reference(self, obs):
         """Update grid reference from observations"""
         self.grid = obs["achiever"]
-    
+
     def _get_opponent_position(self, obs):
         """Get blocker position for conflict penalty"""
         if obs and "blocker_pos" in obs:
@@ -452,10 +452,10 @@ class Level0ValueAchiever(BaseValueAgent):
         """Update agent's understanding of the environment"""
         if obs is None:
             return
-            
+
         # Call base class update
         super().update_observation(obs)
-        
+
         # Update collected keys based on achiever's key inventory
         achiever_keys_array = obs["achiever_keys"]
         color_map = ["red", "green", "blue", "yellow"]
@@ -580,7 +580,7 @@ class Level1ValueAchiever(BaseValueAgent):
     2. Go to randomly-selected color key
     3. After randomly-selected key, go to the "real" target color key
     4. After collecting target color key, go to "open_door"
-    
+
     Uses value iteration for optimal path planning with deceptive behavior
     """
 
@@ -602,15 +602,15 @@ class Level1ValueAchiever(BaseValueAgent):
             conflict_penalty=conflict_penalty,
             gamma=gamma,
             temperature=temperature,
-            q_value_clip=q_value_clip
+            q_value_clip=q_value_clip,
         )
-        
+
         # Achiever-specific attributes
         self.current_target = None
         self.path = []
         self.target_door_color = None
         self.collected_keys = set()
-        
+
         # Strategy phases: "collect_decoy_key", "collect_target_key", "open_door"
         self.strategy_phase = "collect_decoy_key"
         self.decoy_key_color = None
@@ -621,11 +621,11 @@ class Level1ValueAchiever(BaseValueAgent):
         new_pos = tuple(obs["achiever_pos"])
         if new_pos != self.agent_pos:
             self.agent_pos = new_pos
-    
+
     def _update_grid_reference(self, obs):
         """Update grid reference from observations"""
         self.grid = obs["achiever"]
-    
+
     def _get_opponent_position(self, obs):
         """Get blocker position for conflict penalty"""
         if obs and "blocker_pos" in obs:
@@ -636,10 +636,10 @@ class Level1ValueAchiever(BaseValueAgent):
         """Update agent's understanding of the environment"""
         if obs is None:
             return
-            
+
         # Call base class update
         super().update_observation(obs)
-        
+
         # Update collected keys based on achiever's key inventory
         achiever_keys_array = obs["achiever_keys"]
         color_map = ["red", "green", "blue", "yellow"]

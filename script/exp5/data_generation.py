@@ -48,9 +48,7 @@ class DataGenerator:
             self.ACHIEVER_ACTION_SPACE = config_obj.model_config[
                 "achiever_action_space"
             ]
-            self.BLOCKER_ACTION_SPACE = config_obj.model_config[
-                "blocker_action_space"
-            ]
+            self.BLOCKER_ACTION_SPACE = config_obj.model_config["blocker_action_space"]
 
         # Goal mappings for blocker inference
         self.COLOR_TO_LETTER = {"red": "A", "green": "B", "blue": "C", "yellow": "D"}

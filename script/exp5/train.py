@@ -14,10 +14,12 @@ from torch.cuda.amp import autocast, GradScaler
 
 # Add current directory to path
 sys.path.append(os.path.dirname(__file__))
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from tomnet import ToMnet, ToMnetLoss, create_model, count_parameters
 from data_generation import DataGenerator
 from config import Config
+from lib.utils.seed import set_seed
 
 """
 Training system for KeyDoor ToMnet implementation
@@ -1296,6 +1298,7 @@ def train_tomnet(
         pin_memory=pin_memory,
         num_workers=num_workers,
         persistent_workers=True if num_workers > 0 else False,
+        worker_init_fn=seed_worker,
     )
     val_loader = DataLoader(
         val_dataset,
@@ -1305,6 +1308,7 @@ def train_tomnet(
         pin_memory=pin_memory,
         num_workers=num_workers,
         persistent_workers=True if num_workers > 0 else False,
+        worker_init_fn=seed_worker,
     )
 
     print(f"Training samples: {len(train_dataset)}")
@@ -1607,6 +1611,9 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, help="Batch size for training")
     parser.add_argument("--epochs", type=int, help="Number of training epochs")
     parser.add_argument("--lr", type=float, help="Learning rate")
+    parser.add_argument(
+        "--seed", type=int, default=42, help="Random seed for reproducibility"
+    )
     parser.add_argument("--weight_decay", type=float, help="Weight decay for optimizer")
     parser.add_argument(
         "--training_proportion",
@@ -1679,6 +1686,11 @@ if __name__ == "__main__":
         config.enable_debug_mode()
     if args.config_override:
         config.update_from_args(args)
+
+    # Set seed for reproducibility
+    seed = args.seed if hasattr(args, "seed") else config.seed
+    seed_worker = set_seed(seed)
+    print(f"Set random seed to {seed} for reproducibility")
 
     # Run training
     results = train_tomnet(

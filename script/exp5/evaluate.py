@@ -18,10 +18,12 @@ from torch.utils.data import DataLoader, TensorDataset
 warnings.filterwarnings("ignore", category=UserWarning, module="sklearn")
 
 sys.path.append(os.path.dirname(__file__))
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from tomnet import ToMnet, create_model
 from config import Config
 from train import prepare_data_for_training, generate_past_episodes_from_batch
 from data_generation import DataGenerator as DataReader
+from lib.utils.seed import set_seed
 
 """
 Evaluation and metrics for AchieverBlocker ToMnet experiment
@@ -970,6 +972,9 @@ if __name__ == "__main__":
         default="all",
         help="Type of visualization to create",
     )
+    parser.add_argument(
+        "--seed", type=int, default=42, help="Random seed for reproducibility"
+    )
 
     args = parser.parse_args()
 
@@ -978,6 +983,11 @@ if __name__ == "__main__":
     # Override config with command line arguments if specified
     if args.config_override:
         config.update_from_args(args)
+
+    # Set seed for reproducibility
+    seed = args.seed if hasattr(args, "seed") else config.seed
+    seed_worker = set_seed(seed)
+    print(f"Set random seed to {seed} for reproducibility")
 
     # Run evaluation (now handles n_past and embeddings internally)
     results = evaluate_achieverblocker_model(

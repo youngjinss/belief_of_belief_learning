@@ -9,6 +9,9 @@ from PIL import Image
 lib_path = os.path.join(os.path.dirname(__file__), "..", "..", "lib")
 sys.path.insert(0, lib_path)
 
+# Import seed utility
+from lib.utils.seed import set_seed
+
 # Add the env directory to the path
 env_path = os.path.join(lib_path, "env")
 sys.path.insert(0, env_path)
@@ -326,7 +329,7 @@ def main():
     print(config)
 
     # Set random seed
-    np.random.seed(config.seed)
+    set_seed(config.seed)
 
     # Create environment
     env_name = config.get_env_name()

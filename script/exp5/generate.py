@@ -19,6 +19,9 @@ sys.path.append(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 )
 
+# Import seed utility
+from lib.utils.seed import set_seed
+
 from lib.env.gym_minigrid.envs.achiever_blocker import (
     AchieverBlocker5x5Env,
     AchieverBlocker9x9Env,
@@ -1075,6 +1078,10 @@ if __name__ == "__main__":
     # Override config with command line arguments if specified
     if args.config_override:
         config.update_from_args(args)
+
+    # Set main seed for reproducibility
+    set_seed(args.random_seed)
+    print(f"Set main random seed to {args.random_seed} for reproducibility")
 
     generate_trajectories(
         config,

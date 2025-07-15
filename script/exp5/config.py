@@ -180,7 +180,6 @@ class Config:
                 "temperature": 0.1,
                 "q_value_clip": 100,
                 "action_space": 6,
-                "stay_probability": 0.1,
             },
             "lv1vb": {
                 "observability": "full",
@@ -191,7 +190,6 @@ class Config:
                 "temperature": 0.1,
                 "q_value_clip": 100,
                 "action_space": 6,
-                "stay_probability": 0.1,
             },
             "rule_based": {
                 "observability": "full",

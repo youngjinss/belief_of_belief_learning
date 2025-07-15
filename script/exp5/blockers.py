@@ -280,10 +280,6 @@ class RandomlySelectedAgent:
             if not self.path_to_door:
                 return 4  # Stay if no path
 
-        # Use stay probability to decide whether to stay or move
-        if np.random.random() < self.stay_probability:
-            return 4  # Stay
-
         # Get next position in path
         target_pos = self.path_to_door[self.current_path_index]
         current_pos = self.blocker_pos
@@ -594,7 +590,6 @@ class Level0ValueBlocker(BaseValueAgent):
 
     def __init__(
         self,
-        stay_probability=0.7,
         movement_cost=0.01,
         wall_penalty=2.0,
         conflict_penalty=2.0,
@@ -625,8 +620,7 @@ class Level0ValueBlocker(BaseValueAgent):
         self.achiever_pos = None
         self.target_selected = False
 
-        # Stay probability during navigation
-        self.stay_probability = stay_probability
+        # Remove stay probability - use direct value iteration decisions
 
         # Multi-attempt tracking
         self.tried_doors = set()  # Track which doors have been attempted
@@ -801,7 +795,6 @@ class Level1ValueBlocker(BaseValueAgent):
 
     def __init__(
         self,
-        stay_probability=0.7,
         movement_cost=0.01,
         wall_penalty=2.0,
         conflict_penalty=2.0,
@@ -842,8 +835,7 @@ class Level1ValueBlocker(BaseValueAgent):
             1  # 1: go to random door, 2: stay at door, 3: go to inferred door, 4: break
         )
 
-        # Stay probability during navigation
-        self.stay_probability = stay_probability
+        # Remove stay probability - use direct value iteration decisions
 
         # Multi-attempt tracking
         self.observed_keys = []  # Track keys observed from achiever

@@ -75,7 +75,7 @@ class BaseValueAgent:
         self.role = kwargs.get('role', 'achiever')  # Default to achiever
         
         # Target door color for consumption penalty (preferred key)
-        self.target_door_color = kwargs.get('target_door_color', None)
+        self._preferred_door_color = kwargs.get('target_door_color', None)
 
         # Value function and policy
         self.value_function = None
@@ -205,7 +205,7 @@ class BaseValueAgent:
     
     def _compute_consumption_mask(self, width, height):
         """Compute consumption penalty mask for non-preferred keys"""
-        if self.grid is None or self.target_door_color is None:
+        if self.grid is None or self._preferred_door_color is None:
             return np.zeros((width, height), dtype=np.float32)
             
         consumption_mask = np.zeros((width, height), dtype=np.float32)
@@ -361,7 +361,7 @@ class BaseValueAgent:
             return reward - self.conflict_penalty + self.gamma * value_function[x, y]
         
         # Apply consumption penalty for non-preferred keys (achiever only)
-        if self.role == 'achiever' and self.target_door_color is not None:
+        if self.role == 'achiever' and self._preferred_door_color is not None:
             if self._is_non_preferred_key_at_position(new_pos):
                 reward -= self.consumption_penalty
         
@@ -424,11 +424,11 @@ class BaseValueAgent:
     
     def set_target_door_color(self, color):
         """Set the target door color (preferred key)"""
-        self.target_door_color = color
+        self._preferred_door_color = color
         
     def _is_non_preferred_key_at_position(self, pos):
         """Check if there's a non-preferred key at the given position"""
-        if self.grid is None or self.target_door_color is None:
+        if self.grid is None or self._preferred_door_color is None:
             return False
             
         # Check if position is within bounds
@@ -442,7 +442,7 @@ class BaseValueAgent:
         cell = self.grid.get(pos[0], pos[1])
         if isinstance(cell, Key):
             # Return True if it's NOT the preferred key color
-            return cell.color != self.target_door_color
+            return cell.color != self._preferred_door_color
             
         return False
 

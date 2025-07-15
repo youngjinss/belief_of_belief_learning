@@ -220,7 +220,7 @@ run_visualization() {
     # Run visualize.py from base directory to maintain correct relative paths
     python script/exp5/visualize.py --config_override --result_dir "$RESULTS_DIR" --plot_dir "$RESULTS_DIR/plots" --plot_type "all"  > "$RUN_LOG_DIR/visualization.log" 2>&1
 
-    # python script/exp5/visualize.py --config_override  --result_dir "results/exp5/20250715_155007/" --plot_dir "$results/exp5/20250715_155007/plots" --plot_type "all"
+    # python script/exp5/visualize.py --config_override  --result_dir "results/exp5/20250715_155007/" --plot_dir "results/exp5/20250715_155007/plots" --plot_type "all"
     
     log_step "Visualization completed"
     

@@ -34,7 +34,7 @@ except Exception as e:
 
 # Import our modules
 from config import Config
-from agents import AStarAgent, RandomAgent, ValueAgent
+from achievers import AStarAgent, RandomAgent, Level0ValueAchiever, Level1ValueAchiever
 
 # Set seed using Config default value
 config = Config()
@@ -44,13 +44,30 @@ set_seed(config.seed)
 def create_agent(agent_type, env, config):
     """Create agent based on type"""
     if agent_type == "astar":
-        return AStarAgent(env, observability=config.observability)
+        return AStarAgent(observability=config.observability)
     elif agent_type == "random":
         return RandomAgent(env.action_space, movement_prob=config.movement_prob)
+    elif agent_type == "lv0va":
+        agent_config = config.achiever_configs.get("lv0va", {})
+        return Level0ValueAchiever(
+            observability=agent_config.get("observability", "full"),
+            movement_cost=agent_config.get("movement_cost", 0.01),
+            wall_penalty=agent_config.get("wall_penalty", 2.0),
+            gamma=agent_config.get("gamma", 0.99),
+            temperature=agent_config.get("temperature", 0.1),
+        )
+    elif agent_type == "lv1va":
+        agent_config = config.achiever_configs.get("lv1va", {})
+        return Level1ValueAchiever(
+            observability=agent_config.get("observability", "full"),
+            movement_cost=agent_config.get("movement_cost", 0.01),
+            wall_penalty=agent_config.get("wall_penalty", 2.0),
+            gamma=agent_config.get("gamma", 0.99),
+            temperature=agent_config.get("temperature", 0.1),
+        )
     elif agent_type == "value":
         agent_config = config.achiever_configs.get("value", {})
-        return ValueAgent(
-            env,
+        return Level0ValueAchiever(
             observability=agent_config.get("observability", "full"),
             movement_cost=agent_config.get("movement_cost", 0.01),
             wall_penalty=agent_config.get("wall_penalty", 2.0),
@@ -276,7 +293,7 @@ def main():
         "--agent_type",
         type=str,
         default="astar",
-        choices=["astar", "random", "value"],
+        choices=["lv0va", "lv1va", "astar", "random", "value"],
         help="agent type to use (default: astar)",
     )
     parser.add_argument(

@@ -30,13 +30,16 @@ from lib.env.gym_minigrid.envs.achiever_blocker import (
 from script.exp5.achievers import (
     AStarAgent,
     RandomAgent as AchieverRandomAgent,
-    ValueAgent,
+    Level0ValueAchiever,
+    Level1ValueAchiever,
 )
 from script.exp5.blockers import (
     RandomAgent as BlockerRandomAgent,
     GoalDirectAgent as BlockerGoalDirectAgent,
     RandomlySelectedAgent as BlockerRandomlySelectedAgent,
     RuleBasedAgent as BlockerRuleBasedAgent,
+    Level0ValueBlocker,
+    Level1ValueBlocker,
 )
 from script.exp5.config import Config
 
@@ -697,9 +700,27 @@ def run_single_game(game_id, config_dict, save_dir, blocker_type=None):
     achiever_type = config_dict["achiever_type"]
     if achiever_type == "astar":
         achiever_agent = AStarAgent(observability=config_dict["observability"])
+    elif achiever_type == "lv0va":
+        agent_config = config_dict.get("achiever_configs", {}).get("lv0va", {})
+        achiever_agent = Level0ValueAchiever(
+            observability=agent_config.get("observability", "full"),
+            movement_cost=agent_config.get("movement_cost", 0.01),
+            wall_penalty=agent_config.get("wall_penalty", 2.0),
+            gamma=agent_config.get("gamma", 0.99),
+            temperature=agent_config.get("temperature", 0.1),
+        )
+    elif achiever_type == "lv1va":
+        agent_config = config_dict.get("achiever_configs", {}).get("lv1va", {})
+        achiever_agent = Level1ValueAchiever(
+            observability=agent_config.get("observability", "full"),
+            movement_cost=agent_config.get("movement_cost", 0.01),
+            wall_penalty=agent_config.get("wall_penalty", 2.0),
+            gamma=agent_config.get("gamma", 0.99),
+            temperature=agent_config.get("temperature", 0.1),
+        )
     elif achiever_type == "value":
         agent_config = config_dict.get("achiever_configs", {}).get("value", {})
-        achiever_agent = ValueAgent(
+        achiever_agent = Level0ValueAchiever(
             observability=agent_config.get("observability", "full"),
             movement_cost=agent_config.get("movement_cost", 0.01),
             wall_penalty=agent_config.get("wall_penalty", 2.0),
@@ -723,6 +744,24 @@ def run_single_game(game_id, config_dict, save_dir, blocker_type=None):
         blocker_agent = BlockerRandomAgent()
     elif current_blocker_type == "goal_direct":
         blocker_agent = BlockerGoalDirectAgent()
+    elif current_blocker_type == "l0vb":
+        blocker_config = config_dict.get("blocker_configs", {}).get("l0vb", {})
+        blocker_agent = Level0ValueBlocker(
+            stay_probability=blocker_config.get("stay_probability", 0.7),
+            movement_cost=blocker_config.get("movement_cost", 0.01),
+            wall_penalty=blocker_config.get("wall_penalty", 2.0),
+            gamma=blocker_config.get("gamma", 0.99),
+            temperature=blocker_config.get("temperature", 0.1),
+        )
+    elif current_blocker_type == "l1vb":
+        blocker_config = config_dict.get("blocker_configs", {}).get("l1vb", {})
+        blocker_agent = Level1ValueBlocker(
+            stay_probability=blocker_config.get("stay_probability", 0.7),
+            movement_cost=blocker_config.get("movement_cost", 0.01),
+            wall_penalty=blocker_config.get("wall_penalty", 2.0),
+            gamma=blocker_config.get("gamma", 0.99),
+            temperature=blocker_config.get("temperature", 0.1),
+        )
     elif current_blocker_type == "randomly_selected":
         blocker_config = config_dict.get("blocker_configs", {}).get(
             "randomly_selected", {}
@@ -1067,14 +1106,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "--achiever_type",
         type=str,
-        choices=["astar", "value", "random"],
+        choices=["lv0va", "lv1va", "astar", "value", "random"],
         default=None,
         help="Type of achiever agent to use (will be converted to list internally)",
     )
     parser.add_argument(
         "--blocker_type",
         type=str,
-        choices=["random", "goal_direct", "randomly_selected", "rule_based"],
+        choices=["l0vb", "l1vb", "random", "goal_direct", "randomly_selected", "rule_based"],
         default=None,
         help="Type of blocker agent to use",
     )

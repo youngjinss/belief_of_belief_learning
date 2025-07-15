@@ -14,15 +14,15 @@ class Config:
         self.seed = 42
 
         # Agent settings
-        self.n_games_per_type = 3000  # Number of games to generate for ToMnet data
+        self.n_games_per_type = 50  # Number of games to generate for ToMnet data
         self.achiever_types = {
-            "value": self.n_games_per_type,
-            "astar": self.n_games_per_type,
-        }  # Options: "astar", "random", "value"
+            "lv0va": self.n_games_per_type,
+            "lv1va": self.n_games_per_type,
+        }  # Options: "lv0va", "lv1va", "astar", "random", "value"
         self.blocker_types = {
-            "randomly_selected": self.n_games_per_type,
-            "rule_based": self.n_games_per_type,
-        }  # Options: "random", "goal_direct", "randomly_selected", "rule_based"
+            "l0vb": self.n_games_per_type,
+            "l1vb": self.n_games_per_type,
+        }  # Options: "l0vb", "l1vb", "random", "goal_direct", "randomly_selected", "rule_based"
         self.observability = "full"  # Options: "full", "partial"
         self.movement_prob = 0.8  # For random agent
 
@@ -77,6 +77,22 @@ class Config:
                 "exploration_bias": 0.1,
                 "action_space": 7,
             },
+            "lv0va": {
+                "observability": "full",
+                "movement_cost": 0.05,
+                "wall_penalty": 10.0,
+                "gamma": 0.99,
+                "temperature": 0.1,
+                "action_space": 7,
+            },
+            "lv1va": {
+                "observability": "full",
+                "movement_cost": 0.05,
+                "wall_penalty": 10.0,
+                "gamma": 0.99,
+                "temperature": 0.1,
+                "action_space": 7,
+            },
             "value": {
                 "observability": "full",
                 "movement_cost": 0.05,
@@ -105,17 +121,21 @@ class Config:
 
         # Achiever type mapping for output format
         self.achiever_type_map = {
-            "astar": 0,
-            "random": 1,
-            "value": 2,
+            "lv0va": 0,
+            "lv1va": 1,
+            "astar": 2,
+            "random": 3,
+            "value": 4,
         }
 
         # Blocker type mapping for output format
         self.blocker_type_map = {
-            "randomly_selected": 0,
-            "rule_based": 1,
-            "random": 2,
-            "goal_direct": 3,
+            "l0vb": 0,
+            "l1vb": 1,
+            "randomly_selected": 2,
+            "rule_based": 3,
+            "random": 4,
+            "goal_direct": 5,
         }
 
         # Blocker configurations
@@ -134,6 +154,24 @@ class Config:
                 "action_space": 6,
             },
             "randomly_selected": {
+                "observability": "full",
+                "movement_cost": 0.05,
+                "wall_penalty": 10.0,
+                "gamma": 0.99,
+                "temperature": 0.1,
+                "action_space": 6,
+                "stay_probability": 0.1,
+            },
+            "l0vb": {
+                "observability": "full",
+                "movement_cost": 0.05,
+                "wall_penalty": 10.0,
+                "gamma": 0.99,
+                "temperature": 0.1,
+                "action_space": 6,
+                "stay_probability": 0.1,
+            },
+            "l1vb": {
                 "observability": "full",
                 "movement_cost": 0.05,
                 "wall_penalty": 10.0,
@@ -243,11 +281,12 @@ class Config:
             "early_stopping_patience": 30,
             "early_stopping_min_delta": 0.001,
             "max_grad_norm": 1.0,
-            "action_weight": 1.0,
-            "goal_weight": 1.0,
-            "agent_weight": 1.0,
-            "consumption_weight": 1.0,
-            "sr_weight": 1.0,
+            "action_weight": 0.25,
+            "goal_weight": 0.25,
+            "agent_weight": 0.1,
+            "type_weight": 0.1,
+            "consumption_weight": 0.15,
+            "sr_weight": 0.15,
         }
 
         # Evaluation configuration
@@ -489,8 +528,8 @@ class Config:
 
         # Reduce data generation for testing
         # Set small values for debug mode
-        self.achiever_types = {"value": 10, "astar": 10}
-        self.blocker_types = {"random": 10, "rule_based": 10}
+        self.achiever_types = {"lv0va": 10, "lv1va": 10, "value": 10, "astar": 10}
+        self.blocker_types = {"l0vb": 10, "l1vb": 10, "random": 10, "rule_based": 10}
 
         # Reduce training settings for faster testing
         self.training_config.update(
@@ -725,11 +764,13 @@ class Config:
 
     def validate(self):
         """Validate configuration"""
-        valid_achiever_types = ["astar", "random", "value"]
+        valid_achiever_types = ["lv0va", "lv1va", "astar", "random", "value"]
         for achiever_type in self.achiever_types.keys():
             if achiever_type not in valid_achiever_types:
                 raise ValueError(f"Invalid achiever_type: {achiever_type}")
         valid_blocker_types = [
+            "l0vb",
+            "l1vb",
             "random",
             "goal_direct",
             "randomly_selected",

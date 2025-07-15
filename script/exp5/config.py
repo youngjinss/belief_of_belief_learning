@@ -29,7 +29,7 @@ class Config:
         self.debug = False
 
         # Output settings
-        self.output_dir = "script/exp5/re sults"
+        self.output_dir = "results/exp5/"
         self.gif_output = None  # Filename for saving gif (without .gif extension)
 
         # Data generation settings

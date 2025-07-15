@@ -314,3 +314,31 @@ python script/exp5/train.py --use_mentalnet True
    # Test environment with simple simulation
    python script/exp5/simulate_game.py --episodes 1
    ```
+
+## exp5 버전 기록
+- Multi-blocker type AchieverBlocker environment with multi-attempt game mechanics
+
+### Agent Rule Fixes (exp5) - fixed
+**RandomlySelectedAgent (Level-0 Reasoning)**:
+- Fixed multi-attempt tracking system to allow breaking multiple wrong doors before finding target
+- Added `tried_doors` set to track attempted doors across multiple break attempts
+- Implemented proper reset mechanism after each wrong door break attempt
+- Game continues after breaking wrong doors (with -1 penalty) until correct door is found
+
+**RuleBasedAgent (Level-1 Reasoning)**:
+- **Critical Bug Fix**: Fixed key observation logic in `_check_and_store_achiever_keys`
+- Previous bug: stored array indices instead of color names in `observed_keys`
+- Fixed to store actual color names ("red", "green", "blue", "yellow")
+- Implemented multi-attempt strategy using observed key sequence
+- Added proper cycling through `observed_keys` when wrong doors are broken
+
+**Environment Changes**:
+- Modified game termination rules: only ends when achiever reaches target OR blocker breaks actual target door
+- Breaking wrong doors gives -1 reward but game continues
+- Supports multiple break attempts per trajectory
+
+**Data Generation**:
+- Multi-blocker type support (Type 0: randomly_selected, Type 1: rule_based)
+- Even distribution across blocker types (50/50 split)
+- Trajectory-based interaction analysis processing all break attempts
+- Updated interaction logic: "1" (success), "0" (attempted wrong door), "X" (no attempt)

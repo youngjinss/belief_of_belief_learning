@@ -59,10 +59,11 @@ class RandomlySelectedAgent:
     Randomly selected Blocker Agent for AchieverBlocker environment.
     Level-0 Reasoning Algorithm
     
-    Strategy:
-    1. Select the target color randomly (1st)
-    2. Navigate to target door.
-    3. Use break action (5) to end game
+    Strategy (Multi-attempt):
+    1. Select the target color randomly from remaining doors
+    2. Navigate to target door
+    3. Use break action (5) to attempt breaking
+    4. If game continues (wrong door), select from remaining doors and repeat
     """
 
     def __init__(self, stay_probability=0.7):
@@ -84,6 +85,12 @@ class RandomlySelectedAgent:
         
         # Stay probability during navigation
         self.stay_probability = stay_probability
+        
+        # Multi-attempt tracking
+        self.tried_doors = set()  # Track which doors have been attempted
+        self.available_doors = {"red", "green", "blue", "yellow"}
+        self.just_attempted_break = False
+        self.last_action = None
 
     def get_action(self, obs):
         """
@@ -106,16 +113,29 @@ class RandomlySelectedAgent:
         # Update internal state from observations
         self._update_from_obs(obs)
 
+        # Check if we just attempted to break and game is still continuing
+        if self.just_attempted_break:
+            # Game didn't end, so we broke the wrong door
+            # Mark current target as tried and select new target
+            if self.target_door_color:
+                self.tried_doors.add(self.target_door_color)
+            self._reset_for_new_attempt()
+            self.just_attempted_break = False
+
         # Select target door randomly if not already selected
         if not self.target_selected:
             self._select_random_target_door(obs)
 
         # If we're at the target door, break it
         if self._at_target_door():
+            self.just_attempted_break = True
+            self.last_action = 5
             return 5  # Break action
 
         # Navigate to target door
-        return self._navigate_to_door(obs)
+        action = self._navigate_to_door(obs)
+        self.last_action = action
+        return action
 
     def _update_from_obs(self, obs):
         """Update internal state from observations."""
@@ -130,11 +150,17 @@ class RandomlySelectedAgent:
         self.grid = obs["blocker"]
 
     def _select_random_target_door(self, obs):
-        """Select target door color randomly."""
-        color_map = ["red", "green", "blue", "yellow"]
+        """Select target door color randomly from remaining untried doors."""
+        # Get remaining doors that haven't been tried
+        remaining_doors = list(self.available_doors - self.tried_doors)
         
-        # Randomly select a door color
-        self.target_door_color = np.random.choice(color_map)
+        if not remaining_doors:
+            # All doors have been tried, reset and start over
+            self.tried_doors.clear()
+            remaining_doors = list(self.available_doors)
+        
+        # Randomly select a door color from remaining doors
+        self.target_door_color = np.random.choice(remaining_doors)
         
         # Find the position of the selected door
         self.target_door_pos = self._find_door_position_from_obs(
@@ -146,6 +172,14 @@ class RandomlySelectedAgent:
             self.path_to_door = self._find_path_to_door(obs)
             self.current_path_index = 0
             self.target_selected = True
+
+    def _reset_for_new_attempt(self):
+        """Reset targeting state for a new attempt."""
+        self.target_selected = False
+        self.target_door_color = None
+        self.target_door_pos = None
+        self.path_to_door = []
+        self.current_path_index = 0
 
     def _find_door_position_from_obs(self, color, obs):
         """Find position of door with given color from observations."""
@@ -282,6 +316,10 @@ class RandomlySelectedAgent:
         self.blocker_pos = None
         self.achiever_pos = None
         self.target_selected = False
+        # Reset multi-attempt state
+        self.tried_doors.clear()
+        self.just_attempted_break = False
+        self.last_action = None
         # Keep width/height since they don't change between episodes
     
 
@@ -536,13 +574,14 @@ class RuleBasedAgent:
     Rule-based Blocker Agent for AchieverBlocker environment.
     Level-1 Reasoning Algorithm
 
-    Strategy:
-    1. Select the target color randomly (1st) -> bluffing
-    2. Navigate to target door (with stay_probability)
-    3. Stay in front of target door until achiever picks up first key
-    4. Infer target door color from achiever's first key (2nd) -> real inferring
-    5. Navigate to target door (without stay_probability)
-    6. Use break action (5) to end game
+    Multi-attempt Strategy:
+    1. Select random door color (bluffing) -> navigate to it
+    2. Stay at door until achiever picks up first key  
+    3. Store observed key color in observed_keys list
+    4. Infer target door from first observed key -> navigate and break
+    5. If game continues (wrong door), remove first observed key
+    6. Infer target from next observed key -> navigate and break
+    7. Continue cycling through observed_keys until game ends
     """
 
     def __init__(self, stay_probability=0.7):
@@ -573,6 +612,12 @@ class RuleBasedAgent:
         
         # Stay probability during navigation
         self.stay_probability = stay_probability
+        
+        # Multi-attempt tracking
+        self.observed_keys = []  # Track keys observed from achiever
+        self.current_key_index = 0  # Index of current key being used for inference
+        self.just_attempted_break = False
+        self.last_action = None
 
     @property
     def target_door_color(self):
@@ -612,9 +657,25 @@ class RuleBasedAgent:
         # Update internal state from observations
         self._update_from_obs(obs)
 
-        # Check if achiever has picked up a key for the first time
-        if not self.achiever_has_key:
-            self._check_achiever_key_pickup(obs)
+        # Check if we just attempted to break and game is still continuing
+        if self.just_attempted_break:
+            # Game didn't end, so we broke the wrong door
+            # Move to next observed key if available
+            self.current_key_index += 1
+            if self.current_key_index >= len(self.observed_keys):
+                # No more observed keys, reset to Phase 2 to wait for more keys
+                self.phase = 2
+                self.final_target_color = None
+                self.final_target_pos = None
+            else:
+                # Use next observed key, go back to Phase 3
+                self.phase = 3
+                self.final_target_color = None
+                self.final_target_pos = None
+            self.just_attempted_break = False
+
+        # Check if achiever has picked up a key and store it
+        self._check_and_store_achiever_keys(obs)
 
         # Phase 1: Select initial random target and navigate to it
         if self.phase == 1:
@@ -642,15 +703,17 @@ class RuleBasedAgent:
         
         # Phase 4: Break the final door
         elif self.phase == 4:
+            self.just_attempted_break = True
+            self.last_action = 5
             return 5  # Break action
         
         return 4  # Default: stay
 
     def _handle_phase_3(self, obs):
         """Handle phase 3: infer target and navigate to it."""
-        # If we don't have a final target yet, infer it from achiever's key
+        # If we don't have a final target yet, infer it from current observed key
         if self.final_target_color is None:
-            self._infer_final_target_door(obs)
+            self._infer_final_target_from_observed_keys(obs)
 
         # Ensure we have a valid final target before proceeding
         if self.final_target_pos is None:
@@ -885,4 +948,40 @@ class RuleBasedAgent:
         
         # Phase tracking
         self.phase = 1
+        
+        # Reset multi-attempt state
+        self.observed_keys.clear()
+        self.current_key_index = 0
+        self.just_attempted_break = False
+        self.last_action = None
+        
         # Keep width/height since they don't change between episodes
+
+    def _check_and_store_achiever_keys(self, obs):
+        """Check for new achiever key pickups and store them in observed_keys."""
+        if obs and "achiever_keys" in obs:
+            achiever_keys = obs["achiever_keys"]
+            color_map = ["red", "green", "blue", "yellow"]
+            
+            # Find any keys the achiever has and store color names
+            for i, has_key in enumerate(achiever_keys):
+                if has_key > 0 and i < len(color_map):
+                    key_color = color_map[i]
+                    if key_color not in self.observed_keys:
+                        self.observed_keys.append(key_color)
+            
+            # Update achiever_has_key flag for backward compatibility
+            if len(achiever_keys) > 0 and achiever_keys.sum() > 0 and not self.achiever_has_key:
+                self.achiever_has_key = True
+    
+    def _infer_final_target_from_observed_keys(self, obs):
+        """Infer final target door color from current observed key."""
+        if self.current_key_index < len(self.observed_keys):
+            # Use the key at current_key_index for inference
+            key_color = self.observed_keys[self.current_key_index]
+            self.final_target_color = key_color
+            
+            # Find position of inferred door
+            self.final_target_pos = self._find_door_position_from_obs(
+                self.final_target_color, obs
+            )

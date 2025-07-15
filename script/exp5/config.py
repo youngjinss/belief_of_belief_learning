@@ -10,7 +10,7 @@ class Config:
         self.env_size = (
             f"{self.width}x{self.height}"  # Options: "3x3", "5x5", "9x9", "11x11"
         )
-        
+
         self.seed = 42
 
         # Agent settings
@@ -20,9 +20,9 @@ class Config:
             "lv1va": self.n_games_per_type,
         }  # Options: "lv0va", "lv1va", "astar", "random", "value"
         self.blocker_types = {
-            "l0vb": self.n_games_per_type,
-            "l1vb": self.n_games_per_type,
-        }  # Options: "l0vb", "l1vb", "random", "goal_direct", "randomly_selected", "rule_based"
+            "lv0vb": self.n_games_per_type,
+            "lv1vb": self.n_games_per_type,
+        }  # Options: "lv0vb", "lv1vb", "random", "goal_direct", "randomly_selected", "rule_based"
         self.observability = "full"  # Options: "full", "partial"
         self.movement_prob = 0.8  # For random agent
 
@@ -65,7 +65,7 @@ class Config:
             "9x9": {"grid_size": 9, "max_steps": 50},
             "11x11": {"grid_size": 11, "max_steps": 70},
         }
-        
+
         # Set max_steps based on current env_size
         self.max_steps = self.env_variants[self.env_size]["max_steps"]
 
@@ -84,6 +84,7 @@ class Config:
                 "conflict_penalty": 10.0,
                 "gamma": 0.99,
                 "temperature": 0.1,
+                "q_value_clip": 100,
                 "action_space": 7,
             },
             "lv1va": {
@@ -93,6 +94,7 @@ class Config:
                 "conflict_penalty": 10.0,
                 "gamma": 0.99,
                 "temperature": 0.1,
+                "q_value_clip": 100,
                 "action_space": 7,
             },
             "value": {
@@ -132,8 +134,8 @@ class Config:
 
         # Blocker type mapping for output format
         self.blocker_type_map = {
-            "l0vb": 0,
-            "l1vb": 1,
+            "lv0vb": 0,
+            "lv1vb": 1,
             "randomly_selected": 2,
             "rule_based": 3,
             "random": 4,
@@ -164,23 +166,25 @@ class Config:
                 "action_space": 6,
                 "stay_probability": 0.1,
             },
-            "l0vb": {
+            "lv0vb": {
                 "observability": "full",
                 "movement_cost": 0.1,
                 "wall_penalty": 10.0,
                 "conflict_penalty": 0.0,
                 "gamma": 0.99,
                 "temperature": 0.1,
+                "q_value_clip": 100,
                 "action_space": 6,
                 "stay_probability": 0.1,
             },
-            "l1vb": {
+            "lv1vb": {
                 "observability": "full",
                 "movement_cost": 0.1,
                 "wall_penalty": 10.0,
                 "conflict_penalty": 0.0,
                 "gamma": 0.99,
                 "temperature": 0.1,
+                "q_value_clip": 100,
                 "action_space": 6,
                 "stay_probability": 0.1,
             },
@@ -533,7 +537,7 @@ class Config:
         # Reduce data generation for testing
         # Set small values for debug mode
         self.achiever_types = {"lv0va": 10, "lv1va": 10, "value": 10, "astar": 10}
-        self.blocker_types = {"l0vb": 10, "l1vb": 10, "random": 10, "rule_based": 10}
+        self.blocker_types = {"lv0vb": 10, "lv1vb": 10, "random": 10, "rule_based": 10}
 
         # Reduce training settings for faster testing
         self.training_config.update(
@@ -773,8 +777,8 @@ class Config:
             if achiever_type not in valid_achiever_types:
                 raise ValueError(f"Invalid achiever_type: {achiever_type}")
         valid_blocker_types = [
-            "l0vb",
-            "l1vb",
+            "lv0vb",
+            "lv1vb",
             "random",
             "goal_direct",
             "randomly_selected",

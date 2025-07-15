@@ -351,10 +351,14 @@ def main():
 
     # Create agent
     try:
-        agent = create_agent(config.achiever_type, env, config)
-        print(f"✓ Agent {config.achiever_type} created successfully")
+        # Use first achiever type as default
+        achiever_type = config.achiever_types[0]
+        agent = create_agent(achiever_type, env, config)
+        print(f"✓ Agent {achiever_type} created successfully")
     except Exception as e:
-        print(f"✗ Failed to create agent {config.achiever_type}: {e}")
+        # Use first achiever type as default
+        achiever_type = config.achiever_types[0]
+        print(f"✗ Failed to create agent {achiever_type}: {e}")
         return
 
     # Statistics tracking
@@ -382,8 +386,11 @@ def main():
 
     # Print final statistics
     print(f"\n=== Final Statistics ===")
-    print(f"Achiever Type: {config.achiever_type}")
-    print(f"Blocker Type: {config.blocker_type}")
+    # Use first combination as default
+    achiever_type = config.achiever_types[0]
+    blocker_type = config.blocker_types[0]
+    print(f"Achiever Type: {achiever_type}")
+    print(f"Blocker Type: {blocker_type}")
     print(f"Total episodes: {config.episodes}")
     print(f"Successful episodes: {successful_episodes}")
     print(f"Success rate: {successful_episodes/config.episodes*100:.1f}%")

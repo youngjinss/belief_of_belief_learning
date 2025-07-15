@@ -775,7 +775,10 @@ def plot_character_embeddings(
     print("Loading processed test data to extract agent and goal information...")
 
     env_name = config.get_env_name()
-    agent_pair = config.get_agent_pair_name()
+    # Use first combination as default
+    achiever_type = config.achiever_types[0]
+    blocker_type = config.blocker_types[0]
+    agent_pair = config.get_agent_pair_name(achiever_type, blocker_type)
     test_data_dir = f"./data/{env_name}/{agent_pair}/test"
 
     processed_test_data_path = os.path.join(
@@ -1986,9 +1989,11 @@ if __name__ == "__main__":
             # First check if processed test data already exists from evaluation
             processed_test_data_path = None
 
-            # Get test data path from config
+            # Get test data path from config - use first combination as default
             env_name = config.get_env_name()
-            agent_pair = config.get_agent_pair_name()
+            achiever_type = config.achiever_types[0]
+            blocker_type = config.blocker_types[0]
+            agent_pair = config.get_agent_pair_name(achiever_type, blocker_type)
             test_data_dir_from_config = f"./data/{env_name}/{agent_pair}/test"
 
             possible_processed_paths = [

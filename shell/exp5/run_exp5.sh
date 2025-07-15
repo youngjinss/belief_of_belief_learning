@@ -332,8 +332,10 @@ import sys
 sys.path.append('script/exp5')
 from config import Config
 config = Config()
-print('TRAIN_DATA_DIR=' + config.get_data_path(is_test=False))
-print('TEST_DATA_DIR=' + config.get_data_path(is_test=True))
+achiever_type = list(config.achiever_types.keys())[0]
+blocker_type = list(config.blocker_types.keys())[0]
+print('TRAIN_DATA_DIR=' + config.get_data_path(achiever_type, blocker_type, is_test=False))
+print('TEST_DATA_DIR=' + config.get_data_path(achiever_type, blocker_type, is_test=True))
 "
 }
 
@@ -349,7 +351,7 @@ from config import Config
 config = Config()
 config.enable_debug_mode()
 print('Debug mode enabled successfully')
-print(f'n_games: {config.n_games}')
+print(f'games_per_type: {config.n_games_per_type}')
 print(f'batch_size: {config.training_config[\"batch_size\"]}')
 print(f'epochs: {config.training_config[\"epochs\"]}')
 print(f'device: {config.training_config[\"device\"]}')

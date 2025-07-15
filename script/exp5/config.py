@@ -14,11 +14,15 @@ class Config:
         self.seed = 42
 
         # Agent settings
-        self.achiever_type = "value"  # Options: "astar", "random", "value"
-        self.blocker_types = [
-            "randomly_selected",
-            "rule_based",
-        ]  # Options: "random", "goal_direct", "randomly_selected", "rule_based"
+        self.n_games_per_type = 100  # Number of games to generate for ToMnet data
+        self.achiever_types = {
+            "value": self.n_games_per_type,
+            "astar": self.n_games_per_type,
+        }  # Options: "astar", "random", "value"
+        self.blocker_types = {
+            "random": self.n_games_per_type,
+            "rule_based": self.n_games_per_type,
+        }  # Options: "random", "goal_direct", "randomly_selected", "rule_based"
         self.observability = "full"  # Options: "full", "partial"
         self.movement_prob = 0.8  # For random agent
 
@@ -33,7 +37,6 @@ class Config:
         self.gif_output = None  # Filename for saving gif (without .gif extension)
 
         # Data generation settings
-        self.n_games = 60000  # Number of games to generate for ToMnet data
         self.save_dir = "data"  # Base directory to save generated data
 
         # Debug/test settings
@@ -95,6 +98,13 @@ class Config:
                 "temperature": 0.5,
                 "action_space": 7,
             },
+        }
+
+        # Achiever type mapping for output format
+        self.achiever_type_map = {
+            "astar": 0,
+            "random": 1,
+            "value": 2,
         }
 
         # Blocker type mapping for output format
@@ -257,16 +267,17 @@ class Config:
         """Get full environment name"""
         return self.env_name.format(size=self.env_size)
 
-    def get_agent_pair_name(self):
+    def get_agent_pair_name(self, achiever_type, blocker_type):
         """Get agent pair name for directory structure"""
-        blocker_types_str = "_".join(self.blocker_types)
-        return f"{self.achiever_type}_{blocker_types_str}"
+        return f"{achiever_type}_{blocker_type}"
 
-    def get_data_path(self, is_test=False):
+    def get_data_path(self, achiever_type, blocker_type, is_test=False):
         """
         Get data path based on environment name and agent types
 
         Args:
+            achiever_type (str): Type of achiever agent
+            blocker_type (str): Type of blocker agent
             is_test (bool): If True, returns path for test data with /test suffix
 
         Returns:
@@ -275,7 +286,7 @@ class Config:
         import os
 
         env_name = self.get_env_name()
-        agent_combination = self.get_agent_pair_name()
+        agent_combination = self.get_agent_pair_name(achiever_type, blocker_type)
         base_path = os.path.join(self.save_dir, env_name, agent_combination)
 
         if is_test:
@@ -283,9 +294,9 @@ class Config:
         else:
             return base_path
 
-    def get_test_data_dir(self):
+    def get_test_data_dir(self, achiever_type, blocker_type):
         """Get test data directory path"""
-        return self.get_data_path(is_test=True)
+        return self.get_data_path(achiever_type, blocker_type, is_test=True)
 
     def get_env_config(self):
         """Get environment configuration"""
@@ -296,17 +307,17 @@ class Config:
             "size": self.env_size,
         }
 
-    def get_agent_config(self):
+    def get_agent_config(self, achiever_type=None, blocker_type=None):
         """Get agent configuration"""
         base_config = {
-            "achiever_type": self.achiever_type,
+            "achiever_types": self.achiever_types,
             "blocker_types": self.blocker_types,
             "observability": self.observability,
         }
 
-        # Add agent-specific configurations
-        if self.achiever_type in self.achiever_configs:
-            base_config.update(self.achiever_configs[self.achiever_type])
+        # Add agent-specific configurations if specific types are provided
+        if achiever_type and achiever_type in self.achiever_configs:
+            base_config.update(self.achiever_configs[achiever_type])
 
         return base_config
 
@@ -474,7 +485,9 @@ class Config:
         self.debug_mode = True
 
         # Reduce data generation for testing
-        self.n_games = 100  # Reduced from 50000
+        # Set small values for debug mode
+        self.achiever_types = {"value": 10, "astar": 10}
+        self.blocker_types = {"random": 10, "rule_based": 10}
 
         # Reduce training settings for faster testing
         self.training_config.update(
@@ -553,14 +566,16 @@ class Config:
         """Update configuration from command line arguments"""
         # Environment and agent settings
         if hasattr(args, "achiever_type") and args.achiever_type is not None:
-            self.achiever_type = args.achiever_type
+            self.achiever_types = {
+                args.achiever_type: 30000
+            }  # Convert single type to dict for backward compatibility
         if hasattr(args, "blocker_type") and args.blocker_type is not None:
-            self.blocker_types = [
-                args.blocker_type
-            ]  # Convert single type to list for backward compatibility
+            self.blocker_types = {
+                args.blocker_type: 30000
+            }  # Convert single type to dict for backward compatibility
         # Backward compatibility
         if hasattr(args, "agent_type") and args.agent_type is not None:
-            self.achiever_type = args.agent_type
+            self.achiever_types = {args.agent_type: 30000}
         if hasattr(args, "seed") and args.seed is not None:
             self.seed = args.seed
         if hasattr(args, "episodes") and args.episodes is not None:
@@ -675,8 +690,6 @@ class Config:
             self.training_process_config["goal_weight"] = args.goal_weight
 
         # Data generation settings
-        if hasattr(args, "n_games") and args.n_games is not None:
-            self.n_games = args.n_games
         if hasattr(args, "save_dir") and args.save_dir is not None:
             self.save_dir = args.save_dir
 
@@ -706,15 +719,17 @@ class Config:
 
     def validate(self):
         """Validate configuration"""
-        if self.achiever_type not in ["astar", "random", "value"]:
-            raise ValueError(f"Invalid achiever_type: {self.achiever_type}")
+        valid_achiever_types = ["astar", "random", "value"]
+        for achiever_type in self.achiever_types.keys():
+            if achiever_type not in valid_achiever_types:
+                raise ValueError(f"Invalid achiever_type: {achiever_type}")
         valid_blocker_types = [
             "random",
             "goal_direct",
             "randomly_selected",
             "rule_based",
         ]
-        for blocker_type in self.blocker_types:
+        for blocker_type in self.blocker_types.keys():
             if blocker_type not in valid_blocker_types:
                 raise ValueError(f"Invalid blocker_type: {blocker_type}")
 
@@ -788,8 +803,8 @@ class Config:
         """String representation of configuration"""
         return f"""AchieverBlocker Experiment Configuration:
   Environment: {self.get_env_name()}
-  Achiever Type: {self.achiever_type}
-  Blocker Types: {', '.join(self.blocker_types)}
+  Achiever Types: {', '.join(self.achiever_types.keys())}
+  Blocker Types: {', '.join(self.blocker_types.keys())}
   Observability: {self.observability}
   Episodes: {self.episodes}
   Max Steps: {self.max_steps}

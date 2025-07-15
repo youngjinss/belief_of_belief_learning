@@ -1063,6 +1063,8 @@ def train_tomnet(
     data_dir=None,
     save_dir="./results/exp5",
     config=None,
+    achiever_type=None,
+    blocker_type=None,
 ):
     """
     Main training function for KeyDoor ToMnet
@@ -1071,6 +1073,8 @@ def train_tomnet(
         data_dir: Directory containing game data
         save_dir: Directory to save results
         config: Configuration object (Config instance)
+        achiever_type: Specific achiever type for this training session
+        blocker_type: Specific blocker type for this training session
     """
     # Use provided config or create default
     if config is None:
@@ -1079,8 +1083,16 @@ def train_tomnet(
     # Set data_dir based on config if not provided
     if data_dir is None:
         env_name = config.get_env_name()
-        agent_type = config.get_agent_pair_name()
-        data_dir = f"./data/{env_name}/{agent_type}/"
+        # Use specific achiever and blocker types if provided
+        if achiever_type and blocker_type:
+            agent_type = config.get_agent_pair_name(achiever_type, blocker_type)
+            data_dir = f"./data/{env_name}/{agent_type}/"
+        else:
+            # Default to first combination if types not specified
+            achiever_type = config.achiever_types[0]
+            blocker_type = config.blocker_types[0]
+            agent_type = config.get_agent_pair_name(achiever_type, blocker_type)
+            data_dir = f"./data/{env_name}/{agent_type}/"
 
     # Extract parameters from config
     training_kwargs = config.get_training_kwargs()
@@ -1185,11 +1197,13 @@ def train_tomnet(
 
     print(f"Using AMP (Automatic Mixed Precision): {use_amp}")
     print(f"Gradient accumulation steps: {gradient_accumulation_steps}")
+    print(f"Training {achiever_type} achiever with {blocker_type} blocker")
     print(f"Results will be saved to: {experiment_save_dir}")
 
     # Check if processed data exists, if not generate it
     processed_data_path = os.path.join(
-        data_dir, f"processed_data_exp{config.experiment_no}.pkl"
+        data_dir,
+        f"processed_data_exp{config.experiment_no}_{achiever_type}_{blocker_type}.pkl",
     )
 
     if not os.path.exists(processed_data_path):
@@ -1229,6 +1243,39 @@ def train_tomnet(
         with open(processed_data_path, "rb") as f:
             data = pickle.load(f)
         print(f"  Successfully loaded from {processed_data_path}")
+
+    # Sample trajectories randomly for training if specified in config
+    if achiever_type and blocker_type:
+        achiever_games = config.achiever_types.get(achiever_type, 30000)
+        blocker_games = config.blocker_types.get(blocker_type, 30000)
+        target_games = min(achiever_games, blocker_games)
+
+        total_samples = data["trajectories"].shape[0]
+        if total_samples > target_games:
+            print(
+                f"Sampling {target_games} trajectories from {total_samples} available samples"
+            )
+
+            # Set random seed for reproducible sampling
+            torch.manual_seed(config.seed)
+            np.random.seed(config.seed)
+
+            # Random sampling indices
+            sample_indices = np.random.choice(
+                total_samples, target_games, replace=False
+            )
+            sample_indices = np.sort(sample_indices)
+
+            # Sample all data arrays
+            for key in data.keys():
+                if isinstance(data[key], np.ndarray):
+                    data[key] = data[key][sample_indices]
+                elif isinstance(data[key], torch.Tensor):
+                    data[key] = data[key][sample_indices]
+
+            print(f"Sampled data to {target_games} trajectories")
+        else:
+            print(f"Using all {total_samples} trajectories (target: {target_games})")
 
     # Log data shapes for verification
     print(f"Data shapes:")
@@ -1571,7 +1618,9 @@ def train_tomnet(
     else:
         print("Skipping data statistics - using pre-processed data")
 
-    print(f"\nTraining completed!")
+    print(
+        f"\nTraining completed for {achiever_type} achiever with {blocker_type} blocker!"
+    )
     print(f"Results saved to: {experiment_save_dir}")
     print(f"Best validation loss: {best_val_loss:.4f}")
 
@@ -1583,8 +1632,20 @@ def train_tomnet(
     }
 
 
+def seed_worker(worker_id):
+    """Worker init function for DataLoader to ensure reproducible random seeds"""
+    import random
+    import numpy as np
+    import torch
+
+    worker_seed = torch.initial_seed() % 2**32
+    np.random.seed(worker_seed)
+    random.seed(worker_seed)
+
+
 if __name__ == "__main__":
     import argparse
+    import os
 
     parser = argparse.ArgumentParser(description="Train KeyDoor ToMnet")
 
@@ -1692,9 +1753,46 @@ if __name__ == "__main__":
     seed_worker = set_seed(seed)
     print(f"Set random seed to {seed} for reproducibility")
 
-    # Run training
-    results = train_tomnet(
-        data_dir=args.data_dir,
-        save_dir=args.save_dir,
-        config=config,
+    # Run training for all achiever-blocker combinations
+    all_results = []
+
+    for achiever_type in config.achiever_types:
+        for blocker_type in config.blocker_types:
+            print(f"\n{'='*60}")
+            print(f"Training for {achiever_type} achiever with {blocker_type} blocker")
+            print(f"{'='*60}")
+
+            # Create specific save directory for this combination
+            combination_save_dir = os.path.join(
+                args.save_dir, f"{achiever_type}_{blocker_type}"
+            )
+
+            # Run training for this combination
+            results = train_tomnet(
+                data_dir=args.data_dir,
+                save_dir=combination_save_dir,
+                config=config,
+                achiever_type=achiever_type,
+                blocker_type=blocker_type,
+            )
+
+            all_results.append(
+                {
+                    "achiever_type": achiever_type,
+                    "blocker_type": blocker_type,
+                    "results": results,
+                }
+            )
+
+    print(f"\n{'='*60}")
+    print(
+        f"Training completed for all {len(config.achiever_types)} x {len(config.blocker_types)} combinations"
     )
+    print(f"{'='*60}")
+
+    # Print summary
+    for result in all_results:
+        achiever = result["achiever_type"]
+        blocker = result["blocker_type"]
+        best_loss = result["results"]["best_val_loss"]
+        print(f"{achiever}_{blocker}: Best validation loss = {best_loss:.4f}")

@@ -891,7 +891,7 @@ def run_single_game_with_blocker(game_assignment, config_dict, save_dir):
 
 
 def generate_trajectories(
-    config=None, random_seed=42, n_processes=None, test_data=False, n_games=None
+    config=None, random_seed=42, n_processes=None, test_data=False
 ):
     """
     Generate trajectories for AchieverBlocker environment in ToMnet format
@@ -901,45 +901,81 @@ def generate_trajectories(
         random_seed: Random seed for environment generation
         n_processes: Number of parallel processes
         test_data: If True, saves data to test subdirectory
-        n_games: Number of games to generate (overrides config if provided)
     """
     if config is None:
         config = Config()
 
-    n_games = n_games if n_games is not None else config.n_games
-
-    print(
-        f"Generating {n_games} AchieverBlocker trajectories with random seed: {random_seed}"
-    )
-    print(f"Achiever type: {config.achiever_type}")
-    print(f"Blocker types: {', '.join(config.blocker_types)}")
+    print(f"Generating AchieverBlocker trajectories with random seed: {random_seed}")
+    print(f"Achiever types: {', '.join(config.achiever_types.keys())}")
+    print(f"Blocker types: {', '.join(config.blocker_types.keys())}")
     print(f"Environment size: {config.env_size}")
 
-    # Create save directory based on environment name and agent types
-    save_dir = config.get_data_path(is_test=test_data)
-
-    # Override config save_dir with the new path
-    config.save_dir = save_dir
-
-    # Check if data already exists in the save directory
-    if os.path.exists(config.save_dir):
-        existing_files = [
-            f
-            for f in os.listdir(config.save_dir)
-            if f.startswith("test") and f.endswith(".txt")
-        ]
-        if existing_files:
-            print(f"Data already exists in {config.save_dir}")
-            print(f"Found {len(existing_files)} existing trajectory files")
-            print("Exiting to avoid overwriting existing data")
+    # Generate data for each achiever-blocker combination
+    for achiever_type in config.achiever_types.keys():
+        for blocker_type in config.blocker_types.keys():
             print(
-                "If you want to regenerate data, please delete the existing directory first"
+                f"\nGenerating data for {achiever_type} achiever with {blocker_type} blocker..."
             )
-            return
 
-    # Create output directory
-    os.makedirs(config.save_dir, exist_ok=True)
+            # Create save directory for this combination
+            save_dir = config.get_data_path(
+                achiever_type, blocker_type, is_test=test_data
+            )
 
+            # Check if data already exists in the save directory
+            if os.path.exists(save_dir):
+                existing_files = [
+                    f
+                    for f in os.listdir(save_dir)
+                    if f.startswith("test") and f.endswith(".txt")
+                ]
+                if existing_files:
+                    print(f"Data already exists in {save_dir}")
+                    print(f"Found {len(existing_files)} existing trajectory files")
+                    print(
+                        "Skipping this combination to avoid overwriting existing data"
+                    )
+                    continue
+
+            # Create output directory
+            os.makedirs(save_dir, exist_ok=True)
+
+            # Generate trajectories for this combination
+            # Get games count for this specific combination
+            achiever_games = config.achiever_types[achiever_type]
+            blocker_games = config.blocker_types[blocker_type]
+            combination_games = min(achiever_games, blocker_games)
+
+            generate_trajectories_for_combination(
+                config,
+                achiever_type,
+                blocker_type,
+                save_dir,
+                random_seed,
+                n_processes,
+                combination_games,
+            )
+
+    # Set number of processes (default to CPU count - 1, min 1)
+    if n_processes is None:
+        n_processes = max(1, mp.cpu_count() - 1)
+
+    print(f"Using {n_processes} processes for parallel game generation")
+
+    print(
+        f"Generated data for all {len(config.achiever_types)} achiever types and {len(config.blocker_types)} blocker types"
+    )
+    print(
+        f"Total combinations: {len(config.achiever_types) * len(config.blocker_types)}"
+    )
+
+
+def generate_trajectories_for_combination(
+    config, achiever_type, blocker_type, save_dir, random_seed, n_processes, num_games
+):
+    """
+    Generate trajectories for a specific achiever-blocker combination
+    """
     # Set number of processes (default to CPU count - 1, min 1)
     if n_processes is None:
         n_processes = max(1, mp.cpu_count() - 1)
@@ -951,8 +987,8 @@ def generate_trajectories(
         "env_size": config.env_size,
         "max_steps": config.max_steps,
         "observability": config.observability,
-        "achiever_type": config.achiever_type,
-        "blocker_types": config.blocker_types,
+        "achiever_type": achiever_type,
+        "blocker_types": [blocker_type],  # Only use the specific blocker type
         "base_random_seed": random_seed,
         # Agent-specific configs (complete configurations)
         "achiever_configs": config.achiever_configs,
@@ -972,25 +1008,18 @@ def generate_trajectories(
         "blocker_type_map": config.blocker_type_map,
     }
 
-    # Distribute games across blocker types
-    blocker_types = config.blocker_types
-    n_blocker_types = len(blocker_types)
-
-    # Create game assignments
+    # Create game assignments (all games use the same blocker type)
     game_assignments = []
-    for i in range(n_games):
-        blocker_type_idx = i % n_blocker_types
-        blocker_type = blocker_types[blocker_type_idx]
+    for i in range(num_games):
         game_assignments.append((i, blocker_type))
 
-    print(f"Distributing {n_games} games across {n_blocker_types} blocker types:")
-    for blocker_type in blocker_types:
-        count = sum(1 for _, bt in game_assignments if bt == blocker_type)
-        print(f"  {blocker_type}: {count} games")
+    print(
+        f"Generating {num_games} games for {achiever_type} achiever with {blocker_type} blocker"
+    )
 
     # Create partial function with fixed arguments
     game_func = partial(
-        run_single_game_with_blocker, config_dict=config_dict, save_dir=config.save_dir
+        run_single_game_with_blocker, config_dict=config_dict, save_dir=save_dir
     )
 
     # Run games in parallel
@@ -1000,17 +1029,17 @@ def generate_trajectories(
 
         for i, result in enumerate(pool.imap(game_func, game_assignments)):
             results.append(result)
-            if (i + 1) % 5000 == 0 or (i + 1) == n_games:
-                print(f"Generated {i + 1}/{n_games} games")
+            if (i + 1) % 5000 == 0 or (i + 1) == num_games:
+                print(f"Generated {i + 1}/{num_games} games")
 
         # Wait for all processes to complete
         pool.close()
         pool.join()
 
-    print(f"Generated {n_games} games successfully using {n_processes} processes!")
-    print(f"Data saved to: {config.save_dir}")
+    print(f"Generated {num_games} games successfully using {n_processes} processes!")
+    print(f"Data saved to: {save_dir}")
     print(
-        f"Environment: {config.get_env_name()}, Achiever: {config.achiever_type}, Blockers: {', '.join(config.blocker_types)}"
+        f"Environment: {config.get_env_name()}, Achiever: {achiever_type}, Blocker: {blocker_type}"
     )
 
 
@@ -1031,13 +1060,12 @@ if __name__ == "__main__":
         action="store_true",
         help="Override config with command line arguments",
     )
-    parser.add_argument("--n_games", type=int, help="Number of games to generate")
     parser.add_argument(
         "--achiever_type",
         type=str,
         choices=["astar", "value", "random"],
         default=None,
-        help="Type of achiever agent to use",
+        help="Type of achiever agent to use (will be converted to list internally)",
     )
     parser.add_argument(
         "--blocker_type",
@@ -1088,5 +1116,4 @@ if __name__ == "__main__":
         random_seed=args.random_seed,
         n_processes=args.n_processes,
         test_data=args.test_data,
-        n_games=args.n_games,
     )

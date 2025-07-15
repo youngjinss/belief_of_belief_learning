@@ -44,13 +44,18 @@ def find_long_trajectories(base_dir, threshold=50):
     Returns:
         dict: Dictionary mapping directory to list of (filename, length) tuples
     """
-    # Define the directories to search
-    search_dirs = [
-        "data/MiniGrid-AchieverBlocker-9x9-v1/astar_random",
-        "data/MiniGrid-AchieverBlocker-9x9-v1/astar_rule_based", 
-        "data/MiniGrid-AchieverBlocker-9x9-v1/value_random",
-        "data/MiniGrid-AchieverBlocker-9x9-v1/value_rule_based"
-    ]
+    # Dynamically find all subdirectories under "data/MiniGrid-AchieverBlocker-9x9-v1/"
+    data_root = os.path.join(base_dir, "data", "MiniGrid-AchieverBlocker-9x9-v1")
+    if not os.path.exists(data_root):
+        print(f"Data root directory does not exist: {data_root}")
+        search_dirs = []
+    else:
+        # Only extract subdirectories (exclude files)
+        search_dirs = [
+            os.path.relpath(os.path.join("data", "MiniGrid-AchieverBlocker-9x9-v1", d), base_dir)
+            for d in os.listdir(data_root)
+            if os.path.isdir(os.path.join(data_root, d))
+        ]
     
     results = {}
     
@@ -95,10 +100,11 @@ def main():
     print("=" * 60)
     
     # Find long trajectories
-    results = find_long_trajectories(base_dir, threshold=50)
+    threshold = 40
+    results = find_long_trajectories(base_dir, threshold=threshold)
     
     if not results:
-        print("No trajectory files with length > 50 found in any directory.")
+        print(f"No trajectory files with length > {threshold} found in any directory.")
         return
     
     # Print results

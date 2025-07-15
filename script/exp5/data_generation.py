@@ -4,6 +4,11 @@ import pickle
 import random
 import numpy as np
 from typing import Dict, List, Tuple, Any
+import sys
+
+# Add lib to path for imports
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
+from lib.utils.seed import set_seed
 
 """
 Data processing for exp5 (AchieverBlocker) ToMnet training
@@ -33,23 +38,19 @@ class DataGenerator:
         if config is not None:
             self.ACHIEVER_ACTION_SPACE = config.model_config["achiever_action_space"]
             self.BLOCKER_ACTION_SPACE = config.model_config["blocker_action_space"]
+            set_seed(config.seed)  # Set seed when config is provided
         else:
             # Fallback defaults if no config provided
-            try:
-                from config import Config
+            from config import Config
 
-                config_obj = Config()
-                self.ACHIEVER_ACTION_SPACE = config_obj.model_config[
-                    "achiever_action_space"
-                ]
-                self.BLOCKER_ACTION_SPACE = config_obj.model_config[
-                    "blocker_action_space"
-                ]
-            except:
-                self.ACHIEVER_ACTION_SPACE = (
-                    7  # up, right, down, left, stay, pickup, toggle
-                )
-                self.BLOCKER_ACTION_SPACE = 6  # up, right, down, left, stay, break
+            config_obj = Config()
+            set_seed(config_obj.seed)  # Set seed when Config is created
+            self.ACHIEVER_ACTION_SPACE = config_obj.model_config[
+                "achiever_action_space"
+            ]
+            self.BLOCKER_ACTION_SPACE = config_obj.model_config[
+                "blocker_action_space"
+            ]
 
         # Goal mappings for blocker inference
         self.COLOR_TO_LETTER = {"red": "A", "green": "B", "blue": "C", "yellow": "D"}

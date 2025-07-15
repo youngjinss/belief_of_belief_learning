@@ -2,6 +2,20 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 import numpy as np
+import sys
+import os
+
+# Add lib to path for imports
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
+from lib.utils.seed import set_seed
+
+# Add current directory for config import
+sys.path.append(os.path.dirname(__file__))
+from config import Config
+
+# Set seed using Config default value
+config = Config()
+set_seed(config.seed)
 
 """
 Integrated ToMnet architecture for KeyDoor environment (experiment 4)

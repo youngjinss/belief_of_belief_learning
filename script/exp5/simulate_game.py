@@ -36,6 +36,10 @@ except Exception as e:
 from config import Config
 from agents import AStarAgent, RandomAgent, ValueAgent
 
+# Set seed using Config default value
+config = Config()
+set_seed(config.seed)
+
 
 def create_agent(agent_type, env, config):
     """Create agent based on type"""

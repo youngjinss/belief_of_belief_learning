@@ -21,6 +21,10 @@ from data_generation import DataGenerator
 from config import Config
 from lib.utils.seed import set_seed
 
+# Set seed using Config default value
+config = Config()
+set_seed(config.seed)
+
 """
 Training system for KeyDoor ToMnet implementation
 Adapted from ToMnetF experiment5 for KeyDoor environment
@@ -1750,7 +1754,7 @@ if __name__ == "__main__":
 
     # Set seed for reproducibility
     seed = args.seed if hasattr(args, "seed") else config.seed
-    seed_worker = set_seed(seed)
+    set_seed(seed)
     print(f"Set random seed to {seed} for reproducibility")
 
     # Run training for all achiever-blocker combinations

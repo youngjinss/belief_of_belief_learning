@@ -117,7 +117,7 @@ run_test_data_generation() {
     log_step "Logging test data generation output to: $RUN_LOG_DIR/test_data_generation.log"
     
     # Run generate.py from base directory to maintain correct relative paths (same as exp4)
-    python script/exp5/generate.py --config_override --n_games "$VALIDATION_GAMES" --random_seed "$TEST_RANDOM_SEED" --test_data > "$RUN_LOG_DIR/test_data_generation.log" 2>&1
+    python script/exp5/generate.py --config_override --random_seed "$TEST_RANDOM_SEED" --test_data > "$RUN_LOG_DIR/test_data_generation.log" 2>&1
 
     # Try to determine the actual test data path from logs and verify files
     local actual_test_dir=$(grep -o "Data saved to: .*" "$RUN_LOG_DIR/test_data_generation.log" | head -1 | cut -d' ' -f4)

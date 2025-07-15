@@ -25,6 +25,10 @@ from train import prepare_data_for_training, generate_past_episodes_from_batch
 from data_generation import DataGenerator as DataReader
 from lib.utils.seed import set_seed
 
+# Set seed using Config default value
+config = Config()
+set_seed(config.seed)
+
 """
 Evaluation and metrics for AchieverBlocker ToMnet experiment
 Adapted from ToMnetF experiment5 for multi-agent AchieverBlocker environment

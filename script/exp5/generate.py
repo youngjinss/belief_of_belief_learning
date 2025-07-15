@@ -40,6 +40,10 @@ from script.exp5.blockers import (
 )
 from script.exp5.config import Config
 
+# Set seed using Config default value
+config = Config()
+set_seed(config.seed)
+
 """
 Data generation for AchieverBlocker environment in ToMnet format
 2-agent environment with achiever and blocker agents

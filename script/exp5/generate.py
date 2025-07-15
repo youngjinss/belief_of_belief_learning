@@ -706,6 +706,7 @@ def run_single_game(game_id, config_dict, save_dir, blocker_type=None):
             observability=agent_config.get("observability", "full"),
             movement_cost=agent_config.get("movement_cost", 0.01),
             wall_penalty=agent_config.get("wall_penalty", 2.0),
+            conflict_penalty=agent_config.get("conflict_penalty", 2.0),
             gamma=agent_config.get("gamma", 0.99),
             temperature=agent_config.get("temperature", 0.1),
         )
@@ -715,6 +716,7 @@ def run_single_game(game_id, config_dict, save_dir, blocker_type=None):
             observability=agent_config.get("observability", "full"),
             movement_cost=agent_config.get("movement_cost", 0.01),
             wall_penalty=agent_config.get("wall_penalty", 2.0),
+            conflict_penalty=agent_config.get("conflict_penalty", 2.0),
             gamma=agent_config.get("gamma", 0.99),
             temperature=agent_config.get("temperature", 0.1),
         )
@@ -750,6 +752,7 @@ def run_single_game(game_id, config_dict, save_dir, blocker_type=None):
             stay_probability=blocker_config.get("stay_probability", 0.7),
             movement_cost=blocker_config.get("movement_cost", 0.01),
             wall_penalty=blocker_config.get("wall_penalty", 2.0),
+            conflict_penalty=blocker_config.get("conflict_penalty", 2.0),
             gamma=blocker_config.get("gamma", 0.99),
             temperature=blocker_config.get("temperature", 0.1),
         )
@@ -759,6 +762,7 @@ def run_single_game(game_id, config_dict, save_dir, blocker_type=None):
             stay_probability=blocker_config.get("stay_probability", 0.7),
             movement_cost=blocker_config.get("movement_cost", 0.01),
             wall_penalty=blocker_config.get("wall_penalty", 2.0),
+            conflict_penalty=blocker_config.get("conflict_penalty", 2.0),
             gamma=blocker_config.get("gamma", 0.99),
             temperature=blocker_config.get("temperature", 0.1),
         )

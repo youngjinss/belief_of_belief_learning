@@ -14,7 +14,7 @@ class Config:
         self.seed = 42
 
         # Agent settings
-        self.n_games_per_type = 50  # Number of games to generate for ToMnet data
+        self.n_games_per_type = 3000  # Number of games to generate for ToMnet data
         self.achiever_types = {
             "lv0va": self.n_games_per_type,
             "lv1va": self.n_games_per_type,
@@ -79,23 +79,25 @@ class Config:
             },
             "lv0va": {
                 "observability": "full",
-                "movement_cost": 0.05,
+                "movement_cost": 0.1,
                 "wall_penalty": 10.0,
+                "conflict_penalty": 10.0,
                 "gamma": 0.99,
                 "temperature": 0.1,
                 "action_space": 7,
             },
             "lv1va": {
                 "observability": "full",
-                "movement_cost": 0.05,
+                "movement_cost": 0.1,
                 "wall_penalty": 10.0,
+                "conflict_penalty": 10.0,
                 "gamma": 0.99,
                 "temperature": 0.1,
                 "action_space": 7,
             },
             "value": {
                 "observability": "full",
-                "movement_cost": 0.05,
+                "movement_cost": 0.1,
                 "wall_penalty": 10.0,
                 "gamma": 0.99,
                 "temperature": 0.1,
@@ -103,7 +105,7 @@ class Config:
             },
             "value_deterministic": {
                 "observability": "full",
-                "movement_cost": 0.05,
+                "movement_cost": 0.1,
                 "wall_penalty": 10.0,
                 "gamma": 0.99,
                 "temperature": 0.0,
@@ -111,7 +113,7 @@ class Config:
             },
             "value_stochastic": {
                 "observability": "full",
-                "movement_cost": 0.05,
+                "movement_cost": 0.1,
                 "wall_penalty": 10.0,
                 "gamma": 0.99,
                 "temperature": 0.5,
@@ -164,8 +166,9 @@ class Config:
             },
             "l0vb": {
                 "observability": "full",
-                "movement_cost": 0.05,
+                "movement_cost": 0.1,
                 "wall_penalty": 10.0,
+                "conflict_penalty": 0.0,
                 "gamma": 0.99,
                 "temperature": 0.1,
                 "action_space": 6,
@@ -173,8 +176,9 @@ class Config:
             },
             "l1vb": {
                 "observability": "full",
-                "movement_cost": 0.05,
+                "movement_cost": 0.1,
                 "wall_penalty": 10.0,
+                "conflict_penalty": 0.0,
                 "gamma": 0.99,
                 "temperature": 0.1,
                 "action_space": 6,

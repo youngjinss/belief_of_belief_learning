@@ -596,6 +596,7 @@ class Level0ValueBlocker:
         stay_probability=0.7,
         movement_cost=0.01,
         wall_penalty=2.0,
+        conflict_penalty=2.0,
         gamma=0.99,
         temperature=0.1,
     ):
@@ -627,6 +628,7 @@ class Level0ValueBlocker:
         # Value iteration parameters
         self.movement_cost = movement_cost
         self.wall_penalty = wall_penalty
+        self.conflict_penalty = conflict_penalty
         self.gamma = gamma
         self.temperature = temperature
 
@@ -855,7 +857,7 @@ class Level0ValueBlocker:
                         & (valid_next_y == achiever_pos[1])
                     )
                     rewards = np.where(
-                        achiever_conflict, rewards - self.wall_penalty, rewards
+                        achiever_conflict, rewards - self.conflict_penalty, rewards
                     )
                     next_values = np.where(
                         achiever_conflict,
@@ -949,7 +951,7 @@ class Level0ValueBlocker:
                 # Check if new position conflicts with achiever position
                 if achiever_pos is not None and new_pos == achiever_pos:
                     reward -= (
-                        self.wall_penalty
+                        self.conflict_penalty
                     )  # Heavy penalty for trying to move to achiever's position
                     next_value = (
                         self.gamma * value_function[x, y]
@@ -1056,6 +1058,7 @@ class Level1ValueBlocker:
         stay_probability=0.7,
         movement_cost=0.01,
         wall_penalty=2.0,
+        conflict_penalty=2.0,
         gamma=0.99,
         temperature=0.1,
     ):
@@ -1098,6 +1101,7 @@ class Level1ValueBlocker:
         # Value iteration parameters
         self.movement_cost = movement_cost
         self.wall_penalty = wall_penalty
+        self.conflict_penalty = conflict_penalty
         self.gamma = gamma
         self.temperature = temperature
 
@@ -1398,7 +1402,7 @@ class Level1ValueBlocker:
                         & (valid_next_y == achiever_pos[1])
                     )
                     rewards = np.where(
-                        achiever_conflict, rewards - self.wall_penalty, rewards
+                        achiever_conflict, rewards - self.conflict_penalty, rewards
                     )
                     next_values = np.where(
                         achiever_conflict,
@@ -1492,7 +1496,7 @@ class Level1ValueBlocker:
                 # Check if new position conflicts with achiever position
                 if achiever_pos is not None and new_pos == achiever_pos:
                     reward -= (
-                        self.wall_penalty
+                        self.conflict_penalty
                     )  # Heavy penalty for trying to move to achiever's position
                     next_value = (
                         self.gamma * value_function[x, y]

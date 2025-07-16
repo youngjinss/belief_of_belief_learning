@@ -272,7 +272,7 @@ class ConvLSTM2d(nn.Module):
             output: (batch_size, seq_len, hidden_channels, height, width)
             (h, c): Final hidden and cell states
         """
-        batch_size, seq_len, _, height, width = x.size()
+        batch_size, seq_len, input_channels, height, width = x.size()
 
         if hidden_state is None:
             h = torch.zeros(
@@ -341,11 +341,9 @@ class MentalNet(nn.Module):
         self.n_echar = n_echar
 
         # Paper spec: state channels (8) + action channel (1) = 9 total input channels
-        self.state_channels = (
-            channels_in - 1
-        )  # State without heading direction (channels_in - 1)
+        self.state_channels = channels_in  # Use channels_in directly (8 state channels)
         self.action_space = action_space  # Number of possible actions from config
-        self.input_channels = self.state_channels + 1  # State + spatialized action
+        self.input_channels = self.state_channels + 1  # State + spatialized action (8+1=9)
 
         # Use configurable n_ement channels throughout
         self.resnet_channels = n_ement

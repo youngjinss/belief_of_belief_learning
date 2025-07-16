@@ -11,6 +11,7 @@ import time
 import pickle
 import gc
 from torch.cuda.amp import autocast, GradScaler
+import mmap
 
 # Add current directory to path
 sys.path.append(os.path.dirname(__file__))
@@ -504,22 +505,21 @@ def train_epoch(
         # For trajectory slicing, use the action at index 0 (the target action for this slice)
         action_targets = actions[:, 0]  # Target action for each sliced trajectory
 
-        # Find the effective length for each sample (remove padding)
-        traj_sum = trajectories.sum(dim=(2, 3, 4))  # [batch_size, seq_len]
-        non_zero_mask = traj_sum > 0  # [batch_size, seq_len]
-
-        # Find last non-zero timestep for each sample
-        timestep_indices = (
-            torch.arange(trajectories.size(1), device=trajectories.device)
-            .unsqueeze(0)
-            .expand(batch_size, -1)
-        )
-        # Set padded timesteps to -1
-        timestep_indices = timestep_indices * non_zero_mask - (1 - non_zero_mask.long())
-        # Get last non-zero timestep index
-        effective_lengths = timestep_indices.max(dim=1)[0]  # [batch_size]
-        # Convert to 0-based indexing for current state
-        effective_lengths = torch.clamp(effective_lengths, min=0)
+        # Vectorized effective length calculation (optimized)
+        with torch.no_grad():
+            # Sum over spatial dimensions for each timestep: [batch_size, seq_len]
+            traj_sums = trajectories.sum(dim=(2, 3, 4))
+            # Find last non-zero timestep for each batch sample (vectorized)
+            non_zero_mask = traj_sums > 0
+            
+            # Use flip and argmax trick for efficient last non-zero index finding
+            flipped_mask = torch.flip(non_zero_mask, dims=[1])
+            last_nonzero_positions = non_zero_mask.size(1) - 1 - torch.argmax(flipped_mask.float(), dim=1)
+            
+            # Handle edge case where all timesteps are zero
+            all_zero_mask = ~non_zero_mask.any(dim=1)
+            effective_lengths = torch.where(all_zero_mask, torch.zeros_like(last_nonzero_positions), last_nonzero_positions)
+            effective_lengths = torch.clamp(effective_lengths, min=0)
 
         # Use trajectory without heading direction for MentalNet (first 8 channels only)
         current_state_channels = model_config.get("current_state_channels", 8)
@@ -693,9 +693,16 @@ def train_epoch(
         )  # Track type accuracy
         total_samples += batch_size
 
-        # Memory cleanup for large batches
+        # Memory cleanup for large batches (optimized)
         if batch_idx % 10 == 0:
-            torch.cuda.empty_cache()
+            # Clear intermediate variables
+            del past_episodes, recent_trajectory, current_state
+            del action_logits, goal_logits, agent_logits, type_logits, consumption_logits, sr_pred
+            del action_targets, goal_targets, agent_targets, type_targets, consumption_targets, sr_targets
+            
+            # GPU memory cleanup
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
             gc.collect()
 
     num_batches = len(train_loader)
@@ -806,27 +813,21 @@ def validate_epoch(
             # Each sample has a different effective length, stored in actions[:,0]
             batch_size = trajectories.size(0)
 
-            # Fully vectorized: Find the effective length for each sample (remove padding)
-            # Sum over spatial dimensions for each timestep: [batch_size, seq_len]
-            traj_sums = trajectories.sum(
-                dim=(2, 3, 4)
-            )  # Sum over channels, height, width
-            # Find last non-zero timestep for each batch sample
-            non_zero_mask = traj_sums > 0  # [batch_size, seq_len]
-            # Get the last True index for each batch sample using vectorized operation
-            # Create sequence indices and mask them on the same device
-            seq_indices = (
-                torch.arange(trajectories.size(1), device=trajectories.device)
-                .unsqueeze(0)
-                .expand(batch_size, -1)
-            )
-            masked_indices = torch.where(
-                non_zero_mask, seq_indices, torch.tensor(-1, device=trajectories.device)
-            )
-            # Find the maximum index for each batch (last non-zero timestep)
-            effective_lengths = masked_indices.max(dim=1)[0].clamp(min=0).tolist()
-            # Apply max(1, length) constraint
-            effective_lengths = [max(1, length) for length in effective_lengths]
+            # Optimized vectorized effective length calculation
+            with torch.no_grad():
+                # Sum over spatial dimensions for each timestep: [batch_size, seq_len]
+                traj_sums = trajectories.sum(dim=(2, 3, 4))
+                # Find last non-zero timestep for each batch sample (vectorized)
+                non_zero_mask = traj_sums > 0
+                
+                # Use flip and argmax trick for efficient last non-zero index finding
+                flipped_mask = torch.flip(non_zero_mask, dims=[1])
+                last_nonzero_positions = non_zero_mask.size(1) - 1 - torch.argmax(flipped_mask.float(), dim=1)
+                
+                # Handle edge case where all timesteps are zero
+                all_zero_mask = ~non_zero_mask.any(dim=1)
+                effective_lengths = torch.where(all_zero_mask, torch.zeros_like(last_nonzero_positions), last_nonzero_positions)
+                effective_lengths = torch.clamp(effective_lengths, min=0)
 
             # Use trajectory without heading direction for MentalNet (first 8 channels only)
             current_state_channels = model_config.get("current_state_channels", 8)
@@ -834,22 +835,11 @@ def validate_epoch(
                 :, :, :current_state_channels
             ]  # [batch_size, seq_len, 8, height, width]
 
-            # Vectorized: Extract current state for PredNet (last non-padded timestep)
-            current_state = torch.zeros(
-                batch_size,
-                current_state_channels,
-                trajectories.size(3),
-                trajectories.size(4),
-            )
-
-            # Create batch indices and timestep indices for advanced indexing on the same device
+            # Optimized current state extraction using advanced indexing
             batch_indices = torch.arange(batch_size, device=trajectories.device)
-            last_timesteps = torch.tensor(
-                [max(0, length - 1) for length in effective_lengths],
-                device=trajectories.device,
-            )
+            last_timesteps = torch.clamp(effective_lengths, min=0)
 
-            # Extract current state using advanced indexing
+            # Extract current state using advanced indexing (vectorized)
             current_state = trajectories[
                 batch_indices, last_timesteps, :current_state_channels
             ]
@@ -1401,10 +1391,11 @@ def train_tomnet(
             f"processed_data_exp{config.experiment_no}_{combo_achiever}_{combo_blocker}.pkl",
         )
         
-        if os.path.exists(processed_data_path):
+        # Try efficient data loading (memory-mapped if available)
+        data = load_data_efficient(processed_data_path)
+        if data is not None:
             print(f"Loading existing processed data for {combo_achiever}_{combo_blocker}...")
-            with open(processed_data_path, "rb") as f:
-                existing_data[(combo_achiever, combo_blocker)] = pickle.load(f)
+            existing_data[(combo_achiever, combo_blocker)] = data
             print(f"  Successfully loaded from {processed_data_path}")
         else:
             missing_combinations.append((combo_achiever, combo_blocker))
@@ -1435,18 +1426,31 @@ def train_tomnet(
 
         # Prepare data from multi-agent samples with shuffling
         data = prepare_data_for_training(
-            samples, grid_size=config.width, max_trajectory_length=time_step
+            samples, 
+            grid_size=config.width, 
+            min_timestep=data_config.get("min_time_steps", 3),
+            max_trajectory_length=time_step
         )
 
-        # Save processed training data for all combinations
+        # Save processed training data for all combinations in both formats
         for combo_achiever, combo_blocker in all_combinations:
             processed_data_path = os.path.join(
                 data_dir,
                 f"processed_data_exp{config.experiment_no}_{combo_achiever}_{combo_blocker}.pkl",
             )
+            npz_data_path = os.path.join(
+                data_dir,
+                f"processed_data_exp{config.experiment_no}_{combo_achiever}_{combo_blocker}.npz",
+            )
+            
+            # Save in pickle format (backward compatibility)
             with open(processed_data_path, "wb") as f:
                 pickle.dump(data, f)
             print(f"  Successfully saved to {processed_data_path}")
+            
+            # Save in memory-mapped format for efficient access
+            save_data_for_mmap(data, npz_data_path)
+            
             existing_data[(combo_achiever, combo_blocker)] = data
     
     # Use the data for the current combination
@@ -1500,17 +1504,24 @@ def train_tomnet(
     print(f"Consumption labels: {data['consumption_labels'].shape}")
     print(f"SR labels: {data['sr_labels'].shape}")
 
-    # Create datasets with multi-agent data
-    dataset = TensorDataset(
-        data["trajectories"],
-        data["actions"],
-        data["goals"],
-        data["goal_ranks"],
-        data["agents"],
-        data["types"],
-        data["consumption_labels"],
-        data["sr_labels"],
-    )
+    # Create datasets with multi-agent data (optimized for memory-mapped data)
+    if hasattr(data, 'files'):  # Memory-mapped data
+        print("Using memory-mapped dataset for efficient loading")
+        # Create dataset with memory-mapped data
+        dataset = MemoryMappedDataset(data)
+    else:
+        # Fallback to regular tensor dataset
+        print("Using regular tensor dataset")
+        dataset = TensorDataset(
+            data["trajectories"],
+            data["actions"],
+            data["goals"],
+            data["goal_ranks"],
+            data["agents"],
+            data["types"],
+            data["consumption_labels"],
+            data["sr_labels"],
+        )
 
     # Train/validation split
     total_size = len(dataset)
@@ -1796,6 +1807,11 @@ def train_tomnet(
         if early_stopping(val_metrics["loss"], model):
             print(f"Early stopping triggered after {epoch + 1} epochs")
             break
+            
+        # Memory cleanup after each epoch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        gc.collect()
 
     # Save final results
     print("\nSaving results...")
@@ -1852,6 +1868,76 @@ def train_tomnet(
         "save_dir": experiment_save_dir,
         "best_val_loss": best_val_loss,
     }
+
+
+def save_data_for_mmap(data, filepath):
+    """Save data in memory-mappable format (NumPy .npz)"""
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    
+    # Convert torch tensors to numpy arrays for memory mapping
+    np_data = {}
+    for key, value in data.items():
+        if isinstance(value, torch.Tensor):
+            np_data[key] = value.numpy()
+        else:
+            np_data[key] = value
+    
+    # Save as compressed numpy format
+    np.savez_compressed(filepath, **np_data)
+    print(f"Saved memory-mappable data to {filepath}")
+
+
+def load_data_mmap(filepath):
+    """Load data with memory mapping for efficient access"""
+    if not os.path.exists(filepath):
+        return None
+    
+    # Load with memory mapping (data not loaded into RAM immediately)
+    data = np.load(filepath, mmap_mode='r')
+    print(f"Loaded memory-mapped data from {filepath}")
+    return data
+
+
+def load_data_efficient(filepath):
+    """Load data efficiently with fallback to regular pickle"""
+    # Try memory-mapped format first
+    npz_filepath = filepath.replace('.pkl', '.npz')
+    if os.path.exists(npz_filepath):
+        return load_data_mmap(npz_filepath)
+    
+    # Fallback to regular pickle loading
+    if os.path.exists(filepath):
+        with open(filepath, 'rb') as f:
+            data = pickle.load(f)
+        return data
+    
+    return None
+
+
+class MemoryMappedDataset(torch.utils.data.Dataset):
+    """Dataset that works with memory-mapped data"""
+    
+    def __init__(self, mmap_data, indices=None):
+        self.mmap_data = mmap_data
+        self.indices = indices if indices is not None else range(len(mmap_data['trajectories']))
+        
+    def __len__(self):
+        return len(self.indices)
+    
+    def __getitem__(self, idx):
+        real_idx = self.indices[idx]
+        
+        # Convert numpy arrays to torch tensors on access
+        return (
+            torch.from_numpy(self.mmap_data['trajectories'][real_idx].copy()),
+            torch.from_numpy(self.mmap_data['actions'][real_idx].copy()),
+            torch.from_numpy(self.mmap_data['goals'][real_idx].copy()),
+            torch.from_numpy(self.mmap_data['goal_ranks'][real_idx].copy()),
+            torch.from_numpy(self.mmap_data['agents'][real_idx].copy()),
+            torch.from_numpy(self.mmap_data['types'][real_idx].copy()),
+            torch.from_numpy(self.mmap_data['consumption_labels'][real_idx].copy()),
+            torch.from_numpy(self.mmap_data['sr_labels'][real_idx].copy()),
+        )
 
 
 def seed_worker(worker_id):

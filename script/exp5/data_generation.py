@@ -5,6 +5,7 @@ import random
 import numpy as np
 from typing import Dict, List, Tuple, Any
 import sys
+import gc
 
 # Add lib to path for imports
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -33,6 +34,16 @@ class DataGenerator:
         self.MAZE_WIDTH = w
         self.MAZE_HEIGHT = h
         self.MAZE_DEPTH = d
+        
+        # Pre-compile regex patterns for better performance
+        self.trajectory_pattern = re.compile(
+            r"\[(\d+),\s*(\d+)\]\[(\d+),\s*(\d+)\]\s*:\s*(\d+),(\d+)\s*:\s*(\w+),(\w+)"
+        )
+        self.timestep_pattern = re.compile(r"Timestep_(\d+):")
+        self.sr_gamma_pattern = re.compile(r"SR_gamma_([0-9.]+):\s*(.*)")
+        self.goal_rank_pattern = re.compile(r"Goal Consumed Rank\s*:\s*\[(.*)\]")
+        self.goal_rewards_pattern = re.compile(r"Goal Rewards:\s*(.*)")
+        self.consumption_pattern = re.compile(r"Consumption Labels:\s*(.*)")
 
         # Action spaces from config
         if config is not None:
@@ -109,12 +120,9 @@ class DataGenerator:
                 maze.append(maze_row)
                 continue
 
-            # Parse trajectory steps
+            # Parse trajectory steps using pre-compiled regex
             if line.startswith("["):
-                # Parse trajectory line: [achiever_x, achiever_y][blocker_x, blocker_y] : achiever_action,blocker_action : achiever_interaction,blocker_interaction
-                pattern = r"\[(\d+),\s*(\d+)\]\[(\d+),\s*(\d+)\]\s*:\s*(\d+),(\d+)\s*:\s*(\w+),(\w+)"
-                match = re.match(pattern, line)
-
+                match = self.trajectory_pattern.match(line)
                 if match:
                     achiever_x = int(match.group(1))
                     achiever_y = int(match.group(2))
@@ -155,76 +163,85 @@ class DataGenerator:
                     blocker_data["sr_data_per_timestep"] = {}
                 continue
 
-            # Parse timestep SR data
-            if current_section and line.startswith("Timestep_"):
-                timestep = int(line.replace("Timestep_", "").replace(":", ""))
-                if current_section == "achiever":
-                    achiever_data["sr_data_per_timestep"][timestep] = {}
-                else:
-                    blocker_data["sr_data_per_timestep"][timestep] = {}
-                continue
+            # Parse timestep SR data using pre-compiled regex
+            if current_section:
+                timestep_match = self.timestep_pattern.match(line)
+                if timestep_match:
+                    timestep = int(timestep_match.group(1))
+                    if current_section == "achiever":
+                        achiever_data["sr_data_per_timestep"][timestep] = {}
+                    else:
+                        blocker_data["sr_data_per_timestep"][timestep] = {}
+                    continue
 
-            # Parse SR gamma values
-            if current_section and line.startswith("SR_gamma_"):
-                parts = line.split(": ")
-                gamma_str = parts[0].replace("SR_gamma_", "")
-                gamma = float(gamma_str)
+            # Parse SR gamma values using pre-compiled regex
+            if current_section:
+                sr_gamma_match = self.sr_gamma_pattern.match(line)
+                if sr_gamma_match:
+                    gamma = float(sr_gamma_match.group(1))
+                    sparse_data_str = sr_gamma_match.group(2) if sr_gamma_match.group(2) else ""
 
-                # Parse sparse SR data
-                sparse_data = []
-                if len(parts) > 1 and parts[1].strip():
-                    entries = parts[1].strip().split(";")
-                    for entry in entries:
-                        if entry:
-                            pos_val = entry.split(":")
-                            if len(pos_val) == 2:
-                                pos = pos_val[0].split(",")
-                                x, y = int(pos[0]), int(pos[1])
-                                value = float(pos_val[1])
-                                sparse_data.append(((x, y), value))
+                    # Parse sparse SR data
+                    sparse_data = []
+                    if sparse_data_str.strip():
+                        entries = sparse_data_str.strip().split(";")
+                        for entry in entries:
+                            if entry:
+                                pos_val = entry.split(":")
+                                if len(pos_val) == 2:
+                                    pos = pos_val[0].split(",")
+                                    x, y = int(pos[0]), int(pos[1])
+                                    value = float(pos_val[1])
+                                    sparse_data.append(((x, y), value))
 
-                # Store in appropriate section
-                if (
-                    current_section == "achiever"
-                    and "sr_data_per_timestep" in achiever_data
-                ):
-                    # Find the current timestep
-                    timesteps = list(achiever_data["sr_data_per_timestep"].keys())
-                    if timesteps:
-                        current_timestep = max(timesteps)
-                        achiever_data["sr_data_per_timestep"][current_timestep][
-                            str(gamma)
-                        ] = sparse_data
-                elif (
-                    current_section == "blocker"
-                    and "sr_data_per_timestep" in blocker_data
-                ):
-                    timesteps = list(blocker_data["sr_data_per_timestep"].keys())
-                    if timesteps:
-                        current_timestep = max(timesteps)
-                        blocker_data["sr_data_per_timestep"][current_timestep][
-                            str(gamma)
-                        ] = sparse_data
-                continue
+                    # Store in appropriate section
+                    if (
+                        current_section == "achiever"
+                        and "sr_data_per_timestep" in achiever_data
+                    ):
+                        # Find the current timestep
+                        timesteps = list(achiever_data["sr_data_per_timestep"].keys())
+                        if timesteps:
+                            current_timestep = max(timesteps)
+                            achiever_data["sr_data_per_timestep"][current_timestep][
+                                str(gamma)
+                            ] = sparse_data
+                    elif (
+                        current_section == "blocker"
+                        and "sr_data_per_timestep" in blocker_data
+                    ):
+                        timesteps = list(blocker_data["sr_data_per_timestep"].keys())
+                        if timesteps:
+                            current_timestep = max(timesteps)
+                            blocker_data["sr_data_per_timestep"][current_timestep][
+                                str(gamma)
+                            ] = sparse_data
+                    continue
 
-            # Parse achiever data
-            if line.startswith("Goal Consumed Rank"):
-                rank_str = line.split(":")[1].strip().strip("[]")
+            # Parse achiever data using pre-compiled regex
+            goal_rank_match = self.goal_rank_pattern.match(line)
+            if goal_rank_match:
+                rank_str = goal_rank_match.group(1)
                 achiever_data["goal_rank"] = [
                     int(r.strip()) for r in rank_str.split(",")
                 ]
                 continue
-            elif line.startswith("Goal Rewards:"):
-                rewards_str = line.split(":")[1].strip()
+                
+            goal_rewards_match = self.goal_rewards_pattern.match(line)
+            if goal_rewards_match:
+                rewards_str = goal_rewards_match.group(1)
                 achiever_data["goal_rewards"] = [
                     float(r) for r in rewards_str.split(",")
                 ]
                 continue
-            elif line.startswith("Goal Rewards Sum:"):
+                
+            if line.startswith("Goal Rewards Sum:"):
                 achiever_data["goal_rewards_sum"] = float(line.split(":")[1].strip())
                 continue
-            elif line.startswith("Consumption Labels:"):
-                consumption_str = line.split(":")[1].strip()
+                
+            consumption_match = self.consumption_pattern.match(line)
+            if consumption_match:
+                consumption_str = consumption_match.group(1)
                 achiever_data["consumption_labels"] = np.array(
                     [float(val) for val in consumption_str.split(",")], dtype=np.float32
                 )
@@ -386,66 +403,66 @@ class DataGenerator:
         agent_type: str,
         trajectory_length: int,
     ) -> np.ndarray:
-        """Create trajectory tensor for specified agent"""
+        """Create trajectory tensor for specified agent using vectorized operations"""
 
         seq_len = min(trajectory_length, self.MAX_TRAJECTORY_SIZE)
         trajectory = np.zeros(
-            (seq_len, self.MAZE_DEPTH, self.MAZE_HEIGHT, self.MAZE_WIDTH)
+            (seq_len, self.MAZE_DEPTH, self.MAZE_HEIGHT, self.MAZE_WIDTH), dtype=np.float32
         )
 
-        # Static layers (same for all timesteps)
-        for t in range(seq_len):
-            # Layer 0: Walls
-            trajectory[t, 0] = (maze == 0).astype(np.float32)
+        # Vectorized static layer creation (same for all timesteps)
+        # Pre-compute all static masks once
+        wall_mask = (maze == 0).astype(np.float32)
+        empty_mask = (maze == 1).astype(np.float32)
+        key_mask = np.isin(maze, [2, 3, 4, 5]).astype(np.float32)
+        door_mask = np.isin(maze, [6, 7, 8, 9]).astype(np.float32)
+        red_mask = np.isin(maze, [2, 6]).astype(np.float32)
+        green_mask = np.isin(maze, [3, 7]).astype(np.float32)
+        blue_mask = np.isin(maze, [4, 8]).astype(np.float32)
+        yellow_mask = np.isin(maze, [5, 9]).astype(np.float32)
+        heading_mask = np.zeros((self.MAZE_HEIGHT, self.MAZE_WIDTH), dtype=np.float32)
 
-            # Layer 1: Empty spaces
-            trajectory[t, 1] = (maze == 1).astype(np.float32)
+        # Broadcast static layers to all timesteps at once
+        trajectory[:, 0] = wall_mask[np.newaxis, :, :]
+        trajectory[:, 1] = empty_mask[np.newaxis, :, :]
+        trajectory[:, 2] = key_mask[np.newaxis, :, :]
+        trajectory[:, 3] = door_mask[np.newaxis, :, :]
+        trajectory[:, 4] = red_mask[np.newaxis, :, :]
+        trajectory[:, 5] = green_mask[np.newaxis, :, :]
+        trajectory[:, 6] = blue_mask[np.newaxis, :, :]
+        trajectory[:, 7] = yellow_mask[np.newaxis, :, :]
+        trajectory[:, 8] = heading_mask[np.newaxis, :, :]
 
-            # Layer 2: Keys
-            key_mask = np.isin(maze, [2, 3, 4, 5])
-            trajectory[t, 2] = key_mask.astype(np.float32)
-
-            # Layer 3: Doors
-            door_mask = np.isin(maze, [6, 7, 8, 9])
-            trajectory[t, 3] = door_mask.astype(np.float32)
-
-            # Layer 4: Red objects
-            red_mask = np.isin(maze, [2, 6])
-            trajectory[t, 4] = red_mask.astype(np.float32)
-
-            # Layer 5: Green objects
-            green_mask = np.isin(maze, [3, 7])
-            trajectory[t, 5] = green_mask.astype(np.float32)
-
-            # Layer 6: Blue objects
-            blue_mask = np.isin(maze, [4, 8])
-            trajectory[t, 6] = blue_mask.astype(np.float32)
-
-            # Layer 7: Yellow objects
-            yellow_mask = np.isin(maze, [5, 9])
-            trajectory[t, 7] = yellow_mask.astype(np.float32)
-
-            # Layer 8: Agent heading direction (placeholder - set to 0 for south)
-            trajectory[t, 8] = np.zeros((self.MAZE_HEIGHT, self.MAZE_WIDTH))
-
-        # Dynamic layers (agent position)
-        for t in range(min(len(trajectory_steps), seq_len)):
-            step = trajectory_steps[t]
-
+        # Vectorized dynamic layer processing (agent positions)
+        steps_to_process = min(len(trajectory_steps), seq_len)
+        if steps_to_process > 0:
+            # Extract positions for all timesteps at once
             if agent_type == "achiever":
-                pos_x, pos_y = step["achiever_pos"]
+                positions = np.array([step["achiever_pos"] for step in trajectory_steps[:steps_to_process]])
             else:  # blocker
-                pos_x, pos_y = step["blocker_pos"]
+                positions = np.array([step["blocker_pos"] for step in trajectory_steps[:steps_to_process]])
+            
+            # Vectorized bounds checking
+            valid_positions = (
+                (positions[:, 0] >= 0) & (positions[:, 0] < self.MAZE_WIDTH) &
+                (positions[:, 1] >= 0) & (positions[:, 1] < self.MAZE_HEIGHT)
+            )
+            
+            # Process all valid positions at once
+            if np.any(valid_positions):
+                valid_times = np.arange(steps_to_process)[valid_positions]
+                valid_pos = positions[valid_positions]
+                
+                # Clear other objects at agent positions (vectorized)
+                trajectory[valid_times, :, valid_pos[:, 1], valid_pos[:, 0]] = 0
+                
+                # Set agent in empty space layer (vectorized)
+                trajectory[valid_times, 1, valid_pos[:, 1], valid_pos[:, 0]] = 1
+                
+                # Set heading direction (vectorized)
+                trajectory[valid_times, 8, valid_pos[:, 1], valid_pos[:, 0]] = 2
 
-            if 0 <= pos_x < self.MAZE_WIDTH and 0 <= pos_y < self.MAZE_HEIGHT:
-                # Clear other objects at agent position
-                trajectory[t, :, pos_y, pos_x] = 0
-                # Set agent in empty space layer
-                trajectory[t, 1, pos_y, pos_x] = 1
-                # Set heading direction (default to south=2)
-                trajectory[t, 8, pos_y, pos_x] = 2
-
-        return trajectory.astype(np.float32)
+        return trajectory
 
     def _create_goal_tensor(self, goal_letter: str) -> np.ndarray:
         """Create goal tensor (one-hot encoded)"""
@@ -472,21 +489,20 @@ class DataGenerator:
         all_samples = []
 
         for filepath in test_files:
-            try:
-                # Parse trajectory file
-                parsed_data = self.parse_trajectory_file(filepath)
+            # Parse trajectory file
+            parsed_data = self.parse_trajectory_file(filepath)
 
-                # Create achiever sample
-                achiever_sample = self.create_achiever_sample(parsed_data)
-                all_samples.append(achiever_sample)
+            # Create achiever sample
+            achiever_sample = self.create_achiever_sample(parsed_data)
+            all_samples.append(achiever_sample)
 
-                # Create blocker sample
-                blocker_sample = self.create_blocker_sample(parsed_data)
-                all_samples.append(blocker_sample)
+            # Create blocker sample
+            blocker_sample = self.create_blocker_sample(parsed_data)
+            all_samples.append(blocker_sample)
 
-            except Exception as e:
-                print(f"Error processing {filepath}: {e}")
-                continue
+            # Clean up after each file processing
+            del parsed_data, achiever_sample, blocker_sample
+            gc.collect()
 
         # Shuffle samples
         random.shuffle(all_samples)

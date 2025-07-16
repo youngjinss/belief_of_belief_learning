@@ -43,6 +43,16 @@ class AchieverBlockerEnv(MiniGridEnv):
         self.blocker_prev_pos = None
         
         self.target_door_color = None
+        
+        # Storage for objects by color to avoid for-loops
+        self.doors_by_color = {}  # color -> door_obj
+        self.keys_by_color = {}   # color -> key_obj (None if consumed)
+        self.door_positions = {}  # color -> (x, y) position
+        self.key_positions = {}   # color -> (x, y) position (None if consumed)
+        
+        # Track state changes
+        self.last_door_opened = None  # color of last door opened
+        self.last_key_consumed = None  # color of last key consumed
 
         # Allow custom max_steps
         if max_steps is None:
@@ -128,6 +138,12 @@ class AchieverBlockerEnv(MiniGridEnv):
         key_positions = []
         door_positions = []
 
+        # Clear object storage dictionaries
+        self.doors_by_color = {}
+        self.keys_by_color = {}
+        self.door_positions = {}
+        self.key_positions = {}
+
         # Generate random positions for keys
         for color in self.door_colors:
             # Place key
@@ -138,6 +154,10 @@ class AchieverBlockerEnv(MiniGridEnv):
                 key, reject_fn=lambda env, pos: tuple(pos) in key_positions
             )
             key_positions.append(tuple(key_pos))
+            
+            # Store key object and position by color
+            self.keys_by_color[color] = key
+            self.key_positions[color] = tuple(key_pos)
 
             # Place door on walls
             door_pos = self._place_door_on_wall(color, door_positions)
@@ -146,6 +166,10 @@ class AchieverBlockerEnv(MiniGridEnv):
             # Make doors overlappable if achiever has the key
             door = self.grid.get(*door_pos)
             if isinstance(door, Door):
+                # Store door object and position by color
+                self.doors_by_color[color] = door
+                self.door_positions[color] = door_pos
+                
                 # Create a closure that captures the door's color
                 def make_door_can_overlap(door_color):
                     def door_can_overlap():
@@ -190,6 +214,10 @@ class AchieverBlockerEnv(MiniGridEnv):
     def step(self, action_pair):
         """Execute actions for both agents"""
         achiever_action, blocker_action = action_pair
+        
+        # Clear state change tracking at the beginning of each step
+        self.last_door_opened = None
+        self.last_key_consumed = None
         
         # Store previous positions for collision handling
         self.achiever_prev_pos = self.achiever_pos.copy()
@@ -361,6 +389,12 @@ class AchieverBlockerEnv(MiniGridEnv):
                 key_color = obj.color
                 self.achiever_keys.append(key_color)
                 self.grid.set(*agent_pos, None)
+                
+                # Track state change
+                self.last_key_consumed = key_color
+                self.keys_by_color[key_color] = None  # Mark as consumed
+                self.key_positions[key_color] = None  # Mark position as consumed
+                
                 if key_color == self.target_door_color:
                     return 0.5
                 else:
@@ -381,6 +415,9 @@ class AchieverBlockerEnv(MiniGridEnv):
                 obj.is_open = True
                 obj.is_locked = False
                 
+                # Track state change
+                self.last_door_opened = door_color
+                
                 # Give reward based on preference
                 return self.preference[door_color]
 
@@ -388,42 +425,20 @@ class AchieverBlockerEnv(MiniGridEnv):
 
     def _get_door_positions(self):
         """Get all door positions"""
-        door_positions = []
-        for x in range(self.grid.width):
-            for y in range(self.grid.height):
-                obj = self.grid.get(x, y)
-                if isinstance(obj, Door):
-                    door_positions.append((x, y))
-        return door_positions
+        return list(self.door_positions.values())
     
     def _get_door_positions_with_colors(self):
         """Get door positions with their colors"""
-        door_positions = {}
-        for x in range(self.grid.width):
-            for y in range(self.grid.height):
-                obj = self.grid.get(x, y)
-                if isinstance(obj, Door):
-                    door_positions[obj.color] = (x, y)
-        return door_positions
+        return self.door_positions.copy()
     
     def _get_key_positions(self):
         """Get key positions with their colors"""
-        key_positions = {}
-        for x in range(self.grid.width):
-            for y in range(self.grid.height):
-                obj = self.grid.get(x, y)
-                if isinstance(obj, Key):
-                    key_positions[obj.color] = (x, y)
-        return key_positions
+        # Return only non-consumed keys
+        return {color: pos for color, pos in self.key_positions.items() if pos is not None}
 
     def _get_target_door_position(self):
         """Get target door position"""
-        for x in range(self.grid.width):
-            for y in range(self.grid.height):
-                obj = self.grid.get(x, y)
-                if isinstance(obj, Door) and obj.color == self.target_door_color:
-                    return (x, y)
-        return None
+        return self.door_positions.get(self.target_door_color, None)
     
     def _get_wall_positions(self):
         """Get all wall positions"""

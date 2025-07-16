@@ -15,13 +15,17 @@ warnings.filterwarnings(
     "ignore", message=".*environment creator metadata doesn't include `render_modes`.*"
 )
 
+# Add the lib directory to the path
+lib_path = os.path.join(os.path.dirname(__file__), "..", "..", "lib")
+sys.path.insert(0, lib_path)
+
 # Add parent directory to path for imports
 sys.path.append(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 )
 
 # Import seed utility
-from utils import set_seed
+from script.exp5.utils import set_seed
 
 from lib.env.gym_minigrid.envs.achiever_blocker import (
     AchieverBlocker5x5Env,

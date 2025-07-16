@@ -281,6 +281,35 @@ def generate_past_episodes_from_batch(
     return past_episodes_batch
 
 
+def process_sample_batch(samples, grid_size, min_timestep, max_trajectory_length):
+    """
+    Process a batch of samples for better multiprocessing efficiency
+    """
+    if not isinstance(samples, list):
+        samples = [samples]
+    
+    # Batch results
+    batch_results = {
+        'trajectories': [],
+        'actions': [],
+        'goals': [],
+        'goal_ranks': [],
+        'agents': [],
+        'types': [],
+        'consumption_labels': [],
+        'sr_labels': [],
+    }
+    
+    for sample in samples:
+        sample_result = process_single_sample(sample, grid_size, min_timestep, max_trajectory_length)
+        
+        # Combine results
+        for key in batch_results:
+            batch_results[key].extend(sample_result[key])
+    
+    return batch_results
+
+
 def process_single_sample(sample, grid_size, min_timestep, max_trajectory_length):
     """
     Process a single sample for multiprocessing
@@ -380,7 +409,7 @@ def process_single_sample(sample, grid_size, min_timestep, max_trajectory_length
 
 
 def prepare_data_for_training(
-    samples, grid_size=9, min_timestep=3, max_trajectory_length=100, n_processes=None
+    samples, grid_size=9, min_timestep=3, max_trajectory_length=100, n_processes=None, use_batch_processing=True
 ):
     """
     Prepare multi-agent sample data for training from processed samples with trajectory slicing
@@ -392,6 +421,7 @@ def prepare_data_for_training(
         min_timestep: Minimum timestep to start slicing from
         max_trajectory_length: Maximum length of trajectory to use
         n_processes: Number of processes to use (default: CPU count)
+        use_batch_processing: Whether to use batch processing for better efficiency (default: True)
 
     Returns:
         Dictionary containing prepared training data
@@ -402,22 +432,47 @@ def prepare_data_for_training(
     
     print(f"Preparing data from {len(samples)} samples with trajectory slicing using {n_processes} processes...")
 
-    # Create partial function with fixed parameters
-    worker_func = partial(
-        process_single_sample,
-        grid_size=grid_size,
-        min_timestep=min_timestep,
-        max_trajectory_length=max_trajectory_length
-    )
+    if use_batch_processing:
+        # Create batches of samples for better CPU utilization
+        batch_size = max(1, len(samples) // (n_processes * 5))  # Larger batches for better efficiency
+        sample_batches = [samples[i:i+batch_size] for i in range(0, len(samples), batch_size)]
+        
+        # Create partial function for batch processing
+        batch_worker_func = partial(
+            process_sample_batch,
+            grid_size=grid_size,
+            min_timestep=min_timestep,
+            max_trajectory_length=max_trajectory_length
+        )
+        
+        # Process batches in parallel
+        with mp.Pool(processes=n_processes, maxtasksperchild=100) as pool:
+            # No need for additional chunking when using batch processing
+            results = list(tqdm(
+                pool.imap(batch_worker_func, sample_batches),
+                total=len(sample_batches),
+                desc="Dataset processing (batch multiprocessing)"
+            ))
+    else:
+        # Original single-sample processing with chunking
+        worker_func = partial(
+            process_single_sample,
+            grid_size=grid_size,
+            min_timestep=min_timestep,
+            max_trajectory_length=max_trajectory_length
+        )
 
-    # Process samples in parallel
-    with mp.Pool(n_processes) as pool:
-        # Use imap for progress tracking
-        results = list(tqdm(
-            pool.imap(worker_func, samples),
-            total=len(samples),
-            desc="Dataset processing (multiprocessing)"
-        ))
+        # Process samples in parallel with chunking for better CPU utilization
+        with mp.Pool(processes=n_processes, maxtasksperchild=100) as pool:
+            # Calculate optimal chunk size (similar to generate.py)
+            chunk_size = max(1, len(samples) // (n_processes * 10))
+            
+            # Use imap with chunking for better performance
+            results = list(tqdm(
+                pool.imap(worker_func, samples, chunksize=chunk_size),
+                total=len(samples),
+                desc="Dataset processing (multiprocessing)"
+            ))
 
     # Combine results from all processes
     trajectories = []

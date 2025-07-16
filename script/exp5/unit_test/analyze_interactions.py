@@ -11,6 +11,7 @@ import re
 import glob
 from collections import Counter
 
+
 class InteractionAnalyzer:
     """Analyzer for AchieverBlocker interaction patterns and win rates."""
 
@@ -27,11 +28,9 @@ class InteractionAnalyzer:
         # Define win conditions
         self.achiever_win_interactions = {"a", "b", "c", "d"}  # Door opening
         self.blocker_win_interactions = {"1"}  # Successful block
-        
+
         # Define draw interactions (achiever opens door AND blocker succeeds)
-        self.draw_patterns = {
-            ("a", "1"), ("b", "1"), ("c", "1"), ("d", "1")
-        }
+        self.draw_patterns = {("a", "1"), ("b", "1"), ("c", "1"), ("d", "1")}
 
     def parse_trajectory_file(self, file_path):
         """
@@ -81,12 +80,12 @@ class InteractionAnalyzer:
 
                 data["achiever_interactions"].append(achiever_interaction)
                 data["blocker_interactions"].append(blocker_interaction)
-                
+
                 # Check for simultaneous interactions (both agents not "X")
                 if achiever_interaction != "X" and blocker_interaction != "X":
                     simultaneous_pair = (achiever_interaction, blocker_interaction)
                     data["simultaneous_interactions"].append(simultaneous_pair)
-                    
+
                     # Check if this is a draw
                     if simultaneous_pair in self.draw_patterns:
                         data["has_draw"] = True
@@ -99,14 +98,16 @@ class InteractionAnalyzer:
 
         # Determine winner based on last interactions and draw
         data["winner"] = self._determine_winner(
-            data["last_achiever_interaction"], 
+            data["last_achiever_interaction"],
             data["last_blocker_interaction"],
-            data["has_draw"]
+            data["has_draw"],
         )
 
         return data
 
-    def _determine_winner(self, last_achiever_interaction, last_blocker_interaction, has_draw=False):
+    def _determine_winner(
+        self, last_achiever_interaction, last_blocker_interaction, has_draw=False
+    ):
         """
         Determine the winner based on last interactions and draw condition.
 
@@ -123,7 +124,7 @@ class InteractionAnalyzer:
             last_pair = (last_achiever_interaction, last_blocker_interaction)
             if last_pair in self.draw_patterns:
                 return "draw"
-        
+
         # Check individual wins
         if last_achiever_interaction in self.achiever_win_interactions:
             return "achiever"
@@ -190,7 +191,7 @@ class InteractionAnalyzer:
             # Track simultaneous interactions
             for interaction_pair in data["simultaneous_interactions"]:
                 results["simultaneous_interaction_counts"][interaction_pair] += 1
-            
+
             # Track files with draw outcomes
             if data["has_draw"]:
                 results["draw_files"].append(
@@ -323,13 +324,15 @@ class InteractionAnalyzer:
                 for winner, count in results["winner_counts"].items():
                     rate = (count / total_games) * 100
                     print(f"  {winner}: {count}/{total_games} ({rate:.1f}%)")
-            
+
             # Simultaneous interactions
             if results["simultaneous_interaction_counts"]:
                 print(f"\nSimultaneous interactions:")
-                for interaction_pair, count in results["simultaneous_interaction_counts"].most_common():
+                for interaction_pair, count in results[
+                    "simultaneous_interaction_counts"
+                ].most_common():
                     print(f"  {interaction_pair}: {count}")
-            
+
             # Files with draw outcomes
             if results["draw_files"]:
                 print(f"\nFiles with draw outcomes:")
@@ -413,13 +416,15 @@ class InteractionAnalyzer:
                         f.write(f"  {winner}: {count}/{total_games} ({rate:.1f}%)\n")
                     else:
                         f.write(f"  {winner}: {count}/0 (N/A%)\n")
-                
+
                 # Simultaneous interactions
                 if results["simultaneous_interaction_counts"]:
                     f.write("\nSimultaneous interactions:\n")
-                    for interaction_pair, count in results["simultaneous_interaction_counts"].most_common():
+                    for interaction_pair, count in results[
+                        "simultaneous_interaction_counts"
+                    ].most_common():
                         f.write(f"  {interaction_pair}: {count}\n")
-                
+
                 # Files with draw outcomes
                 if results["draw_files"]:
                     f.write("\nFiles with draw outcomes:\n")

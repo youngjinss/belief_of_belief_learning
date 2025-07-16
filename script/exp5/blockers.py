@@ -782,20 +782,20 @@ class Level1ValueBlocker(BaseValueAgent):
     Level-1 Value-based Blocker Agent for AchieverBlocker environment.
 
     Simple "Stay, Watch, and Go" Strategy:
-    
+
     Phase 1: Observation
     - Stay in place and wait until achiever picks up the first key
     - Store the observed key color
-    
+
     Phase 2: Target inference and navigation
     - Infer that the first picked key is the target
     - Navigate to the corresponding door using value iteration
-    
+
     Phase 3: Door breaking
     - Attempt to break the target door
     - If game continues (wrong door), wait for next key pickup
     - Use the second observed key as the new target and repeat
-    
+
     The agent uses a simple reactive strategy without bluffing or prediction,
     relying solely on observed key pickups to infer the achiever's target.
     """
@@ -868,7 +868,6 @@ class Level1ValueBlocker(BaseValueAgent):
         # Update blocker-specific state
         self.blocker_pos = self.agent_pos
         self.achiever_pos = self._get_opponent_position(obs)
-
 
     @property
     def target_door_color(self):
@@ -1054,9 +1053,7 @@ class Level1ValueBlocker(BaseValueAgent):
             self.target_color = key_color
 
             # Find position of inferred door
-            self.target_pos = self._find_door_position_from_obs(
-                self.target_color, obs
-            )
+            self.target_pos = self._find_door_position_from_obs(self.target_color, obs)
 
 
 class RuleBasedAgent:

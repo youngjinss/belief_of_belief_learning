@@ -425,7 +425,7 @@ class Level0ValueAchiever(BaseValueAgent):
             gamma=gamma,
             temperature=temperature,
             q_value_clip=q_value_clip,
-            role='achiever',
+            role="achiever",
         )
 
         # Achiever-specific attributes
@@ -610,7 +610,7 @@ class Level1ValueAchiever(BaseValueAgent):
             gamma=gamma,
             temperature=temperature,
             q_value_clip=q_value_clip,
-            role='achiever',
+            role="achiever",
         )
 
         # Achiever-specific attributes
@@ -623,7 +623,7 @@ class Level1ValueAchiever(BaseValueAgent):
         self.strategy_phase = "collect_decoy_key"
         self.decoy_key_color = None
         self.decoy_key_collected = False
-        
+
         # Blocker observation attributes
         self.blocker_at_door_observed = False
         self.previous_blocker_pos = None
@@ -659,20 +659,22 @@ class Level1ValueAchiever(BaseValueAgent):
         for i, has_key in enumerate(achiever_keys_array):
             if has_key > 0 and i < len(color_map):
                 self.collected_keys.add(color_map[i])
-        
+
         # Observe blocker position and check if it goes to any door
         if obs and "blocker_pos" in obs:
             current_blocker_pos = tuple(obs["blocker_pos"])
-            
+
             # Check if blocker moved to a door position
             if "door_positions" in obs:
                 door_positions = obs["door_positions"]
-                door_position_tuples = [tuple(pos) for pos in door_positions.values() if pos is not None]
-                
+                door_position_tuples = [
+                    tuple(pos) for pos in door_positions.values() if pos is not None
+                ]
+
                 # If blocker is at any door position, mark as observed
                 if current_blocker_pos in door_position_tuples:
                     self.blocker_at_door_observed = True
-            
+
             self.previous_blocker_pos = current_blocker_pos
 
     def get_action(self, obs):
@@ -696,8 +698,10 @@ class Level1ValueAchiever(BaseValueAgent):
             # Switch to target key collection if either:
             # 1. Decoy key collected, OR
             # 2. Blocker observed at any door (correct or incorrect)
-            if (self.decoy_key_color in self.collected_keys or 
-                self.blocker_at_door_observed):
+            if (
+                self.decoy_key_color in self.collected_keys
+                or self.blocker_at_door_observed
+            ):
                 self.decoy_key_collected = True
                 self.strategy_phase = "collect_target_key"
             else:

@@ -1029,6 +1029,10 @@ def generate_trajectories(
             achiever_games = config.achiever_types[achiever_type]
             blocker_games = config.blocker_types[blocker_type]
             combination_games = min(achiever_games, blocker_games)
+            
+            # If generating test data, use 10% of n_games_per_type
+            if test_data:
+                combination_games = int(config.n_games_per_type * 0.1)
 
             generate_trajectories_for_combination(
                 config,

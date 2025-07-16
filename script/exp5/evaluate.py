@@ -584,52 +584,14 @@ def evaluate_achieverblocker_model(
             test_data = pickle.load(f)
         print(f"  Successfully loaded from {processed_test_data_path}")
 
-    # Sample 10% of each agent type's games for testing
-    achiever_type = list(config.achiever_types.keys())[0]
-    blocker_type = list(config.blocker_types.keys())[0]
-
-    achiever_games = config.achiever_types.get(achiever_type, 30000)
-    blocker_games = config.blocker_types.get(blocker_type, 30000)
-
-    # 10% of each agent type for testing
-    achiever_test_samples = int(achiever_games * 0.1)
-    blocker_test_samples = int(blocker_games * 0.1)
-    target_test_samples = achiever_test_samples + blocker_test_samples
-
+    # Use all available test data (no sampling)
     total_test_samples = test_data["trajectories"].shape[0]
-    if total_test_samples > target_test_samples:
-        print(
-            f"Sampling {target_test_samples} test trajectories from {total_test_samples} available samples"
-        )
-        print(
-            f"  Achiever ({achiever_type}): {achiever_test_samples} samples (10% of {achiever_games})"
-        )
-        print(
-            f"  Blocker ({blocker_type}): {blocker_test_samples} samples (10% of {blocker_games})"
-        )
-
-        # Set random seed for reproducible sampling
-        torch.manual_seed(config.seed)
-        np.random.seed(config.seed)
-
-        # Random sampling indices
-        sample_indices = np.random.choice(
-            total_test_samples, target_test_samples, replace=False
-        )
-        sample_indices = np.sort(sample_indices)
-
-        # Sample all test data arrays
-        for key in test_data.keys():
-            if isinstance(test_data[key], np.ndarray):
-                test_data[key] = test_data[key][sample_indices]
-            elif isinstance(test_data[key], torch.Tensor):
-                test_data[key] = test_data[key][sample_indices]
-
-        print(f"Sampled test data to {target_test_samples} trajectories")
-    else:
-        print(
-            f"Using all {total_test_samples} test trajectories (target: {target_test_samples})"
-        )
+    
+    print(f"Test data usage:")
+    print(f"  Using all available test samples: {total_test_samples}")
+    
+    if total_test_samples == 0:
+        raise ValueError(f"No test data found. Please generate test data first using --test_data flag.")
 
     # Log test data shapes for verification
     print(f"Test data shapes:")
@@ -860,49 +822,14 @@ def analyze_action_likelihood(
                 test_data = pickle.load(f)
             print(f"  Successfully loaded from {processed_test_data_path}")
 
-        # Sample 10% of each agent type's games for testing
-        achiever_games = config.achiever_types.get(achiever_type, 30000)
-        blocker_games = config.blocker_types.get(blocker_type, 30000)
-
-        # 10% of each agent type for testing
-        achiever_test_samples = int(achiever_games * 0.1)
-        blocker_test_samples = int(blocker_games * 0.1)
-        target_test_samples = achiever_test_samples + blocker_test_samples
-
+        # Use all available test data (no sampling)
         total_test_samples = test_data["trajectories"].shape[0]
-        if total_test_samples > target_test_samples:
-            print(
-                f"Sampling {target_test_samples} test trajectories from {total_test_samples} available samples"
-            )
-            print(
-                f"  Achiever ({achiever_type}): {achiever_test_samples} samples (10% of {achiever_games})"
-            )
-            print(
-                f"  Blocker ({blocker_type}): {blocker_test_samples} samples (10% of {blocker_games})"
-            )
-
-            # Set random seed for reproducible sampling
-            torch.manual_seed(config.seed)
-            np.random.seed(config.seed)
-
-            # Random sampling indices
-            sample_indices = np.random.choice(
-                total_test_samples, target_test_samples, replace=False
-            )
-            sample_indices = np.sort(sample_indices)
-
-            # Sample all test data arrays
-            for key in test_data.keys():
-                if isinstance(test_data[key], np.ndarray):
-                    test_data[key] = test_data[key][sample_indices]
-                elif isinstance(test_data[key], torch.Tensor):
-                    test_data[key] = test_data[key][sample_indices]
-
-            print(f"Sampled test data to {target_test_samples} trajectories")
-        else:
-            print(
-                f"Using all {total_test_samples} test trajectories (target: {target_test_samples})"
-            )
+        
+        print(f"Test data usage:")
+        print(f"  Using all available test samples: {total_test_samples}")
+        
+        if total_test_samples == 0:
+            raise ValueError(f"No test data found. Please generate test data first using --test_data flag.")
 
         test_dataset = TensorDataset(
             test_data["trajectories"],

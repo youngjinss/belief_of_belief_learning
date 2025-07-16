@@ -14,7 +14,7 @@ class Config:
         self.seed = 42
 
         # Agent settings
-        self.n_games_per_type = 3000  # Number of games to generate for ToMnet data
+        self.n_games_per_type = 3000 # Number of games to generate for ToMnet data
         self.achiever_types = {
             "lv0va": self.n_games_per_type,
             "lv1va": self.n_games_per_type,
@@ -190,11 +190,6 @@ class Config:
                 "temperature": 0.1,
                 "q_value_clip": 100,
                 "action_space": 6,
-                # Distance reduction rate tracking parameters
-                "update_frequency": 3,  # Update rates every N timesteps
-                "min_observation_window": 4,  # Minimum timesteps before making predictions
-                "reduction_threshold": 0.1,  # Minimum reduction rate to consider significant
-                "consecutive_threshold": 3,  # Require N consecutive reductions for confidence
             },
             "rule_based": {
                 "observability": "full",

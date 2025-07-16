@@ -622,15 +622,15 @@ class Config:
         # Environment and agent settings
         if hasattr(args, "achiever_type") and args.achiever_type is not None:
             self.achiever_types = {
-                args.achiever_type: 30000
+                args.achiever_type: self.n_games_per_type
             }  # Convert single type to dict for backward compatibility
         if hasattr(args, "blocker_type") and args.blocker_type is not None:
             self.blocker_types = {
-                args.blocker_type: 30000
+                args.blocker_type: self.n_games_per_type
             }  # Convert single type to dict for backward compatibility
         # Backward compatibility
         if hasattr(args, "agent_type") and args.agent_type is not None:
-            self.achiever_types = {args.agent_type: 30000}
+            self.achiever_types = {args.agent_type: self.n_games_per_type}
         if hasattr(args, "seed") and args.seed is not None:
             self.seed = args.seed
         if hasattr(args, "episodes") and args.episodes is not None:

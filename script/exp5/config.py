@@ -14,14 +14,12 @@ class Config:
         self.seed = 42
 
         # Agent settings
-        self.n_games_per_type = 3000  # Number of games to generate for ToMnet data
+        self.n_games_per_type = 50000  # Number of games to generate for ToMnet data
         self.achiever_types = {
             "lv0va": self.n_games_per_type,
-            "lv1va": self.n_games_per_type,
         }  # Options: "lv0va", "lv1va", "astar", "random", "value"
         self.blocker_types = {
             "lv0vb": self.n_games_per_type,
-            "lv1vb": self.n_games_per_type,
         }  # Options: "lv0vb", "lv1vb", "random", "goal_direct", "randomly_selected", "rule_based"
         self.observability = "full"  # Options: "full", "partial"
         self.movement_prob = 0.8  # For random agent
@@ -61,7 +59,7 @@ class Config:
         # Environment variants
         self.env_variants = {
             "3x3": {"grid_size": 3, "max_steps": 20},
-            "5x5": {"grid_size": 5, "max_steps": 25},
+            "5x5": {"grid_size": 5, "max_steps": 30},
             "9x9": {"grid_size": 9, "max_steps": 50},
             "11x11": {"grid_size": 11, "max_steps": 70},
         }
@@ -238,7 +236,7 @@ class Config:
 
         # Training configuration
         self.training_config = {
-            "batch_size": 750,
+            "batch_size": 512,
             "epochs": 300,
             "lr": 0.0001,
             "weight_decay": 0.001,
@@ -277,7 +275,7 @@ class Config:
         # Data processing configuration
         self.data_config = {
             "max_moves": 50,  # Maximum moves per trajectory (equivalent to experiment5)
-            "time_step": 30,  # Time step for model processing (equivalent to experiment5)
+            "time_step": 50,  # Time step for model processing (equivalent to experiment5)
             "min_time_steps": 5,  # Minimum timestep to start trajectory slicing from
             "max_n_past": 1,  # Maximum past episodes (matching experiment5)
             "n_past_min": 1,  # Minimum past episodes (matching experiment5)
@@ -293,12 +291,12 @@ class Config:
             "early_stopping_patience": 30,
             "early_stopping_min_delta": 0.001,
             "max_grad_norm": 1.0,
-            "action_weight": 0.25,
-            "goal_weight": 0.25,
-            "agent_weight": 0.1,
-            "type_weight": 0.1,
-            "consumption_weight": 0.15,
-            "sr_weight": 0.15,
+            "action_weight": 0.3,
+            "goal_weight": 0.3,
+            "agent_weight": 0.15,
+            "type_weight": 0.15,
+            "consumption_weight": 0.2,
+            "sr_weight": 0.2,
         }
 
         # Evaluation configuration
@@ -313,8 +311,8 @@ class Config:
         # N_past evaluation settings
         self.n_past_evaluation = {
             "n_past_min": 0,
-            "n_past_max": 5,
-            "n_past_infer": 5,
+            "n_past_max": 10,
+            "n_past_infer": 10,
         }
 
     def get_env_name(self):

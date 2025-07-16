@@ -831,35 +831,34 @@ def run_single_game(game_id, config_dict, save_dir, blocker_type=None):
 
         done = terminated or truncated
 
-        # Only record actions and positions if the step was actually executed (not terminated)
-        if not done or step_count == 0:  # Always record first step
-            achiever_actions.append(achiever_action)
-            blocker_actions.append(blocker_action)
+        # Always record actions and positions - this ensures final actions are captured
+        achiever_actions.append(achiever_action)
+        blocker_actions.append(blocker_action)
 
-            # Record positions AFTER action execution
-            current_achiever_pos = tuple(env.achiever_pos)
-            current_blocker_pos = tuple(env.blocker_pos)
-            achiever_positions.append(current_achiever_pos)
-            blocker_positions.append(current_blocker_pos)
+        # Record positions AFTER action execution
+        current_achiever_pos = tuple(env.achiever_pos)
+        current_blocker_pos = tuple(env.blocker_pos)
+        achiever_positions.append(current_achiever_pos)
+        blocker_positions.append(current_blocker_pos)
 
-            # Update rewards
-            total_achiever_reward += rewards["achiever"]
-            total_blocker_reward += rewards["blocker"]
+        # Update rewards
+        total_achiever_reward += rewards["achiever"]
+        total_blocker_reward += rewards["blocker"]
 
-            # Track key collection
-            if hasattr(env, "achiever_keys"):
-                current_keys = list(env.achiever_keys)
-                if len(current_keys) > len(keys_collected):
-                    new_key = [k for k in current_keys if k not in keys_collected][0]
-                    keys_collected.append(new_key)
-                    keys_collected_steps.append((step_count, new_key))
+        # Track key collection
+        if hasattr(env, "achiever_keys"):
+            current_keys = list(env.achiever_keys)
+            if len(current_keys) > len(keys_collected):
+                new_key = [k for k in current_keys if k not in keys_collected][0]
+                keys_collected.append(new_key)
+                keys_collected_steps.append((step_count, new_key))
 
-            # Check for door opening by reward
-            if rewards["achiever"] >= 1.0:  # Door opening reward
-                # Get the door that was just opened using environment tracking
-                if env.last_door_opened and env.last_door_opened not in doors_opened:
-                    doors_opened.append(env.last_door_opened)
-                    doors_opened_steps.append((step_count, env.last_door_opened))
+        # Check for door opening by reward
+        if rewards["achiever"] >= 1.0:  # Door opening reward
+            # Get the door that was just opened using environment tracking
+            if env.last_door_opened and env.last_door_opened not in doors_opened:
+                doors_opened.append(env.last_door_opened)
+                doors_opened_steps.append((step_count, env.last_door_opened))
 
         step_count += 1
 

@@ -13,6 +13,7 @@ import gc
 from torch.cuda.amp import autocast, GradScaler
 import mmap
 import multiprocessing as mp
+from functools import partial
 
 # Add current directory to path
 sys.path.append(os.path.dirname(__file__))
@@ -280,23 +281,145 @@ def generate_past_episodes_from_batch(
     return past_episodes_batch
 
 
+def process_single_sample(sample, grid_size, min_timestep, max_trajectory_length):
+    """
+    Process a single sample for multiprocessing
+    """
+    # Extract data from sample
+    trajectory = sample["trajectory"]  # [seq_len, channels, height, width]
+    goal_tensor = sample["goal"]  # [4] one-hot encoded
+    agent_type = sample["agent"]  # 'achiever' or 'blocker'
+    type_label = sample["type"]  # 0 for randomly select / achiever, 1 for rule-based blocker
+    consumption = sample["consumption_labels"]  # [8] consumption labels
+    sr_data_per_timestep = sample.get("sr_data_per_timestep", {})
+
+    # Convert agent type to numerical (0=achiever, 1=blocker)
+    agent_label = 0 if agent_type == "achiever" else 1
+
+    # Extract goal rank from goal tensor and agent type
+    if agent_type == "achiever":
+        goal_idx = torch.argmax(torch.tensor(goal_tensor)).item()
+        goal_rank = [2, 2, 2, 2]  # Default rank 2 for all
+        goal_rank[goal_idx] = 1  # Set the achieved goal to rank 1
+    else:
+        goal_idx = torch.argmax(torch.tensor(goal_tensor)).item()
+        goal_rank = [2, 2, 2, 2]  # Default rank 2 for all
+        goal_rank[goal_idx] = 1  # Set the inferred goal to rank 1
+
+    # Get actions from sample data
+    action_list = sample.get("actions", [])
+
+    # Truncate trajectory to max length
+    seq_len = min(trajectory.shape[0], max_trajectory_length)
+    trajectory = trajectory[:seq_len]
+    action_list = action_list[:seq_len]
+
+    # Local lists for this sample
+    sample_trajectories = []
+    sample_actions = []
+    sample_goals = []
+    sample_goal_ranks = []
+    sample_agents = []
+    sample_types = []
+    sample_consumption_labels = []
+    sample_sr_labels = []
+
+    # TRAJECTORY SLICING: Create multiple samples per trajectory
+    for i in range(min_timestep, seq_len):
+        # Slice trajectory up to timestep i
+        trajectory_slice = trajectory[:i]  # [i, channels, height, width]
+
+        # Pad trajectory slice to consistent length for batching
+        if i < max_trajectory_length:
+            padding_shape = (max_trajectory_length - i, *trajectory.shape[1:])
+            padding = np.zeros(padding_shape)
+            trajectory_padded = np.concatenate([trajectory_slice, padding], axis=0)
+        else:
+            trajectory_padded = trajectory_slice
+
+        # Current timestep for action prediction
+        current_timestep = i - 1
+
+        # Action at timestep i (what we want to predict)
+        if i < len(action_list):
+            action_target = action_list[i]
+        else:
+            continue  # Skip if no action available
+
+        # Process SR data for this timestep
+        if current_timestep in sr_data_per_timestep:
+            sr_data_timestep = sr_data_per_timestep[current_timestep]
+            sr_dense = convert_sparse_sr_to_dense(
+                sr_data_timestep, grid_size, grid_size
+            )
+        else:
+            sr_dense = np.zeros((3, grid_size, grid_size))
+
+        # Add this training sample
+        sample_trajectories.append(trajectory_padded)
+        sample_actions.append(
+            [action_target] + [0] * (max_trajectory_length - 1)
+        )  # Pad actions
+        sample_goals.append(goal_tensor)
+        sample_goal_ranks.append(goal_rank)
+        sample_agents.append(agent_label)
+        sample_types.append(type_label)
+        sample_consumption_labels.append(consumption)
+        sample_sr_labels.append(sr_dense)
+
+    return {
+        'trajectories': sample_trajectories,
+        'actions': sample_actions,
+        'goals': sample_goals,
+        'goal_ranks': sample_goal_ranks,
+        'agents': sample_agents,
+        'types': sample_types,
+        'consumption_labels': sample_consumption_labels,
+        'sr_labels': sample_sr_labels,
+    }
+
+
 def prepare_data_for_training(
-    samples, grid_size=9, min_timestep=3, max_trajectory_length=100
+    samples, grid_size=9, min_timestep=3, max_trajectory_length=100, n_processes=None
 ):
     """
     Prepare multi-agent sample data for training from processed samples with trajectory slicing
+    Now supports multiprocessing for faster processing
 
     Args:
         samples: List of processed samples from DataGenerator (containing both achiever and blocker samples)
-        shuffle_data: Whether to shuffle the samples
         grid_size: Size of the grid (default 9 for 9x9)
         min_timestep: Minimum timestep to start slicing from
         max_trajectory_length: Maximum length of trajectory to use
+        n_processes: Number of processes to use (default: CPU count)
 
     Returns:
         Dictionary containing prepared training data
     """
+    
+    if n_processes is None:
+        n_processes = mp.cpu_count()
+    
+    print(f"Preparing data from {len(samples)} samples with trajectory slicing using {n_processes} processes...")
 
+    # Create partial function with fixed parameters
+    worker_func = partial(
+        process_single_sample,
+        grid_size=grid_size,
+        min_timestep=min_timestep,
+        max_trajectory_length=max_trajectory_length
+    )
+
+    # Process samples in parallel
+    with mp.Pool(n_processes) as pool:
+        # Use imap for progress tracking
+        results = list(tqdm(
+            pool.imap(worker_func, samples),
+            total=len(samples),
+            desc="Dataset processing (multiprocessing)"
+        ))
+
+    # Combine results from all processes
     trajectories = []
     actions = []
     goals = []
@@ -306,93 +429,15 @@ def prepare_data_for_training(
     consumption_labels = []
     sr_labels = []
 
-    print(f"Preparing data from {len(samples)} samples with trajectory slicing...")
-
-    for sample in tqdm(samples, desc="Dataset processing"):
-        # Extract data from sample
-        trajectory = sample["trajectory"]  # [seq_len, channels, height, width]
-        goal_tensor = sample["goal"]  # [4] one-hot encoded
-        agent_type = sample["agent"]  # 'achiever' or 'blocker'
-        type_label = sample[
-            "type"
-        ]  # 0 for randomly select / achiever, 1 for rule-based blocker
-        consumption = sample["consumption_labels"]  # [8] consumption labels
-        sr_data_per_timestep = sample.get("sr_data_per_timestep", {})
-
-        # Convert agent type to numerical (0=achiever, 1=blocker)
-        agent_label = 0 if agent_type == "achiever" else 1
-
-        # Extract goal rank from goal tensor and agent type
-        if agent_type == "achiever":
-            # For achiever: convert one-hot goal to rank format
-            # goal_tensor is one-hot [0,0,1,0] -> goal_rank should be [2,2,1,2]
-            goal_idx = torch.argmax(torch.tensor(goal_tensor)).item()
-            goal_rank = [2, 2, 2, 2]  # Default rank 2 for all
-            goal_rank[goal_idx] = 1  # Set the achieved goal to rank 1
-        else:
-            # For blocker: convert inferred goal to rank format
-            # If blocker inferred goal C (index 2), then rank should be [2,2,1,2]
-            goal_idx = torch.argmax(torch.tensor(goal_tensor)).item()
-            goal_rank = [2, 2, 2, 2]  # Default rank 2 for all
-            goal_rank[goal_idx] = 1  # Set the inferred goal to rank 1
-
-        # Get actions from sample data (already extracted from trajectory_steps)
-        action_list = sample.get("actions", [])
-
-        # Truncate trajectory to max length
-        seq_len = min(trajectory.shape[0], max_trajectory_length)
-        trajectory = trajectory[:seq_len]
-        action_list = action_list[:seq_len]
-
-
-        # TRAJECTORY SLICING: Create multiple samples per trajectory
-        for i in range(min_timestep, seq_len):
-            # Slice trajectory up to timestep i
-            trajectory_slice = trajectory[:i]  # [i, channels, height, width]
-
-            # Pad trajectory slice to consistent length for batching
-            if i < max_trajectory_length:
-                padding_shape = (max_trajectory_length - i, *trajectory.shape[1:])
-                padding = np.zeros(padding_shape)
-                trajectory_padded = np.concatenate([trajectory_slice, padding], axis=0)
-            else:
-                trajectory_padded = trajectory_slice
-
-            # Current timestep for action prediction
-            current_timestep = i - 1
-
-            # Action at timestep i (what we want to predict)
-            if i < len(action_list):
-                action_target = action_list[i]
-            else:
-                continue  # Skip if no action available
-
-            # Process SR data for this timestep
-            if current_timestep in sr_data_per_timestep:
-                sr_data_timestep = sr_data_per_timestep[current_timestep]
-                sr_dense = convert_sparse_sr_to_dense(
-                    sr_data_timestep, grid_size, grid_size
-                )
-            else:
-                sr_dense = np.zeros((3, grid_size, grid_size))
-
-            # Add this training sample
-            trajectories.append(trajectory_padded)
-            actions.append(
-                [action_target] + [0] * (max_trajectory_length - 1)
-            )  # Pad actions
-            goals.append(goal_tensor)
-            goal_ranks.append(goal_rank)
-            agents.append(agent_label)
-            types.append(type_label)
-            consumption_labels.append(consumption)
-            sr_labels.append(sr_dense)
-            
-        # Force flush to ensure real-time logging
-        sys.stdout.flush()
-        # Also flush any file handlers if redirected
-        if hasattr(sys.stdout, "buffer"):
-            sys.stdout.buffer.flush()
+    for result in results:
+        trajectories.extend(result['trajectories'])
+        actions.extend(result['actions'])
+        goals.extend(result['goals'])
+        goal_ranks.extend(result['goal_ranks'])
+        agents.extend(result['agents'])
+        types.extend(result['types'])
+        consumption_labels.extend(result['consumption_labels'])
+        sr_labels.extend(result['sr_labels'])
         
 
     # Convert to tensors
@@ -1416,12 +1461,16 @@ def train_tomnet(
             )
             sample_indices = np.sort(sample_indices)
 
-            # Sample all data arrays
+            # Sample all data arrays - create new dictionary to avoid modifying read-only NpzFile
+            sampled_data = {}
             for key in data.keys():
                 if isinstance(data[key], np.ndarray):
-                    data[key] = data[key][sample_indices]
+                    sampled_data[key] = data[key][sample_indices]
                 elif isinstance(data[key], torch.Tensor):
-                    data[key] = data[key][sample_indices]
+                    sampled_data[key] = data[key][sample_indices]
+                else:
+                    sampled_data[key] = data[key]  # Keep non-array data as-is
+            data = sampled_data
 
             print(f"Sampled data to {target_games} trajectories")
         else:

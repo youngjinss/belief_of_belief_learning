@@ -540,14 +540,14 @@ class Config:
 
         # Reduce data generation for testing
         # Set small values for debug mode
-        self.achiever_types = {"lv0va": 10, "lv1va": 10, "value": 10, "astar": 10}
-        self.blocker_types = {"lv0vb": 10, "lv1vb": 10, "random": 10, "rule_based": 10}
+        self.achiever_types = {"lv0va": 100}
+        self.blocker_types = {"lv0vb": 100}
 
         # Reduce training settings for faster testing
         self.training_config.update(
             {
                 "batch_size": 64,  # Reduced from 1024
-                "epochs": 5,  # Reduced from 200
+                "epochs": 2,  # Reduced from 200
                 "gradient_accumulation_steps": 1,  # Reduced from 2
             }
         )
@@ -562,16 +562,17 @@ class Config:
         self.data_config.update(
             {
                 "max_moves": 20,  # Reduced from 50
-                "time_step": 5,  # Reduced from 10
+                "min_time_steps": 2,
+                "time_step": 6,  # Reduced from 10
             }
         )
 
         # Reduce model complexity slightly
         self.model_config.update(
             {
-                "residual_blocks": 3,  # Reduced from 5
-                "n_echar": 64,  # Reduced from 128
-                "n_ement": 64,  # Reduced from 128
+                "residual_blocks": 1,  # Reduced from 5
+                "n_echar": 16,  # Reduced from 128
+                "n_ement": 16,  # Reduced from 128
             }
         )
 

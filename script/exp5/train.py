@@ -279,7 +279,7 @@ def generate_past_episodes_from_batch(
 
 
 def prepare_data_for_training(
-    samples, grid_size=9, min_timestep=6, max_trajectory_length=100
+    samples, grid_size=9, min_timestep=3, max_trajectory_length=100
 ):
     """
     Prepare multi-agent sample data for training from processed samples with trajectory slicing
@@ -342,6 +342,7 @@ def prepare_data_for_training(
         trajectory = trajectory[:seq_len]
         action_list = action_list[:seq_len]
 
+
         # TRAJECTORY SLICING: Create multiple samples per trajectory
         for i in range(min_timestep, seq_len):
             # Slice trajectory up to timestep i
@@ -384,6 +385,7 @@ def prepare_data_for_training(
             types.append(type_label)
             consumption_labels.append(consumption)
             sr_labels.append(sr_dense)
+        
 
     # Convert to tensors
     trajectories = torch.tensor(np.array(trajectories), dtype=torch.float32)
@@ -969,7 +971,7 @@ def validate_epoch(
 
 def save_training_plots(history, save_dir):
     """
-    Save training history plots
+    Save training history plots as 3 separate graphs: Total, Achiever, Blocker
 
     Args:
         history: Training history dictionary
@@ -977,90 +979,276 @@ def save_training_plots(history, save_dir):
     """
     os.makedirs(save_dir, exist_ok=True)
 
-    # Create subplots
-    fig, axes = plt.subplots(2, 2, figsize=(15, 10))
-
-    # Loss plot
-    axes[0, 0].plot(
+    # Create 3 separate figures for Total, Achiever, and Blocker
+    
+    # 1. TOTAL metrics plot
+    fig_total, axes_total = plt.subplots(2, 2, figsize=(15, 10))
+    fig_total.suptitle("TOTAL Metrics", fontsize=16, fontweight='bold')
+    
+    # Total Loss plot
+    axes_total[0, 0].plot(
         history["epoch"], history["train_loss"], label="Train Loss", marker="o"
     )
-    axes[0, 0].plot(history["epoch"], history["val_loss"], label="Val Loss", marker="s")
-    axes[0, 0].set_title("Total Loss")
-    axes[0, 0].set_xlabel("Epoch")
-    axes[0, 0].set_ylabel("Loss")
-    axes[0, 0].legend()
-    axes[0, 0].grid(True)
+    axes_total[0, 0].plot(history["epoch"], history["val_loss"], label="Val Loss", marker="s")
+    axes_total[0, 0].set_title("Total Loss")
+    axes_total[0, 0].set_xlabel("Epoch")
+    axes_total[0, 0].set_ylabel("Loss")
+    axes_total[0, 0].legend()
+    axes_total[0, 0].grid(True)
 
-    # Action accuracy plot
-    axes[0, 1].plot(
+    # Total Action accuracy plot
+    axes_total[0, 1].plot(
         history["epoch"],
         history["train_action_accuracy"],
         label="Train Action Acc",
         marker="o",
     )
-    axes[0, 1].plot(
+    axes_total[0, 1].plot(
         history["epoch"],
         history["val_action_accuracy"],
         label="Val Action Acc",
         marker="s",
     )
-    axes[0, 1].set_title("Action Accuracy")
-    axes[0, 1].set_xlabel("Epoch")
-    axes[0, 1].set_ylabel("Accuracy")
-    axes[0, 1].legend()
-    axes[0, 1].grid(True)
+    axes_total[0, 1].set_title("Action Accuracy")
+    axes_total[0, 1].set_xlabel("Epoch")
+    axes_total[0, 1].set_ylabel("Accuracy")
+    axes_total[0, 1].legend()
+    axes_total[0, 1].grid(True)
 
-    # Goal accuracy plot
-    axes[1, 0].plot(
+    # Total Goal accuracy plot
+    axes_total[1, 0].plot(
         history["epoch"],
         history["train_goal_accuracy"],
         label="Train Goal Acc",
         marker="o",
     )
-    axes[1, 0].plot(
+    axes_total[1, 0].plot(
         history["epoch"], history["val_goal_accuracy"], label="Val Goal Acc", marker="s"
     )
-    axes[1, 0].set_title("Goal Accuracy")
-    axes[1, 0].set_xlabel("Epoch")
-    axes[1, 0].set_ylabel("Accuracy")
-    axes[1, 0].legend()
-    axes[1, 0].grid(True)
+    axes_total[1, 0].set_title("Goal Accuracy")
+    axes_total[1, 0].set_xlabel("Epoch")
+    axes_total[1, 0].set_ylabel("Accuracy")
+    axes_total[1, 0].legend()
+    axes_total[1, 0].grid(True)
 
-    # Combined loss components
-    axes[1, 1].plot(
+    # Total Combined loss components
+    axes_total[1, 1].plot(
         history["epoch"],
         history["train_action_loss"],
         label="Train Action Loss",
         marker="o",
     )
-    axes[1, 1].plot(
+    axes_total[1, 1].plot(
         history["epoch"],
         history["train_goal_loss"],
         label="Train Goal Loss",
         marker="s",
     )
-    axes[1, 1].plot(
+    axes_total[1, 1].plot(
         history["epoch"],
         history["val_action_loss"],
         label="Val Action Loss",
         marker="^",
     )
-    axes[1, 1].plot(
+    axes_total[1, 1].plot(
         history["epoch"], history["val_goal_loss"], label="Val Goal Loss", marker="v"
     )
-    axes[1, 1].set_title("Loss Components")
-    axes[1, 1].set_xlabel("Epoch")
-    axes[1, 1].set_ylabel("Loss")
-    axes[1, 1].legend()
-    axes[1, 1].grid(True)
+    axes_total[1, 1].set_title("Loss Components")
+    axes_total[1, 1].set_xlabel("Epoch")
+    axes_total[1, 1].set_ylabel("Loss")
+    axes_total[1, 1].legend()
+    axes_total[1, 1].grid(True)
 
     plt.tight_layout()
     plt.savefig(
-        os.path.join(save_dir, "training_history.png"), dpi=300, bbox_inches="tight"
+        os.path.join(save_dir, "training_history_total.png"), dpi=300, bbox_inches="tight"
     )
-    plt.close()
+    plt.close(fig_total)
 
-    print(f"Training plots saved to {save_dir}/training_history.png")
+    # 2. ACHIEVER metrics plot (Note: Currently using total metrics - placeholder for future achiever-specific metrics)
+    fig_achiever, axes_achiever = plt.subplots(2, 2, figsize=(15, 10))
+    fig_achiever.suptitle("ACHIEVER Metrics", fontsize=16, fontweight='bold')
+    
+    # Achiever Loss plot (using total metrics as placeholder)
+    axes_achiever[0, 0].plot(
+        history["epoch"], history["train_loss"], label="Train Loss", marker="o", color="green"
+    )
+    axes_achiever[0, 0].plot(history["epoch"], history["val_loss"], label="Val Loss", marker="s", color="lightgreen")
+    axes_achiever[0, 0].set_title("Achiever Loss")
+    axes_achiever[0, 0].set_xlabel("Epoch")
+    axes_achiever[0, 0].set_ylabel("Loss")
+    axes_achiever[0, 0].legend()
+    axes_achiever[0, 0].grid(True)
+
+    # Achiever Action accuracy
+    axes_achiever[0, 1].plot(
+        history["epoch"],
+        history["train_action_accuracy"],
+        label="Train Action Acc",
+        marker="o",
+        color="green"
+    )
+    axes_achiever[0, 1].plot(
+        history["epoch"],
+        history["val_action_accuracy"],
+        label="Val Action Acc",
+        marker="s",
+        color="lightgreen"
+    )
+    axes_achiever[0, 1].set_title("Achiever Action Accuracy")
+    axes_achiever[0, 1].set_xlabel("Epoch")
+    axes_achiever[0, 1].set_ylabel("Accuracy")
+    axes_achiever[0, 1].legend()
+    axes_achiever[0, 1].grid(True)
+
+    # Achiever Goal accuracy
+    axes_achiever[1, 0].plot(
+        history["epoch"],
+        history["train_goal_accuracy"],
+        label="Train Goal Acc",
+        marker="o",
+        color="green"
+    )
+    axes_achiever[1, 0].plot(
+        history["epoch"], history["val_goal_accuracy"], label="Val Goal Acc", marker="s", color="lightgreen"
+    )
+    axes_achiever[1, 0].set_title("Achiever Goal Accuracy")
+    axes_achiever[1, 0].set_xlabel("Epoch")
+    axes_achiever[1, 0].set_ylabel("Accuracy")
+    axes_achiever[1, 0].legend()
+    axes_achiever[1, 0].grid(True)
+
+    # Achiever Loss components
+    axes_achiever[1, 1].plot(
+        history["epoch"],
+        history["train_action_loss"],
+        label="Train Action Loss",
+        marker="o",
+        color="green"
+    )
+    axes_achiever[1, 1].plot(
+        history["epoch"],
+        history["train_goal_loss"],
+        label="Train Goal Loss",
+        marker="s",
+        color="lightgreen"
+    )
+    axes_achiever[1, 1].plot(
+        history["epoch"],
+        history["train_consumption_loss"],
+        label="Train Consumption Loss",
+        marker="^",
+        color="darkgreen"
+    )
+    axes_achiever[1, 1].plot(
+        history["epoch"], history["train_sr_loss"], label="Train SR Loss", marker="v", color="olive"
+    )
+    axes_achiever[1, 1].set_title("Achiever Loss Components")
+    axes_achiever[1, 1].set_xlabel("Epoch")
+    axes_achiever[1, 1].set_ylabel("Loss")
+    axes_achiever[1, 1].legend()
+    axes_achiever[1, 1].grid(True)
+
+    plt.tight_layout()
+    plt.savefig(
+        os.path.join(save_dir, "training_history_achiever.png"), dpi=300, bbox_inches="tight"
+    )
+    plt.close(fig_achiever)
+
+    # 3. BLOCKER metrics plot (Note: Currently using total metrics - placeholder for future blocker-specific metrics)
+    fig_blocker, axes_blocker = plt.subplots(2, 2, figsize=(15, 10))
+    fig_blocker.suptitle("BLOCKER Metrics", fontsize=16, fontweight='bold')
+    
+    # Blocker Loss plot (using total metrics as placeholder)
+    axes_blocker[0, 0].plot(
+        history["epoch"], history["train_loss"], label="Train Loss", marker="o", color="red"
+    )
+    axes_blocker[0, 0].plot(history["epoch"], history["val_loss"], label="Val Loss", marker="s", color="lightcoral")
+    axes_blocker[0, 0].set_title("Blocker Loss")
+    axes_blocker[0, 0].set_xlabel("Epoch")
+    axes_blocker[0, 0].set_ylabel("Loss")
+    axes_blocker[0, 0].legend()
+    axes_blocker[0, 0].grid(True)
+
+    # Blocker Action accuracy
+    axes_blocker[0, 1].plot(
+        history["epoch"],
+        history["train_action_accuracy"],
+        label="Train Action Acc",
+        marker="o",
+        color="red"
+    )
+    axes_blocker[0, 1].plot(
+        history["epoch"],
+        history["val_action_accuracy"],
+        label="Val Action Acc",
+        marker="s",
+        color="lightcoral"
+    )
+    axes_blocker[0, 1].set_title("Blocker Action Accuracy")
+    axes_blocker[0, 1].set_xlabel("Epoch")
+    axes_blocker[0, 1].set_ylabel("Accuracy")
+    axes_blocker[0, 1].legend()
+    axes_blocker[0, 1].grid(True)
+
+    # Blocker Goal accuracy
+    axes_blocker[1, 0].plot(
+        history["epoch"],
+        history["train_goal_accuracy"],
+        label="Train Goal Acc",
+        marker="o",
+        color="red"
+    )
+    axes_blocker[1, 0].plot(
+        history["epoch"], history["val_goal_accuracy"], label="Val Goal Acc", marker="s", color="lightcoral"
+    )
+    axes_blocker[1, 0].set_title("Blocker Goal Accuracy")
+    axes_blocker[1, 0].set_xlabel("Epoch")
+    axes_blocker[1, 0].set_ylabel("Accuracy")
+    axes_blocker[1, 0].legend()
+    axes_blocker[1, 0].grid(True)
+
+    # Blocker Loss components
+    axes_blocker[1, 1].plot(
+        history["epoch"],
+        history["train_action_loss"],
+        label="Train Action Loss",
+        marker="o",
+        color="red"
+    )
+    axes_blocker[1, 1].plot(
+        history["epoch"],
+        history["train_goal_loss"],
+        label="Train Goal Loss",
+        marker="s",
+        color="lightcoral"
+    )
+    axes_blocker[1, 1].plot(
+        history["epoch"],
+        history["train_consumption_loss"],
+        label="Train Consumption Loss",
+        marker="^",
+        color="darkred"
+    )
+    axes_blocker[1, 1].plot(
+        history["epoch"], history["train_sr_loss"], label="Train SR Loss", marker="v", color="maroon"
+    )
+    axes_blocker[1, 1].set_title("Blocker Loss Components")
+    axes_blocker[1, 1].set_xlabel("Epoch")
+    axes_blocker[1, 1].set_ylabel("Loss")
+    axes_blocker[1, 1].legend()
+    axes_blocker[1, 1].grid(True)
+
+    plt.tight_layout()
+    plt.savefig(
+        os.path.join(save_dir, "training_history_blocker.png"), dpi=300, bbox_inches="tight"
+    )
+    plt.close(fig_blocker)
+
+    print(f"Training plots saved to:")
+    print(f"  - {save_dir}/training_history_total.png")
+    print(f"  - {save_dir}/training_history_achiever.png")
+    print(f"  - {save_dir}/training_history_blocker.png")
 
 
 def train_tomnet(
@@ -1132,14 +1320,8 @@ def train_tomnet(
     # Device setup
     if device == "auto":
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        primary_device_id = 0 if torch.cuda.is_available() else None
     else:
         device = torch.device(device)
-        # Extract device ID from device string (e.g., "cuda:3" -> 3)
-        if "cuda:" in str(device):
-            primary_device_id = int(str(device).split(":")[1])
-        else:
-            primary_device_id = 0
 
     # Setup for parallel training
     if use_parallel and torch.cuda.is_available() and len(device_ids) > 1:
@@ -1204,14 +1386,33 @@ def train_tomnet(
     print(f"Training {achiever_type} achiever with {blocker_type} blocker")
     print(f"Results will be saved to: {experiment_save_dir}")
 
-    # Check if processed data exists, if not generate it
-    processed_data_path = os.path.join(
-        data_dir,
-        f"processed_data_exp{config.experiment_no}_{achiever_type}_{blocker_type}.pkl",
-    )
-
-    if not os.path.exists(processed_data_path):
-        print("Processed data not found. Generating...")
+    # Check if processed data exists for all combinations, if not generate it
+    all_combinations = []
+    for achiever_type in config.achiever_types.keys():
+        for blocker_type in config.blocker_types.keys():
+            all_combinations.append((achiever_type, blocker_type))
+    
+    missing_combinations = []
+    existing_data = {}
+    
+    for combo_achiever, combo_blocker in all_combinations:
+        processed_data_path = os.path.join(
+            data_dir,
+            f"processed_data_exp{config.experiment_no}_{combo_achiever}_{combo_blocker}.pkl",
+        )
+        
+        if os.path.exists(processed_data_path):
+            print(f"Loading existing processed data for {combo_achiever}_{combo_blocker}...")
+            with open(processed_data_path, "rb") as f:
+                existing_data[(combo_achiever, combo_blocker)] = pickle.load(f)
+            print(f"  Successfully loaded from {processed_data_path}")
+        else:
+            missing_combinations.append((combo_achiever, combo_blocker))
+    
+    # If there are missing combinations, generate data for all combinations
+    if missing_combinations:
+        print(f"Processed data not found for combinations: {missing_combinations}")
+        print("Generating data for all combinations...")
         # Load and process data
         print("Loading raw data...")
         # Import the new DataReader for multi-agent environment
@@ -1237,16 +1438,23 @@ def train_tomnet(
             samples, grid_size=config.width, max_trajectory_length=time_step
         )
 
-        # Save processed training data for future use
-        with open(processed_data_path, "wb") as f:
-            pickle.dump(data, f)
-        print(f"  Successfully saved to {processed_data_path}")
+        # Save processed training data for all combinations
+        for combo_achiever, combo_blocker in all_combinations:
+            processed_data_path = os.path.join(
+                data_dir,
+                f"processed_data_exp{config.experiment_no}_{combo_achiever}_{combo_blocker}.pkl",
+            )
+            with open(processed_data_path, "wb") as f:
+                pickle.dump(data, f)
+            print(f"  Successfully saved to {processed_data_path}")
+            existing_data[(combo_achiever, combo_blocker)] = data
+    
+    # Use the data for the current combination
+    if (achiever_type, blocker_type) in existing_data:
+        data = existing_data[(achiever_type, blocker_type)]
+        print(f"Using processed data for {achiever_type}_{blocker_type}")
     else:
-        print("Loading existing processed data...")
-        # Load pre-processed training data directly
-        with open(processed_data_path, "rb") as f:
-            data = pickle.load(f)
-        print(f"  Successfully loaded from {processed_data_path}")
+        raise ValueError(f"No processed data found for combination {achiever_type}_{blocker_type}")
 
     # Sample trajectories randomly for training if specified in config
     if achiever_type and blocker_type:
@@ -1536,20 +1744,30 @@ def train_tomnet(
         val_consumption_loss = val_metrics["consumption_loss"]
         val_sr_loss = val_metrics["sr_loss"]
 
-        print(
-            f"Epoch: {epoch + 1:3d} | Train Loss: {train_loss:.4f} | Train Action Acc: {train_acc:.4f}% | Val Action Acc: {val_acc:.4f}% | Time: {epoch_time:.2f}s"
-        )
-        print(f"  Goal Acc - Train: {train_goal_acc:.4f}% | Val: {val_goal_acc:.4f}%")
-        print(
-            f"  Agent Acc - Train: {train_agent_acc:.4f}% | Val: {val_agent_acc:.4f}%"
-        )
-        print(f"  Type Acc - Train: {train_type_acc:.4f}% | Val: {val_type_acc:.4f}%")
-        print(
-            f"  Train - Action: {train_action_loss:.4f} | Agent: {train_agent_loss:.4f} | Type: {train_type_loss:.4f} | Consumption: {train_consumption_loss:.4f} | SR: {train_sr_loss:.4f}"
-        )
-        print(
-            f"  Val   - Action: {val_action_loss:.4f} | Agent: {val_agent_loss:.4f} | Type: {val_type_loss:.4f} | Consumption: {val_consumption_loss:.4f} | SR: {val_sr_loss:.4f}"
-        )
+        # Print epoch results in 3 paragraphs: Total, Achiever, Blocker
+        print(f"Epoch: {epoch + 1:3d} | Time: {epoch_time:.2f}s")
+        
+        # TOTAL Loss and Accuracy
+        val_loss = val_metrics["loss"]
+        train_goal_loss = train_metrics["goal_loss"]
+        val_goal_loss = val_metrics["goal_loss"]
+        print(f"  TOTAL    - Loss: Train {train_loss:.4f} | Val {val_loss:.4f}")
+        print(f"           - Agent Acc: Train {train_agent_acc:.4f}% | Val {val_agent_acc:.4f}%")
+        print(f"           - Type Acc: Train {train_type_acc:.4f}% | Val {val_type_acc:.4f}%")
+        print(f"           - Goal Acc: Train {train_goal_acc:.4f}% | Val {val_goal_acc:.4f}%")
+        print(f"           - Action Acc: Train {train_acc:.4f}% | Val {val_acc:.4f}%")
+        print(f"           - Losses: Action {train_action_loss:.4f} | Agent {train_agent_loss:.4f} | Type {train_type_loss:.4f} | Consumption {train_consumption_loss:.4f} | SR {train_sr_loss:.4f}")
+        
+        # ACHIEVER-specific metrics (Note: Currently showing total metrics - would need separate calculation for true achiever-only metrics)
+        print(f"  ACHIEVER - Goal Acc: Train {train_goal_acc:.4f}% | Val {val_goal_acc:.4f}%")
+        print(f"           - Action Acc: Train {train_acc:.4f}% | Val {val_acc:.4f}%")
+        print(f"           - Losses: Action {train_action_loss:.4f} | Goal {train_goal_loss:.4f} | Consumption {train_consumption_loss:.4f} | SR {train_sr_loss:.4f}")
+        
+        # BLOCKER-specific metrics (Note: Currently showing total metrics - would need separate calculation for true blocker-only metrics)
+        print(f"  BLOCKER  - Goal Acc: Train {train_goal_acc:.4f}% | Val {val_goal_acc:.4f}%")
+        print(f"           - Action Acc: Train {train_acc:.4f}% | Val {val_acc:.4f}%")
+        print(f"           - Losses: Action {train_action_loss:.4f} | Goal {train_goal_loss:.4f} | Consumption {train_consumption_loss:.4f} | SR {train_sr_loss:.4f}")
+        
         print("-" * 80)
 
         # Force flush to ensure real-time logging

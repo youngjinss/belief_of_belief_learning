@@ -801,6 +801,10 @@ class Level1ValueBlocker(BaseValueAgent):
         gamma=0.99,
         temperature=0.1,
         q_value_clip=100,
+        update_frequency=3,
+        min_observation_window=4,
+        reduction_threshold=0.1,
+        consecutive_threshold=3,
     ):
         """Initialize Level-1 value-based blocker agent."""
         # Initialize base class
@@ -835,7 +839,18 @@ class Level1ValueBlocker(BaseValueAgent):
             1  # 1: go to random door, 2: stay at door, 3: go to inferred door, 4: break
         )
 
-        # Remove stay probability - use direct value iteration decisions
+        # Distance reduction rate tracking for target inference
+        self.distance_history = {}  # Store distance history for each key color
+        self.reduction_rates = {}  # Store reduction rates for each key color
+        self.consecutive_reductions = {}  # Count consecutive reductions for each color
+        self.timestep_counter = 0
+        
+        # Use parameters from constructor arguments
+        self.update_frequency = update_frequency
+        self.min_observation_window = min_observation_window
+        self.reduction_threshold = reduction_threshold
+        self.consecutive_threshold = consecutive_threshold
+        self.predicted_target_color = None  # Early prediction based on movement
 
         # Multi-attempt tracking
         self.observed_keys = []  # Track keys observed from achiever
@@ -870,6 +885,69 @@ class Level1ValueBlocker(BaseValueAgent):
         # Update blocker-specific state
         self.blocker_pos = self.agent_pos
         self.achiever_pos = self._get_opponent_position(obs)
+
+        # Update distance tracking for early target inference
+        self._update_distance_tracking(obs)
+
+    def _update_distance_tracking(self, obs):
+        """Update distance tracking and calculate reduction rates for target inference."""
+        if not obs or "achiever_pos" not in obs or "key_positions" not in obs:
+            return
+            
+        achiever_pos = tuple(obs["achiever_pos"])
+        key_positions = obs["key_positions"]
+        
+        # Increment timestep counter
+        self.timestep_counter += 1
+        
+        # Calculate current distances to all keys
+        current_distances = {}
+        for color, key_pos in key_positions.items():
+            if key_pos is not None:
+                distance = abs(achiever_pos[0] - key_pos[0]) + abs(achiever_pos[1] - key_pos[1])
+                current_distances[color] = distance
+        
+        # Store distance history
+        for color, distance in current_distances.items():
+            if color not in self.distance_history:
+                self.distance_history[color] = []
+                self.consecutive_reductions[color] = 0
+            self.distance_history[color].append(distance)
+        
+        # Calculate reduction rates every update_frequency timesteps
+        if self.timestep_counter % self.update_frequency == 0 and self.timestep_counter >= self.min_observation_window:
+            for color in current_distances.keys():
+                if len(self.distance_history[color]) >= 2:
+                    # Calculate reduction rate over the last few timesteps
+                    recent_distances = self.distance_history[color][-self.update_frequency:]
+                    if len(recent_distances) >= 2:
+                        reduction_rate = (recent_distances[0] - recent_distances[-1]) / (len(recent_distances) - 1)
+                        self.reduction_rates[color] = reduction_rate
+                        
+                        # Track consecutive reductions
+                        if reduction_rate > self.reduction_threshold:
+                            self.consecutive_reductions[color] += 1
+                        else:
+                            self.consecutive_reductions[color] = 0
+        
+        # Make prediction if we have confident signal
+        if self.predicted_target_color is None:
+            best_color = None
+            best_confidence = 0
+            
+            for color in current_distances.keys():
+                if (color in self.consecutive_reductions and 
+                    self.consecutive_reductions[color] >= self.consecutive_threshold and
+                    color in self.reduction_rates and
+                    self.reduction_rates[color] > self.reduction_threshold):
+                    
+                    confidence = self.consecutive_reductions[color] * self.reduction_rates[color]
+                    if confidence > best_confidence:
+                        best_confidence = confidence
+                        best_color = color
+            
+            if best_color is not None:
+                self.predicted_target_color = best_color
 
     @property
     def target_door_color(self):
@@ -942,6 +1020,14 @@ class Level1ValueBlocker(BaseValueAgent):
 
         # Phase 1: Select initial random target and navigate to it
         if self.phase == 1:
+            # Check if we have a predicted target from distance tracking
+            if self.predicted_target_color is not None:
+                # Switch to predicted target instead of random target
+                self.final_target_color = self.predicted_target_color
+                self.final_target_pos = self._find_door_position_from_obs(self.predicted_target_color, obs)
+                self.phase = 3  # Skip to phase 3 (go to inferred door)
+                return self._handle_phase_3(obs)
+            
             if not self.initial_target_selected:
                 self._select_initial_random_target(obs)
 
@@ -952,8 +1038,16 @@ class Level1ValueBlocker(BaseValueAgent):
             else:
                 return self._navigate_to_initial_door_with_value_iteration(obs)
 
-        # Phase 2: Stay at initial door until achiever picks up key
+        # Phase 2: Stay at initial door until achiever picks up key OR use predicted target
         elif self.phase == 2:
+            # Check if we have a predicted target from distance tracking
+            if self.predicted_target_color is not None:
+                # Use predicted target instead of waiting for key pickup
+                self.final_target_color = self.predicted_target_color
+                self.final_target_pos = self._find_door_position_from_obs(self.predicted_target_color, obs)
+                self.phase = 3  # Move to inferring phase
+                return self._handle_phase_3(obs)
+            
             if self.achiever_has_key:
                 self.phase = 3  # Move to inferring phase
                 return self._handle_phase_3(obs)
@@ -1066,6 +1160,13 @@ class Level1ValueBlocker(BaseValueAgent):
         self.current_key_index = 0
         self.just_attempted_break = False
         self.last_action = None
+
+        # Reset distance tracking
+        self.distance_history.clear()
+        self.reduction_rates.clear()
+        self.consecutive_reductions.clear()
+        self.timestep_counter = 0
+        self.predicted_target_color = None
 
         # Keep width/height since they don't change between episodes
 
@@ -1496,6 +1597,13 @@ class RuleBasedAgent:
         self.current_key_index = 0
         self.just_attempted_break = False
         self.last_action = None
+
+        # Reset distance tracking
+        self.distance_history.clear()
+        self.reduction_rates.clear()
+        self.consecutive_reductions.clear()
+        self.timestep_counter = 0
+        self.predicted_target_color = None
 
         # Keep width/height since they don't change between episodes
 

@@ -5,11 +5,11 @@ This directory contains a complete multi-agent ToMnet implementation for the Ach
 ## Overview
 
 AchieverBlocker Experiment 5 implements a competitive multi-agent environment where:
-1. **Achiever agents** navigate a 9x9 grid to collect preferred keys and open corresponding doors
+1. **Achiever agents** navigate a 9x9 grid to collect keys and open corresponding doors
 2. **Blocker agents** observe achiever behavior, infer their goals, and strategically block access
 3. **Strategic interaction** creates theory of mind requirements for successful blocking
 
-The implementation extends exp3's ToMnet architecture for multi-agent scenarios with:
+The implementation uses a ToMnet architecture for multi-agent scenarios with:
 - **Dual-agent observations** with role differentiation
 - **Agent type prediction** as an additional learning task
 - **Strategic blocking behavior** with competitive dynamics
@@ -56,54 +56,58 @@ script/exp5/
 ### 🚀 **Strategic Agent Types**
 
 #### Achiever Agents
-- **Value Agent**: Strategic navigation with preference optimization
-- **A* Agent**: Optimal pathfinding with goal-directed behavior  
-- **Random Agent**: Baseline exploration behavior
+- **Level0ValueAchiever (lv0va)**: Level-0 value-based agent using value iteration for direct pathfinding
+- **Level1ValueAchiever (lv1va)**: Level-1 value-based agent with deception strategies (collects decoy key first)
+- **AStarAgent (astar)**: Optimal pathfinding with A* algorithm
+- **ValueAgent**: Strategic navigation with preference optimization
+- **RandomAgent**: Baseline exploration behavior
 
 #### Blocker Agents
-- **GoalDirect Agent**: Infers achiever goals from observed key collection patterns
-- **Random Agent**: Baseline blocking behavior
-- **RandomlySelected Agent**: Level-0 reasoning - randomly selects target door and blocks it
-- **RuleBased Agent**: Level-1 reasoning - first blocks random door, then infers target from achiever's key and blocks actual target
+- **Level0ValueBlocker (lv0vb)**: Level-0 value-based blocker with random door selection and value iteration
+- **Level1ValueBlocker (lv1vb)**: Level-1 value-based blocker with distance tracking and early target prediction
+- **RandomlySelectedAgent**: Level-0 reasoning - randomly selects target door and blocks it
+- **RuleBasedAgent**: Level-1 reasoning - first blocks random door, then infers target from achiever's key
+- **GoalDirectAgent**: Infers achiever goals from observed key collection patterns
+- **RandomAgent**: Baseline blocking behavior
 
 ## Quick Start
 
 ### 1. Multi-Agent Data Generation
 ```bash
-# Generate training data with value achiever and goal-directed blocker
-python script/exp5/generate.py --achiever_type value --blocker_type goal_direct
+# Generate training data with level-0 value achiever and level-0 value blocker
+python script/exp5/generate.py --achiever_type lv0va --blocker_type lv0vb
 
 # Generate test data with different agent combinations
-python script/exp5/generate.py --n_games 2000 --achiever_type astar --blocker_type random --test_data
+python script/exp5/generate.py --n_games 2000 --achiever_type lv1va --blocker_type lv1vb --test_data
 
 # Generate data for all agent combinations
-python script/exp5/generate.py --achiever_type value --blocker_type goal_direct
-python script/exp5/generate.py --achiever_type astar --blocker_type random
-python script/exp5/generate.py --achiever_type value --blocker_type randomly_selected
-python script/exp5/generate.py --achiever_type astar --blocker_type rule_based
+python script/exp5/generate.py --achiever_type lv0va --blocker_type lv0vb
+python script/exp5/generate.py --achiever_type lv1va --blocker_type lv1vb
+python script/exp5/generate.py --achiever_type astar --blocker_type randomly_selected
+python script/exp5/generate.py --achiever_type value --blocker_type rule_based
 ```
 
 ### 2. Multi-Agent Game Simulation
 ```bash
 # Run competitive simulation with visualization
-python script/exp5/simulate_game.py --episodes 1 --render --achiever_type value --blocker_type goal_direct
+python script/exp5/simulate_game.py --episodes 1 --render --achiever_type lv0va --blocker_type lv0vb
 
 # Save gameplay as animated GIF
 python script/exp5/simulate_trajectory.py --episodes 5 --gif_output achiever_blocker_demo
 
 # Visualize multi-agent successor representation
-python script/exp5/visualize_sr.py --data_file data/MiniGrid-AchieverBlocker-9x9-v1/value_goal_direct/test0.txt
+python script/exp5/visualize_sr.py --data_file data/MiniGrid-AchieverBlocker-9x9-v1/lv0va_lv0vb/test0.txt
 ```
 
 ### 3. Enhanced Model Training
 ```bash
-# Train with multi-agent data (default: value achiever + goal_direct blocker)
+# Train with multi-agent data (default: lv0va achiever + lv0vb blocker)
 python script/exp5/train.py --save_dir ./results/exp5/
 
 # Custom training with agent type weighting
 python script/exp5/train.py \
-    --epochs 100 --batch_size 1024 --lr 0.0001 \
-    --agent_weight 1.5 --device cuda:0 --save_dir ./results/exp5/
+    --epochs 300 --batch_size 750 --lr 0.0001 \
+    --agent_weight 0.1 --device cuda:3 --save_dir ./results/exp5/
 ```
 
 ### 4. Multi-Agent Evaluation
@@ -126,11 +130,17 @@ All parameters are centralized in `config.py` for multi-agent experiments:
 ### Environment Settings
 ```python
 self.env_name = "MiniGrid-AchieverBlocker-{size}-v1"
-self.achiever_type = "value"      # "astar", "random", "value"
-self.blocker_type = "goal_direct" # "random", "goal_direct", "randomly_selected", "rule_based"
+self.achiever_types = {
+    "lv0va": self.n_games_per_type,
+    "lv1va": self.n_games_per_type,
+}  # Options: "lv0va", "lv1va", "astar", "random", "value"
+self.blocker_types = {
+    "lv0vb": self.n_games_per_type,
+    "lv1vb": self.n_games_per_type,
+}  # Options: "lv0vb", "lv1vb", "random", "goal_direct", "randomly_selected", "rule_based"
 self.width = 9
 self.height = 9
-self.max_steps = 500
+self.max_steps = 50
 ```
 
 ### Model Architecture
@@ -140,22 +150,47 @@ self.model_config = {
     "residual_blocks": 5,
     "n_echar": 128,                  # Character embedding size
     "n_ement": 128,                  # Mental state embedding size
+    "out_channels": 64,
+    "channels_in": 9,                # 8 original channels + 1 heading direction channel
+    "current_state_channels": 8,     # For MentalNet: 8 original channels (no heading direction)
     "achiever_action_space": 7,      # Achiever actions
     "blocker_action_space": 6,       # Blocker actions
     "goal_space": 4,                 # 4 colored goals
-    "agent_space": 2,                # Achiever (0) or Blocker (1)
+    "env_width": self.width,
+    "env_height": self.height,
+    "hidden_size_lstm": 64,
 }
 ```
 
 ### Training Configuration
 ```python
 self.training_config = {
-    "batch_size": 1024,
-    "epochs": 200,
+    "batch_size": 750,
+    "epochs": 300,
     "lr": 0.0001,
+    "weight_decay": 0.001,
+    "training_proportion": 0.9,
     "device": "cuda:3",
-    "agent_weight": 1.0,             # Weight for agent classification loss
+    "device_ids": [3, 2],            # GPU IDs for parallel training
+    "use_parallel": True,            # Enable parallel GPU training
+    "use_amp": True,                 # Automatic Mixed Precision
+    "gradient_accumulation_steps": 2,
+    "pin_memory": True,
+    "num_workers": 4,
+    "optimizer": "adam",
+}
+
+# Training process configuration
+self.training_process_config = {
     "early_stopping_patience": 30,
+    "early_stopping_min_delta": 0.001,
+    "max_grad_norm": 1.0,
+    "action_weight": 0.25,
+    "goal_weight": 0.25,
+    "agent_weight": 0.1,             # Weight for agent classification loss
+    "type_weight": 0.1,
+    "consumption_weight": 0.15,
+    "sr_weight": 0.15,
 }
 ```
 
@@ -183,28 +218,61 @@ The AchieverBlocker environment creates strategic interaction between two agents
 
 ### Achiever Agents (`achievers.py`)
 
-#### Value Achiever
-- **Strategic planning**: Uses value iteration with goal preferences
-- **Preference optimization**: Maximizes reward based on colored door preferences
-- **Anti-blocking**: May adapt strategy if blocked repeatedly
+#### Level0ValueAchiever (lv0va)
+- **Direct approach**: Uses value iteration for optimal pathfinding to target door
+- **Stochastic policy**: Temperature-based action selection
+- **Two-phase strategy**: Collect key → navigate to door
+- **Automatic key pickup**: Keys are picked up when stepping on them
 
-#### A* Achiever  
-- **Optimal pathfinding**: Finds shortest path to preferred goals
+#### Level1ValueAchiever (lv1va)  
+- **Deceptive strategy**: Collects decoy key first, then target key
+- **Blocker observation**: Switches to target key if blocker moves to any door
+- **Value iteration**: Uses optimal pathfinding for both phases
+- **Strategic reasoning**: Level-1 reasoning to deceive blockers
+
+#### AStarAgent (astar)
+- **Optimal pathfinding**: Finds shortest path using A* algorithm
 - **Deterministic behavior**: Predictable for blocker agents to analyze
 - **Two-phase strategy**: Collect key → navigate to door
 
-#### Random Achiever
+#### ValueAgent
+- **Strategic planning**: Uses value iteration with goal preferences
+- **Preference optimization**: Maximizes reward based on colored door preferences
+
+#### RandomAgent
 - **Exploration baseline**: Random movement with goal bias
 - **Unpredictable behavior**: Difficult for blockers to predict
 
 ### Blocker Agents (`blockers.py`)
 
-#### GoalDirect Blocker
-- **Theory of mind**: Infers achiever preferences from key collection behavior
+#### Level0ValueBlocker (lv0vb)
+- **Random door selection**: Chooses target door randomly
+- **Multi-attempt strategy**: Tries different doors if wrong
+- **Value iteration**: Uses optimal pathfinding to selected door
 - **Strategic positioning**: Moves to predicted target doors
-- **Game termination**: Uses "broken" action when positioned optimally
 
-#### Random Blocker
+#### Level1ValueBlocker (lv1vb)
+- **Distance tracking**: Monitors achiever's distance to keys over time
+- **Early prediction**: Predicts target based on movement patterns
+- **Multi-phase strategy**: Random door → wait → infer target → block
+- **Theory of mind**: Infers achiever preferences from behavior
+
+#### RandomlySelectedAgent
+- **Level-0 reasoning**: Randomly selects target door and blocks it
+- **Multi-attempt tracking**: Tracks tried doors and attempts others if wrong
+- **BFS pathfinding**: Uses breadth-first search for navigation
+
+#### RuleBasedAgent
+- **Level-1 reasoning**: First blocks random door, then infers target from achiever's key
+- **Key observation**: Stores observed keys from achiever
+- **Multi-attempt strategy**: Cycles through observed keys if wrong
+
+#### GoalDirectAgent
+- **Theory of mind**: Infers achiever preferences from key collection behavior
+- **Wait strategy**: Waits until achiever picks up first key
+- **Strategic positioning**: Moves to predicted target doors
+
+#### RandomAgent
 - **Baseline behavior**: Random actions across the environment
 - **No strategic reasoning**: Provides comparison baseline
 
@@ -214,16 +282,16 @@ The AchieverBlocker environment creates strategic interaction between two agents
 ```
 data/
 └── MiniGrid-AchieverBlocker-9x9-v1/
-    └── value_goal_direct/              # Training data for agent pair
+    └── lv0va_lv0vb/                    # Training data for agent pair
         ├── test0.txt                   # Individual trajectory files
         ├── test1.txt
         ├── ...
-        ├── processed_data_exp5.pkl     # Cached processed data
+        ├── processed_data_exp5_lv0va_lv0vb.pkl     # Cached processed data
         └── test/                       # Test data
             ├── test0.txt
             ├── test1.txt
             ├── ...
-            └── processed_test_data_exp5.pkl
+            └── processed_test_data_exp5_lv0va_lv0vb.pkl
 ```
 
 ### Multi-Agent Trajectory Format
@@ -234,6 +302,9 @@ Each trajectory file contains dual-agent information:
 - **Agent positions**: (x, y) coordinates for both achiever and blocker
 - **Agent states**: Inventory and goal information
 - **Agent labels**: Achiever (0) or Blocker (1) for each observation
+- **Type labels**: Agent type (0 for randomly select/achiever, 1 for rule-based blocker)
+- **Consumption labels**: 8-dimensional binary vector for resource consumption
+- **Successor representation**: SR data for multiple discount factors (0.5, 0.9, 0.99)
 - **Strategic outcomes**: Success/failure and blocking effectiveness
 
 ## Model Training
@@ -250,23 +321,29 @@ python script/exp5/train.py --use_mentalnet True
 ### Extended Loss Components
 - **Action loss**: Cross-entropy for both achiever and blocker actions
 - **Goal loss**: Cross-entropy for goal preference prediction
-- **Agent loss**: Cross-entropy for agent type classification (NEW)
+- **Agent loss**: Cross-entropy for agent type classification (achiever vs blocker)
+- **Type loss**: Cross-entropy for agent behavior type classification (randomly select vs rule-based)
 - **Consumption loss**: Binary cross-entropy for key collection
 - **SR loss**: KL divergence for successor representation
 
 ### Multi-Agent Training Features
-- **Dual-agent samples**: Each trajectory generates samples for both agent types
+- **Trajectory slicing**: Multiple samples generated from different time steps of same trajectory
 - **Agent classification**: Neural network learns to distinguish achiever vs blocker behavior
-- **Strategic loss weighting**: Configurable emphasis on agent prediction accuracy
+- **Type classification**: Neural network learns to distinguish between agent behavior types
+- **Strategic loss weighting**: Configurable emphasis on different prediction tasks
 - **Competitive dynamics**: Model learns both cooperative and adversarial behaviors
+- **Parallel training**: Multi-GPU support with data parallelization
+- **Mixed precision**: Automatic mixed precision for memory efficiency
 
 ## Evaluation Metrics
 
 ### Standard Multi-Agent Metrics
-- **Achiever action accuracy**: Action prediction for achiever agents
-- **Blocker action accuracy**: Action prediction for blocker agents  
+- **Action accuracy**: Action prediction for both agent types
 - **Goal inference accuracy**: Goal prediction from observed behavior
-- **Agent classification accuracy**: Distinguishing achiever vs blocker (NEW)
+- **Agent classification accuracy**: Distinguishing achiever vs blocker
+- **Type classification accuracy**: Distinguishing between agent behavior types
+- **Consumption prediction accuracy**: Predicting resource consumption patterns
+- **SR prediction accuracy**: Successor representation prediction quality
 
 ### Strategic Analysis
 - **Blocking effectiveness**: Success rate of blocker interference
@@ -300,13 +377,13 @@ python script/exp5/train.py --use_mentalnet True
 2. **No multi-agent data found**:
    ```bash
    # Generate small dataset for testing
-   python script/exp5/generate.py --n_games 100 --achiever_type value --blocker_type random
+   python script/exp5/generate.py --n_games 100 --achiever_type lv0va --blocker_type lv0vb
    ```
 
 3. **Strategic behavior not emerging**:
    ```bash
    # Try different agent combinations
-   python script/exp5/generate.py --achiever_type astar --blocker_type goal_direct
+   python script/exp5/generate.py --achiever_type lv1va --blocker_type lv1vb
    ```
 
 4. **Multi-agent environment errors**:

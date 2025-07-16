@@ -1433,22 +1433,34 @@ def train_tomnet(
     print(f"SR labels: {data['sr_labels'].shape}")
 
     # Create datasets with multi-agent data (optimized for memory-mapped data)
-    if hasattr(data, 'files'):  # Memory-mapped data
+    # Force regular tensors if using multiprocessing to avoid serialization issues
+    if hasattr(data, 'files') and num_workers == 0:  # Memory-mapped data only if no multiprocessing
         print("Using memory-mapped dataset for efficient loading")
         # Create dataset with memory-mapped data
         dataset = MemoryMappedDataset(data)
     else:
-        # Fallback to regular tensor dataset
+        # Use regular tensor dataset for multiprocessing compatibility
         print("Using regular tensor dataset")
+        
+        # Convert data to tensors if needed
+        trajectories_tensor = torch.from_numpy(data["trajectories"]) if isinstance(data["trajectories"], np.ndarray) else data["trajectories"]
+        actions_tensor = torch.from_numpy(data["actions"]) if isinstance(data["actions"], np.ndarray) else data["actions"]
+        goals_tensor = torch.from_numpy(data["goals"]) if isinstance(data["goals"], np.ndarray) else data["goals"]
+        goal_ranks_tensor = torch.from_numpy(data["goal_ranks"]) if isinstance(data["goal_ranks"], np.ndarray) else data["goal_ranks"]
+        agents_tensor = torch.from_numpy(data["agents"]) if isinstance(data["agents"], np.ndarray) else data["agents"]
+        types_tensor = torch.from_numpy(data["types"]) if isinstance(data["types"], np.ndarray) else data["types"]
+        consumption_labels_tensor = torch.from_numpy(data["consumption_labels"]) if isinstance(data["consumption_labels"], np.ndarray) else data["consumption_labels"]
+        sr_labels_tensor = torch.from_numpy(data["sr_labels"]) if isinstance(data["sr_labels"], np.ndarray) else data["sr_labels"]
+        
         dataset = TensorDataset(
-            data["trajectories"],
-            data["actions"],
-            data["goals"],
-            data["goal_ranks"],
-            data["agents"],
-            data["types"],
-            data["consumption_labels"],
-            data["sr_labels"],
+            trajectories_tensor,
+            actions_tensor,
+            goals_tensor,
+            goal_ranks_tensor,
+            agents_tensor,
+            types_tensor,
+            consumption_labels_tensor,
+            sr_labels_tensor,
         )
 
     # Train/validation split

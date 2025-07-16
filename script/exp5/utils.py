@@ -144,7 +144,7 @@ def load_training_data_all_combinations(config, data_dir_base=None):
             agent_pair = config.get_agent_pair_name(combo_achiever, combo_blocker)
             train_data_dir = os.path.join(data_dir_base, agent_pair)
             
-            processed_data_path = os.path.join(
+            processed_data_path = os.path.join( 
                 train_data_dir,
                 f"processed_data_exp{config.experiment_no}_{combo_achiever}_{combo_blocker}.pkl"
             )

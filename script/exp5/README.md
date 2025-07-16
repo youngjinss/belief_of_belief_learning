@@ -1,6 +1,6 @@
 # AchieverBlocker Experiment 5 - Multi-Agent ToMnet Implementation
 
-This directory contains a complete multi-agent ToMnet implementation for the AchieverBlocker environment with strategic interaction between two agent types.
+This directory contains a comprehensive multi-agent Theory of Mind (ToMnet) implementation for the AchieverBlocker environment with strategic interactions between competitive agents.
 
 ## Overview
 
@@ -9,11 +9,12 @@ AchieverBlocker Experiment 5 implements a competitive multi-agent environment wh
 2. **Blocker agents** observe achiever behavior, infer their goals, and strategically block access
 3. **Strategic interaction** creates theory of mind requirements for successful blocking
 
-The implementation uses a ToMnet architecture for multi-agent scenarios with:
-- **Dual-agent observations** with role differentiation
-- **Agent type prediction** as an additional learning task
-- **Strategic blocking behavior** with competitive dynamics
-- **Enhanced data generation** for multi-agent trajectories
+The implementation features an advanced ToMnet architecture with:
+- **Flexible architecture support** (2-stage and 3-stage variants)
+- **Multi-task learning** for actions, goals, agent types, and consumption prediction
+- **Vectorized successor representation** computation for efficient training
+- **Dual-agent observations** with comprehensive role differentiation
+- **Enhanced data generation** pipeline with parallel processing
 
 ## Project Structure
 
@@ -41,17 +42,22 @@ script/exp5/
 - **Strategic dynamics**: Theory of mind requirements for successful blocking
 - **Game termination**: Blockers can end game early when positioned at predicted target door
 
-### 🧠 **Enhanced ToMnet Architecture**
-- **Agent classification head**: Predicts whether observing achiever (0) or blocker (1)
-- **Multi-agent observations**: Each agent receives full state information about both agents
-- **Extended loss function**: Action, goal, agent type, consumption, and successor representation losses
-- **Dual-agent training**: Learns behaviors and intentions for both agent types
+### 🧠 **Advanced ToMnet Architecture**
+- **Flexible Architecture**: Supports both 2-stage (CharNet→PredNet) and 3-stage (CharNet→MentalNet→PredNet) variants
+- **Multi-task Learning**: Simultaneous prediction of actions, goals, agent types, consumption patterns, and successor representations
+- **Agent Classification Head**: Distinguishes between achiever (0) and blocker (1) agents
+- **Type Classification Head**: Differentiates between agent behavior types (Level-0/1 reasoning)
+- **Enhanced Loss Functions**: Weighted combination of action, goal, agent, type, consumption, and SR losses
+- **Residual Blocks**: Deep residual connections for improved gradient flow
+- **ConvLSTM Integration**: Temporal sequence processing with convolutional memory
 
 ### 📊 **Advanced Data Processing**
-- **Multi-agent trajectory generation**: Two samples per trajectory (one per agent)
-- **Agent type labeling**: Each sample tagged with agent role
-- **Vectorized SR calculation**: Optimized successor representation computation
-- **Enhanced data paths**: Combined naming scheme for agent type pairs
+- **Multi-agent trajectory generation**: Comprehensive dual-agent data with parallel processing
+- **Agent type labeling**: Each sample tagged with agent role and reasoning level
+- **Vectorized SR calculation**: Optimized successor representation computation across multiple discount factors
+- **Enhanced data paths**: Combined naming scheme for agent type pairs with efficient caching
+- **Trajectory slicing**: Dynamic sequence length handling for efficient training
+- **Parallel data generation**: Multiprocessing support for faster dataset creation
 
 ### 🚀 **Strategic Agent Types**
 
@@ -146,19 +152,21 @@ self.max_steps = 50
 ### Model Architecture
 ```python
 self.model_config = {
-    "use_mentalnet": True,           # Enable Mental Network
-    "residual_blocks": 5,
+    "use_mentalnet": True,           # Enable Mental Network (3-stage) or False (2-stage)
+    "residual_blocks": 5,            # Number of residual blocks in CharNet
     "n_echar": 128,                  # Character embedding size
     "n_ement": 128,                  # Mental state embedding size
-    "out_channels": 64,
+    "out_channels": 64,              # Output channels for convolutional layers
     "channels_in": 9,                # 8 original channels + 1 heading direction channel
     "current_state_channels": 8,     # For MentalNet: 8 original channels (no heading direction)
-    "achiever_action_space": 7,      # Achiever actions
-    "blocker_action_space": 6,       # Blocker actions
-    "goal_space": 4,                 # 4 colored goals
-    "env_width": self.width,
-    "env_height": self.height,
-    "hidden_size_lstm": 64,
+    "achiever_action_space": 7,      # Achiever actions: up, right, down, left, stay, pickup, toggle
+    "blocker_action_space": 6,       # Blocker actions: up, right, down, left, stay, broken
+    "goal_space": 4,                 # 4 colored goals: red, green, blue, yellow
+    "env_width": self.width,         # Environment width (9)
+    "env_height": self.height,       # Environment height (9)
+    "hidden_size_lstm": 64,          # LSTM hidden size for ConvLSTM
+    "n_past": 5,                     # Number of past episodes for character network
+    "n_recent": 20,                  # Number of recent timesteps for mental network
 }
 ```
 
@@ -172,12 +180,13 @@ self.training_config = {
     "training_proportion": 0.9,
     "device": "cuda:3",
     "device_ids": [3, 2],            # GPU IDs for parallel training
-    "use_parallel": True,            # Enable parallel GPU training
-    "use_amp": True,                 # Automatic Mixed Precision
-    "gradient_accumulation_steps": 2,
-    "pin_memory": True,
-    "num_workers": 4,
-    "optimizer": "adam",
+    "use_parallel": True,            # Enable DataParallel training
+    "use_amp": True,                 # Automatic Mixed Precision for memory efficiency
+    "gradient_accumulation_steps": 2, # Gradient accumulation for larger effective batch size
+    "pin_memory": True,              # Pin memory for faster data transfer
+    "num_workers": 4,                # DataLoader worker processes
+    "optimizer": "adam",             # Optimizer type
+    "scheduler": "cosine",           # Learning rate scheduler
 }
 
 # Training process configuration
@@ -219,16 +228,19 @@ The AchieverBlocker environment creates strategic interaction between two agents
 ### Achiever Agents (`achievers.py`)
 
 #### Level0ValueAchiever (lv0va)
-- **Direct approach**: Uses value iteration for optimal pathfinding to target door
-- **Stochastic policy**: Temperature-based action selection
-- **Two-phase strategy**: Collect key → navigate to door
-- **Automatic key pickup**: Keys are picked up when stepping on them
+- **Vectorized Value Iteration**: Efficient planning using vectorized operations for optimal pathfinding
+- **Stochastic Policy**: Temperature-based action selection with configurable exploration
+- **Two-phase Strategy**: Collect preferred key → navigate to corresponding door
+- **Automatic Key Pickup**: Keys are automatically collected when stepping on them
+- **Cost Functions**: Configurable movement, wall, conflict, and consumption penalties
+- **Q-value Clipping**: Prevents numerical instability with bounded Q-values
 
-#### Level1ValueAchiever (lv1va)  
-- **Deceptive strategy**: Collects decoy key first, then target key
-- **Blocker observation**: Switches to target key if blocker moves to any door
-- **Value iteration**: Uses optimal pathfinding for both phases
-- **Strategic reasoning**: Level-1 reasoning to deceive blockers
+#### Level1ValueAchiever (lv1va)
+- **Sophisticated Deception**: Collects decoy key first to mislead blockers about true preferences
+- **Adaptive Strategy**: Monitors blocker movements and switches to target key if blocker moves to any door
+- **Dual-phase Planning**: Uses value iteration for both deception and goal achievement phases
+- **Strategic Reasoning**: Level-1 reasoning to model and deceive Level-0 blocker opponents
+- **Dynamic Target Selection**: Adjusts strategy based on blocker behavior and positioning
 
 #### AStarAgent (astar)
 - **Optimal pathfinding**: Finds shortest path using A* algorithm
@@ -246,16 +258,18 @@ The AchieverBlocker environment creates strategic interaction between two agents
 ### Blocker Agents (`blockers.py`)
 
 #### Level0ValueBlocker (lv0vb)
-- **Random door selection**: Chooses target door randomly
-- **Multi-attempt strategy**: Tries different doors if wrong
-- **Value iteration**: Uses optimal pathfinding to selected door
-- **Strategic positioning**: Moves to predicted target doors
+- **Random Door Selection**: Chooses target door randomly from available options
+- **Multi-attempt Strategy**: Tracks tried doors and attempts different ones if wrong
+- **Vectorized Value Iteration**: Uses efficient pathfinding to reach selected doors
+- **Strategic Positioning**: Moves to predicted target doors and uses "broken" action to block
+- **Game Continuation**: Continues playing after wrong door attempts with penalty
 
 #### Level1ValueBlocker (lv1vb)
-- **Distance tracking**: Monitors achiever's distance to keys over time
-- **Early prediction**: Predicts target based on movement patterns
-- **Multi-phase strategy**: Random door → wait → infer target → block
-- **Theory of mind**: Infers achiever preferences from behavior
+- **Distance Tracking**: Monitors achiever's distance to different keys over time
+- **Early Prediction**: Predicts target door based on movement patterns before key collection
+- **Multi-phase Strategy**: Random door → observation → inference → strategic blocking
+- **Theory of Mind**: Infers achiever preferences from observed behavior and key collection patterns
+- **Adaptive Blocking**: Adjusts strategy based on achiever's deceptive behaviors
 
 #### RandomlySelectedAgent
 - **Level-0 reasoning**: Randomly selects target door and blocks it
@@ -295,17 +309,19 @@ data/
 ```
 
 ### Multi-Agent Trajectory Format
-Each trajectory file contains dual-agent information:
-- **Maze representation**: 9x9 grid with both agents and objects
-- **Achiever actions**: 7-dimensional action space [up, right, down, left, stay, pickup, toggle]
-- **Blocker actions**: 6-dimensional action space [up, right, down, left, stay, broken]
-- **Agent positions**: (x, y) coordinates for both achiever and blocker
-- **Agent states**: Inventory and goal information
-- **Agent labels**: Achiever (0) or Blocker (1) for each observation
-- **Type labels**: Agent type (0 for randomly select/achiever, 1 for rule-based blocker)
-- **Consumption labels**: 8-dimensional binary vector for resource consumption
-- **Successor representation**: SR data for multiple discount factors (0.5, 0.9, 0.99)
-- **Strategic outcomes**: Success/failure and blocking effectiveness
+Each trajectory file contains comprehensive dual-agent information:
+- **Maze Representation**: 9x9 grid with both agents, keys, doors, and walls
+- **Achiever Actions**: 7-dimensional action space [up=0, right=1, down=2, left=3, stay=4, pickup=5, toggle=6]
+- **Blocker Actions**: 6-dimensional action space [up=0, right=1, down=2, left=3, stay=4, broken=5]
+- **Agent Positions**: (x, y) coordinates for both achiever and blocker at each timestep
+- **Agent States**: Inventory information, collected keys, and goal preferences
+- **Agent Labels**: Achiever (0) or Blocker (1) for each observation sample
+- **Type Labels**: Behavior type classification (Level-0 vs Level-1 reasoning)
+- **Consumption Labels**: 8-dimensional binary vector for key collection patterns
+- **Successor Representation**: Vectorized SR data for multiple discount factors (0.5, 0.9, 0.99)
+- **Goal Rankings**: Preference rankings for different colored doors
+- **Strategic Outcomes**: Success/failure rates and blocking effectiveness metrics
+- **Interaction Results**: Detailed analysis of blocker attempts and success rates
 
 ## Model Training
 
@@ -319,51 +335,65 @@ python script/exp5/train.py --use_mentalnet True
 ```
 
 ### Extended Loss Components
-- **Action loss**: Cross-entropy for both achiever and blocker actions
-- **Goal loss**: Cross-entropy for goal preference prediction
-- **Agent loss**: Cross-entropy for agent type classification (achiever vs blocker)
-- **Type loss**: Cross-entropy for agent behavior type classification (randomly select vs rule-based)
-- **Consumption loss**: Binary cross-entropy for key collection
-- **SR loss**: KL divergence for successor representation
+- **Action Loss**: Cross-entropy for both achiever (7-class) and blocker (6-class) action prediction
+- **Goal Loss**: Cross-entropy for goal preference prediction (4 colored doors)
+- **Agent Loss**: Cross-entropy for agent type classification (achiever vs blocker)
+- **Type Loss**: Cross-entropy for agent behavior type classification (Level-0 vs Level-1 reasoning)
+- **Consumption Loss**: Binary cross-entropy for key collection pattern prediction
+- **SR Loss**: KL divergence for successor representation prediction across multiple discount factors
+- **Weighted Combination**: Configurable loss weights for balanced multi-task learning
+- **Trajectory Slicing**: Dynamic sequence length handling for efficient training
 
 ### Multi-Agent Training Features
-- **Trajectory slicing**: Multiple samples generated from different time steps of same trajectory
-- **Agent classification**: Neural network learns to distinguish achiever vs blocker behavior
-- **Type classification**: Neural network learns to distinguish between agent behavior types
-- **Strategic loss weighting**: Configurable emphasis on different prediction tasks
-- **Competitive dynamics**: Model learns both cooperative and adversarial behaviors
-- **Parallel training**: Multi-GPU support with data parallelization
-- **Mixed precision**: Automatic mixed precision for memory efficiency
+- **Trajectory Slicing**: Dynamic sequence length handling with multiple samples from each trajectory
+- **Agent Classification**: Neural network learns to distinguish achiever vs blocker behavior patterns
+- **Type Classification**: Distinguishes between different reasoning levels (Level-0 vs Level-1)
+- **Strategic Loss Weighting**: Configurable emphasis on different prediction tasks with automatic balancing
+- **Competitive Dynamics**: Model learns both cooperative and adversarial multi-agent behaviors
+- **Parallel Training**: Multi-GPU support with DataParallel for faster training
+- **Mixed Precision**: Automatic mixed precision (AMP) for memory efficiency and speed
+- **Gradient Accumulation**: Larger effective batch sizes through gradient accumulation
+- **Early Stopping**: Monitors validation loss with configurable patience and delta thresholds
+- **Vectorized Operations**: Efficient batch processing of SR computation and loss calculations
 
 ## Evaluation Metrics
 
 ### Standard Multi-Agent Metrics
-- **Action accuracy**: Action prediction for both agent types
-- **Goal inference accuracy**: Goal prediction from observed behavior
-- **Agent classification accuracy**: Distinguishing achiever vs blocker
-- **Type classification accuracy**: Distinguishing between agent behavior types
-- **Consumption prediction accuracy**: Predicting resource consumption patterns
-- **SR prediction accuracy**: Successor representation prediction quality
+- **Action Accuracy**: Action prediction accuracy for both achiever and blocker agents
+- **Goal Inference Accuracy**: Goal prediction accuracy from observed behavior patterns
+- **Agent Classification Accuracy**: Distinguishing between achiever and blocker agents
+- **Type Classification Accuracy**: Distinguishing between Level-0 and Level-1 reasoning patterns
+- **Consumption Prediction Accuracy**: Predicting key collection patterns and resource consumption
+- **SR Prediction Accuracy**: Successor representation prediction quality across discount factors
+- **Per-Agent Metrics**: Separate evaluation for each agent type with detailed breakdowns
 
 ### Strategic Analysis
-- **Blocking effectiveness**: Success rate of blocker interference
-- **Theory of mind accuracy**: How well blockers predict achiever goals
-- **Multi-agent confusion matrices**: Detailed error analysis for both agent types
-- **Strategic adaptation**: How agents respond to opponent behavior
+- **Blocking Effectiveness**: Success rate of blocker interference and strategic positioning
+- **Theory of Mind Accuracy**: How well model predicts achiever goals from blocker perspective
+- **Multi-agent Confusion Matrices**: Detailed error analysis for both agent types
+- **Strategic Adaptation**: How agents respond to opponent behavior and strategy changes
+- **N_past Analysis**: Performance evaluation across different numbers of past episodes
+- **Character Embedding Analysis**: PCA and t-SNE visualization of learned agent representations
+- **Training Dynamics**: Analysis of loss component convergence and learning curves
 
 ## Performance Optimizations
 
 ### Multi-Agent Data Processing
-- **Vectorized SR calculation**: Optimized for dual-agent scenarios
-- **Efficient trajectory parsing**: Handles complex multi-agent state representations
-- **Enhanced caching**: Separate processed data for different agent combinations
-- **Memory optimization**: Efficient storage for expanded state spaces
+- **Vectorized SR Calculation**: Optimized numpy operations for dual-agent scenarios with parallel processing
+- **Efficient Trajectory Parsing**: Handles complex multi-agent state representations with minimal memory overhead
+- **Enhanced Caching**: Separate processed data files for different agent combinations with pickle serialization
+- **Memory Optimization**: Efficient storage for expanded state spaces using sparse representations
+- **Parallel Data Generation**: Multiprocessing support for faster dataset creation
+- **Batch Processing**: Vectorized operations for processing multiple trajectories simultaneously
 
 ### Training Optimizations
-- **Balanced sampling**: Equal representation of achiever and blocker samples
-- **Strategic batch composition**: Ensures diverse agent type combinations
-- **Loss balancing**: Automated weighting for stable multi-task learning
-- **Early stopping**: Monitors all loss components for optimal convergence
+- **Balanced Sampling**: Equal representation of achiever and blocker samples in training batches
+- **Strategic Batch Composition**: Ensures diverse agent type combinations and reasoning levels
+- **Loss Balancing**: Automated weighting for stable multi-task learning with configurable coefficients
+- **Early Stopping**: Monitors all loss components for optimal convergence with patience control
+- **Gradient Clipping**: Prevents gradient explosion with configurable maximum norm
+- **Learning Rate Scheduling**: Cosine annealing and step decay for optimal convergence
+- **Memory Efficient Loading**: DataLoader optimizations with pin_memory and num_workers
 
 ## Troubleshooting
 
@@ -392,7 +422,37 @@ python script/exp5/train.py --use_mentalnet True
    python script/exp5/simulate_game.py --episodes 1
    ```
 
-## exp5 버전 기록
+## Recent Updates and Improvements
+
+### Architecture Enhancements
+- **Dual Architecture Support**: Added support for both 2-stage and 3-stage ToMnet variants
+- **Enhanced Model Components**: Improved CharNet with residual blocks and ConvLSTM integration
+- **Multi-task Learning**: Extended to predict actions, goals, agent types, consumption, and SR simultaneously
+- **Trajectory Slicing**: Dynamic sequence length handling for more efficient training
+- **Vectorized Operations**: Optimized SR computation and loss calculations for better performance
+
+### Agent Implementation Updates
+- **Value-based Agents**: Implemented Level-0 and Level-1 value agents with sophisticated strategies
+- **Deception Mechanisms**: Level-1 achiever agents use decoy key collection to mislead blockers
+- **Theory of Mind**: Level-1 blocker agents track achiever behavior patterns for better prediction
+- **Multi-attempt Strategy**: Blockers can attempt multiple doors with proper tracking and penalties
+- **Vectorized Planning**: Efficient value iteration implementation for all value-based agents
+
+### Data Processing Improvements
+- **Parallel Data Generation**: Multiprocessing support for faster dataset creation
+- **Enhanced Caching**: Separate processed data files for different agent combinations
+- **Comprehensive Labeling**: Rich trajectory data with SR, consumption, and interaction labels
+- **Memory Optimization**: Efficient storage using sparse representations and vectorized operations
+- **Batch Processing**: Vectorized operations for processing multiple trajectories simultaneously
+
+### Training and Evaluation Features
+- **Mixed Precision Training**: Automatic mixed precision for memory efficiency and speed
+- **Multi-GPU Support**: DataParallel training with gradient accumulation
+- **Advanced Metrics**: Comprehensive evaluation including N_past analysis and embedding visualization
+- **Early Stopping**: Monitors all loss components with configurable patience
+- **Learning Rate Scheduling**: Cosine annealing and step decay for optimal convergence
+
+## exp5 Version History
 - Multi-blocker type AchieverBlocker environment with multi-attempt game mechanics
 
 ### Agent Rule Fixes (exp5) - fixed

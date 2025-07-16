@@ -12,6 +12,7 @@ import pickle
 import gc
 from torch.cuda.amp import autocast, GradScaler
 import mmap
+import multiprocessing as mp
 
 # Add current directory to path
 sys.path.append(os.path.dirname(__file__))
@@ -1303,6 +1304,11 @@ def train_tomnet(
     gradient_accumulation_steps = training_config.get("gradient_accumulation_steps", 1)
     pin_memory = training_config.get("pin_memory", True)
     num_workers = training_config.get("num_workers", 4)
+    
+    # Auto-detect CPU count if num_workers is 0
+    if num_workers == 0:
+        num_workers = mp.cpu_count()
+        print(f"Auto-detected {num_workers} CPU cores for data loading")
     # Setup
     experiment_save_dir = save_dir
     os.makedirs(experiment_save_dir, exist_ok=True)
@@ -1770,13 +1776,6 @@ def train_tomnet(
             model.state_dict(), os.path.join(experiment_save_dir, "final_model.pth")
         )
 
-    # Save data statistics if data_reader is available
-    if "data_reader" in locals() and "samples" in locals():
-        stats = data_reader.get_statistics(samples)
-        with open(os.path.join(experiment_save_dir, "data_statistics.json"), "w") as f:
-            json.dump(stats, f, indent=2)
-    else:
-        print("Skipping data statistics - using pre-processed data")
 
     print(
         f"\nTraining completed for {achiever_type} achiever with {blocker_type} blocker!"
@@ -1830,6 +1829,7 @@ def seed_worker(worker_id):
     worker_seed = torch.initial_seed() % 2**32
     np.random.seed(worker_seed)
     random.seed(worker_seed)
+
 
 
 if __name__ == "__main__":

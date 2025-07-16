@@ -278,6 +278,7 @@ class Config:
         self.data_config = {
             "max_moves": 50,  # Maximum moves per trajectory (equivalent to experiment5)
             "time_step": 30,  # Time step for model processing (equivalent to experiment5)
+            "min_time_steps": 5,  # Minimum timestep to start trajectory slicing from
             "max_n_past": 1,  # Maximum past episodes (matching experiment5)
             "n_past_min": 1,  # Minimum past episodes (matching experiment5)
             "n_past_max": 1,  # Maximum past episodes for sampling (matching experiment5)
@@ -714,6 +715,8 @@ class Config:
             self.data_config["max_moves"] = args.max_moves
         if hasattr(args, "time_step") and args.time_step is not None:
             self.data_config["time_step"] = args.time_step
+        if hasattr(args, "min_time_steps") and args.min_time_steps is not None:
+            self.data_config["min_time_steps"] = args.min_time_steps
         if hasattr(args, "max_n_past") and args.max_n_past is not None:
             self.data_config["max_n_past"] = args.max_n_past
         if hasattr(args, "n_past_min") and args.n_past_min is not None:

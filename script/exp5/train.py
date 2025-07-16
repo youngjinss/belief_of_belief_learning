@@ -387,6 +387,12 @@ def prepare_data_for_training(
             types.append(type_label)
             consumption_labels.append(consumption)
             sr_labels.append(sr_dense)
+            
+        # Force flush to ensure real-time logging
+        sys.stdout.flush()
+        # Also flush any file handlers if redirected
+        if hasattr(sys.stdout, "buffer"):
+            sys.stdout.buffer.flush()
         
 
     # Convert to tensors

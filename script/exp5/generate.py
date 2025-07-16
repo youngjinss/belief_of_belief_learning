@@ -380,8 +380,8 @@ def save_game_with_labels(
         # Process trajectory to find all blocker break attempts
         blocker_break_attempts = []
 
-        # Get all door positions from environment using the built-in method
-        door_positions = env._get_door_positions_with_colors()
+        # Get all door positions from environment using direct storage access
+        door_positions = env.door_positions
 
         for i in range(len(trajectory_data["blocker_actions"])):
             blocker_action = trajectory_data["blocker_actions"][i]
@@ -824,46 +824,44 @@ def run_single_game(game_id, config_dict, save_dir, blocker_type=None):
         achiever_action = achiever_agent.get_action(obs)
         blocker_action = blocker_agent.get_action(obs)
 
-        achiever_actions.append(achiever_action)
-        blocker_actions.append(blocker_action)
-
         action_pair = (achiever_action, blocker_action)
 
         # Execute action
         obs, rewards, terminated, truncated, info = env.step(action_pair)
 
-        # Record positions AFTER action execution
-        current_achiever_pos = tuple(env.achiever_pos)
-        current_blocker_pos = tuple(env.blocker_pos)
-        achiever_positions.append(current_achiever_pos)
-        blocker_positions.append(current_blocker_pos)
-
         done = terminated or truncated
 
-        # Update rewards
-        total_achiever_reward += rewards["achiever"]
-        total_blocker_reward += rewards["blocker"]
+        # Only record actions and positions if the step was actually executed (not terminated)
+        if not done or step_count == 0:  # Always record first step
+            achiever_actions.append(achiever_action)
+            blocker_actions.append(blocker_action)
+
+            # Record positions AFTER action execution
+            current_achiever_pos = tuple(env.achiever_pos)
+            current_blocker_pos = tuple(env.blocker_pos)
+            achiever_positions.append(current_achiever_pos)
+            blocker_positions.append(current_blocker_pos)
+
+            # Update rewards
+            total_achiever_reward += rewards["achiever"]
+            total_blocker_reward += rewards["blocker"]
+
+            # Track key collection
+            if hasattr(env, "achiever_keys"):
+                current_keys = list(env.achiever_keys)
+                if len(current_keys) > len(keys_collected):
+                    new_key = [k for k in current_keys if k not in keys_collected][0]
+                    keys_collected.append(new_key)
+                    keys_collected_steps.append((step_count, new_key))
+
+            # Check for door opening by reward
+            if rewards["achiever"] >= 1.0:  # Door opening reward
+                # Get the door that was just opened using environment tracking
+                if env.last_door_opened and env.last_door_opened not in doors_opened:
+                    doors_opened.append(env.last_door_opened)
+                    doors_opened_steps.append((step_count, env.last_door_opened))
+
         step_count += 1
-
-        # Track key collection
-        if hasattr(env, "achiever_keys"):
-            current_keys = list(env.achiever_keys)
-            if len(current_keys) > len(keys_collected):
-                new_key = [k for k in current_keys if k not in keys_collected][0]
-                keys_collected.append(new_key)
-                keys_collected_steps.append((step_count - 1, new_key))
-
-        # Check for door opening by reward
-        if rewards["achiever"] >= 1.0:  # Door opening reward
-            # Find which door was opened
-            for x in range(env.grid.width):
-                for y in range(env.grid.height):
-                    obj = env.grid.get(x, y)
-                    if obj and obj.type == "door" and obj.is_open:
-                        if obj.color not in doors_opened:
-                            doors_opened.append(obj.color)
-                            doors_opened_steps.append((step_count - 1, obj.color))
-                            break
 
         # Check if episode is done
         if done:

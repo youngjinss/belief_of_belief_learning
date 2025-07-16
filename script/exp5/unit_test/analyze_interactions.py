@@ -29,6 +29,12 @@ class InteractionAnalyzer:
         # Define win conditions
         self.achiever_win_interactions = {"a", "b", "c", "d"}  # Door opening
         self.blocker_win_interactions = {"1"}  # Successful block
+        
+        # Define simultaneous success interactions
+        self.simultaneous_success_patterns = {
+            # Achiever opens door AND blocker succeeds  
+            ("a", "1"), ("b", "1"), ("c", "1"), ("d", "1")
+        }
 
     def parse_trajectory_file(self, file_path):
         """
@@ -55,6 +61,8 @@ class InteractionAnalyzer:
             "last_blocker_interaction": None,
             "winner": None,
             "filename": os.path.basename(file_path),
+            "simultaneous_interactions": [],  # Track simultaneous interactions
+            "has_simultaneous_success": False,  # Flag for simultaneous success
         }
 
         # Extract trajectory length
@@ -76,6 +84,15 @@ class InteractionAnalyzer:
 
                 data["achiever_interactions"].append(achiever_interaction)
                 data["blocker_interactions"].append(blocker_interaction)
+                
+                # Check for simultaneous interactions (both agents not "X")
+                if achiever_interaction != "X" and blocker_interaction != "X":
+                    simultaneous_pair = (achiever_interaction, blocker_interaction)
+                    data["simultaneous_interactions"].append(simultaneous_pair)
+                    
+                    # Check if this is a simultaneous success
+                    if simultaneous_pair in self.simultaneous_success_patterns:
+                        data["has_simultaneous_success"] = True
 
         # Get last interactions (determine winner)
         if data["achiever_interactions"]:
@@ -83,24 +100,34 @@ class InteractionAnalyzer:
         if data["blocker_interactions"]:
             data["last_blocker_interaction"] = data["blocker_interactions"][-1]
 
-        # Determine winner based on last interactions
+        # Determine winner based on last interactions and simultaneous success
         data["winner"] = self._determine_winner(
-            data["last_achiever_interaction"], data["last_blocker_interaction"]
+            data["last_achiever_interaction"], 
+            data["last_blocker_interaction"],
+            data["has_simultaneous_success"]
         )
 
         return data
 
-    def _determine_winner(self, last_achiever_interaction, last_blocker_interaction):
+    def _determine_winner(self, last_achiever_interaction, last_blocker_interaction, has_simultaneous_success=False):
         """
-        Determine the winner based on last interactions.
+        Determine the winner based on last interactions and simultaneous success.
 
         Args:
             last_achiever_interaction: Last interaction by achiever
             last_blocker_interaction: Last interaction by blocker
+            has_simultaneous_success: Whether there was simultaneous success during the game
 
         Returns:
-            str: 'achiever', 'blocker', or 'need_to_examine'
+            str: 'achiever', 'blocker', 'simultaneous_success', or 'need_to_examine'
         """
+        # Check for simultaneous success first (both agents succeed at the same time)
+        if has_simultaneous_success:
+            last_pair = (last_achiever_interaction, last_blocker_interaction)
+            if last_pair in self.simultaneous_success_patterns:
+                return "simultaneous_success"
+        
+        # Check individual wins
         if last_achiever_interaction in self.achiever_win_interactions:
             return "achiever"
         elif last_blocker_interaction in self.blocker_win_interactions:
@@ -138,6 +165,8 @@ class InteractionAnalyzer:
             "failed_files": 0,
             "need_to_examine_files": [],  # Store files that need examination
             "min_trajectory_files": [],  # Store files with minimum trajectory length
+            "simultaneous_interaction_counts": Counter(),  # Track simultaneous interactions
+            "simultaneous_success_files": [],  # Store files with simultaneous success
         }
 
         print(f"Analyzing {dir_name}...")
@@ -160,6 +189,22 @@ class InteractionAnalyzer:
 
             # Count winners
             results["winner_counts"][data["winner"]] += 1
+
+            # Track simultaneous interactions
+            for interaction_pair in data["simultaneous_interactions"]:
+                results["simultaneous_interaction_counts"][interaction_pair] += 1
+            
+            # Track files with simultaneous success
+            if data["has_simultaneous_success"]:
+                results["simultaneous_success_files"].append(
+                    {
+                        "filename": data["filename"],
+                        "last_achiever": data["last_achiever_interaction"],
+                        "last_blocker": data["last_blocker_interaction"],
+                        "trajectory_length": data["trajectory_length"],
+                        "simultaneous_interactions": data["simultaneous_interactions"],
+                    }
+                )
 
             # Track files that need examination
             if data["winner"] == "need_to_examine":
@@ -281,6 +326,23 @@ class InteractionAnalyzer:
                 for winner, count in results["winner_counts"].items():
                     rate = (count / total_games) * 100
                     print(f"  {winner}: {count}/{total_games} ({rate:.1f}%)")
+            
+            # Simultaneous interactions
+            if results["simultaneous_interaction_counts"]:
+                print(f"\nSimultaneous interactions:")
+                for interaction_pair, count in results["simultaneous_interaction_counts"].most_common():
+                    print(f"  {interaction_pair}: {count}")
+            
+            # Files with simultaneous success
+            if results["simultaneous_success_files"]:
+                print(f"\nFiles with simultaneous success:")
+                for file_info in results["simultaneous_success_files"]:
+                    print(
+                        f"  {file_info['filename']} (length: {file_info['trajectory_length']}, "
+                        f"last achiever: {file_info['last_achiever']}, "
+                        f"last blocker: {file_info['last_blocker']}, "
+                        f"simultaneous: {file_info['simultaneous_interactions']})"
+                    )
 
             # Print files that need examination
             if results["need_to_examine_files"]:
@@ -354,6 +416,23 @@ class InteractionAnalyzer:
                         f.write(f"  {winner}: {count}/{total_games} ({rate:.1f}%)\n")
                     else:
                         f.write(f"  {winner}: {count}/0 (N/A%)\n")
+                
+                # Simultaneous interactions
+                if results["simultaneous_interaction_counts"]:
+                    f.write("\nSimultaneous interactions:\n")
+                    for interaction_pair, count in results["simultaneous_interaction_counts"].most_common():
+                        f.write(f"  {interaction_pair}: {count}\n")
+                
+                # Files with simultaneous success
+                if results["simultaneous_success_files"]:
+                    f.write("\nFiles with simultaneous success:\n")
+                    for file_info in results["simultaneous_success_files"]:
+                        f.write(
+                            f"  {file_info['filename']} (length: {file_info['trajectory_length']}, "
+                            f"last achiever: {file_info['last_achiever']}, "
+                            f"last blocker: {file_info['last_blocker']}, "
+                            f"simultaneous: {file_info['simultaneous_interactions']})\n"
+                        )
 
                 # List files that need examination
                 if results["need_to_examine_files"]:

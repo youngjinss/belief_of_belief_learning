@@ -6,6 +6,34 @@ import numpy as np
 from typing import Dict, List, Tuple, Any
 import sys
 import gc
+import multiprocessing as mp
+from functools import partial
+from tqdm import tqdm
+
+def process_file_batch_worker(file_batch: List[str]) -> List[Dict[str, Any]]:
+    """Standalone worker function for multiprocessing"""
+    # Create a DataGenerator instance for this worker
+    generator = DataGenerator()
+    batch_samples = []
+    
+    for filepath in file_batch:
+        # Parse trajectory file
+        parsed_data = generator.parse_trajectory_file(filepath)
+
+        # Create achiever sample
+        achiever_sample = generator.create_achiever_sample(parsed_data)
+        batch_samples.append(achiever_sample)
+
+        # Create blocker sample
+        blocker_sample = generator.create_blocker_sample(parsed_data)
+        batch_samples.append(blocker_sample)
+
+        # Clean up after each file processing
+        del parsed_data, achiever_sample, blocker_sample
+    
+    # Collect garbage once per batch instead of per file
+    gc.collect()
+    return batch_samples
 
 # Add lib to path for imports
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -471,8 +499,31 @@ class DataGenerator:
             goal_tensor[self.LETTER_TO_IDX[goal_letter]] = 1.0
         return goal_tensor
 
-    def process_directory(self, data_dir: str) -> List[Dict[str, Any]]:
-        """Process all trajectory files in directory and create samples"""
+    def process_file_batch(self, file_batch: List[str]) -> List[Dict[str, Any]]:
+        """Process a batch of files in parallel worker"""
+        batch_samples = []
+        
+        for filepath in file_batch:
+            # Parse trajectory file
+            parsed_data = self.parse_trajectory_file(filepath)
+
+            # Create achiever sample
+            achiever_sample = self.create_achiever_sample(parsed_data)
+            batch_samples.append(achiever_sample)
+
+            # Create blocker sample
+            blocker_sample = self.create_blocker_sample(parsed_data)
+            batch_samples.append(blocker_sample)
+
+            # Clean up after each file processing
+            del parsed_data, achiever_sample, blocker_sample
+        
+        # Collect garbage once per batch instead of per file
+        gc.collect()
+        return batch_samples
+
+    def process_directory(self, data_dir: str, n_processes: int = None, use_multiprocessing: bool = True) -> List[Dict[str, Any]]:
+        """Process all trajectory files in directory with optional multiprocessing"""
 
         if not os.path.exists(data_dir):
             raise FileNotFoundError(f"Data directory not found: {data_dir}")
@@ -486,23 +537,50 @@ class DataGenerator:
         test_files.sort()
         print(f"Found {len(test_files)} trajectory files in {data_dir}")
 
-        all_samples = []
+        if not use_multiprocessing or len(test_files) < 100:
+            # Use sequential processing for small datasets
+            print("Using sequential processing...")
+            all_samples = []
+            for filepath in test_files:
+                # Parse trajectory file
+                parsed_data = self.parse_trajectory_file(filepath)
 
-        for filepath in test_files:
-            # Parse trajectory file
-            parsed_data = self.parse_trajectory_file(filepath)
+                # Create achiever sample
+                achiever_sample = self.create_achiever_sample(parsed_data)
+                all_samples.append(achiever_sample)
 
-            # Create achiever sample
-            achiever_sample = self.create_achiever_sample(parsed_data)
-            all_samples.append(achiever_sample)
+                # Create blocker sample
+                blocker_sample = self.create_blocker_sample(parsed_data)
+                all_samples.append(blocker_sample)
 
-            # Create blocker sample
-            blocker_sample = self.create_blocker_sample(parsed_data)
-            all_samples.append(blocker_sample)
+                # Clean up after each file processing
+                del parsed_data, achiever_sample, blocker_sample
+                if len(all_samples) % 200 == 0:  # Less frequent GC
+                    gc.collect()
 
-            # Clean up after each file processing
-            del parsed_data, achiever_sample, blocker_sample
-            gc.collect()
+        else:
+            # Use multiprocessing for large datasets
+            if n_processes is None:
+                n_processes = mp.cpu_count()
+            
+            print(f"Using multiprocessing with {n_processes} processes...")
+            
+            # Create batches of files for better load balancing
+            batch_size = max(1, len(test_files) // (n_processes * 5))
+            file_batches = [test_files[i:i+batch_size] for i in range(0, len(test_files), batch_size)]
+            
+            # Process batches in parallel
+            with mp.Pool(processes=n_processes, maxtasksperchild=100) as pool:
+                batch_results = list(tqdm(
+                    pool.imap(process_file_batch_worker, file_batches),
+                    total=len(file_batches),
+                    desc="Processing trajectory files"
+                ))
+            
+            # Combine results from all batches
+            all_samples = []
+            for batch_result in batch_results:
+                all_samples.extend(batch_result)
 
         # Shuffle samples
         random.shuffle(all_samples)

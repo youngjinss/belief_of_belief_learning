@@ -781,16 +781,23 @@ class Level1ValueBlocker(BaseValueAgent):
     """
     Level-1 Value-based Blocker Agent for AchieverBlocker environment.
 
-    Multi-attempt Strategy:
-    1. Select random door color (bluffing) -> navigate to it using value iteration
-    2. Stay at door until achiever picks up first key
-    3. Store observed key color in observed_keys list
-    4. Infer target door from first observed key -> navigate and break using value iteration
-    5. If game continues (wrong door), remove first observed key
-    6. Infer target from next observed key -> navigate and break using value iteration
-    7. Continue cycling through observed_keys until game ends
-
-    Uses BaseValueAgent planning approach but with RuleBasedAgent strategy.
+    Simple "Stay, Watch, and Go" Strategy:
+    
+    Phase 1: Observation
+    - Stay in place and wait until achiever picks up the first key
+    - Store the observed key color
+    
+    Phase 2: Target inference and navigation
+    - Infer that the first picked key is the target
+    - Navigate to the corresponding door using value iteration
+    
+    Phase 3: Door breaking
+    - Attempt to break the target door
+    - If game continues (wrong door), wait for next key pickup
+    - Use the second observed key as the new target and repeat
+    
+    The agent uses a simple reactive strategy without bluffing or prediction,
+    relying solely on observed key pickups to infer the achiever's target.
     """
 
     def __init__(
@@ -801,10 +808,6 @@ class Level1ValueBlocker(BaseValueAgent):
         gamma=0.99,
         temperature=0.1,
         q_value_clip=100,
-        update_frequency=3,
-        min_observation_window=4,
-        reduction_threshold=0.1,
-        consecutive_threshold=3,
     ):
         """Initialize Level-1 value-based blocker agent."""
         # Initialize base class
@@ -818,14 +821,9 @@ class Level1ValueBlocker(BaseValueAgent):
             q_value_clip=q_value_clip,
         )
 
-        # Phase 1: Initial random target
-        self.initial_target_color = None
-        self.initial_target_pos = None
-        self.initial_target_selected = False
-
-        # Phase 2: Final inferred target
-        self.final_target_color = None
-        self.final_target_pos = None
+        # Inferred target
+        self.target_color = None
+        self.target_pos = None
         self.achiever_has_key = False
 
         # Navigation state
@@ -835,22 +833,7 @@ class Level1ValueBlocker(BaseValueAgent):
         self.achiever_pos = None
 
         # Phase tracking
-        self.phase = (
-            1  # 1: go to random door, 2: stay at door, 3: go to inferred door, 4: break
-        )
-
-        # Distance reduction rate tracking for target inference
-        self.distance_history = {}  # Store distance history for each key color
-        self.reduction_rates = {}  # Store reduction rates for each key color
-        self.consecutive_reductions = {}  # Count consecutive reductions for each color
-        self.timestep_counter = 0
-        
-        # Use parameters from constructor arguments
-        self.update_frequency = update_frequency
-        self.min_observation_window = min_observation_window
-        self.reduction_threshold = reduction_threshold
-        self.consecutive_threshold = consecutive_threshold
-        self.predicted_target_color = None  # Early prediction based on movement
+        self.phase = 1  # 1: wait and observe, 2: go to inferred door, 3: break door
 
         # Multi-attempt tracking
         self.observed_keys = []  # Track keys observed from achiever
@@ -886,68 +869,6 @@ class Level1ValueBlocker(BaseValueAgent):
         self.blocker_pos = self.agent_pos
         self.achiever_pos = self._get_opponent_position(obs)
 
-        # Update distance tracking for early target inference
-        self._update_distance_tracking(obs)
-
-    def _update_distance_tracking(self, obs):
-        """Update distance tracking and calculate reduction rates for target inference."""
-        if not obs or "achiever_pos" not in obs or "key_positions" not in obs:
-            return
-            
-        achiever_pos = tuple(obs["achiever_pos"])
-        key_positions = obs["key_positions"]
-        
-        # Increment timestep counter
-        self.timestep_counter += 1
-        
-        # Calculate current distances to all keys
-        current_distances = {}
-        for color, key_pos in key_positions.items():
-            if key_pos is not None:
-                distance = abs(achiever_pos[0] - key_pos[0]) + abs(achiever_pos[1] - key_pos[1])
-                current_distances[color] = distance
-        
-        # Store distance history
-        for color, distance in current_distances.items():
-            if color not in self.distance_history:
-                self.distance_history[color] = []
-                self.consecutive_reductions[color] = 0
-            self.distance_history[color].append(distance)
-        
-        # Calculate reduction rates every update_frequency timesteps
-        if self.timestep_counter % self.update_frequency == 0 and self.timestep_counter >= self.min_observation_window:
-            for color in current_distances.keys():
-                if len(self.distance_history[color]) >= 2:
-                    # Calculate reduction rate over the last few timesteps
-                    recent_distances = self.distance_history[color][-self.update_frequency:]
-                    if len(recent_distances) >= 2:
-                        reduction_rate = (recent_distances[0] - recent_distances[-1]) / (len(recent_distances) - 1)
-                        self.reduction_rates[color] = reduction_rate
-                        
-                        # Track consecutive reductions
-                        if reduction_rate > self.reduction_threshold:
-                            self.consecutive_reductions[color] += 1
-                        else:
-                            self.consecutive_reductions[color] = 0
-        
-        # Make prediction if we have confident signal
-        if self.predicted_target_color is None:
-            best_color = None
-            best_confidence = 0
-            
-            for color in current_distances.keys():
-                if (color in self.consecutive_reductions and 
-                    self.consecutive_reductions[color] >= self.consecutive_threshold and
-                    color in self.reduction_rates and
-                    self.reduction_rates[color] > self.reduction_threshold):
-                    
-                    confidence = self.consecutive_reductions[color] * self.reduction_rates[color]
-                    if confidence > best_confidence:
-                        best_confidence = confidence
-                        best_color = color
-            
-            if best_color is not None:
-                self.predicted_target_color = best_color
 
     @property
     def target_door_color(self):
@@ -1004,122 +925,68 @@ class Level1ValueBlocker(BaseValueAgent):
             # Move to next observed key if available
             self.current_key_index += 1
             if self.current_key_index >= len(self.observed_keys):
-                # No more observed keys, reset to Phase 2 to wait for more keys
-                self.phase = 2
-                self.final_target_color = None
-                self.final_target_pos = None
+                # No more observed keys, reset to Phase 1 to wait for more keys
+                self.phase = 1
+                self.target_color = None
+                self.target_pos = None
             else:
-                # Use next observed key, go back to Phase 3
-                self.phase = 3
-                self.final_target_color = None
-                self.final_target_pos = None
+                # Use next observed key, go back to Phase 2
+                self.phase = 2
+                self.target_color = None
+                self.target_pos = None
             self.just_attempted_break = False
 
         # Check if achiever has picked up a key and store it
         self._check_and_store_achiever_keys(obs)
 
-        # Phase 1: Select initial random target and navigate to it
+        # Phase 1: Wait and observe until achiever picks up a key
         if self.phase == 1:
-            # Check if we have a predicted target from distance tracking
-            if self.predicted_target_color is not None:
-                # Switch to predicted target instead of random target
-                self.final_target_color = self.predicted_target_color
-                self.final_target_pos = self._find_door_position_from_obs(self.predicted_target_color, obs)
-                self.phase = 3  # Skip to phase 3 (go to inferred door)
-                return self._handle_phase_3(obs)
-            
-            if not self.initial_target_selected:
-                self._select_initial_random_target(obs)
-
-            # Check if we've reached the initial target door
-            if self._at_initial_target_door():
-                self.phase = 2  # Move to waiting phase
-                return 4  # Stay at the door
-            else:
-                return self._navigate_to_initial_door_with_value_iteration(obs)
-
-        # Phase 2: Stay at initial door until achiever picks up key OR use predicted target
-        elif self.phase == 2:
-            # Check if we have a predicted target from distance tracking
-            if self.predicted_target_color is not None:
-                # Use predicted target instead of waiting for key pickup
-                self.final_target_color = self.predicted_target_color
-                self.final_target_pos = self._find_door_position_from_obs(self.predicted_target_color, obs)
-                self.phase = 3  # Move to inferring phase
-                return self._handle_phase_3(obs)
-            
             if self.achiever_has_key:
-                self.phase = 3  # Move to inferring phase
-                return self._handle_phase_3(obs)
+                self.phase = 2  # Move to navigation phase
+                return self._handle_phase_2(obs)
             else:
                 return 4  # Stay and wait
 
-        # Phase 3: Infer final target from achiever's key and navigate to it
-        elif self.phase == 3:
-            return self._handle_phase_3(obs)
+        # Phase 2: Navigate to inferred target door
+        elif self.phase == 2:
+            return self._handle_phase_2(obs)
 
-        # Phase 4: Break the final door
-        elif self.phase == 4:
+        # Phase 3: Break the door
+        elif self.phase == 3:
             self.just_attempted_break = True
             self.last_action = 5
             return 5  # Break action
 
         return 4  # Default: stay
 
-    def _handle_phase_3(self, obs):
-        """Handle phase 3: infer target and navigate to it using value iteration."""
-        # If we don't have a final target yet, infer it from current observed key
-        if self.final_target_color is None:
-            self._infer_final_target_from_observed_keys(obs)
+    def _handle_phase_2(self, obs):
+        """Handle phase 2: infer target and navigate to it using value iteration."""
+        # If we don't have a target yet, infer it from current observed key
+        if self.target_color is None:
+            self._infer_target_from_observed_keys(obs)
 
-        # Ensure we have a valid final target before proceeding
-        if self.final_target_pos is None:
+        # Ensure we have a valid target before proceeding
+        if self.target_pos is None:
             return 4  # Stay if we couldn't infer target
 
-        # If we're at the final target door, break it
-        if self._at_final_target_door():
-            self.phase = 4
+        # If we're at the target door, break it
+        if self._at_target_door():
+            self.phase = 3
             return 5  # Break action
 
-        # Navigate to final target door using value iteration
-        return self._navigate_to_final_door_with_value_iteration(obs)
+        # Navigate to target door using value iteration
+        return self._navigate_to_door_with_value_iteration(obs)
 
-    def _select_initial_random_target(self, obs):
-        """Select initial target door color randomly."""
-        color_map = ["red", "green", "blue", "yellow"]
-
-        # Randomly select a door color
-        self.initial_target_color = np.random.choice(color_map)
-
-        # Find the position of the selected door
-        door_pos = self._find_door_position_from_obs(self.initial_target_color, obs)
-        self.initial_target_pos = tuple(door_pos) if door_pos else None
-
-        # Mark as selected if position is found
-        if self.initial_target_pos:
-            self.initial_target_selected = True
-
-    def _at_initial_target_door(self):
-        """Check if blocker is at the initial target door position."""
-        if self.initial_target_pos is None:
+    def _at_target_door(self):
+        """Check if blocker is at the target door position."""
+        if self.target_pos is None:
             return False
         # Ensure both positions are tuples for comparison
-        return tuple(self.blocker_pos) == tuple(self.initial_target_pos)
+        return tuple(self.blocker_pos) == tuple(self.target_pos)
 
-    def _at_final_target_door(self):
-        """Check if blocker is at the final target door position."""
-        if self.final_target_pos is None:
-            return False
-        # Ensure both positions are tuples for comparison
-        return tuple(self.blocker_pos) == tuple(self.final_target_pos)
-
-    def _navigate_to_initial_door_with_value_iteration(self, obs=None):
-        """Navigate to initial target door using value iteration."""
-        return self._navigate_with_value_iteration(self.initial_target_pos, obs)
-
-    def _navigate_to_final_door_with_value_iteration(self, obs=None):
-        """Navigate to final target door using value iteration."""
-        return self._navigate_with_value_iteration(self.final_target_pos, obs)
+    def _navigate_to_door_with_value_iteration(self, obs=None):
+        """Navigate to target door using value iteration."""
+        return self._navigate_with_value_iteration(self.target_pos, obs)
 
     def _find_door_position_from_obs(self, color, obs):
         """Find position of door with given color from observations."""
@@ -1136,14 +1003,9 @@ class Level1ValueBlocker(BaseValueAgent):
     def reset(self):
         """Reset agent state for new episode."""
         super().reset()
-        # Phase 1: Initial random target
-        self.initial_target_color = None
-        self.initial_target_pos = None
-        self.initial_target_selected = False
-
-        # Phase 2: Final inferred target
-        self.final_target_color = None
-        self.final_target_pos = None
+        # Inferred target
+        self.target_color = None
+        self.target_pos = None
         self.achiever_has_key = False
 
         # Navigation state
@@ -1160,13 +1022,6 @@ class Level1ValueBlocker(BaseValueAgent):
         self.current_key_index = 0
         self.just_attempted_break = False
         self.last_action = None
-
-        # Reset distance tracking
-        self.distance_history.clear()
-        self.reduction_rates.clear()
-        self.consecutive_reductions.clear()
-        self.timestep_counter = 0
-        self.predicted_target_color = None
 
         # Keep width/height since they don't change between episodes
 
@@ -1191,16 +1046,16 @@ class Level1ValueBlocker(BaseValueAgent):
             ):
                 self.achiever_has_key = True
 
-    def _infer_final_target_from_observed_keys(self, obs):
-        """Infer final target door color from current observed key."""
+    def _infer_target_from_observed_keys(self, obs):
+        """Infer target door color from current observed key."""
         if self.current_key_index < len(self.observed_keys):
             # Use the key at current_key_index for inference
             key_color = self.observed_keys[self.current_key_index]
-            self.final_target_color = key_color
+            self.target_color = key_color
 
             # Find position of inferred door
-            self.final_target_pos = self._find_door_position_from_obs(
-                self.final_target_color, obs
+            self.target_pos = self._find_door_position_from_obs(
+                self.target_color, obs
             )
 
 

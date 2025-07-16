@@ -25,7 +25,7 @@ warnings.filterwarnings("ignore", category=RuntimeWarning)
 from config import Config
 from train import prepare_data_for_training, generate_past_episodes_from_batch
 from data_generation import DataGenerator as DataReader, DataGenerator
-from lib.utils.seed import set_seed
+from utils import set_seed, load_test_data_all_combinations, get_data_for_combination
 
 # Set seed using Config default value
 config = Config()
@@ -39,6 +39,9 @@ Adapted from ToMnetF experiment5 for multi-agent AchieverBlocker environment
 """
 
 # No caching - keep it simple and reliable
+
+
+# Data loading functions moved to utils.py
 
 
 def plot_accuracy_by_n_past(

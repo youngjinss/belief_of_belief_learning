@@ -20,7 +20,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from tomnet import ToMnet, ToMnetLoss, create_model, count_parameters
 from data_generation import DataGenerator
 from config import Config
-from lib.utils.seed import set_seed
+from utils import set_seed, load_data_efficient, save_data_for_mmap, load_training_data_all_combinations, get_data_for_combination
 
 # Set seed using Config default value
 config = Config()
@@ -1376,89 +1376,11 @@ def train_tomnet(
     print(f"Training {achiever_type} achiever with {blocker_type} blocker")
     print(f"Results will be saved to: {experiment_save_dir}")
 
-    # Check if processed data exists for all combinations, if not generate it
-    all_combinations = []
-    for achiever_type in config.achiever_types.keys():
-        for blocker_type in config.blocker_types.keys():
-            all_combinations.append((achiever_type, blocker_type))
+    # Load training data for all combinations efficiently
+    all_training_data = load_training_data_all_combinations(config, data_dir.replace(f"/{agent_pair}", ""))
     
-    missing_combinations = []
-    existing_data = {}
-    
-    for combo_achiever, combo_blocker in all_combinations:
-        processed_data_path = os.path.join(
-            data_dir,
-            f"processed_data_exp{config.experiment_no}_{combo_achiever}_{combo_blocker}.pkl",
-        )
-        
-        # Try efficient data loading (memory-mapped if available)
-        data = load_data_efficient(processed_data_path)
-        if data is not None:
-            print(f"Loading existing processed data for {combo_achiever}_{combo_blocker}...")
-            existing_data[(combo_achiever, combo_blocker)] = data
-            print(f"  Successfully loaded from {processed_data_path}")
-        else:
-            missing_combinations.append((combo_achiever, combo_blocker))
-    
-    # If there are missing combinations, generate data for all combinations
-    if missing_combinations:
-        print(f"Processed data not found for combinations: {missing_combinations}")
-        print("Generating data for all combinations...")
-        # Load and process data
-        print("Loading raw data...")
-        # Import the new DataReader for multi-agent environment
-        from data_generation import DataGenerator as MultiAgentDataReader
-
-        # Create DataReader for multi-agent data
-        data_reader = MultiAgentDataReader(
-            time_step=time_step,
-            w=config.width,
-            h=config.height,
-            d=data_config.get("maze_depth", 9),
-            config=config,
-        )
-
-        # Process directory to get samples
-        samples = data_reader.process_directory(data_dir)
-
-        if len(samples) == 0:
-            raise ValueError(f"No samples found in {data_dir}")
-
-        # Prepare data from multi-agent samples with shuffling
-        data = prepare_data_for_training(
-            samples, 
-            grid_size=config.width, 
-            min_timestep=data_config.get("min_time_steps", 3),
-            max_trajectory_length=time_step
-        )
-
-        # Save processed training data for all combinations in both formats
-        for combo_achiever, combo_blocker in all_combinations:
-            processed_data_path = os.path.join(
-                data_dir,
-                f"processed_data_exp{config.experiment_no}_{combo_achiever}_{combo_blocker}.pkl",
-            )
-            npz_data_path = os.path.join(
-                data_dir,
-                f"processed_data_exp{config.experiment_no}_{combo_achiever}_{combo_blocker}.npz",
-            )
-            
-            # Save in pickle format (backward compatibility)
-            with open(processed_data_path, "wb") as f:
-                pickle.dump(data, f)
-            print(f"  Successfully saved to {processed_data_path}")
-            
-            # Save in memory-mapped format for efficient access
-            save_data_for_mmap(data, npz_data_path)
-            
-            existing_data[(combo_achiever, combo_blocker)] = data
-    
-    # Use the data for the current combination
-    if (achiever_type, blocker_type) in existing_data:
-        data = existing_data[(achiever_type, blocker_type)]
-        print(f"Using processed data for {achiever_type}_{blocker_type}")
-    else:
-        raise ValueError(f"No processed data found for combination {achiever_type}_{blocker_type}")
+    # Use data for the current combination
+    data = get_data_for_combination(all_training_data, achiever_type, blocker_type, "training")
 
     # Sample trajectories randomly for training if specified in config
     if achiever_type and blocker_type:
@@ -1870,48 +1792,7 @@ def train_tomnet(
     }
 
 
-def save_data_for_mmap(data, filepath):
-    """Save data in memory-mappable format (NumPy .npz)"""
-    os.makedirs(os.path.dirname(filepath), exist_ok=True)
-    
-    # Convert torch tensors to numpy arrays for memory mapping
-    np_data = {}
-    for key, value in data.items():
-        if isinstance(value, torch.Tensor):
-            np_data[key] = value.numpy()
-        else:
-            np_data[key] = value
-    
-    # Save as compressed numpy format
-    np.savez_compressed(filepath, **np_data)
-    print(f"Saved memory-mappable data to {filepath}")
-
-
-def load_data_mmap(filepath):
-    """Load data with memory mapping for efficient access"""
-    if not os.path.exists(filepath):
-        return None
-    
-    # Load with memory mapping (data not loaded into RAM immediately)
-    data = np.load(filepath, mmap_mode='r')
-    print(f"Loaded memory-mapped data from {filepath}")
-    return data
-
-
-def load_data_efficient(filepath):
-    """Load data efficiently with fallback to regular pickle"""
-    # Try memory-mapped format first
-    npz_filepath = filepath.replace('.pkl', '.npz')
-    if os.path.exists(npz_filepath):
-        return load_data_mmap(npz_filepath)
-    
-    # Fallback to regular pickle loading
-    if os.path.exists(filepath):
-        with open(filepath, 'rb') as f:
-            data = pickle.load(f)
-        return data
-    
-    return None
+# Data loading functions moved to utils.py
 
 
 class MemoryMappedDataset(torch.utils.data.Dataset):

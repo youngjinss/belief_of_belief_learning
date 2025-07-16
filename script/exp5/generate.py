@@ -21,7 +21,7 @@ sys.path.append(
 )
 
 # Import seed utility
-from lib.utils.seed import set_seed
+from utils import set_seed
 
 from lib.env.gym_minigrid.envs.achiever_blocker import (
     AchieverBlocker5x5Env,

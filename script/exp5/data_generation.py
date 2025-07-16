@@ -9,7 +9,7 @@ import gc
 
 # Add lib to path for imports
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from lib.utils.seed import set_seed
+from utils import set_seed
 
 """
 Data processing for exp5 (AchieverBlocker) ToMnet training

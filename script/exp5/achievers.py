@@ -13,7 +13,7 @@ env_path = os.path.join(lib_path, "env")
 sys.path.insert(0, env_path)
 
 from gym_minigrid.minigrid import Key, Door, Wall
-from lib.utils.seed import set_seed
+from utils import set_seed
 
 # Add current directory for config import
 sys.path.append(os.path.dirname(__file__))

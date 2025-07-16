@@ -23,7 +23,7 @@ from tomnet import ToMnet, create_model
 from config import Config
 from train import prepare_data_for_training, generate_past_episodes_from_batch
 from data_generation import DataGenerator as DataReader
-from lib.utils.seed import set_seed
+from utils import set_seed, load_test_data_all_combinations, get_data_for_combination
 
 # Set seed using Config default value
 config = Config()
@@ -33,6 +33,9 @@ set_seed(config.seed)
 Evaluation and metrics for AchieverBlocker ToMnet experiment
 Adapted from ToMnetF experiment5 for multi-agent AchieverBlocker environment
 """
+
+
+# Data loading functions moved to utils.py
 
 
 def _calculate_trajectory_lengths(trajectories):
@@ -543,46 +546,11 @@ def evaluate_achieverblocker_model(
     print(model)
     print(f"Model loaded successfully")
 
-    # Check if processed test data exists, if not generate it
-    processed_test_data_path = os.path.join(
-        test_data_dir, f"processed_test_data_exp{config.experiment_no}.pkl"
-    )
-
-    if not os.path.exists(processed_test_data_path):
-        print("Processed test data not found. Generating...")
-        # Load and process test data
-        print("Loading raw test data...")
-        # Create DataReader with correct dimensions based on environment size
-        data_reader = DataReader(
-            time_step=data_config.get("time_step", 500),
-            w=config.width,
-            h=config.height,
-            d=data_config.get("maze_depth", 9),
-            config=config,
-        )
-        test_games = data_reader.ReadAllGames(test_data_dir)
-
-        if len(test_games) == 0:
-            raise ValueError(f"No test games found in {test_data_dir}")
-
-        # Prepare test data using trajectory slicing (exactly like training)
-        test_data = prepare_data_for_training(
-            test_games,
-            min_timestep=6,  # Same as training
-            max_trajectory_length=data_config.get("time_step", 500),
-        )
-
-        # Save processed test data for future use
-        print(f"Saving processed test data to: {processed_test_data_path}")
-        with open(processed_test_data_path, "wb") as f:
-            pickle.dump(test_data, f)
-        print(f"  Successfully saved to {processed_test_data_path}")
-    else:
-        print("Loading existing processed data...")
-        # Load pre-processed training data directly
-        with open(processed_test_data_path, "rb") as f:
-            test_data = pickle.load(f)
-        print(f"  Successfully loaded from {processed_test_data_path}")
+    # Load test data for all combinations efficiently
+    all_test_data = load_test_data_all_combinations(config, test_data_dir_base=test_data_dir.replace(f"/{agent_pair}/test", ""))
+    
+    # Use test data for the specified combination
+    test_data = get_data_for_combination(all_test_data, achiever_type, blocker_type, "test")
 
     # Use all available test data (no sampling)
     total_test_samples = test_data["trajectories"].shape[0]
@@ -786,41 +754,11 @@ def analyze_action_likelihood(
         agent_pair = config.get_agent_pair_name(achiever_type, blocker_type)
         test_data_dir_default = f"./data/{env_name}/{agent_pair}/test"
 
-        # Check if processed test data exists, if not generate it
-        processed_test_data_path = os.path.join(
-            test_data_dir_default, f"processed_test_data_exp{config.experiment_no}.pkl"
-        )
-
-        if not os.path.exists(processed_test_data_path):
-            print("Processed test data not found. Generating...")
-            # Load and process test data
-            print("Loading raw test data...")
-            data_reader = DataReader(
-                time_step=data_config.get("time_step", 500),
-                w=config.width,
-                h=config.height,
-                d=data_config.get("maze_depth", 9),
-                config=config,
-            )
-            test_games = data_reader.ReadAllGames(test_data_dir_default)
-            test_data = prepare_data_for_training(
-                test_games,
-                min_timestep=6,  # Same as training
-                max_trajectory_length=data_config.get("time_step", 500),
-            )
-
-            # Save processed test data for future use
-            print(f"Saving processed test data to: {processed_test_data_path}")
-            # Save processed training data for future use
-            with open(processed_test_data_path, "wb") as f:
-                pickle.dump(test_data, f)
-            print(f"  Successfully saved to {processed_test_data_path}")
-        else:
-            print("Loading existing processed data...")
-            # Load pre-processed training data directly
-            with open(processed_test_data_path, "rb") as f:
-                test_data = pickle.load(f)
-            print(f"  Successfully loaded from {processed_test_data_path}")
+        # Load test data for all combinations efficiently
+        all_test_data = load_test_data_all_combinations(config, test_data_dir_default.replace(f"/{agent_pair}/test", ""))
+        
+        # Use test data for the specified combination
+        test_data = get_data_for_combination(all_test_data, achiever_type, blocker_type, "test")
 
         # Use all available test data (no sampling)
         total_test_samples = test_data["trajectories"].shape[0]

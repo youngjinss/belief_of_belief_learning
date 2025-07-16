@@ -10,7 +10,7 @@ lib_path = os.path.join(os.path.dirname(__file__), "..", "..", "lib")
 sys.path.insert(0, lib_path)
 
 # Import seed utility
-from lib.utils.seed import set_seed
+from utils import set_seed
 
 # Add the env directory to the path
 env_path = os.path.join(lib_path, "env")

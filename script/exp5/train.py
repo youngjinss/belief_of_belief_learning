@@ -1377,7 +1377,7 @@ def train_tomnet(
     print(f"Results will be saved to: {experiment_save_dir}")
 
     # Load training data for all combinations efficiently
-    all_training_data = load_training_data_all_combinations(config, data_dir.replace(f"/{agent_pair}", ""))
+    all_training_data = load_training_data_all_combinations(config, data_dir.replace(f"/{agent_type}", ""))
     
     # Use data for the current combination
     data = get_data_for_combination(all_training_data, achiever_type, blocker_type, "training")

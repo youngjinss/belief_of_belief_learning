@@ -13,8 +13,7 @@ import sys
 # Add path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from train import prepare_data_for_training
-from data_generation import DataGenerator as DataReader
+# All imports will be done dynamically to avoid circular imports
 
 
 def set_seed(seed: int = 42):
@@ -161,6 +160,7 @@ def load_training_data_all_combinations(config, data_dir_base=None):
                 continue
             
             # Load and process raw training data
+            from data_generation import DataGenerator as DataReader
             data_config = config.get_data_config()
             data_reader = DataReader(
                 time_step=data_config.get("time_step", 500),
@@ -176,6 +176,7 @@ def load_training_data_all_combinations(config, data_dir_base=None):
                 continue
             
             # Process training data
+            from train import prepare_data_for_training
             train_data = prepare_data_for_training(
                 train_games,
                 min_timestep=data_config.get("min_time_steps", 6),
@@ -260,6 +261,7 @@ def load_test_data_all_combinations(config, test_data_dir_base=None):
                 continue
             
             # Load and process raw test data
+            from data_generation import DataGenerator as DataReader
             data_config = config.get_data_config()
             data_reader = DataReader(
                 time_step=data_config.get("time_step", 500),
@@ -275,6 +277,7 @@ def load_test_data_all_combinations(config, test_data_dir_base=None):
                 continue
             
             # Process test data
+            from train import prepare_data_for_training
             test_data = prepare_data_for_training(
                 test_games,
                 min_timestep=data_config.get("min_time_steps", 6),

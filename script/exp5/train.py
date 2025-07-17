@@ -592,7 +592,7 @@ def train_epoch(
     correct_types = 0
     total_samples = 0
     accumulation_loss = 0
-    
+
     # Separate metrics for achievers and blockers
     achiever_correct_actions = 0
     achiever_correct_goals = 0
@@ -837,17 +837,29 @@ def train_epoch(
             (predicted_types == type_targets).sum().item()
         )  # Track type accuracy
         total_samples += batch_size
-        
+
         # Separate metrics for achievers (agent_targets == 0) and blockers (agent_targets == 1)
         achiever_mask = agent_targets == 0
         blocker_mask = agent_targets == 1
-        
-        achiever_correct_actions += (predicted_actions[achiever_mask] == action_targets[achiever_mask]).sum().item()
-        achiever_correct_goals += (predicted_goals[achiever_mask] == goal_targets[achiever_mask]).sum().item()
+
+        achiever_correct_actions += (
+            (predicted_actions[achiever_mask] == action_targets[achiever_mask])
+            .sum()
+            .item()
+        )
+        achiever_correct_goals += (
+            (predicted_goals[achiever_mask] == goal_targets[achiever_mask]).sum().item()
+        )
         achiever_total_samples += achiever_mask.sum().item()
-        
-        blocker_correct_actions += (predicted_actions[blocker_mask] == action_targets[blocker_mask]).sum().item()
-        blocker_correct_goals += (predicted_goals[blocker_mask] == goal_targets[blocker_mask]).sum().item()
+
+        blocker_correct_actions += (
+            (predicted_actions[blocker_mask] == action_targets[blocker_mask])
+            .sum()
+            .item()
+        )
+        blocker_correct_goals += (
+            (predicted_goals[blocker_mask] == goal_targets[blocker_mask]).sum().item()
+        )
         blocker_total_samples += blocker_mask.sum().item()
 
         # Memory cleanup for large batches (optimized)
@@ -890,12 +902,28 @@ def train_epoch(
     goal_accuracy = correct_goals / total_samples
     agent_accuracy = correct_agents / total_samples
     type_accuracy = correct_types / total_samples
-    
+
     # Calculate separate accuracies for achievers and blockers
-    achiever_action_accuracy = achiever_correct_actions / achiever_total_samples if achiever_total_samples > 0 else 0
-    achiever_goal_accuracy = achiever_correct_goals / achiever_total_samples if achiever_total_samples > 0 else 0
-    blocker_action_accuracy = blocker_correct_actions / blocker_total_samples if blocker_total_samples > 0 else 0
-    blocker_goal_accuracy = blocker_correct_goals / blocker_total_samples if blocker_total_samples > 0 else 0
+    achiever_action_accuracy = (
+        achiever_correct_actions / achiever_total_samples
+        if achiever_total_samples > 0
+        else 0
+    )
+    achiever_goal_accuracy = (
+        achiever_correct_goals / achiever_total_samples
+        if achiever_total_samples > 0
+        else 0
+    )
+    blocker_action_accuracy = (
+        blocker_correct_actions / blocker_total_samples
+        if blocker_total_samples > 0
+        else 0
+    )
+    blocker_goal_accuracy = (
+        blocker_correct_goals / blocker_total_samples
+        if blocker_total_samples > 0
+        else 0
+    )
 
     return {
         "loss": avg_loss,
@@ -952,7 +980,7 @@ def validate_epoch(
     correct_agents = 0
     correct_types = 0
     total_samples = 0
-    
+
     # Separate metrics for achievers and blockers
     achiever_correct_actions = 0
     achiever_correct_goals = 0
@@ -1125,17 +1153,33 @@ def validate_epoch(
             correct_agents += (predicted_agents == agent_targets).sum().item()
             correct_types += (predicted_types == type_targets).sum().item()
             total_samples += batch_size
-            
+
             # Separate metrics for achievers (agent_targets == 0) and blockers (agent_targets == 1)
             achiever_mask = agent_targets == 0
             blocker_mask = agent_targets == 1
-            
-            achiever_correct_actions += (predicted_actions[achiever_mask] == action_targets[achiever_mask]).sum().item()
-            achiever_correct_goals += (predicted_goals[achiever_mask] == goal_targets[achiever_mask]).sum().item()
+
+            achiever_correct_actions += (
+                (predicted_actions[achiever_mask] == action_targets[achiever_mask])
+                .sum()
+                .item()
+            )
+            achiever_correct_goals += (
+                (predicted_goals[achiever_mask] == goal_targets[achiever_mask])
+                .sum()
+                .item()
+            )
             achiever_total_samples += achiever_mask.sum().item()
-            
-            blocker_correct_actions += (predicted_actions[blocker_mask] == action_targets[blocker_mask]).sum().item()
-            blocker_correct_goals += (predicted_goals[blocker_mask] == goal_targets[blocker_mask]).sum().item()
+
+            blocker_correct_actions += (
+                (predicted_actions[blocker_mask] == action_targets[blocker_mask])
+                .sum()
+                .item()
+            )
+            blocker_correct_goals += (
+                (predicted_goals[blocker_mask] == goal_targets[blocker_mask])
+                .sum()
+                .item()
+            )
             blocker_total_samples += blocker_mask.sum().item()
 
     num_batches = len(val_loader)
@@ -1152,12 +1196,28 @@ def validate_epoch(
     goal_accuracy = correct_goals / total_samples
     agent_accuracy = correct_agents / total_samples
     type_accuracy = correct_types / total_samples
-    
+
     # Calculate separate accuracies for achievers and blockers
-    achiever_action_accuracy = achiever_correct_actions / achiever_total_samples if achiever_total_samples > 0 else 0
-    achiever_goal_accuracy = achiever_correct_goals / achiever_total_samples if achiever_total_samples > 0 else 0
-    blocker_action_accuracy = blocker_correct_actions / blocker_total_samples if blocker_total_samples > 0 else 0
-    blocker_goal_accuracy = blocker_correct_goals / blocker_total_samples if blocker_total_samples > 0 else 0
+    achiever_action_accuracy = (
+        achiever_correct_actions / achiever_total_samples
+        if achiever_total_samples > 0
+        else 0
+    )
+    achiever_goal_accuracy = (
+        achiever_correct_goals / achiever_total_samples
+        if achiever_total_samples > 0
+        else 0
+    )
+    blocker_action_accuracy = (
+        blocker_correct_actions / blocker_total_samples
+        if blocker_total_samples > 0
+        else 0
+    )
+    blocker_goal_accuracy = (
+        blocker_correct_goals / blocker_total_samples
+        if blocker_total_samples > 0
+        else 0
+    )
 
     return {
         "loss": avg_loss,
@@ -1973,10 +2033,18 @@ def train_tomnet(
         history["train_goal_accuracy"].append(train_metrics["goal_accuracy"])
         history["train_agent_accuracy"].append(train_metrics["agent_accuracy"])
         history["train_type_accuracy"].append(train_metrics["type_accuracy"])
-        history["train_achiever_action_accuracy"].append(train_metrics["achiever_action_accuracy"])
-        history["train_achiever_goal_accuracy"].append(train_metrics["achiever_goal_accuracy"])
-        history["train_blocker_action_accuracy"].append(train_metrics["blocker_action_accuracy"])
-        history["train_blocker_goal_accuracy"].append(train_metrics["blocker_goal_accuracy"])
+        history["train_achiever_action_accuracy"].append(
+            train_metrics["achiever_action_accuracy"]
+        )
+        history["train_achiever_goal_accuracy"].append(
+            train_metrics["achiever_goal_accuracy"]
+        )
+        history["train_blocker_action_accuracy"].append(
+            train_metrics["blocker_action_accuracy"]
+        )
+        history["train_blocker_goal_accuracy"].append(
+            train_metrics["blocker_goal_accuracy"]
+        )
         history["val_loss"].append(val_metrics["loss"])
         history["val_action_loss"].append(val_metrics["action_loss"])
         history["val_goal_loss"].append(val_metrics["goal_loss"])
@@ -1988,10 +2056,18 @@ def train_tomnet(
         history["val_goal_accuracy"].append(val_metrics["goal_accuracy"])
         history["val_agent_accuracy"].append(val_metrics["agent_accuracy"])
         history["val_type_accuracy"].append(val_metrics["type_accuracy"])
-        history["val_achiever_action_accuracy"].append(val_metrics["achiever_action_accuracy"])
-        history["val_achiever_goal_accuracy"].append(val_metrics["achiever_goal_accuracy"])
-        history["val_blocker_action_accuracy"].append(val_metrics["blocker_action_accuracy"])
-        history["val_blocker_goal_accuracy"].append(val_metrics["blocker_goal_accuracy"])
+        history["val_achiever_action_accuracy"].append(
+            val_metrics["achiever_action_accuracy"]
+        )
+        history["val_achiever_goal_accuracy"].append(
+            val_metrics["achiever_goal_accuracy"]
+        )
+        history["val_blocker_action_accuracy"].append(
+            val_metrics["blocker_action_accuracy"]
+        )
+        history["val_blocker_goal_accuracy"].append(
+            val_metrics["blocker_goal_accuracy"]
+        )
         history["epoch_time"].append(epoch_time)
 
         # Print metrics
@@ -2014,7 +2090,7 @@ def train_tomnet(
         val_type_loss = val_metrics["type_loss"]
         val_consumption_loss = val_metrics["consumption_loss"]
         val_sr_loss = val_metrics["sr_loss"]
-        
+
         # Achiever/Blocker specific metrics
         train_achiever_acc = train_metrics["achiever_action_accuracy"] * 100
         val_achiever_acc = val_metrics["achiever_action_accuracy"] * 100
@@ -2051,7 +2127,9 @@ def train_tomnet(
         print(
             f"  ACHIEVER - Goal Acc: Train {train_achiever_goal_acc:.4f}% | Val {val_achiever_goal_acc:.4f}%"
         )
-        print(f"           - Action Acc: Train {train_achiever_acc:.4f}% | Val {val_achiever_acc:.4f}%")
+        print(
+            f"           - Action Acc: Train {train_achiever_acc:.4f}% | Val {val_achiever_acc:.4f}%"
+        )
         print(
             f"           - Losses: Action {train_action_loss:.4f} | Goal {train_goal_loss:.4f} | Consumption {train_consumption_loss:.4f} | SR {train_sr_loss:.4f}"
         )
@@ -2060,7 +2138,9 @@ def train_tomnet(
         print(
             f"  BLOCKER  - Goal Acc: Train {train_blocker_goal_acc:.4f}% | Val {val_blocker_goal_acc:.4f}%"
         )
-        print(f"           - Action Acc: Train {train_blocker_acc:.4f}% | Val {val_blocker_acc:.4f}%")
+        print(
+            f"           - Action Acc: Train {train_blocker_acc:.4f}% | Val {val_blocker_acc:.4f}%"
+        )
         print(
             f"           - Losses: Action {train_action_loss:.4f} | Goal {train_goal_loss:.4f} | Consumption {train_consumption_loss:.4f} | SR {train_sr_loss:.4f}"
         )

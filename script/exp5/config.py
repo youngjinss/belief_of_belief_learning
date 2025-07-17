@@ -238,7 +238,7 @@ class Config:
 
         # Training configuration
         self.training_config = {
-            "batch_size": 512,
+            "batch_size": 1024,
             "epochs": 300,
             "lr": 0.0001,
             "weight_decay": 0.001,
@@ -257,8 +257,8 @@ class Config:
         self.model_config = {
             "use_mentalnet": True,  # False: experiment5-style (CharNet→PredNet), True: original 3-stage (CharNet→MentalNet→PredNet)
             "residual_blocks": 5,
-            "n_echar": 64,
-            "n_ement": 64,
+            "n_echar": 128,
+            "n_ement": 128,
             "out_channels": 64,
             "channels_in": 9,  # 8 original channels + 1 heading direction channel
             "current_state_channels": 8,  # For MentalNet: 8 original channels (no heading direction)

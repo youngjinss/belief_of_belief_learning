@@ -861,16 +861,16 @@ class ToMnet(nn.Module):
                 batch_size, self.n_ement, device=current_state.device
             )
 
-        return (
-            action_logits,
-            goal_logits,
-            agent_logits,
-            type_logits,
-            consumption_logits,
-            sr_pred,
-            character_embedding,
-            mental_state,
-        )
+        return {
+            "action_logits": action_logits,
+            "goal_logits": goal_logits,
+            "agent_logits": agent_logits,
+            "type_logits": type_logits,
+            "consumption_logits": consumption_logits,
+            "sr_pred": sr_pred,
+            "character_embedding": character_embedding,
+            "mental_state": mental_state,
+        }
 
     def predict_action(self, past_trajectories, recent_trajectory, current_state):
         """Predict next action"""
@@ -973,15 +973,15 @@ class ToMnetLoss(nn.Module):
             + self.sr_weight * sr_loss
         )
 
-        return (
-            total_loss,
-            action_loss,
-            goal_loss,
-            agent_loss,
-            type_loss,
-            consumption_loss,
-            sr_loss,
-        )
+        return {
+            "loss": total_loss,
+            "action_loss": action_loss,
+            "goal_loss": goal_loss,
+            "agent_loss": agent_loss,
+            "type_loss": type_loss,
+            "consumption_loss": consumption_loss,
+            "sr_loss": sr_loss,
+        }
 
 
 # Utility functions

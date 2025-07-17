@@ -3,6 +3,7 @@ import json
 import sys
 
 import torch
+from torch.cuda.amp import autocast
 # Add current directory to path
 sys.path.append(os.path.dirname(__file__))
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -138,21 +139,32 @@ def train_epoch(
         combined_episodes = torch.cat([trajectories.unsqueeze(1), past_episodes], dim=1)
 
         # Prepare inputs for ToMnet
+        # Split combined_episodes into past_trajectories and recent_trajectory
+        recent_trajectory = combined_episodes[:, 0]  # Current trajectory
+        past_trajectories = combined_episodes[:, 1:] if combined_episodes.size(1) > 1 else None  # Past episodes
+        
+        # Extract current state from recent trajectory (last timestep)
+        current_state = recent_trajectory[:, -1]  # Last timestep of recent trajectory
+
         if scaler is not None:
             with autocast():
                 # Forward pass
-                outputs = model(combined_episodes, time_steps)
+                outputs = model(past_trajectories, recent_trajectory, current_state)
                 
                 # Compute loss
                 loss_dict = loss_fn(
-                    outputs,
-                    actions,
-                    goals,
+                    outputs["action_logits"],
+                    outputs["goal_logits"],
+                    outputs["agent_logits"],
+                    outputs["type_logits"],
+                    outputs["consumption_logits"],
+                    outputs["sr_pred"],
+                    actions[:, 1],  # Remove timestep, just get action
+                    torch.argmax(goals, dim=1),  # Convert one-hot to class indices
                     agents,
                     types,
                     consumption_labels,
                     sr_labels,
-                    config=model_config,
                 )
                 
                 loss = loss_dict["loss"]
@@ -164,18 +176,22 @@ def train_epoch(
                 accumulation_loss += loss.item()
         else:
             # Forward pass without mixed precision
-            outputs = model(combined_episodes, time_steps)
+            outputs = model(past_trajectories, recent_trajectory, current_state)
             
             # Compute loss
             loss_dict = loss_fn(
-                outputs,
-                actions,
-                goals,
+                outputs["action_logits"],
+                outputs["goal_logits"],
+                outputs["agent_logits"],
+                outputs["type_logits"],
+                outputs["consumption_logits"],
+                outputs["sr_pred"],
+                actions[:, 1],  # Remove timestep, just get action
+                torch.argmax(goals, dim=1),  # Convert one-hot to class indices
                 agents,
                 types,
                 consumption_labels,
                 sr_labels,
-                config=model_config,
             )
             
             loss = loss_dict["loss"]
@@ -219,8 +235,11 @@ def train_epoch(
         agent_preds = torch.argmax(outputs["agent_logits"], dim=1)
         type_preds = torch.argmax(outputs["type_logits"], dim=1)
 
+        # Convert goals to class indices (they are one-hot encoded)
+        goals_indices = torch.argmax(goals, dim=1)
+        
         correct_actions += (action_preds == actions[:, 1]).sum().item()
-        correct_goals += (goal_preds == goals).sum().item()
+        correct_goals += (goal_preds == goals_indices).sum().item()
         correct_agents += (agent_preds == agents).sum().item()
         correct_types += (type_preds == types).sum().item()
         total_samples += batch_size
@@ -230,11 +249,11 @@ def train_epoch(
         blocker_mask = (agents == 1)
 
         achiever_correct_actions += (action_preds[achiever_mask] == actions[achiever_mask, 1]).sum().item()
-        achiever_correct_goals += (goal_preds[achiever_mask] == goals[achiever_mask]).sum().item()
+        achiever_correct_goals += (goal_preds[achiever_mask] == goals_indices[achiever_mask]).sum().item()
         achiever_total_samples += achiever_mask.sum().item()
 
         blocker_correct_actions += (action_preds[blocker_mask] == actions[blocker_mask, 1]).sum().item()
-        blocker_correct_goals += (goal_preds[blocker_mask] == goals[blocker_mask]).sum().item()
+        blocker_correct_goals += (goal_preds[blocker_mask] == goals_indices[blocker_mask]).sum().item()
         blocker_total_samples += blocker_mask.sum().item()
 
         # Agent-specific loss accumulation
@@ -418,31 +437,47 @@ def validate_epoch(
             # Concatenate current and past episodes
             combined_episodes = torch.cat([trajectories.unsqueeze(1), past_episodes], dim=1)
 
+            # Prepare inputs for ToMnet
+            # Split combined_episodes into past_trajectories and recent_trajectory
+            recent_trajectory = combined_episodes[:, 0]  # Current trajectory
+            past_trajectories = combined_episodes[:, 1:] if combined_episodes.size(1) > 1 else None  # Past episodes
+            
+            # Extract current state from recent trajectory (last timestep)
+            current_state = recent_trajectory[:, -1]  # Last timestep of recent trajectory
+
             # Forward pass
             if scaler is not None:
                 with autocast():
-                    outputs = model(combined_episodes, time_steps)
+                    outputs = model(past_trajectories, recent_trajectory, current_state)
                     loss_dict = loss_fn(
-                        outputs,
-                        actions,
-                        goals,
+                        outputs["action_logits"],
+                        outputs["goal_logits"],
+                        outputs["agent_logits"],
+                        outputs["type_logits"],
+                        outputs["consumption_logits"],
+                        outputs["sr_pred"],
+                        actions[:, 1],  # Remove timestep, just get action
+                        torch.argmax(goals, dim=1),  # Convert one-hot to class indices
                         agents,
                         types,
                         consumption_labels,
                         sr_labels,
-                        config=model_config,
                     )
             else:
-                outputs = model(combined_episodes, time_steps)
+                outputs = model(past_trajectories, recent_trajectory, current_state)
                 loss_dict = loss_fn(
-                    outputs,
-                    actions,
-                    goals,
+                    outputs["action_logits"],
+                    outputs["goal_logits"],
+                    outputs["agent_logits"],
+                    outputs["type_logits"],
+                    outputs["consumption_logits"],
+                    outputs["sr_pred"],
+                    actions[:, 1],  # Remove timestep, just get action
+                    torch.argmax(goals, dim=1),  # Convert one-hot to class indices
                     agents,
                     types,
                     consumption_labels,
                     sr_labels,
-                    config=model_config,
                 )
 
             # Accumulate losses
@@ -460,8 +495,11 @@ def validate_epoch(
             agent_preds = torch.argmax(outputs["agent_logits"], dim=1)
             type_preds = torch.argmax(outputs["type_logits"], dim=1)
 
+            # Convert goals to class indices (they are one-hot encoded)
+            goals_indices = torch.argmax(goals, dim=1)
+            
             correct_actions += (action_preds == actions[:, 1]).sum().item()
-            correct_goals += (goal_preds == goals).sum().item()
+            correct_goals += (goal_preds == goals_indices).sum().item()
             correct_agents += (agent_preds == agents).sum().item()
             correct_types += (type_preds == types).sum().item()
             total_samples += batch_size
@@ -471,11 +509,11 @@ def validate_epoch(
             blocker_mask = (agents == 1)
 
             achiever_correct_actions += (action_preds[achiever_mask] == actions[achiever_mask, 1]).sum().item()
-            achiever_correct_goals += (goal_preds[achiever_mask] == goals[achiever_mask]).sum().item()
+            achiever_correct_goals += (goal_preds[achiever_mask] == goals_indices[achiever_mask]).sum().item()
             achiever_total_samples += achiever_mask.sum().item()
 
             blocker_correct_actions += (action_preds[blocker_mask] == actions[blocker_mask, 1]).sum().item()
-            blocker_correct_goals += (goal_preds[blocker_mask] == goals[blocker_mask]).sum().item()
+            blocker_correct_goals += (goal_preds[blocker_mask] == goals_indices[blocker_mask]).sum().item()
             blocker_total_samples += blocker_mask.sum().item()
 
             # Agent-specific loss accumulation
@@ -823,7 +861,7 @@ def train_tomnet(
 
     # Use default data directory if not provided
     if data_dir is None:
-        data_dir = config.get_data_dir(achiever_type, blocker_type)
+        data_dir = config.get_training_data_path(achiever_type, blocker_type)
 
     # Agent type (we'll focus on one agent type for now)
     agent_type = "achiever"  # or "blocker"

@@ -1159,7 +1159,7 @@ def _load_chunks_memory_efficient(chunk_metadata):
     import os
     
     num_chunks = chunk_metadata['num_chunks']
-    chunk_dir = chunk_metadata['chunk_dir']
+    chunk_dir = chunk_metadata['output_dir']
     
     print(f"Loading {num_chunks} chunks with memory-efficient strategy...")
     
@@ -1304,11 +1304,13 @@ def setup_model_and_data(
     import torch.utils.data
     
     # Import these here to avoid circular imports
-    from tomnet import ToMnet, ToMnetLoss, create_model, count_parameters
+    from tomnet import ToMnetLoss, create_model
 
     # Load training data
+    # Extract base directory from full data path
+    data_dir_base = os.path.dirname(data_dir)
     all_training_data = load_training_data_all_combinations(
-        config, data_dir.replace(f"/{agent_type}", "")
+        config, data_dir_base
     )
 
     chunk_metadata = get_data_for_combination(

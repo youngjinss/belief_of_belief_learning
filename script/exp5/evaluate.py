@@ -506,11 +506,14 @@ def evaluate_achieverblocker_model(
 
     # Use provided paths or default from config
     if model_path is None:
-        # Find the best model in results directory
-        model_path = os.path.join(config.model_dir, "best_model.pth")
+        # Find the best model in results directory - check in agent pair subdirectory
+        achiever_type = list(config.achiever_types.keys())[0]
+        blocker_type = list(config.blocker_types.keys())[0]
+        agent_pair = config.get_agent_pair_name(achiever_type, blocker_type)
+        model_path = os.path.join(config.model_dir, agent_pair, "best_model.pth")
 
-        if model_path is None:
-            raise FileNotFoundError(f"No trained model found in {config.model_dir}")
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f"No trained model found at {model_path}")
 
     if test_data_dir is None:
         # Generate path from config - use first combination as default

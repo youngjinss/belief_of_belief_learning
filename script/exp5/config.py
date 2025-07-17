@@ -293,12 +293,12 @@ class Config:
             "early_stopping_patience": 30,
             "early_stopping_min_delta": 0.001,
             "max_grad_norm": 1.0,
-            "action_weight": 0.3,
-            "goal_weight": 0.3,
-            "agent_weight": 0.15,
-            "type_weight": 0.15,
-            "consumption_weight": 0.2,
-            "sr_weight": 0.2,
+            "action_weight": 1,
+            "goal_weight": 1,
+            "agent_weight": 0.5,
+            "type_weight": 0.05,
+            "consumption_weight": 1,
+            "sr_weight": 1,
         }
 
         # Evaluation configuration

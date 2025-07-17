@@ -23,7 +23,7 @@ from tomnet import ToMnet, create_model
 from config import Config
 from train import prepare_data_for_training, generate_past_episodes_from_batch
 from data_generation import DataGenerator as DataReader
-from utils import set_seed, load_test_data_all_combinations, get_data_for_combination
+from utils import set_seed, load_test_data_all_combinations, get_data_for_combination, load_chunked_data_for_training
 
 # Set seed using Config default value
 config = Config()
@@ -555,9 +555,12 @@ def evaluate_achieverblocker_model(
     )
 
     # Use test data for the specified combination
-    test_data = get_data_for_combination(
+    chunk_metadata = get_data_for_combination(
         all_test_data, achiever_type, blocker_type, "test"
     )
+
+    # Load chunked data and combine for evaluation
+    test_data = load_chunked_data_for_training(chunk_metadata)
 
     # Use all available test data (no sampling)
     total_test_samples = test_data["trajectories"].shape[0]
@@ -769,9 +772,12 @@ def analyze_action_likelihood(
         )
 
         # Use test data for the specified combination
-        test_data = get_data_for_combination(
+        chunk_metadata = get_data_for_combination(
             all_test_data, achiever_type, blocker_type, "test"
         )
+
+        # Load chunked data and combine for evaluation
+        test_data = load_chunked_data_for_training(chunk_metadata)
 
         # Use all available test data (no sampling)
         total_test_samples = test_data["trajectories"].shape[0]

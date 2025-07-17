@@ -25,7 +25,7 @@ warnings.filterwarnings("ignore", category=RuntimeWarning)
 from config import Config
 from train import prepare_data_for_training, generate_past_episodes_from_batch
 from data_generation import DataGenerator as DataReader, DataGenerator
-from utils import set_seed, load_test_data_all_combinations, get_data_for_combination
+from utils import set_seed, load_test_data_all_combinations, get_data_for_combination, load_chunked_data_for_training
 
 # Set seed using Config default value
 config = Config()
@@ -808,24 +808,49 @@ def plot_character_embeddings(
     )
 
     processed_data = data_reader.load_processed_data(processed_test_data_path)
-    print(
-        f"Loaded processed data with {processed_data['trajectories'].shape[0]} samples"
-    )
+    
+    # Check if processed_data is in chunked format and load accordingly
+    if isinstance(processed_data, dict) and "chunk_metadata" in processed_data:
+        # Load chunked data
+        processed_data = load_chunked_data_for_training(processed_data)
+        print(
+            f"Loaded chunked processed data with {processed_data['trajectories'].shape[0]} samples"
+        )
+        
+        # Extract agent labels, goal labels, and types from processed tensors
+        # agents tensor: 0=achiever, 1=blocker
+        agent_indices = processed_data["agents"]
+        agent_labels = np.array(
+            ["achiever" if idx == 0 else "blocker" for idx in agent_indices]
+        )
 
-    # Extract agent labels, goal labels, and types from processed tensors
-    # agents tensor: 0=achiever, 1=blocker
-    agent_indices = processed_data["agents"].numpy()
-    agent_labels = np.array(
-        ["achiever" if idx == 0 else "blocker" for idx in agent_indices]
-    )
+        # goals tensor: one-hot encoded [A, B, C, D]
+        goals_tensor = processed_data["goals"]
+        goal_labels = np.argmax(goals_tensor, axis=1)  # Convert one-hot to indices
 
-    # goals tensor: one-hot encoded [A, B, C, D]
-    goals_tensor = processed_data["goals"].numpy()
-    goal_labels = np.argmax(goals_tensor, axis=1)  # Convert one-hot to indices
+        # types tensor: 0 for achievers (always), 0 or 1 for blockers (0=randomly select, 1=rule-based)
+        types_tensor = processed_data["types"]
+        type_labels = types_tensor.astype(int)
+    else:
+        # Original tensor format
+        print(
+            f"Loaded processed data with {processed_data['trajectories'].shape[0]} samples"
+        )
+        
+        # Extract agent labels, goal labels, and types from processed tensors
+        # agents tensor: 0=achiever, 1=blocker
+        agent_indices = processed_data["agents"].numpy()
+        agent_labels = np.array(
+            ["achiever" if idx == 0 else "blocker" for idx in agent_indices]
+        )
 
-    # types tensor: 0 for achievers (always), 0 or 1 for blockers (0=randomly select, 1=rule-based)
-    types_tensor = processed_data["types"].numpy()
-    type_labels = types_tensor.astype(int)
+        # goals tensor: one-hot encoded [A, B, C, D]
+        goals_tensor = processed_data["goals"].numpy()
+        goal_labels = np.argmax(goals_tensor, axis=1)  # Convert one-hot to indices
+
+        # types tensor: 0 for achievers (always), 0 or 1 for blockers (0=randomly select, 1=rule-based)
+        types_tensor = processed_data["types"].numpy()
+        type_labels = types_tensor.astype(int)
 
     print(f"Agent distribution: {np.unique(agent_labels, return_counts=True)}")
     print(f"Goal distribution: {np.unique(goal_labels, return_counts=True)}")
@@ -834,12 +859,21 @@ def plot_character_embeddings(
     model.eval()
     embeddings = []
 
-    # Get the data tensors
-    trajectories_tensor = processed_data["trajectories"]
-    goals_tensor = processed_data["goals"]
-    goal_ranks_tensor = processed_data["goal_ranks"]
-    agents_tensor = processed_data["agents"]
-    types_tensor_full = processed_data["types"]
+    # Get the data tensors - handle both chunked and original formats
+    if isinstance(processed_data["trajectories"], torch.Tensor):
+        # Original tensor format
+        trajectories_tensor = processed_data["trajectories"]
+        goals_tensor = processed_data["goals"]
+        goal_ranks_tensor = processed_data["goal_ranks"]
+        agents_tensor = processed_data["agents"]
+        types_tensor_full = processed_data["types"]
+    else:
+        # Chunked format (numpy arrays)
+        trajectories_tensor = torch.from_numpy(processed_data["trajectories"]).float()
+        goals_tensor = torch.from_numpy(processed_data["goals"]).float()
+        goal_ranks_tensor = torch.from_numpy(processed_data["goal_ranks"]).long()
+        agents_tensor = torch.from_numpy(processed_data["agents"]).long()
+        types_tensor_full = torch.from_numpy(processed_data["types"]).long()
 
     if n_samples is not None:
         # Limit samples if specified
@@ -2070,15 +2104,30 @@ if __name__ == "__main__":
 
             if test_data:
                 # Use existing processed test data
-                test_dataset = TensorDataset(
-                    test_data["trajectories"],
-                    test_data["actions"],
-                    test_data["goals"],
-                    test_data["goal_ranks"],
-                    test_data["agents"],
-                    test_data["consumption_labels"],
-                    test_data["sr_labels"],
-                )
+                # Check if test_data is in chunked format and load accordingly
+                if isinstance(test_data, dict) and "chunk_metadata" in test_data:
+                    # Load chunked data
+                    test_data = load_chunked_data_for_training(test_data)
+                    test_dataset = TensorDataset(
+                        torch.from_numpy(test_data["trajectories"]).float(),
+                        torch.from_numpy(test_data["actions"]).long(),
+                        torch.from_numpy(test_data["goals"]).float(),
+                        torch.from_numpy(test_data["goal_ranks"]).long(),
+                        torch.from_numpy(test_data["agents"]).long(),
+                        torch.from_numpy(test_data["consumption_labels"]).float(),
+                        torch.from_numpy(test_data["sr_labels"]).float(),
+                    )
+                else:
+                    # Use tensor data directly
+                    test_dataset = TensorDataset(
+                        test_data["trajectories"],
+                        test_data["actions"],
+                        test_data["goals"],
+                        test_data["goal_ranks"],
+                        test_data["agents"],
+                        test_data["consumption_labels"],
+                        test_data["sr_labels"],
+                    )
                 test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
 
                 # Create character embeddings plot
@@ -2097,19 +2146,21 @@ if __name__ == "__main__":
                 test_games = data_reader.ReadAllGames(test_data_dir)
                 if test_games:
                     data_config = config.get_data_config()
-                    test_data = prepare_data_for_training(
+                    chunk_metadata = prepare_data_for_training(
                         test_games,
                         min_timestep=6,
                         max_trajectory_length=data_config["time_step"],
                     )
+                    # Load chunked data for visualization
+                    test_data = load_chunked_data_for_training(chunk_metadata)
                     test_dataset = TensorDataset(
-                        test_data["trajectories"],
-                        test_data["actions"],
-                        test_data["goals"],
-                        test_data["goal_ranks"],
-                        test_data["agents"],
-                        test_data["consumption_labels"],
-                        test_data["sr_labels"],
+                        torch.from_numpy(test_data["trajectories"]).float(),
+                        torch.from_numpy(test_data["actions"]).long(),
+                        torch.from_numpy(test_data["goals"]).float(),
+                        torch.from_numpy(test_data["goal_ranks"]).long(),
+                        torch.from_numpy(test_data["agents"]).long(),
+                        torch.from_numpy(test_data["consumption_labels"]).float(),
+                        torch.from_numpy(test_data["sr_labels"]).float(),
                     )
                     test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
 

@@ -25,9 +25,9 @@ from config import Config
 from utils import (
     set_seed,
     load_data_efficient,
-    save_data_for_mmap,
     load_training_data_all_combinations,
     get_data_for_combination,
+    load_chunked_data_for_training,
 )
 
 # Set seed using Config default value
@@ -418,109 +418,6 @@ def process_single_sample(sample, grid_size, min_timestep, max_trajectory_length
     }
 
 
-def prepare_data_memory_efficient(
-    samples, grid_size, min_timestep, max_trajectory_length, chunk_size
-):
-    """
-    Memory-efficient version of data preparation that processes samples sequentially
-    to avoid memory issues with multiprocessing.
-    
-    Args:
-        samples: List of processed samples
-        grid_size: Size of the grid
-        min_timestep: Minimum timestep to start slicing from
-        max_trajectory_length: Maximum length of trajectory to use
-        chunk_size: Size of chunks to process at a time
-    
-    Returns:
-        Dictionary containing prepared training data
-    """
-    print(f"Processing {len(samples)} samples sequentially (memory-efficient mode)...")
-    
-    # Process in smaller chunks to avoid memory issues
-    all_results = []
-    
-    for i in tqdm(range(0, len(samples), chunk_size), desc="Processing chunks"):
-        chunk = samples[i:i+chunk_size]
-        chunk_results = []
-        
-        for sample in chunk:
-            result = process_single_sample(
-                sample, grid_size, min_timestep, max_trajectory_length
-            )
-            chunk_results.append(result)
-        
-        # Combine chunk results
-        combined = {
-            "trajectories": [],
-            "actions": [],
-            "goals": [],
-            "goal_ranks": [],
-            "agents": [],
-            "types": [],
-            "consumption_labels": [],
-            "sr_labels": [],
-        }
-        
-        for result in chunk_results:
-            for key in combined:
-                combined[key].extend(result[key])
-        
-        all_results.append(combined)
-        
-        # Clear chunk results to free memory
-        del chunk_results
-        gc.collect()
-    
-    # Combine all results
-    print("Combining all results...")
-    final_results = {
-        "trajectories": [],
-        "actions": [],
-        "goals": [],
-        "goal_ranks": [],
-        "agents": [],
-        "types": [],
-        "consumption_labels": [],
-        "sr_labels": [],
-    }
-    
-    for result in all_results:
-        for key in final_results:
-            final_results[key].extend(result[key])
-    
-    # Convert to tensors
-    print("Converting to tensors...")
-    trajectories = torch.tensor(np.array(final_results["trajectories"]), dtype=torch.float32)
-    actions = torch.tensor(np.array(final_results["actions"]), dtype=torch.long)
-    goals = torch.tensor(np.array(final_results["goals"]), dtype=torch.float32)
-    goal_ranks = torch.tensor(np.array(final_results["goal_ranks"]), dtype=torch.long)
-    agents = torch.tensor(np.array(final_results["agents"]), dtype=torch.long)
-    types = torch.tensor(np.array(final_results["types"]), dtype=torch.long)
-    consumption_labels = torch.tensor(np.array(final_results["consumption_labels"]), dtype=torch.float32)
-    sr_labels = torch.tensor(np.array(final_results["sr_labels"]), dtype=torch.float32)
-    
-    print(f"Data shapes:")
-    print(f"  Trajectories: {trajectories.shape}")
-    print(f"  Actions: {actions.shape}")
-    print(f"  Goals: {goals.shape}")
-    print(f"  Goal ranks: {goal_ranks.shape}")
-    print(f"  Agents: {agents.shape}")
-    print(f"  Types: {types.shape}")
-    print(f"  Consumption labels: {consumption_labels.shape}")
-    print(f"  SR labels: {sr_labels.shape}")
-    
-    return {
-        "trajectories": trajectories,
-        "actions": actions,
-        "goals": goals,
-        "goal_ranks": goal_ranks,
-        "agents": agents,
-        "types": types,
-        "consumption_labels": consumption_labels,
-        "sr_labels": sr_labels,
-    }
-
 
 def prepare_data_for_training(
     samples,
@@ -529,48 +426,114 @@ def prepare_data_for_training(
     max_trajectory_length=100,
     n_processes=None,
     use_batch_processing=True,
-    memory_efficient=None,
-    chunk_size=None,
+    chunk_size=10000,  # Number of samples per chunk
+    output_dir="./data_chunks",
 ):
     """
     Prepare multi-agent sample data for training from processed samples with trajectory slicing
-    Now supports multiprocessing for faster processing
+    Now supports multiprocessing and memory-efficient chunked processing
 
     Args:
         samples: List of processed samples from DataGenerator (containing both achiever and blocker samples)
         grid_size: Size of the grid (default 9 for 9x9)
         min_timestep: Minimum timestep to start slicing from
         max_trajectory_length: Maximum length of trajectory to use
-        n_processes: Number of processes to use (default: from config)
+        n_processes: Number of processes to use (default: CPU count)
         use_batch_processing: Whether to use batch processing for better efficiency (default: True)
-        memory_efficient: Whether to use memory-efficient processing (default: from config)
-        chunk_size: Chunk size for memory-efficient processing (default: from config)
+        chunk_size: Number of samples to process per chunk (default: 10000)
+        output_dir: Directory to save data chunks (default: ./data_chunks)
 
     Returns:
-        Dictionary containing prepared training data
+        Dictionary containing metadata about the chunked data
     """
-    
-    if memory_efficient is None:
-        memory_efficient = True
-    if chunk_size is None:
-        chunk_size = 1000
+
     if n_processes is None:
         n_processes = mp.cpu_count()
-    
-    if memory_efficient:
-        # Use memory-efficient sequential processing
-        return prepare_data_memory_efficient(
-            samples, grid_size, min_timestep, max_trajectory_length, chunk_size
-        )
-
-    # Limit processes to avoid memory issues
-    if n_processes > 4:
-        n_processes = 4
-        print(f"Limiting to {n_processes} processes to avoid memory issues")
 
     print(
         f"Preparing data from {len(samples)} samples with trajectory slicing using {n_processes} processes..."
     )
+    print(f"Processing in chunks of {chunk_size} samples, saving to {output_dir}")
+
+    # Create output directory if it doesn't exist
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Split samples into chunks
+    sample_chunks = [
+        samples[i : i + chunk_size] for i in range(0, len(samples), chunk_size)
+    ]
+
+    chunk_metadata = []
+    total_samples = 0
+
+    for chunk_idx, chunk_samples in enumerate(tqdm(sample_chunks, desc="Processing chunks")):
+        print(f"Processing chunk {chunk_idx + 1}/{len(sample_chunks)} ({len(chunk_samples)} samples)")
+        
+        # Process current chunk
+        chunk_data = prepare_data_memory_efficient(
+            chunk_samples,
+            grid_size=grid_size,
+            min_timestep=min_timestep,
+            max_trajectory_length=max_trajectory_length,
+            n_processes=n_processes,
+            use_batch_processing=use_batch_processing,
+        )
+        
+        # Save chunk to disk
+        chunk_file = os.path.join(output_dir, f"chunk_{chunk_idx:04d}.pt")
+        torch.save(chunk_data, chunk_file)
+        
+        # Record metadata
+        chunk_info = {
+            "chunk_idx": chunk_idx,
+            "file_path": chunk_file,
+            "num_samples": len(chunk_data["trajectories"]),
+            "data_shapes": {
+                "trajectories": chunk_data["trajectories"].shape,
+                "actions": chunk_data["actions"].shape,
+                "goals": chunk_data["goals"].shape,
+                "goal_ranks": chunk_data["goal_ranks"].shape,
+                "agents": chunk_data["agents"].shape,
+                "types": chunk_data["types"].shape,
+                "consumption_labels": chunk_data["consumption_labels"].shape,
+                "sr_labels": chunk_data["sr_labels"].shape,
+            }
+        }
+        chunk_metadata.append(chunk_info)
+        total_samples += len(chunk_data["trajectories"])
+        
+        print(f"  Saved chunk {chunk_idx} with {len(chunk_data['trajectories'])} samples to {chunk_file}")
+        
+        # Free memory
+        del chunk_data
+        import gc
+        gc.collect()
+
+    print(f"Total processed samples: {total_samples}")
+    print(f"Data saved in {len(chunk_metadata)} chunks in {output_dir}")
+
+    return {
+        "chunk_metadata": chunk_metadata,
+        "total_samples": total_samples,
+        "num_chunks": len(chunk_metadata),
+        "output_dir": output_dir,
+    }
+
+
+def prepare_data_memory_efficient(
+    samples,
+    grid_size=9,
+    min_timestep=3,
+    max_trajectory_length=100,
+    n_processes=None,
+    use_batch_processing=True,
+):
+    """
+    Memory-efficient version of prepare_data_for_training that processes a single chunk
+    """
+
+    if n_processes is None:
+        n_processes = mp.cpu_count()
 
     if use_batch_processing:
         # Create batches of samples for better CPU utilization
@@ -642,7 +605,7 @@ def prepare_data_for_training(
         consumption_labels.extend(result["consumption_labels"])
         sr_labels.extend(result["sr_labels"])
 
-    # Convert to tensors
+    # Convert to tensors (this is now done on smaller chunks)
     trajectories = torch.tensor(np.array(trajectories), dtype=torch.float32)
     actions = torch.tensor(np.array(actions), dtype=torch.long)
     goals = torch.tensor(np.array(goals), dtype=torch.float32)
@@ -652,7 +615,7 @@ def prepare_data_for_training(
     consumption_labels = torch.tensor(np.array(consumption_labels), dtype=torch.float32)
     sr_labels = torch.tensor(np.array(sr_labels), dtype=torch.float32)
 
-    print(f"Data shapes:")
+    print(f"Chunk data shapes:")
     print(f"  Trajectories: {trajectories.shape}")
     print(f"  Actions: {actions.shape}")
     print(f"  Goals: {goals.shape}")
@@ -2083,9 +2046,12 @@ def setup_model_and_data(
         config, data_dir.replace(f"/{agent_type}", "")
     )
 
-    data = get_data_for_combination(
+    chunk_metadata = get_data_for_combination(
         all_training_data, achiever_type, blocker_type, "training"
     )
+
+    # Load chunked data and combine for training
+    data = load_chunked_data_for_training(chunk_metadata)
 
     # Convert numpy arrays to torch tensors
     trajectories = torch.from_numpy(data["trajectories"]).float()

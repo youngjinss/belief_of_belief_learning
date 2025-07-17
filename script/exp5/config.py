@@ -286,10 +286,7 @@ class Config:
             "maze_width": self.width,
             "maze_height": self.height,
             "maze_depth": 9,  # 8 original channels + 1 heading direction channel
-            "memory_efficient": True,  # Use memory-efficient processing to avoid broken pipe errors
-            "max_memory_gb": 10,  # Maximum memory to use for data processing
-            "n_processes": None,  # Number of processes for multiprocessing (None = CPU count)
-            "chunk_size": 1000,  # Chunk size for memory-efficient processing
+            "chunk_size": 5000,  # Number of samples to process per chunk for memory efficiency
         }
 
         # Training process configuration
@@ -730,14 +727,6 @@ class Config:
             self.data_config["n_past_max"] = args.n_past_max
         if hasattr(args, "rank_threshold") and args.rank_threshold is not None:
             self.data_config["rank_threshold"] = args.rank_threshold
-        if hasattr(args, "memory_efficient") and args.memory_efficient is not None:
-            self.data_config["memory_efficient"] = args.memory_efficient
-        if hasattr(args, "max_memory_gb") and args.max_memory_gb is not None:
-            self.data_config["max_memory_gb"] = args.max_memory_gb
-        if hasattr(args, "n_processes") and args.n_processes is not None:
-            self.data_config["n_processes"] = args.n_processes
-        if hasattr(args, "chunk_size") and args.chunk_size is not None:
-            self.data_config["chunk_size"] = args.chunk_size
 
         # Training process configuration
         if (

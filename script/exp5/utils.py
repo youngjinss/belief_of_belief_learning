@@ -60,13 +60,8 @@ def load_data_mmap(filepath):
 
 
 def load_data_efficient(filepath):
-    """Load data efficiently with fallback to regular pickle"""
-    # Try memory-mapped format first
-    npz_filepath = filepath.replace(".pkl", ".npz")
-    if os.path.exists(npz_filepath):
-        return load_data_mmap(npz_filepath)
-
-    # Fallback to regular pickle loading
+    """Load data efficiently from pickle or chunk metadata"""
+    # Load pickle file (now contains chunk metadata)
     if os.path.exists(filepath):
         with open(filepath, "rb") as f:
             data = pickle.load(f)
@@ -74,23 +69,6 @@ def load_data_efficient(filepath):
 
     return None
 
-
-def save_data_for_mmap(data, filepath):
-    """Save data in memory-mapped format for efficient access"""
-    try:
-        # Convert tensors to numpy arrays for saving
-        np_data = {}
-        for key, value in data.items():
-            if isinstance(value, torch.Tensor):
-                np_data[key] = value.cpu().numpy()
-            else:
-                np_data[key] = value
-
-        # Save in compressed numpy format
-        np.savez_compressed(filepath, **np_data)
-        print(f"Saved memory-mapped data to {filepath}")
-    except Exception as e:
-        print(f"Warning: Could not save memory-mapped data: {e}")
 
 
 def load_training_data_all_combinations(config, data_dir_base=None):
@@ -155,15 +133,35 @@ def load_training_data_all_combinations(config, data_dir_base=None):
                 f"processed_data_exp{config.experiment_no}_{combo_achiever}_{combo_blocker}.pkl",
             )
 
-            npz_data_path = os.path.join(
-                train_data_dir,
-                f"processed_data_exp{config.experiment_no}_{combo_achiever}_{combo_blocker}.npz",
-            )
 
             if not os.path.exists(train_data_dir):
                 print(f"Training data directory not found: {train_data_dir}")
                 print(f"Skipping combination {combo_achiever}_{combo_blocker}")
                 continue
+
+            # Create chunk directory for this combination
+            chunk_dir = os.path.join(train_data_dir, f"chunks_{combo_achiever}_{combo_blocker}")
+            
+            # Check if processed data already exists
+            if os.path.exists(processed_data_path):
+                print(f"Loading existing processed data from: {processed_data_path}")
+                train_data = load_data_efficient(processed_data_path)
+                if train_data is not None:
+                    # Check if this is chunk metadata (new format) or old format
+                    if isinstance(train_data, dict) and "chunk_metadata" in train_data:
+                        print(f"  Found chunk metadata with {train_data['num_chunks']} chunks")
+                        # Verify chunks still exist
+                        chunks_exist = all(os.path.exists(chunk['file_path']) for chunk in train_data['chunk_metadata'])
+                        if chunks_exist:
+                            print(f"  All chunks verified in {chunk_dir}")
+                            existing_data[(combo_achiever, combo_blocker)] = train_data
+                            continue
+                        else:
+                            print(f"  Some chunks are missing, regenerating...")
+                    else:
+                        print(f"  Found old format data, converting to chunked format...")
+                        # Remove old pkl file to force regeneration
+                        os.remove(processed_data_path)
 
             # Load and process raw training data
             from data_generation import DataGenerator as DataReader
@@ -182,26 +180,23 @@ def load_training_data_all_combinations(config, data_dir_base=None):
                 print(f"No training games found in {train_data_dir}")
                 continue
 
-            # Process training data
+            # Process training data using chunked approach
             from train import prepare_data_for_training
-
+            
             train_data = prepare_data_for_training(
                 train_games,
                 min_timestep=data_config.get("min_time_steps", 6),
                 max_trajectory_length=data_config.get("time_step", 500),
-                memory_efficient=data_config.get("memory_efficient", True),
-                chunk_size=data_config.get("chunk_size", 1000),
-                n_processes=data_config.get("n_processes", 4),
+                chunk_size=data_config.get("chunk_size", 5000),  # Process in smaller chunks to avoid memory issues
+                output_dir=chunk_dir,
             )
 
-            # Save processed training data
-            print(f"Saving processed training data to: {processed_data_path}")
+            # Save chunk metadata instead of full data
+            print(f"Saving chunk metadata to: {processed_data_path}")
             with open(processed_data_path, "wb") as f:
                 pickle.dump(train_data, f)
-            print(f"  Successfully saved to {processed_data_path}")
-
-            # Save in memory-mapped format for efficient access
-            save_data_for_mmap(train_data, npz_data_path)
+            print(f"  Successfully saved metadata to {processed_data_path}")
+            print(f"  Data chunks saved in {chunk_dir}")
 
             existing_data[(combo_achiever, combo_blocker)] = train_data
 
@@ -297,9 +292,6 @@ def load_test_data_all_combinations(config, test_data_dir_base=None):
                 test_games,
                 min_timestep=data_config.get("min_time_steps", 6),
                 max_trajectory_length=data_config.get("time_step", 500),
-                memory_efficient=data_config.get("memory_efficient", True),
-                chunk_size=data_config.get("chunk_size", 1000),
-                n_processes=data_config.get("n_processes", 4),
             )
 
             # Save processed test data
@@ -336,6 +328,69 @@ def get_data_for_combination(
         raise ValueError(
             f"No {data_type} data found for combination {achiever_type}_{blocker_type}. Please generate {data_type} data first."
         )
+
+
+def load_chunked_data_for_training(chunk_metadata):
+    """
+    Load all chunks and combine them for training (for backward compatibility)
+    
+    Args:
+        chunk_metadata: Dictionary containing chunk metadata
+        
+    Returns:
+        Combined data dictionary with all tensors
+    """
+    if "chunk_metadata" not in chunk_metadata:
+        # This is old format data, return as-is
+        return chunk_metadata
+        
+    print(f"Loading {chunk_metadata['num_chunks']} chunks for training...")
+    
+    # Initialize lists to collect data
+    all_trajectories = []
+    all_actions = []
+    all_goals = []
+    all_goal_ranks = []
+    all_agents = []
+    all_types = []
+    all_consumption_labels = []
+    all_sr_labels = []
+    
+    # Load and combine all chunks
+    for chunk_info in chunk_metadata['chunk_metadata']:
+        print(f"Loading chunk {chunk_info['chunk_idx']} from {chunk_info['file_path']}")
+        chunk_data = torch.load(chunk_info['file_path'])
+        
+        all_trajectories.append(chunk_data['trajectories'])
+        all_actions.append(chunk_data['actions'])
+        all_goals.append(chunk_data['goals'])
+        all_goal_ranks.append(chunk_data['goal_ranks'])
+        all_agents.append(chunk_data['agents'])
+        all_types.append(chunk_data['types'])
+        all_consumption_labels.append(chunk_data['consumption_labels'])
+        all_sr_labels.append(chunk_data['sr_labels'])
+        
+        # Free memory
+        del chunk_data
+    
+    # Combine all data
+    print("Combining all chunks...")
+    combined_data = {
+        'trajectories': torch.cat(all_trajectories, dim=0).numpy(),
+        'actions': torch.cat(all_actions, dim=0).numpy(),
+        'goals': torch.cat(all_goals, dim=0).numpy(),
+        'goal_ranks': torch.cat(all_goal_ranks, dim=0).numpy(),
+        'agents': torch.cat(all_agents, dim=0).numpy(),
+        'types': torch.cat(all_types, dim=0).numpy(),
+        'consumption_labels': torch.cat(all_consumption_labels, dim=0).numpy(),
+        'sr_labels': torch.cat(all_sr_labels, dim=0).numpy(),
+    }
+    
+    print(f"Combined data shapes:")
+    for key, value in combined_data.items():
+        print(f"  {key}: {value.shape}")
+    
+    return combined_data
 
 
 def validate_data_shape(data, data_type="data"):

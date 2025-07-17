@@ -7,8 +7,6 @@ import torch
 sys.path.append(os.path.dirname(__file__))
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from tomnet import ToMnet, ToMnetLoss, create_model, count_parameters
-from data_generation import DataGenerator
 from config import Config
 from utils import (
     set_seed,

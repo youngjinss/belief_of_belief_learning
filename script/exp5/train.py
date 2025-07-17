@@ -1,20 +1,8 @@
-import torch
-from torch.utils.data import DataLoader, TensorDataset
-import matplotlib.pyplot as plt
 import os
 import json
 import sys
-import numpy as np
-from tqdm import tqdm
-from datetime import datetime
-import time
-import pickle
-import gc
-from torch.cuda.amp import autocast, GradScaler
-import mmap
-import multiprocessing as mp
-from functools import partial
 
+import torch
 # Add current directory to path
 sys.path.append(os.path.dirname(__file__))
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -24,10 +12,12 @@ from data_generation import DataGenerator
 from config import Config
 from utils import (
     set_seed,
-    load_data_efficient,
-    load_training_data_all_combinations,
-    get_data_for_combination,
     load_chunked_data_for_training,
+    generate_past_episodes_from_batch,
+    save_training_plots,
+    print_epoch_metrics,
+    setup_training_environment,
+    setup_model_and_data,
 )
 
 # Set seed using Config default value
@@ -39,602 +29,6 @@ Training system for KeyDoor ToMnet implementation
 Adapted from ToMnetF experiment5 for KeyDoor environment
 @author: Based on ToMnetF implementation, adapted for KeyDoor
 """
-
-
-def convert_sparse_sr_to_dense(
-    sr_data_timestep, height, width, gammas=[0.5, 0.9, 0.99]
-):
-    """
-    Convert sparse SR data to dense format
-
-    Args:
-        sr_data_timestep: Dictionary with gamma values as keys and sparse data as values
-        height: Grid height
-        width: Grid width
-        gammas: List of discount factors
-
-    Returns:
-        Dense SR array of shape (3, height, width)
-    """
-    dense_sr = np.zeros((len(gammas), height, width))
-
-    for gamma_idx, gamma in enumerate(gammas):
-        # Convert gamma to string to match data keys
-        gamma_key = str(gamma)
-        if gamma_key in sr_data_timestep:
-            sparse_entries = sr_data_timestep[gamma_key]
-            for pos, value in sparse_entries:
-                x, y = pos
-                if 0 <= x < width and 0 <= y < height:
-                    dense_sr[gamma_idx, y, x] = value
-
-    return dense_sr
-
-
-def calculate_sr_loss_kl_divergence(sr_pred, sr_target):
-    """
-    Calculate SR loss using KL divergence for probability distributions
-    Vectorized version for efficiency (adapted from experiment 5)
-
-    Args:
-        sr_pred: Predicted SR maps (batch_size, 3, height, width) - already normalized by softmax
-        sr_target: Target SR maps (batch_size, 3, height, width) - raw values, need normalization
-
-    Returns:
-        sr_loss: KL divergence loss averaged over discount factors
-    """
-    batch_size, n_gammas, height, width = sr_pred.shape
-
-    # Vectorized reshape: (batch_size, 3, height*width)
-    sr_pred_flat = sr_pred.view(batch_size, n_gammas, -1)
-    sr_target_flat = sr_target.view(batch_size, n_gammas, -1)
-
-    # SR predictions are already normalized by softmax in the model
-    # Normalize SR targets to probability distributions (sum=1 across spatial locations)
-    sr_target_flat = sr_target_flat / (sr_target_flat.sum(dim=2, keepdim=True) + 1e-8)
-
-    # Add small epsilon to avoid log(0)
-    sr_pred_flat_safe = sr_pred_flat + 1e-8
-    sr_target_flat_safe = sr_target_flat + 1e-8
-
-    # Vectorized KL divergence computation for all gammas at once
-    # KL(target || pred) = sum(target * log(target/pred))
-    kl_loss = torch.nn.functional.kl_div(
-        sr_pred_flat_safe.log(),
-        sr_target_flat_safe,
-        reduction="none",  # Keep batch and gamma dimensions
-    )
-
-    # Sum over spatial dimension, then average over batch and gamma
-    kl_loss = kl_loss.sum(dim=2)  # (batch_size, n_gammas)
-    kl_loss = kl_loss.mean()  # Average over batch and gamma dimensions
-
-    return kl_loss
-
-
-class EarlyStopping:
-    """Early stopping to stop training when validation loss doesn't improve"""
-
-    def __init__(self, patience=10, min_delta=0.001, restore_best_weights=True):
-        """
-        Args:
-            patience: Number of epochs to wait before stopping
-            min_delta: Minimum change in validation loss to qualify as improvement
-            restore_best_weights: Whether to restore model weights from the best epoch
-        """
-        self.patience = patience
-        self.min_delta = min_delta
-        self.restore_best_weights = restore_best_weights
-        self.best_loss = float("inf")
-        self.counter = 0
-        self.best_weights = None
-
-    def __call__(self, val_loss, model):
-        """
-        Call this method after each epoch
-
-        Args:
-            val_loss: Current validation loss
-            model: Model to potentially store weights from
-
-        Returns:
-            True if training should stop, False otherwise
-        """
-        if val_loss < self.best_loss - self.min_delta:
-            self.best_loss = val_loss
-            self.counter = 0
-            if self.restore_best_weights:
-                # Handle DataParallel models
-                if isinstance(model, torch.nn.DataParallel):
-                    self.best_weights = {
-                        k: v.clone() for k, v in model.module.state_dict().items()
-                    }
-                else:
-                    self.best_weights = {
-                        k: v.clone() for k, v in model.state_dict().items()
-                    }
-        else:
-            self.counter += 1
-
-        if self.counter >= self.patience:
-            if self.restore_best_weights and self.best_weights is not None:
-                # Handle DataParallel models
-                if isinstance(model, torch.nn.DataParallel):
-                    model.module.load_state_dict(self.best_weights)
-                else:
-                    model.load_state_dict(self.best_weights)
-            return True
-        return False
-
-
-def generate_past_episodes_from_batch(
-    trajectories,
-    goal_ranks,
-    agents,
-    batch_size,
-    n_past_min=1,
-    n_past_max=5,
-    max_n_past=5,
-    rank_threshold=1,
-):
-    """
-    Generate past episodes by randomly sampling from other trajectories in the batch
-    with the same goal rank AND same agent type, using fully vectorized operations for efficiency
-    (Adapted from experiment 5 for exp5 multi-agent tensor format)
-
-    Args:
-        trajectories: Batch of trajectories [batch_size, seq_len, channels, height, width]
-        goal_ranks: Batch of goal ranks [batch_size, 4] (rank format [1,2,2,2] etc.)
-        agents: Batch of agent labels [batch_size] (0=achiever, 1=blocker)
-        batch_size: Size of current batch
-        n_past_min: Minimum number of past episodes to sample
-        n_past_max: Maximum number of past episodes to sample
-        max_n_past: Maximum number of past episodes for consistent tensor shape
-        rank_threshold: How many top ranks to consider for matching (1=only highest, 2=top 2, etc.)
-
-    Returns:
-        past_episodes_batch: [batch_size, max_n_past, seq_len, channels, height, width]
-    """
-    device = trajectories.device
-    seq_len, channels, height, width = trajectories.shape[1:]
-
-    # Initialize past episodes tensor
-    past_episodes_batch = torch.zeros(
-        (batch_size, max_n_past, seq_len, channels, height, width),
-        dtype=trajectories.dtype,
-        device=device,
-    )
-
-    # Generate random n_past values for all samples at once
-    n_past_values = torch.randint(
-        n_past_min, n_past_max + 1, (batch_size,), device=device
-    )
-
-    # Create goal similarity matrix (batch_size x batch_size) based on goal ranks
-    # same_goal_mask[i, j] = True if sample i and j have similar goal ranks (within threshold)
-    # goal_ranks shape: [batch_size, 4] for goal ranks
-
-    if rank_threshold < 4:
-        # Create vectorized comparison using only top ranks for efficiency
-        # Find which goals have ranks <= rank_threshold for all samples
-        top_goals_mask = goal_ranks <= rank_threshold  # [batch_size, 4]
-
-        # Vectorized comparison: check if same goals are in top ranks
-        # Expand dimensions for broadcasting: [batch_size, 1, 4] and [1, batch_size, 4]
-        top_goals_i = top_goals_mask.unsqueeze(1)  # [batch_size, 1, 4]
-        top_goals_j = top_goals_mask.unsqueeze(0)  # [1, batch_size, 4]
-
-        # Check if all 4 positions match (same top goals)
-        same_goal_mask = torch.all(
-            top_goals_i == top_goals_j, dim=2
-        )  # [batch_size, batch_size]
-    else:
-        # Use full rank comparison (rank_threshold >= 4)
-        # Vectorized comparison of full rank vectors
-        goals_i = goal_ranks.unsqueeze(1)  # [batch_size, 1, 4]
-        goals_j = goal_ranks.unsqueeze(0)  # [1, batch_size, 4]
-        same_goal_mask = torch.all(
-            goals_i == goals_j, dim=2
-        )  # [batch_size, batch_size]
-
-    # Create agent similarity matrix (batch_size x batch_size)
-    # same_agent_mask[i, j] = True if sample i and j have the same agent type
-    agents_expanded = agents.unsqueeze(1)  # [batch_size, 1]
-    same_agent_mask = agents_expanded == agents.unsqueeze(0)  # [batch_size, batch_size]
-
-    # Combine goal and agent matching: both must match
-    same_goal_and_agent_mask = same_goal_mask & same_agent_mask
-
-    # Exclude self-matches by setting diagonal to False
-    same_goal_and_agent_mask.fill_diagonal_(False)
-
-    # Create random sampling matrix for all samples at once
-    # For each sample, we create random indices for selecting past episodes
-    rand_matrix = torch.rand(batch_size, batch_size, device=device)
-
-    # Mask out invalid sources (different goals/agents or self)
-    rand_matrix = rand_matrix * same_goal_and_agent_mask.float()
-
-    # For each sample, sort the random values to get sampling order
-    sorted_vals, sorted_indices = torch.sort(rand_matrix, dim=1, descending=True)
-
-    # Process all samples in parallel
-    for ep_idx in range(max_n_past):
-        # Create mask for samples that need this episode
-        needs_episode = n_past_values > ep_idx
-
-        if needs_episode.any():
-            # Make sure we don't exceed batch dimension
-            effective_ep_idx = min(ep_idx, batch_size - 1)
-
-            # Get the source indices for this episode position
-            source_indices = sorted_indices[needs_episode, effective_ep_idx]
-
-            # Check if source is valid (non-zero in sorted_vals means same goal)
-            valid_sources = sorted_vals[needs_episode, effective_ep_idx] > 0
-
-            # Create indices for assignment
-            target_indices = torch.where(needs_episode)[0]
-            valid_targets = target_indices[valid_sources]
-            valid_sources_idx = source_indices[valid_sources]
-
-            # Vectorized copy of trajectories
-            if len(valid_targets) > 0:
-                past_episodes_batch[valid_targets, ep_idx] = trajectories[
-                    valid_sources_idx
-                ]
-
-    return past_episodes_batch
-
-
-def process_sample_batch(samples, grid_size, min_timestep, max_trajectory_length):
-    """
-    Process a batch of samples for better multiprocessing efficiency
-    """
-    if not isinstance(samples, list):
-        samples = [samples]
-
-    # Batch results
-    batch_results = {
-        "trajectories": [],
-        "actions": [],
-        "goals": [],
-        "goal_ranks": [],
-        "agents": [],
-        "types": [],
-        "consumption_labels": [],
-        "sr_labels": [],
-    }
-
-    for sample in samples:
-        sample_result = process_single_sample(
-            sample, grid_size, min_timestep, max_trajectory_length
-        )
-
-        # Combine results
-        for key in batch_results:
-            batch_results[key].extend(sample_result[key])
-
-    return batch_results
-
-
-def process_single_sample(sample, grid_size, min_timestep, max_trajectory_length):
-    """
-    Process a single sample for multiprocessing
-    """
-    # Extract data from sample
-    trajectory = sample["trajectory"]  # [seq_len, channels, height, width]
-    goal_tensor = sample["goal"]  # [4] one-hot encoded
-    agent_type = sample["agent"]  # 'achiever' or 'blocker'
-    type_label = sample[
-        "type"
-    ]  # 0 for randomly select / achiever, 1 for rule-based blocker
-    consumption = sample["consumption_labels"]  # [8] consumption labels
-    sr_data_per_timestep = sample.get("sr_data_per_timestep", {})
-
-    # Convert agent type to numerical (0=achiever, 1=blocker)
-    agent_label = 0 if agent_type == "achiever" else 1
-
-    # Extract goal rank from goal tensor and agent type
-    if agent_type == "achiever":
-        goal_idx = torch.argmax(torch.tensor(goal_tensor)).item()
-        goal_rank = [2, 2, 2, 2]  # Default rank 2 for all
-        goal_rank[goal_idx] = 1  # Set the achieved goal to rank 1
-    else:
-        goal_idx = torch.argmax(torch.tensor(goal_tensor)).item()
-        goal_rank = [2, 2, 2, 2]  # Default rank 2 for all
-        goal_rank[goal_idx] = 1  # Set the inferred goal to rank 1
-
-    # Get actions from sample data
-    action_list = sample.get("actions", [])
-
-    # Truncate trajectory to max length
-    seq_len = min(trajectory.shape[0], max_trajectory_length)
-    trajectory = trajectory[:seq_len]
-    action_list = action_list[:seq_len]
-
-    # Local lists for this sample
-    sample_trajectories = []
-    sample_actions = []
-    sample_goals = []
-    sample_goal_ranks = []
-    sample_agents = []
-    sample_types = []
-    sample_consumption_labels = []
-    sample_sr_labels = []
-
-    # TRAJECTORY SLICING: Create multiple samples per trajectory
-    for i in range(min_timestep, seq_len):
-        # Slice trajectory up to timestep i
-        trajectory_slice = trajectory[:i]  # [i, channels, height, width]
-
-        # Pad trajectory slice to consistent length for batching
-        if i < max_trajectory_length:
-            padding_shape = (max_trajectory_length - i, *trajectory.shape[1:])
-            padding = np.zeros(padding_shape)
-            trajectory_padded = np.concatenate([trajectory_slice, padding], axis=0)
-        else:
-            trajectory_padded = trajectory_slice
-
-        # Current timestep for action prediction
-        current_timestep = i - 1
-
-        # Action at timestep i (what we want to predict)
-        if i < len(action_list):
-            action_target = action_list[i]
-        else:
-            continue  # Skip if no action available
-
-        # Process SR data for this timestep
-        if current_timestep in sr_data_per_timestep:
-            sr_data_timestep = sr_data_per_timestep[current_timestep]
-            sr_dense = convert_sparse_sr_to_dense(
-                sr_data_timestep, grid_size, grid_size
-            )
-        else:
-            sr_dense = np.zeros((3, grid_size, grid_size))
-
-        # Add this training sample
-        sample_trajectories.append(trajectory_padded)
-        sample_actions.append(
-            [action_target] + [0] * (max_trajectory_length - 1)
-        )  # Pad actions
-        sample_goals.append(goal_tensor)
-        sample_goal_ranks.append(goal_rank)
-        sample_agents.append(agent_label)
-        sample_types.append(type_label)
-        sample_consumption_labels.append(consumption)
-        sample_sr_labels.append(sr_dense)
-
-    return {
-        "trajectories": sample_trajectories,
-        "actions": sample_actions,
-        "goals": sample_goals,
-        "goal_ranks": sample_goal_ranks,
-        "agents": sample_agents,
-        "types": sample_types,
-        "consumption_labels": sample_consumption_labels,
-        "sr_labels": sample_sr_labels,
-    }
-
-
-
-def prepare_data_for_training(
-    samples,
-    grid_size=9,
-    min_timestep=3,
-    max_trajectory_length=100,
-    n_processes=None,
-    use_batch_processing=True,
-    chunk_size=10000,  # Number of samples per chunk
-    output_dir="./data_chunks",
-):
-    """
-    Prepare multi-agent sample data for training from processed samples with trajectory slicing
-    Now supports multiprocessing and memory-efficient chunked processing
-
-    Args:
-        samples: List of processed samples from DataGenerator (containing both achiever and blocker samples)
-        grid_size: Size of the grid (default 9 for 9x9)
-        min_timestep: Minimum timestep to start slicing from
-        max_trajectory_length: Maximum length of trajectory to use
-        n_processes: Number of processes to use (default: CPU count)
-        use_batch_processing: Whether to use batch processing for better efficiency (default: True)
-        chunk_size: Number of samples to process per chunk (default: 10000)
-        output_dir: Directory to save data chunks (default: ./data_chunks)
-
-    Returns:
-        Dictionary containing metadata about the chunked data
-    """
-
-    if n_processes is None:
-        n_processes = mp.cpu_count()
-
-    print(
-        f"Preparing data from {len(samples)} samples with trajectory slicing using {n_processes} processes..."
-    )
-    print(f"Processing in chunks of {chunk_size} samples, saving to {output_dir}")
-
-    # Create output directory if it doesn't exist
-    os.makedirs(output_dir, exist_ok=True)
-
-    # Split samples into chunks
-    sample_chunks = [
-        samples[i : i + chunk_size] for i in range(0, len(samples), chunk_size)
-    ]
-
-    chunk_metadata = []
-    total_samples = 0
-
-    for chunk_idx, chunk_samples in enumerate(tqdm(sample_chunks, desc="Processing chunks")):
-        print(f"Processing chunk {chunk_idx + 1}/{len(sample_chunks)} ({len(chunk_samples)} samples)")
-        
-        # Process current chunk
-        chunk_data = prepare_data_memory_efficient(
-            chunk_samples,
-            grid_size=grid_size,
-            min_timestep=min_timestep,
-            max_trajectory_length=max_trajectory_length,
-            n_processes=n_processes,
-            use_batch_processing=use_batch_processing,
-        )
-        
-        # Save chunk to disk
-        chunk_file = os.path.join(output_dir, f"chunk_{chunk_idx:04d}.pt")
-        torch.save(chunk_data, chunk_file)
-        
-        # Record metadata
-        chunk_info = {
-            "chunk_idx": chunk_idx,
-            "file_path": chunk_file,
-            "num_samples": len(chunk_data["trajectories"]),
-            "data_shapes": {
-                "trajectories": chunk_data["trajectories"].shape,
-                "actions": chunk_data["actions"].shape,
-                "goals": chunk_data["goals"].shape,
-                "goal_ranks": chunk_data["goal_ranks"].shape,
-                "agents": chunk_data["agents"].shape,
-                "types": chunk_data["types"].shape,
-                "consumption_labels": chunk_data["consumption_labels"].shape,
-                "sr_labels": chunk_data["sr_labels"].shape,
-            }
-        }
-        chunk_metadata.append(chunk_info)
-        total_samples += len(chunk_data["trajectories"])
-        
-        print(f"  Saved chunk {chunk_idx} with {len(chunk_data['trajectories'])} samples to {chunk_file}")
-        
-        # Free memory
-        del chunk_data
-        import gc
-        gc.collect()
-
-    print(f"Total processed samples: {total_samples}")
-    print(f"Data saved in {len(chunk_metadata)} chunks in {output_dir}")
-
-    return {
-        "chunk_metadata": chunk_metadata,
-        "total_samples": total_samples,
-        "num_chunks": len(chunk_metadata),
-        "output_dir": output_dir,
-    }
-
-
-def prepare_data_memory_efficient(
-    samples,
-    grid_size=9,
-    min_timestep=3,
-    max_trajectory_length=100,
-    n_processes=None,
-    use_batch_processing=True,
-):
-    """
-    Memory-efficient version of prepare_data_for_training that processes a single chunk
-    """
-
-    if n_processes is None:
-        n_processes = mp.cpu_count()
-
-    if use_batch_processing:
-        # Create batches of samples for better CPU utilization
-        batch_size = max(
-            1, len(samples) // (n_processes * 5)
-        )  # Larger batches for better efficiency
-        sample_batches = [
-            samples[i : i + batch_size] for i in range(0, len(samples), batch_size)
-        ]
-
-        # Create partial function for batch processing
-        batch_worker_func = partial(
-            process_sample_batch,
-            grid_size=grid_size,
-            min_timestep=min_timestep,
-            max_trajectory_length=max_trajectory_length,
-        )
-
-        # Process batches in parallel
-        with mp.Pool(processes=n_processes, maxtasksperchild=100) as pool:
-            # No need for additional chunking when using batch processing
-            results = list(
-                tqdm(
-                    pool.imap(batch_worker_func, sample_batches),
-                    total=len(sample_batches),
-                    desc="Dataset processing (batch multiprocessing)",
-                )
-            )
-    else:
-        # Original single-sample processing with chunking
-        worker_func = partial(
-            process_single_sample,
-            grid_size=grid_size,
-            min_timestep=min_timestep,
-            max_trajectory_length=max_trajectory_length,
-        )
-
-        # Process samples in parallel with chunking for better CPU utilization
-        with mp.Pool(processes=n_processes, maxtasksperchild=100) as pool:
-            # Calculate optimal chunk size (similar to generate.py)
-            chunk_size = max(1, len(samples) // (n_processes * 10))
-
-            # Use imap with chunking for better performance
-            results = list(
-                tqdm(
-                    pool.imap(worker_func, samples, chunksize=chunk_size),
-                    total=len(samples),
-                    desc="Dataset processing (multiprocessing)",
-                )
-            )
-
-    # Combine results from all processes
-    trajectories = []
-    actions = []
-    goals = []
-    goal_ranks = []
-    agents = []
-    types = []
-    consumption_labels = []
-    sr_labels = []
-
-    for result in results:
-        trajectories.extend(result["trajectories"])
-        actions.extend(result["actions"])
-        goals.extend(result["goals"])
-        goal_ranks.extend(result["goal_ranks"])
-        agents.extend(result["agents"])
-        types.extend(result["types"])
-        consumption_labels.extend(result["consumption_labels"])
-        sr_labels.extend(result["sr_labels"])
-
-    # Convert to tensors (this is now done on smaller chunks)
-    trajectories = torch.tensor(np.array(trajectories), dtype=torch.float32)
-    actions = torch.tensor(np.array(actions), dtype=torch.long)
-    goals = torch.tensor(np.array(goals), dtype=torch.float32)
-    goal_ranks = torch.tensor(np.array(goal_ranks), dtype=torch.long)
-    agents = torch.tensor(np.array(agents), dtype=torch.long)
-    types = torch.tensor(np.array(types), dtype=torch.long)
-    consumption_labels = torch.tensor(np.array(consumption_labels), dtype=torch.float32)
-    sr_labels = torch.tensor(np.array(sr_labels), dtype=torch.float32)
-
-    print(f"Chunk data shapes:")
-    print(f"  Trajectories: {trajectories.shape}")
-    print(f"  Actions: {actions.shape}")
-    print(f"  Goals: {goals.shape}")
-    print(f"  Goal ranks: {goal_ranks.shape}")
-    print(f"  Agents: {agents.shape}")
-    print(f"  Types: {types.shape}")
-    print(f"  Consumption labels: {consumption_labels.shape}")
-    print(f"  SR labels: {sr_labels.shape}")
-
-    return {
-        "trajectories": trajectories,
-        "actions": actions,
-        "goals": goals,
-        "goal_ranks": goal_ranks,
-        "agents": agents,
-        "types": types,
-        "consumption_labels": consumption_labels,
-        "sr_labels": sr_labels,
-    }
 
 
 def train_epoch(
@@ -737,343 +131,169 @@ def train_epoch(
         # Each sample has a different effective length, stored in actions[:,0]
         batch_size = trajectories.size(0)
 
-        # For trajectory slicing, use the action at index 0 (the target action for this slice)
-        action_targets = actions[:, 0]  # Target action for each sliced trajectory
+        # Get the timesteps for each sample (trajectory slicing)
+        # Each trajectory may have different lengths
+        time_steps = actions[:, 0]
+        seq_len = trajectories.size(1)  # Fixed sequence length
 
-        # Vectorized effective length calculation (optimized)
-        with torch.no_grad():
-            # Sum over spatial dimensions for each timestep: [batch_size, seq_len]
-            traj_sums = trajectories.sum(dim=(2, 3, 4))
-            # Find last non-zero timestep for each batch sample (vectorized)
-            non_zero_mask = traj_sums > 0
+        # Concatenate current and past episodes
+        combined_episodes = torch.cat([trajectories.unsqueeze(1), past_episodes], dim=1)
 
-            # Use flip and argmax trick for efficient last non-zero index finding
-            flipped_mask = torch.flip(non_zero_mask, dims=[1])
-            last_nonzero_positions = (
-                non_zero_mask.size(1) - 1 - torch.argmax(flipped_mask.float(), dim=1)
-            )
-
-            # Handle edge case where all timesteps are zero
-            all_zero_mask = ~non_zero_mask.any(dim=1)
-            effective_lengths = torch.where(
-                all_zero_mask,
-                torch.zeros_like(last_nonzero_positions),
-                last_nonzero_positions,
-            )
-            effective_lengths = torch.clamp(effective_lengths, min=0)
-
-        # Use trajectory without heading direction for MentalNet (first 8 channels only)
-        current_state_channels = model_config.get("current_state_channels", 8)
-        recent_trajectory = trajectories[
-            :, :, :current_state_channels
-        ]  # [batch_size, seq_len, 8, height, width]
-
-        # Extract current state for PredNet (last non-padded timestep)
-        batch_indices = torch.arange(batch_size, device=trajectories.device)
-        current_state = trajectories[
-            batch_indices, effective_lengths, :current_state_channels
-        ]
-
-        # Convert one-hot goals to class indices for loss computation
-        if goals.dim() > 1:  # One-hot encoded goals
-            goal_targets = torch.argmax(goals, dim=1)
-        else:
-            goal_targets = goals
-
-        agent_targets = agents
-        type_targets = types
-        consumption_targets = consumption_labels
-
-        # Zero gradients only at start of accumulation
-        if batch_idx % gradient_accumulation_steps == 0:
-            optimizer.zero_grad()
-
-        # Forward pass with AMP if enabled
+        # Prepare inputs for ToMnet
         if scaler is not None:
             with autocast():
-                (
-                    action_logits,
-                    goal_logits,
-                    agent_logits,
-                    type_logits,
-                    consumption_logits,
-                    sr_pred,
-                    _,
-                    _,
-                ) = model(past_episodes, recent_trajectory, current_state)
-
-                sr_targets = sr_labels
-
-                # Compute loss with all components including agent and type prediction
-                (
-                    total_loss_batch,
-                    action_loss_batch,
-                    goal_loss_batch,
-                    agent_loss_batch,
-                    type_loss_batch,
-                    consumption_loss_batch,
-                    sr_loss_batch,
-                ) = loss_fn(
-                    action_logits,
-                    goal_logits,
-                    agent_logits,
-                    type_logits,
-                    consumption_logits,
-                    sr_pred,
-                    action_targets,
-                    goal_targets,
-                    agent_targets,
-                    type_targets,
-                    consumption_targets,
-                    sr_targets,
+                # Forward pass
+                outputs = model(combined_episodes, time_steps)
+                
+                # Compute loss
+                loss_dict = loss_fn(
+                    outputs,
+                    actions,
+                    goals,
+                    agents,
+                    types,
+                    consumption_labels,
+                    sr_labels,
+                    config=model_config,
                 )
-
+                
+                loss = loss_dict["loss"]
+                
                 # Scale loss for gradient accumulation
-                total_loss_batch = total_loss_batch / gradient_accumulation_steps
-
-            # Backward pass with AMP
-            scaler.scale(total_loss_batch).backward()
+                loss = loss / gradient_accumulation_steps
+                
+                # Accumulate gradients
+                accumulation_loss += loss.item()
         else:
-            # Regular forward pass
-            (
-                action_logits,
-                goal_logits,
-                agent_logits,
-                type_logits,
-                consumption_logits,
-                sr_pred,
-                _,
-                _,
-            ) = model(past_episodes, recent_trajectory, current_state)
-
-            sr_targets = sr_labels
-
-            # Compute loss with all components including agent and type prediction
-            (
-                total_loss_batch,
-                action_loss_batch,
-                goal_loss_batch,
-                agent_loss_batch,
-                type_loss_batch,
-                consumption_loss_batch,
-                sr_loss_batch,
-            ) = loss_fn(
-                action_logits,
-                goal_logits,
-                agent_logits,
-                type_logits,
-                consumption_logits,
-                sr_pred,
-                action_targets,
-                goal_targets,
-                agent_targets,
-                type_targets,
-                consumption_targets,
-                sr_targets,
+            # Forward pass without mixed precision
+            outputs = model(combined_episodes, time_steps)
+            
+            # Compute loss
+            loss_dict = loss_fn(
+                outputs,
+                actions,
+                goals,
+                agents,
+                types,
+                consumption_labels,
+                sr_labels,
+                config=model_config,
             )
-
+            
+            loss = loss_dict["loss"]
+            
             # Scale loss for gradient accumulation
-            total_loss_batch = total_loss_batch / gradient_accumulation_steps
+            loss = loss / gradient_accumulation_steps
+            
+            # Accumulate gradients
+            accumulation_loss += loss.item()
 
-            # Regular backward pass
-            total_loss_batch.backward()
+        # Backward pass
+        if scaler is not None:
+            scaler.scale(loss).backward()
+        else:
+            loss.backward()
 
-        # Accumulate loss for reporting (unscaled)
-        accumulation_loss += total_loss_batch.item() * gradient_accumulation_steps
-
-        # Optimizer step with gradient accumulation
-        if (batch_idx + 1) % gradient_accumulation_steps == 0 or (batch_idx + 1) == len(
-            train_loader
-        ):
-            max_grad_norm = (
-                training_process_config["max_grad_norm"]
-                if training_process_config
-                else 1.0
-            )
-
+        # Update parameters every gradient_accumulation_steps
+        if (batch_idx + 1) % gradient_accumulation_steps == 0:
             if scaler is not None:
-                # AMP gradient clipping and step
-                scaler.unscale_(optimizer)
-                torch.nn.utils.clip_grad_norm_(
-                    model.parameters(), max_norm=max_grad_norm
-                )
                 scaler.step(optimizer)
                 scaler.update()
             else:
-                # Regular gradient clipping and step
-                torch.nn.utils.clip_grad_norm_(
-                    model.parameters(), max_norm=max_grad_norm
-                )
                 optimizer.step()
-
-            # Clear gradients for next accumulation
             optimizer.zero_grad()
+            
+            # Add accumulated loss to total
+            total_loss += accumulation_loss
+            accumulation_loss = 0
 
-        # Update metrics (use unscaled values for reporting)
-        total_loss += total_loss_batch.item() * gradient_accumulation_steps
-        total_action_loss += action_loss_batch.item()
-        total_goal_loss += goal_loss_batch.item()
-        total_agent_loss += agent_loss_batch.item()  # Track agent loss
-        total_type_loss += type_loss_batch.item()  # Track type loss
-        total_consumption_loss += consumption_loss_batch.item()
-        total_sr_loss += sr_loss_batch.item()
+        # Accumulate metrics
+        total_action_loss += loss_dict["action_loss"].item()
+        total_goal_loss += loss_dict["goal_loss"].item()
+        total_agent_loss += loss_dict["agent_loss"].item()
+        total_type_loss += loss_dict["type_loss"].item()
+        total_consumption_loss += loss_dict["consumption_loss"].item()
+        total_sr_loss += loss_dict["sr_loss"].item()
 
-        # Calculate accuracy
-        _, predicted_actions = torch.max(action_logits, 1)
-        _, predicted_goals = torch.max(goal_logits, 1)
-        _, predicted_agents = torch.max(agent_logits, 1)
-        _, predicted_types = torch.max(type_logits, 1)
+        # Calculate accuracies
+        action_preds = torch.argmax(outputs["action_logits"], dim=1)
+        goal_preds = torch.argmax(outputs["goal_logits"], dim=1)
+        agent_preds = torch.argmax(outputs["agent_logits"], dim=1)
+        type_preds = torch.argmax(outputs["type_logits"], dim=1)
 
-        correct_actions += (predicted_actions == action_targets).sum().item()
-        correct_goals += (predicted_goals == goal_targets).sum().item()
-        correct_agents += (
-            (predicted_agents == agent_targets).sum().item()
-        )  # Track agent accuracy
-        correct_types += (
-            (predicted_types == type_targets).sum().item()
-        )  # Track type accuracy
+        correct_actions += (action_preds == actions[:, 1]).sum().item()
+        correct_goals += (goal_preds == goals).sum().item()
+        correct_agents += (agent_preds == agents).sum().item()
+        correct_types += (type_preds == types).sum().item()
         total_samples += batch_size
 
-        # Separate metrics for achievers (agent_targets == 0) and blockers (agent_targets == 1)
-        achiever_mask = agent_targets == 0
-        blocker_mask = agent_targets == 1
+        # Agent-specific metrics
+        achiever_mask = (agents == 0)
+        blocker_mask = (agents == 1)
 
-        achiever_correct_actions += (
-            (predicted_actions[achiever_mask] == action_targets[achiever_mask])
-            .sum()
-            .item()
-        )
-        achiever_correct_goals += (
-            (predicted_goals[achiever_mask] == goal_targets[achiever_mask]).sum().item()
-        )
+        achiever_correct_actions += (action_preds[achiever_mask] == actions[achiever_mask, 1]).sum().item()
+        achiever_correct_goals += (goal_preds[achiever_mask] == goals[achiever_mask]).sum().item()
         achiever_total_samples += achiever_mask.sum().item()
 
-        blocker_correct_actions += (
-            (predicted_actions[blocker_mask] == action_targets[blocker_mask])
-            .sum()
-            .item()
-        )
-        blocker_correct_goals += (
-            (predicted_goals[blocker_mask] == goal_targets[blocker_mask]).sum().item()
-        )
+        blocker_correct_actions += (action_preds[blocker_mask] == actions[blocker_mask, 1]).sum().item()
+        blocker_correct_goals += (goal_preds[blocker_mask] == goals[blocker_mask]).sum().item()
         blocker_total_samples += blocker_mask.sum().item()
 
         # Agent-specific loss accumulation
         if achiever_mask.sum() > 0:
-            achiever_total_action_loss += action_loss_batch.item() * (
-                achiever_mask.sum().item() / batch_size
-            )
-            achiever_total_goal_loss += goal_loss_batch.item() * (
-                achiever_mask.sum().item() / batch_size
-            )
-            achiever_total_consumption_loss += consumption_loss_batch.item() * (
-                achiever_mask.sum().item() / batch_size
-            )
-            achiever_total_sr_loss += sr_loss_batch.item() * (
-                achiever_mask.sum().item() / batch_size
-            )
+            achiever_total_action_loss += loss_dict["action_loss"].item() * achiever_mask.sum().item() / batch_size
+            achiever_total_goal_loss += loss_dict["goal_loss"].item() * achiever_mask.sum().item() / batch_size
+            achiever_total_consumption_loss += loss_dict["consumption_loss"].item() * achiever_mask.sum().item() / batch_size
+            achiever_total_sr_loss += loss_dict["sr_loss"].item() * achiever_mask.sum().item() / batch_size
 
         if blocker_mask.sum() > 0:
-            blocker_total_action_loss += action_loss_batch.item() * (
-                blocker_mask.sum().item() / batch_size
-            )
-            blocker_total_goal_loss += goal_loss_batch.item() * (
-                blocker_mask.sum().item() / batch_size
-            )
-            blocker_total_consumption_loss += consumption_loss_batch.item() * (
-                blocker_mask.sum().item() / batch_size
-            )
-            blocker_total_sr_loss += sr_loss_batch.item() * (
-                blocker_mask.sum().item() / batch_size
-            )
+            blocker_total_action_loss += loss_dict["action_loss"].item() * blocker_mask.sum().item() / batch_size
+            blocker_total_goal_loss += loss_dict["goal_loss"].item() * blocker_mask.sum().item() / batch_size
+            blocker_total_consumption_loss += loss_dict["consumption_loss"].item() * blocker_mask.sum().item() / batch_size
+            blocker_total_sr_loss += loss_dict["sr_loss"].item() * blocker_mask.sum().item() / batch_size
 
-        # Memory cleanup for large batches (optimized)
-        if batch_idx % 10 == 0:
-            # Clear intermediate variables
-            del past_episodes, recent_trajectory, current_state
-            del (
-                action_logits,
-                goal_logits,
-                agent_logits,
-                type_logits,
-                consumption_logits,
-                sr_pred,
-            )
-            del (
-                action_targets,
-                goal_targets,
-                agent_targets,
-                type_targets,
-                consumption_targets,
-                sr_targets,
-            )
+    # Handle remaining gradients if gradient accumulation is used
+    if accumulation_loss > 0:
+        if scaler is not None:
+            scaler.step(optimizer)
+            scaler.update()
+        else:
+            optimizer.step()
+        optimizer.zero_grad()
+        total_loss += accumulation_loss
 
-            # GPU memory cleanup
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-            gc.collect()
-
+    # Calculate averages
     num_batches = len(train_loader)
-    avg_loss = total_loss / num_batches if num_batches > 0 else 0
-    avg_action_loss = total_action_loss / num_batches if num_batches > 0 else 0
-    avg_goal_loss = total_goal_loss / num_batches if num_batches > 0 else 0
-    avg_agent_loss = total_agent_loss / num_batches if num_batches > 0 else 0
-    avg_type_loss = total_type_loss / num_batches if num_batches > 0 else 0
-    avg_consumption_loss = (
-        total_consumption_loss / num_batches if num_batches > 0 else 0
-    )
-    avg_sr_loss = total_sr_loss / num_batches if num_batches > 0 else 0
-    action_accuracy = correct_actions / total_samples
-    goal_accuracy = correct_goals / total_samples
-    agent_accuracy = correct_agents / total_samples
-    type_accuracy = correct_types / total_samples
+    avg_loss = total_loss / num_batches
+    avg_action_loss = total_action_loss / num_batches
+    avg_goal_loss = total_goal_loss / num_batches
+    avg_agent_loss = total_agent_loss / num_batches
+    avg_type_loss = total_type_loss / num_batches
+    avg_consumption_loss = total_consumption_loss / num_batches
+    avg_sr_loss = total_sr_loss / num_batches
 
-    # Calculate separate accuracies for achievers and blockers
-    achiever_action_accuracy = (
-        achiever_correct_actions / achiever_total_samples
-        if achiever_total_samples > 0
-        else 0
-    )
-    achiever_goal_accuracy = (
-        achiever_correct_goals / achiever_total_samples
-        if achiever_total_samples > 0
-        else 0
-    )
-    blocker_action_accuracy = (
-        blocker_correct_actions / blocker_total_samples
-        if blocker_total_samples > 0
-        else 0
-    )
-    blocker_goal_accuracy = (
-        blocker_correct_goals / blocker_total_samples
-        if blocker_total_samples > 0
-        else 0
-    )
+    # Calculate accuracies
+    action_accuracy = correct_actions / total_samples if total_samples > 0 else 0
+    goal_accuracy = correct_goals / total_samples if total_samples > 0 else 0
+    agent_accuracy = correct_agents / total_samples if total_samples > 0 else 0
+    type_accuracy = correct_types / total_samples if total_samples > 0 else 0
 
-    # Calculate agent-specific average losses
-    achiever_avg_action_loss = (
-        achiever_total_action_loss / num_batches if num_batches > 0 else 0
-    )
-    achiever_avg_goal_loss = (
-        achiever_total_goal_loss / num_batches if num_batches > 0 else 0
-    )
-    achiever_avg_consumption_loss = (
-        achiever_total_consumption_loss / num_batches if num_batches > 0 else 0
-    )
-    achiever_avg_sr_loss = (
-        achiever_total_sr_loss / num_batches if num_batches > 0 else 0
-    )
+    # Agent-specific accuracies
+    achiever_action_accuracy = achiever_correct_actions / achiever_total_samples if achiever_total_samples > 0 else 0
+    achiever_goal_accuracy = achiever_correct_goals / achiever_total_samples if achiever_total_samples > 0 else 0
+    blocker_action_accuracy = blocker_correct_actions / blocker_total_samples if blocker_total_samples > 0 else 0
+    blocker_goal_accuracy = blocker_correct_goals / blocker_total_samples if blocker_total_samples > 0 else 0
 
-    blocker_avg_action_loss = (
-        blocker_total_action_loss / num_batches if num_batches > 0 else 0
-    )
-    blocker_avg_goal_loss = (
-        blocker_total_goal_loss / num_batches if num_batches > 0 else 0
-    )
-    blocker_avg_consumption_loss = (
-        blocker_total_consumption_loss / num_batches if num_batches > 0 else 0
-    )
-    blocker_avg_sr_loss = blocker_total_sr_loss / num_batches if num_batches > 0 else 0
+    # Agent-specific average losses
+    achiever_avg_action_loss = achiever_total_action_loss / num_batches
+    achiever_avg_goal_loss = achiever_total_goal_loss / num_batches
+    achiever_avg_consumption_loss = achiever_total_consumption_loss / num_batches
+    achiever_avg_sr_loss = achiever_total_sr_loss / num_batches
+
+    blocker_avg_action_loss = blocker_total_action_loss / num_batches
+    blocker_avg_goal_loss = blocker_total_goal_loss / num_batches
+    blocker_avg_consumption_loss = blocker_total_consumption_loss / num_batches
+    blocker_avg_sr_loss = blocker_total_sr_loss / num_batches
 
     return {
         "loss": avg_loss,
@@ -1091,7 +311,6 @@ def train_epoch(
         "achiever_goal_accuracy": achiever_goal_accuracy,
         "blocker_action_accuracy": blocker_action_accuracy,
         "blocker_goal_accuracy": blocker_goal_accuracy,
-        # Agent-specific losses
         "achiever_action_loss": achiever_avg_action_loss,
         "achiever_goal_loss": achiever_avg_goal_loss,
         "achiever_consumption_loss": achiever_avg_consumption_loss,
@@ -1159,7 +378,7 @@ def validate_epoch(
     blocker_total_sr_loss = 0
 
     with torch.no_grad():
-        for batch_idx, batch in enumerate(val_loader):
+        for batch in val_loader:
             # Unpack multi-agent data
             (
                 trajectories,
@@ -1195,252 +414,117 @@ def validate_epoch(
                 rank_threshold=data_config.get("rank_threshold", 1),
             )
 
-            # With trajectory slicing, we use dynamic timesteps
-            # Each sample has a different effective length, stored in actions[:,0]
-            batch_size = trajectories.size(0)
+            # Get the timesteps for each sample (trajectory slicing)
+            time_steps = actions[:, 0]
 
-            # Optimized vectorized effective length calculation
-            with torch.no_grad():
-                # Sum over spatial dimensions for each timestep: [batch_size, seq_len]
-                traj_sums = trajectories.sum(dim=(2, 3, 4))
-                # Find last non-zero timestep for each batch sample (vectorized)
-                non_zero_mask = traj_sums > 0
+            # Concatenate current and past episodes
+            combined_episodes = torch.cat([trajectories.unsqueeze(1), past_episodes], dim=1)
 
-                # Use flip and argmax trick for efficient last non-zero index finding
-                flipped_mask = torch.flip(non_zero_mask, dims=[1])
-                last_nonzero_positions = (
-                    non_zero_mask.size(1)
-                    - 1
-                    - torch.argmax(flipped_mask.float(), dim=1)
-                )
-
-                # Handle edge case where all timesteps are zero
-                all_zero_mask = ~non_zero_mask.any(dim=1)
-                effective_lengths = torch.where(
-                    all_zero_mask,
-                    torch.zeros_like(last_nonzero_positions),
-                    last_nonzero_positions,
-                )
-                effective_lengths = torch.clamp(effective_lengths, min=0)
-
-            # Use trajectory without heading direction for MentalNet (first 8 channels only)
-            current_state_channels = model_config.get("current_state_channels", 8)
-            recent_trajectory = trajectories[
-                :, :, :current_state_channels
-            ]  # [batch_size, seq_len, 8, height, width]
-
-            # Optimized current state extraction using advanced indexing
-            batch_indices = torch.arange(batch_size, device=trajectories.device)
-            last_timesteps = torch.clamp(effective_lengths, min=0)
-
-            # Extract current state using advanced indexing (vectorized)
-            current_state = trajectories[
-                batch_indices, last_timesteps, :current_state_channels
-            ]
-
-            # For trajectory slicing, use the action at index 0 (the target action for this slice)
-            action_targets = actions[:, 0]  # Target action for each sliced trajectory
-
-            # Convert one-hot goals to class indices for loss computation
-            if goals.dim() > 1:  # One-hot encoded goals
-                goal_targets = torch.argmax(goals, dim=1)
-            else:
-                goal_targets = goals
-
-            agent_targets = agents
-            type_targets = types
-            consumption_targets = consumption_labels
-            sr_targets = sr_labels
-
-            # Forward pass with AMP if enabled
+            # Forward pass
             if scaler is not None:
                 with autocast():
-                    (
-                        action_logits,
-                        goal_logits,
-                        agent_logits,
-                        type_logits,
-                        consumption_logits,
-                        sr_pred,
-                        _,
-                        _,
-                    ) = model(past_episodes, recent_trajectory, current_state)
+                    outputs = model(combined_episodes, time_steps)
+                    loss_dict = loss_fn(
+                        outputs,
+                        actions,
+                        goals,
+                        agents,
+                        types,
+                        consumption_labels,
+                        sr_labels,
+                        config=model_config,
+                    )
             else:
-                # Regular forward pass
-                (
-                    action_logits,
-                    goal_logits,
-                    agent_logits,
-                    type_logits,
-                    consumption_logits,
-                    sr_pred,
-                    _,
-                    _,
-                ) = model(past_episodes, recent_trajectory, current_state)
+                outputs = model(combined_episodes, time_steps)
+                loss_dict = loss_fn(
+                    outputs,
+                    actions,
+                    goals,
+                    agents,
+                    types,
+                    consumption_labels,
+                    sr_labels,
+                    config=model_config,
+                )
 
-            # Compute loss with all components including agent and type prediction
-            (
-                total_loss_batch,
-                action_loss_batch,
-                goal_loss_batch,
-                agent_loss_batch,
-                type_loss_batch,
-                consumption_loss_batch,
-                sr_loss_batch,
-            ) = loss_fn(
-                action_logits,
-                goal_logits,
-                agent_logits,
-                type_logits,
-                consumption_logits,
-                sr_pred,
-                action_targets,
-                goal_targets,
-                agent_targets,
-                type_targets,
-                consumption_targets,
-                sr_targets,
-            )
+            # Accumulate losses
+            total_loss += loss_dict["loss"].item()
+            total_action_loss += loss_dict["action_loss"].item()
+            total_goal_loss += loss_dict["goal_loss"].item()
+            total_agent_loss += loss_dict["agent_loss"].item()
+            total_type_loss += loss_dict["type_loss"].item()
+            total_consumption_loss += loss_dict["consumption_loss"].item()
+            total_sr_loss += loss_dict["sr_loss"].item()
 
-            # Update metrics
-            total_loss += total_loss_batch.item()
-            total_action_loss += action_loss_batch.item()
-            total_goal_loss += goal_loss_batch.item()
-            total_agent_loss += agent_loss_batch.item()
-            total_type_loss += type_loss_batch.item()
-            total_consumption_loss += consumption_loss_batch.item()
-            total_sr_loss += sr_loss_batch.item()
+            # Calculate accuracies
+            action_preds = torch.argmax(outputs["action_logits"], dim=1)
+            goal_preds = torch.argmax(outputs["goal_logits"], dim=1)
+            agent_preds = torch.argmax(outputs["agent_logits"], dim=1)
+            type_preds = torch.argmax(outputs["type_logits"], dim=1)
 
-            # Calculate accuracy
-            _, predicted_actions = torch.max(action_logits, 1)
-            _, predicted_goals = torch.max(goal_logits, 1)
-            _, predicted_agents = torch.max(agent_logits, 1)
-            _, predicted_types = torch.max(type_logits, 1)
-
-            correct_actions += (predicted_actions == action_targets).sum().item()
-            correct_goals += (predicted_goals == goal_targets).sum().item()
-            correct_agents += (predicted_agents == agent_targets).sum().item()
-            correct_types += (predicted_types == type_targets).sum().item()
+            correct_actions += (action_preds == actions[:, 1]).sum().item()
+            correct_goals += (goal_preds == goals).sum().item()
+            correct_agents += (agent_preds == agents).sum().item()
+            correct_types += (type_preds == types).sum().item()
             total_samples += batch_size
 
-            # Separate metrics for achievers (agent_targets == 0) and blockers (agent_targets == 1)
-            achiever_mask = agent_targets == 0
-            blocker_mask = agent_targets == 1
+            # Agent-specific metrics
+            achiever_mask = (agents == 0)
+            blocker_mask = (agents == 1)
 
-            achiever_correct_actions += (
-                (predicted_actions[achiever_mask] == action_targets[achiever_mask])
-                .sum()
-                .item()
-            )
-            achiever_correct_goals += (
-                (predicted_goals[achiever_mask] == goal_targets[achiever_mask])
-                .sum()
-                .item()
-            )
+            achiever_correct_actions += (action_preds[achiever_mask] == actions[achiever_mask, 1]).sum().item()
+            achiever_correct_goals += (goal_preds[achiever_mask] == goals[achiever_mask]).sum().item()
             achiever_total_samples += achiever_mask.sum().item()
 
-            blocker_correct_actions += (
-                (predicted_actions[blocker_mask] == action_targets[blocker_mask])
-                .sum()
-                .item()
-            )
-            blocker_correct_goals += (
-                (predicted_goals[blocker_mask] == goal_targets[blocker_mask])
-                .sum()
-                .item()
-            )
+            blocker_correct_actions += (action_preds[blocker_mask] == actions[blocker_mask, 1]).sum().item()
+            blocker_correct_goals += (goal_preds[blocker_mask] == goals[blocker_mask]).sum().item()
             blocker_total_samples += blocker_mask.sum().item()
 
             # Agent-specific loss accumulation
             if achiever_mask.sum() > 0:
-                achiever_total_action_loss += action_loss_batch.item() * (
-                    achiever_mask.sum().item() / batch_size
-                )
-                achiever_total_goal_loss += goal_loss_batch.item() * (
-                    achiever_mask.sum().item() / batch_size
-                )
-                achiever_total_consumption_loss += consumption_loss_batch.item() * (
-                    achiever_mask.sum().item() / batch_size
-                )
-                achiever_total_sr_loss += sr_loss_batch.item() * (
-                    achiever_mask.sum().item() / batch_size
-                )
+                achiever_total_action_loss += loss_dict["action_loss"].item() * achiever_mask.sum().item() / batch_size
+                achiever_total_goal_loss += loss_dict["goal_loss"].item() * achiever_mask.sum().item() / batch_size
+                achiever_total_consumption_loss += loss_dict["consumption_loss"].item() * achiever_mask.sum().item() / batch_size
+                achiever_total_sr_loss += loss_dict["sr_loss"].item() * achiever_mask.sum().item() / batch_size
 
             if blocker_mask.sum() > 0:
-                blocker_total_action_loss += action_loss_batch.item() * (
-                    blocker_mask.sum().item() / batch_size
-                )
-                blocker_total_goal_loss += goal_loss_batch.item() * (
-                    blocker_mask.sum().item() / batch_size
-                )
-                blocker_total_consumption_loss += consumption_loss_batch.item() * (
-                    blocker_mask.sum().item() / batch_size
-                )
-                blocker_total_sr_loss += sr_loss_batch.item() * (
-                    blocker_mask.sum().item() / batch_size
-                )
+                blocker_total_action_loss += loss_dict["action_loss"].item() * blocker_mask.sum().item() / batch_size
+                blocker_total_goal_loss += loss_dict["goal_loss"].item() * blocker_mask.sum().item() / batch_size
+                blocker_total_consumption_loss += loss_dict["consumption_loss"].item() * blocker_mask.sum().item() / batch_size
+                blocker_total_sr_loss += loss_dict["sr_loss"].item() * blocker_mask.sum().item() / batch_size
 
+    # Calculate averages
     num_batches = len(val_loader)
-    avg_loss = total_loss / num_batches if num_batches > 0 else 0
-    avg_action_loss = total_action_loss / num_batches if num_batches > 0 else 0
-    avg_goal_loss = total_goal_loss / num_batches if num_batches > 0 else 0
-    avg_agent_loss = total_agent_loss / num_batches if num_batches > 0 else 0
-    avg_type_loss = total_type_loss / num_batches if num_batches > 0 else 0
-    avg_consumption_loss = (
-        total_consumption_loss / num_batches if num_batches > 0 else 0
-    )
-    avg_sr_loss = total_sr_loss / num_batches if num_batches > 0 else 0
-    action_accuracy = correct_actions / total_samples
-    goal_accuracy = correct_goals / total_samples
-    agent_accuracy = correct_agents / total_samples
-    type_accuracy = correct_types / total_samples
+    avg_loss = total_loss / num_batches
+    avg_action_loss = total_action_loss / num_batches
+    avg_goal_loss = total_goal_loss / num_batches
+    avg_agent_loss = total_agent_loss / num_batches
+    avg_type_loss = total_type_loss / num_batches
+    avg_consumption_loss = total_consumption_loss / num_batches
+    avg_sr_loss = total_sr_loss / num_batches
 
-    # Calculate separate accuracies for achievers and blockers
-    achiever_action_accuracy = (
-        achiever_correct_actions / achiever_total_samples
-        if achiever_total_samples > 0
-        else 0
-    )
-    achiever_goal_accuracy = (
-        achiever_correct_goals / achiever_total_samples
-        if achiever_total_samples > 0
-        else 0
-    )
-    blocker_action_accuracy = (
-        blocker_correct_actions / blocker_total_samples
-        if blocker_total_samples > 0
-        else 0
-    )
-    blocker_goal_accuracy = (
-        blocker_correct_goals / blocker_total_samples
-        if blocker_total_samples > 0
-        else 0
-    )
+    # Calculate accuracies
+    action_accuracy = correct_actions / total_samples if total_samples > 0 else 0
+    goal_accuracy = correct_goals / total_samples if total_samples > 0 else 0
+    agent_accuracy = correct_agents / total_samples if total_samples > 0 else 0
+    type_accuracy = correct_types / total_samples if total_samples > 0 else 0
 
-    # Calculate agent-specific average losses
-    achiever_avg_action_loss = (
-        achiever_total_action_loss / num_batches if num_batches > 0 else 0
-    )
-    achiever_avg_goal_loss = (
-        achiever_total_goal_loss / num_batches if num_batches > 0 else 0
-    )
-    achiever_avg_consumption_loss = (
-        achiever_total_consumption_loss / num_batches if num_batches > 0 else 0
-    )
-    achiever_avg_sr_loss = (
-        achiever_total_sr_loss / num_batches if num_batches > 0 else 0
-    )
+    # Agent-specific accuracies
+    achiever_action_accuracy = achiever_correct_actions / achiever_total_samples if achiever_total_samples > 0 else 0
+    achiever_goal_accuracy = achiever_correct_goals / achiever_total_samples if achiever_total_samples > 0 else 0
+    blocker_action_accuracy = blocker_correct_actions / blocker_total_samples if blocker_total_samples > 0 else 0
+    blocker_goal_accuracy = blocker_correct_goals / blocker_total_samples if blocker_total_samples > 0 else 0
 
-    blocker_avg_action_loss = (
-        blocker_total_action_loss / num_batches if num_batches > 0 else 0
-    )
-    blocker_avg_goal_loss = (
-        blocker_total_goal_loss / num_batches if num_batches > 0 else 0
-    )
-    blocker_avg_consumption_loss = (
-        blocker_total_consumption_loss / num_batches if num_batches > 0 else 0
-    )
-    blocker_avg_sr_loss = blocker_total_sr_loss / num_batches if num_batches > 0 else 0
+    # Agent-specific average losses
+    achiever_avg_action_loss = achiever_total_action_loss / num_batches
+    achiever_avg_goal_loss = achiever_total_goal_loss / num_batches
+    achiever_avg_consumption_loss = achiever_total_consumption_loss / num_batches
+    achiever_avg_sr_loss = achiever_total_sr_loss / num_batches
+
+    blocker_avg_action_loss = blocker_total_action_loss / num_batches
+    blocker_avg_goal_loss = blocker_total_goal_loss / num_batches
+    blocker_avg_consumption_loss = blocker_total_consumption_loss / num_batches
+    blocker_avg_sr_loss = blocker_total_sr_loss / num_batches
 
     return {
         "loss": avg_loss,
@@ -1458,7 +542,6 @@ def validate_epoch(
         "achiever_goal_accuracy": achiever_goal_accuracy,
         "blocker_action_accuracy": blocker_action_accuracy,
         "blocker_goal_accuracy": blocker_goal_accuracy,
-        # Agent-specific losses
         "achiever_action_loss": achiever_avg_action_loss,
         "achiever_goal_loss": achiever_avg_goal_loss,
         "achiever_consumption_loss": achiever_avg_consumption_loss,
@@ -1468,679 +551,6 @@ def validate_epoch(
         "blocker_consumption_loss": blocker_avg_consumption_loss,
         "blocker_sr_loss": blocker_avg_sr_loss,
     }
-
-
-def save_training_plots(history, save_dir):
-    """
-    Save training history plots as 3 separate graphs: Total, Achiever, Blocker
-
-    Args:
-        history: Training history dictionary
-        save_dir: Directory to save plots
-    """
-    os.makedirs(save_dir, exist_ok=True)
-
-    # Create 3 separate figures for Total, Achiever, and Blocker
-
-    # 1. TOTAL metrics plot
-    fig_total, axes_total = plt.subplots(2, 2, figsize=(15, 10))
-    fig_total.suptitle("TOTAL Metrics", fontsize=16, fontweight="bold")
-
-    # Total Loss plot
-    axes_total[0, 0].plot(
-        history["epoch"], history["train_loss"], label="Train Loss", marker="o"
-    )
-    axes_total[0, 0].plot(
-        history["epoch"], history["val_loss"], label="Val Loss", marker="s"
-    )
-    axes_total[0, 0].set_title("Total Loss")
-    axes_total[0, 0].set_xlabel("Epoch")
-    axes_total[0, 0].set_ylabel("Loss")
-    axes_total[0, 0].legend()
-    axes_total[0, 0].grid(True)
-
-    # Total Action accuracy plot
-    axes_total[0, 1].plot(
-        history["epoch"],
-        history["train_action_accuracy"],
-        label="Train Action Acc",
-        marker="o",
-    )
-    axes_total[0, 1].plot(
-        history["epoch"],
-        history["val_action_accuracy"],
-        label="Val Action Acc",
-        marker="s",
-    )
-    axes_total[0, 1].set_title("Action Accuracy")
-    axes_total[0, 1].set_xlabel("Epoch")
-    axes_total[0, 1].set_ylabel("Accuracy")
-    axes_total[0, 1].legend()
-    axes_total[0, 1].grid(True)
-
-    # Total Goal accuracy plot
-    axes_total[1, 0].plot(
-        history["epoch"],
-        history["train_goal_accuracy"],
-        label="Train Goal Acc",
-        marker="o",
-    )
-    axes_total[1, 0].plot(
-        history["epoch"], history["val_goal_accuracy"], label="Val Goal Acc", marker="s"
-    )
-    axes_total[1, 0].set_title("Goal Accuracy")
-    axes_total[1, 0].set_xlabel("Epoch")
-    axes_total[1, 0].set_ylabel("Accuracy")
-    axes_total[1, 0].legend()
-    axes_total[1, 0].grid(True)
-
-    # Total Combined loss components
-    axes_total[1, 1].plot(
-        history["epoch"],
-        history["train_action_loss"],
-        label="Train Action Loss",
-        marker="o",
-    )
-    axes_total[1, 1].plot(
-        history["epoch"],
-        history["train_goal_loss"],
-        label="Train Goal Loss",
-        marker="s",
-    )
-    axes_total[1, 1].plot(
-        history["epoch"],
-        history["val_action_loss"],
-        label="Val Action Loss",
-        marker="^",
-    )
-    axes_total[1, 1].plot(
-        history["epoch"], history["val_goal_loss"], label="Val Goal Loss", marker="v"
-    )
-    axes_total[1, 1].set_title("Loss Components")
-    axes_total[1, 1].set_xlabel("Epoch")
-    axes_total[1, 1].set_ylabel("Loss")
-    axes_total[1, 1].legend()
-    axes_total[1, 1].grid(True)
-
-    plt.tight_layout()
-    plt.savefig(
-        os.path.join(save_dir, "training_history_total.png"),
-        dpi=300,
-        bbox_inches="tight",
-    )
-    plt.close(fig_total)
-
-    # 2. ACHIEVER metrics plot (Note: Currently using total metrics - placeholder for future achiever-specific metrics)
-    fig_achiever, axes_achiever = plt.subplots(2, 2, figsize=(15, 10))
-    fig_achiever.suptitle("ACHIEVER Metrics", fontsize=16, fontweight="bold")
-
-    # Achiever Loss plot (using total metrics as placeholder)
-    axes_achiever[0, 0].plot(
-        history["epoch"],
-        history["train_loss"],
-        label="Train Loss",
-        marker="o",
-        color="green",
-    )
-    axes_achiever[0, 0].plot(
-        history["epoch"],
-        history["val_loss"],
-        label="Val Loss",
-        marker="s",
-        color="lightgreen",
-    )
-    axes_achiever[0, 0].set_title("Achiever Loss")
-    axes_achiever[0, 0].set_xlabel("Epoch")
-    axes_achiever[0, 0].set_ylabel("Loss")
-    axes_achiever[0, 0].legend()
-    axes_achiever[0, 0].grid(True)
-
-    # Achiever Action accuracy
-    axes_achiever[0, 1].plot(
-        history["epoch"],
-        history["train_achiever_action_accuracy"],
-        label="Train Action Acc",
-        marker="o",
-        color="green",
-    )
-    axes_achiever[0, 1].plot(
-        history["epoch"],
-        history["val_achiever_action_accuracy"],
-        label="Val Action Acc",
-        marker="s",
-        color="lightgreen",
-    )
-    axes_achiever[0, 1].set_title("Achiever Action Accuracy")
-    axes_achiever[0, 1].set_xlabel("Epoch")
-    axes_achiever[0, 1].set_ylabel("Accuracy")
-    axes_achiever[0, 1].legend()
-    axes_achiever[0, 1].grid(True)
-
-    # Achiever Goal accuracy
-    axes_achiever[1, 0].plot(
-        history["epoch"],
-        history["train_achiever_goal_accuracy"],
-        label="Train Goal Acc",
-        marker="o",
-        color="green",
-    )
-    axes_achiever[1, 0].plot(
-        history["epoch"],
-        history["val_achiever_goal_accuracy"],
-        label="Val Goal Acc",
-        marker="s",
-        color="lightgreen",
-    )
-    axes_achiever[1, 0].set_title("Achiever Goal Accuracy")
-    axes_achiever[1, 0].set_xlabel("Epoch")
-    axes_achiever[1, 0].set_ylabel("Accuracy")
-    axes_achiever[1, 0].legend()
-    axes_achiever[1, 0].grid(True)
-
-    # Achiever Loss components
-    axes_achiever[1, 1].plot(
-        history["epoch"],
-        history["train_action_loss"],
-        label="Train Action Loss",
-        marker="o",
-        color="green",
-    )
-    axes_achiever[1, 1].plot(
-        history["epoch"],
-        history["train_goal_loss"],
-        label="Train Goal Loss",
-        marker="s",
-        color="lightgreen",
-    )
-    axes_achiever[1, 1].plot(
-        history["epoch"],
-        history["train_consumption_loss"],
-        label="Train Consumption Loss",
-        marker="^",
-        color="darkgreen",
-    )
-    axes_achiever[1, 1].plot(
-        history["epoch"],
-        history["train_sr_loss"],
-        label="Train SR Loss",
-        marker="v",
-        color="olive",
-    )
-    axes_achiever[1, 1].set_title("Achiever Loss Components")
-    axes_achiever[1, 1].set_xlabel("Epoch")
-    axes_achiever[1, 1].set_ylabel("Loss")
-    axes_achiever[1, 1].legend()
-    axes_achiever[1, 1].grid(True)
-
-    plt.tight_layout()
-    plt.savefig(
-        os.path.join(save_dir, "training_history_achiever.png"),
-        dpi=300,
-        bbox_inches="tight",
-    )
-    plt.close(fig_achiever)
-
-    # 3. BLOCKER metrics plot (Note: Currently using total metrics - placeholder for future blocker-specific metrics)
-    fig_blocker, axes_blocker = plt.subplots(2, 2, figsize=(15, 10))
-    fig_blocker.suptitle("BLOCKER Metrics", fontsize=16, fontweight="bold")
-
-    # Blocker Loss plot (using total metrics as placeholder)
-    axes_blocker[0, 0].plot(
-        history["epoch"],
-        history["train_loss"],
-        label="Train Loss",
-        marker="o",
-        color="red",
-    )
-    axes_blocker[0, 0].plot(
-        history["epoch"],
-        history["val_loss"],
-        label="Val Loss",
-        marker="s",
-        color="lightcoral",
-    )
-    axes_blocker[0, 0].set_title("Blocker Loss")
-    axes_blocker[0, 0].set_xlabel("Epoch")
-    axes_blocker[0, 0].set_ylabel("Loss")
-    axes_blocker[0, 0].legend()
-    axes_blocker[0, 0].grid(True)
-
-    # Blocker Action accuracy
-    axes_blocker[0, 1].plot(
-        history["epoch"],
-        history["train_blocker_action_accuracy"],
-        label="Train Action Acc",
-        marker="o",
-        color="red",
-    )
-    axes_blocker[0, 1].plot(
-        history["epoch"],
-        history["val_blocker_action_accuracy"],
-        label="Val Action Acc",
-        marker="s",
-        color="lightcoral",
-    )
-    axes_blocker[0, 1].set_title("Blocker Action Accuracy")
-    axes_blocker[0, 1].set_xlabel("Epoch")
-    axes_blocker[0, 1].set_ylabel("Accuracy")
-    axes_blocker[0, 1].legend()
-    axes_blocker[0, 1].grid(True)
-
-    # Blocker Goal accuracy
-    axes_blocker[1, 0].plot(
-        history["epoch"],
-        history["train_blocker_goal_accuracy"],
-        label="Train Goal Acc",
-        marker="o",
-        color="red",
-    )
-    axes_blocker[1, 0].plot(
-        history["epoch"],
-        history["val_blocker_goal_accuracy"],
-        label="Val Goal Acc",
-        marker="s",
-        color="lightcoral",
-    )
-    axes_blocker[1, 0].set_title("Blocker Goal Accuracy")
-    axes_blocker[1, 0].set_xlabel("Epoch")
-    axes_blocker[1, 0].set_ylabel("Accuracy")
-    axes_blocker[1, 0].legend()
-    axes_blocker[1, 0].grid(True)
-
-    # Blocker Loss components
-    axes_blocker[1, 1].plot(
-        history["epoch"],
-        history["train_action_loss"],
-        label="Train Action Loss",
-        marker="o",
-        color="red",
-    )
-    axes_blocker[1, 1].plot(
-        history["epoch"],
-        history["train_goal_loss"],
-        label="Train Goal Loss",
-        marker="s",
-        color="lightcoral",
-    )
-    axes_blocker[1, 1].plot(
-        history["epoch"],
-        history["train_consumption_loss"],
-        label="Train Consumption Loss",
-        marker="^",
-        color="darkred",
-    )
-    axes_blocker[1, 1].plot(
-        history["epoch"],
-        history["train_sr_loss"],
-        label="Train SR Loss",
-        marker="v",
-        color="maroon",
-    )
-    axes_blocker[1, 1].set_title("Blocker Loss Components")
-    axes_blocker[1, 1].set_xlabel("Epoch")
-    axes_blocker[1, 1].set_ylabel("Loss")
-    axes_blocker[1, 1].legend()
-    axes_blocker[1, 1].grid(True)
-
-    plt.tight_layout()
-    plt.savefig(
-        os.path.join(save_dir, "training_history_blocker.png"),
-        dpi=300,
-        bbox_inches="tight",
-    )
-    plt.close(fig_blocker)
-
-    print(f"Training plots saved to:")
-    print(f"  - {save_dir}/training_history_total.png")
-    print(f"  - {save_dir}/training_history_achiever.png")
-    print(f"  - {save_dir}/training_history_blocker.png")
-
-
-def print_epoch_metrics(epoch, epoch_time, train_metrics, val_metrics):
-    """
-    Print epoch metrics in an organized format with agent-specific losses
-
-    Args:
-        epoch: Current epoch number (0-indexed)
-        epoch_time: Time taken for this epoch
-        train_metrics: Dictionary of training metrics
-        val_metrics: Dictionary of validation metrics
-    """
-    # Extract metrics
-    train_loss = train_metrics["loss"]
-    train_acc = train_metrics["action_accuracy"] * 100
-    val_acc = val_metrics["action_accuracy"] * 100
-    train_goal_acc = train_metrics["goal_accuracy"] * 100
-    val_goal_acc = val_metrics["goal_accuracy"] * 100
-    train_agent_acc = train_metrics["agent_accuracy"] * 100
-    val_agent_acc = val_metrics["agent_accuracy"] * 100
-    train_type_acc = train_metrics["type_accuracy"] * 100
-    val_type_acc = val_metrics["type_accuracy"] * 100
-    train_action_loss = train_metrics["action_loss"]
-    train_agent_loss = train_metrics["agent_loss"]
-    train_type_loss = train_metrics["type_loss"]
-    train_consumption_loss = train_metrics["consumption_loss"]
-    train_sr_loss = train_metrics["sr_loss"]
-    val_action_loss = val_metrics["action_loss"]
-    val_agent_loss = val_metrics["agent_loss"]
-    val_type_loss = val_metrics["type_loss"]
-    val_consumption_loss = val_metrics["consumption_loss"]
-    val_sr_loss = val_metrics["sr_loss"]
-
-    # Achiever/Blocker specific metrics
-    train_achiever_acc = train_metrics["achiever_action_accuracy"] * 100
-    val_achiever_acc = val_metrics["achiever_action_accuracy"] * 100
-    train_achiever_goal_acc = train_metrics["achiever_goal_accuracy"] * 100
-    val_achiever_goal_acc = val_metrics["achiever_goal_accuracy"] * 100
-    train_blocker_acc = train_metrics["blocker_action_accuracy"] * 100
-    val_blocker_acc = val_metrics["blocker_action_accuracy"] * 100
-    train_blocker_goal_acc = train_metrics["blocker_goal_accuracy"] * 100
-    val_blocker_goal_acc = val_metrics["blocker_goal_accuracy"] * 100
-
-    # Agent-specific losses
-    train_achiever_action_loss = train_metrics.get(
-        "achiever_action_loss", train_action_loss
-    )
-    train_achiever_goal_loss = train_metrics.get(
-        "achiever_goal_loss", train_metrics["goal_loss"]
-    )
-    train_achiever_consumption_loss = train_metrics.get(
-        "achiever_consumption_loss", train_consumption_loss
-    )
-    train_achiever_sr_loss = train_metrics.get("achiever_sr_loss", train_sr_loss)
-
-    train_blocker_action_loss = train_metrics.get(
-        "blocker_action_loss", train_action_loss
-    )
-    train_blocker_goal_loss = train_metrics.get(
-        "blocker_goal_loss", train_metrics["goal_loss"]
-    )
-    train_blocker_consumption_loss = train_metrics.get(
-        "blocker_consumption_loss", train_consumption_loss
-    )
-    train_blocker_sr_loss = train_metrics.get("blocker_sr_loss", train_sr_loss)
-
-    # Print epoch results in 3 paragraphs: Total, Achiever, Blocker
-    print(f"Epoch: {epoch + 1:3d} | Time: {epoch_time:.2f}s")
-
-    # TOTAL Loss and Accuracy
-    val_loss = val_metrics["loss"]
-    train_goal_loss = train_metrics["goal_loss"]
-    val_goal_loss = val_metrics["goal_loss"]
-    print(f"  TOTAL    - Loss: Train {train_loss:.4f} | Val {val_loss:.4f}")
-    print(
-        f"           - Agent Acc: Train {train_agent_acc:.4f}% | Val {val_agent_acc:.4f}%"
-    )
-    print(
-        f"           - Type Acc: Train {train_type_acc:.4f}% | Val {val_type_acc:.4f}%"
-    )
-    print(
-        f"           - Goal Acc: Train {train_goal_acc:.4f}% | Val {val_goal_acc:.4f}%"
-    )
-    print(f"           - Action Acc: Train {train_acc:.4f}% | Val {val_acc:.4f}%")
-    print(
-        f"           - Losses: Action {train_action_loss:.4f} | Agent {train_agent_loss:.4f} | Type {train_type_loss:.4f} | Consumption {train_consumption_loss:.4f} | SR {train_sr_loss:.4f}"
-    )
-
-    # ACHIEVER-specific metrics
-    print(
-        f"  ACHIEVER - Goal Acc: Train {train_achiever_goal_acc:.4f}% | Val {val_achiever_goal_acc:.4f}%"
-    )
-    print(
-        f"           - Action Acc: Train {train_achiever_acc:.4f}% | Val {val_achiever_acc:.4f}%"
-    )
-    print(
-        f"           - Losses: Action {train_achiever_action_loss:.4f} | Goal {train_achiever_goal_loss:.4f} | Consumption {train_achiever_consumption_loss:.4f} | SR {train_achiever_sr_loss:.4f}"
-    )
-
-    # BLOCKER-specific metrics
-    print(
-        f"  BLOCKER  - Goal Acc: Train {train_blocker_goal_acc:.4f}% | Val {val_blocker_goal_acc:.4f}%"
-    )
-    print(
-        f"           - Action Acc: Train {train_blocker_acc:.4f}% | Val {val_blocker_acc:.4f}%"
-    )
-    print(
-        f"           - Losses: Action {train_blocker_action_loss:.4f} | Goal {train_blocker_goal_loss:.4f} | Consumption {train_blocker_consumption_loss:.4f} | SR {train_blocker_sr_loss:.4f}"
-    )
-
-    print("-" * 80)
-
-
-def setup_training_environment(
-    config, training_kwargs, training_config, device_setting
-):
-    """
-    Setup training environment including device, parallel training, and memory optimization
-
-    Args:
-        config: Configuration object
-        training_kwargs: Training keyword arguments
-        training_config: Training configuration dictionary
-        device_setting: Device string or "auto"
-
-    Returns:
-        tuple: (device, use_parallel, device_ids, use_amp, gradient_accumulation_steps, other_configs)
-    """
-    # Get configuration values
-    use_parallel = training_config.get("use_parallel", False)
-    device_ids = training_config.get("device_ids", [2, 3])
-    use_amp = training_config.get("use_amp", True)
-    gradient_accumulation_steps = training_config.get("gradient_accumulation_steps", 1)
-    pin_memory = training_config.get("pin_memory", True)
-    num_workers = training_config.get("num_workers", 4)
-
-    # Auto-detect CPU count if num_workers is 0
-    if num_workers == 0:
-        import multiprocessing as mp
-
-        num_workers = mp.cpu_count()
-        print(f"Auto-detected {num_workers} CPU cores for data loading")
-
-    # Device setup
-    if device_setting == "auto":
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    else:
-        device = torch.device(device_setting)
-
-    # Setup for parallel training
-    if use_parallel and torch.cuda.is_available() and len(device_ids) > 1:
-        available_gpus = []
-        for gpu_id in device_ids:
-            if gpu_id < torch.cuda.device_count():
-                torch.cuda.set_device(gpu_id)
-                test_tensor = torch.zeros(1, device=f"cuda:{gpu_id}")
-                available_gpus.append(gpu_id)
-                del test_tensor
-                torch.cuda.empty_cache()
-
-        if len(available_gpus) > 1:
-            print(f"Using parallel training on GPUs: {available_gpus}")
-            print(f"Primary device: cuda:{available_gpus[0]}")
-            device_ids = available_gpus
-            primary_device = torch.device(f"cuda:{available_gpus[0]}")
-            device = primary_device
-        else:
-            print(
-                f"Only {len(available_gpus)} GPU(s) available, using single GPU training"
-            )
-            if available_gpus:
-                device = torch.device(f"cuda:{available_gpus[0]}")
-                print(f"Using single device: {device}")
-            use_parallel = False
-    else:
-        print(f"Using single device: {device}")
-        use_parallel = False
-
-    # Memory optimization setup
-    if torch.cuda.is_available():
-        for i in range(torch.cuda.device_count()):
-            torch.cuda.set_device(i)
-            torch.cuda.empty_cache()
-
-        torch.cuda.set_device(device)
-        print(
-            f"GPU memory allocated: {torch.cuda.memory_allocated(device) / 1024**3:.2f} GB"
-        )
-        print(
-            f"GPU memory reserved: {torch.cuda.memory_reserved(device) / 1024**3:.2f} GB"
-        )
-
-        total_memory = torch.cuda.get_device_properties(device).total_memory / 1024**3
-        allocated_memory = torch.cuda.memory_allocated(device) / 1024**3
-        available_memory = total_memory - allocated_memory
-        print(f"Available GPU memory: {available_memory:.2f} GB")
-
-        if available_memory < 2.0:
-            print(
-                "Warning: Low GPU memory detected. Consider reducing batch size or model complexity."
-            )
-
-    print(f"Using AMP (Automatic Mixed Precision): {use_amp}")
-    print(f"Gradient accumulation steps: {gradient_accumulation_steps}")
-
-    other_configs = {"pin_memory": pin_memory, "num_workers": num_workers}
-
-    return (
-        device,
-        use_parallel,
-        device_ids,
-        use_amp,
-        gradient_accumulation_steps,
-        other_configs,
-    )
-
-
-def setup_model_and_data(
-    config,
-    model_kwargs,
-    data_dir,
-    agent_type,
-    achiever_type,
-    blocker_type,
-    training_proportion,
-    device,
-    use_parallel,
-    device_ids,
-    pin_memory,
-    num_workers,
-    training_process_config,
-    batch_size,
-    lr,
-    weight_decay,
-    patience,
-    min_delta,
-):
-    """
-    Setup model, data loaders, optimizer, and other training components
-
-    Returns:
-        tuple: (model, train_loader, val_loader, optimizer, loss_fn, scaler, early_stopping)
-    """
-    from torch.utils.data import DataLoader
-    from torch.cuda.amp import GradScaler
-    import torch.utils.data
-
-    # Load training data
-    all_training_data = load_training_data_all_combinations(
-        config, data_dir.replace(f"/{agent_type}", "")
-    )
-
-    chunk_metadata = get_data_for_combination(
-        all_training_data, achiever_type, blocker_type, "training"
-    )
-
-    # Load chunked data and combine for training
-    data = load_chunked_data_for_training(chunk_metadata)
-
-    # Convert numpy arrays to torch tensors
-    trajectories = torch.from_numpy(data["trajectories"]).float()
-    actions = torch.from_numpy(data["actions"]).long()
-    goals = torch.from_numpy(data["goals"]).float()
-    goal_ranks = torch.from_numpy(data["goal_ranks"]).long()
-    agents = torch.from_numpy(data["agents"]).long()
-    types = torch.from_numpy(data["types"]).long()
-    consumption_labels = torch.from_numpy(data["consumption_labels"]).float()
-    sr_labels = torch.from_numpy(data["sr_labels"]).float()
-
-    # Create TensorDataset from the tensors
-    dataset = TensorDataset(
-        trajectories,
-        actions,
-        goals,
-        goal_ranks,
-        agents,
-        types,
-        consumption_labels,
-        sr_labels,
-    )
-
-    # Split data
-    total_samples = len(dataset)
-    val_size = int(config.n_games_per_type * (1 - training_proportion))
-    split_idx = total_samples - val_size
-
-    train_data = torch.utils.data.Subset(dataset, range(split_idx))
-    val_data = torch.utils.data.Subset(dataset, range(split_idx, total_samples))
-
-    # Calculate samples per epoch based on agent types
-    total_achiever_samples = sum(config.achiever_types.values())
-    total_blocker_samples = sum(config.blocker_types.values())
-    samples_per_epoch = total_achiever_samples + total_blocker_samples
-
-    print(f"Training samples: {len(train_data)}")
-    print(f"Validation samples: {len(val_data)} (using n_games_per_type * (1 - training_proportion) = {val_size})")
-    print(f"Total samples: {total_samples}")
-    print(f"Samples per epoch: {samples_per_epoch} (achiever: {total_achiever_samples}, blocker: {total_blocker_samples})")
-
-    # Training loader will be created dynamically each epoch
-    train_loader = None  # Will be created in training loop
-
-    val_loader = DataLoader(
-        val_data,
-        batch_size=batch_size,
-        shuffle=False,
-        pin_memory=pin_memory,
-        num_workers=num_workers,
-        persistent_workers=True if num_workers > 0 else False,
-    )
-
-    # Create model
-    model = create_model(model_kwargs)
-    model = model.to(device)
-
-    # Setup parallel training
-    if use_parallel and len(device_ids) > 1:
-        model = torch.nn.DataParallel(model, device_ids=device_ids)
-        print(f"Model wrapped with DataParallel using devices: {device_ids}")
-
-    # Create optimizer
-    optimizer = torch.optim.Adam(
-        model.parameters(),
-        lr=lr,
-        weight_decay=weight_decay,
-    )
-
-    # Create loss function
-    loss_fn = ToMnetLoss(
-        action_weight=training_process_config["action_weight"],
-        goal_weight=training_process_config["goal_weight"],
-        agent_weight=training_process_config.get("agent_weight", 1.0),
-        type_weight=training_process_config.get("type_weight", 1.0),
-        consumption_weight=training_process_config.get("consumption_weight", 1.0),
-        sr_weight=training_process_config.get("sr_weight", 1.0),
-    )
-
-    # Create scaler for AMP
-    use_amp = training_process_config.get("use_amp", True)
-    scaler = GradScaler() if use_amp else None
-
-    # Create early stopping
-    early_stopping = EarlyStopping(
-        patience=patience, min_delta=min_delta, restore_best_weights=True
-    )
-
-    return model, train_data, val_loader, optimizer, loss_fn, scaler, early_stopping, samples_per_epoch, batch_size, pin_memory, num_workers
 
 
 def run_training_loop(
@@ -2193,6 +603,14 @@ def run_training_loop(
         "train_achiever_goal_accuracy": [],
         "train_blocker_action_accuracy": [],
         "train_blocker_goal_accuracy": [],
+        "train_achiever_action_loss": [],
+        "train_achiever_goal_loss": [],
+        "train_achiever_consumption_loss": [],
+        "train_achiever_sr_loss": [],
+        "train_blocker_action_loss": [],
+        "train_blocker_goal_loss": [],
+        "train_blocker_consumption_loss": [],
+        "train_blocker_sr_loss": [],
         "val_loss": [],
         "val_action_loss": [],
         "val_goal_loss": [],
@@ -2208,36 +626,34 @@ def run_training_loop(
         "val_achiever_goal_accuracy": [],
         "val_blocker_action_accuracy": [],
         "val_blocker_goal_accuracy": [],
-        "epoch_time": [],
+        "val_achiever_action_loss": [],
+        "val_achiever_goal_loss": [],
+        "val_achiever_consumption_loss": [],
+        "val_achiever_sr_loss": [],
+        "val_blocker_action_loss": [],
+        "val_blocker_goal_loss": [],
+        "val_blocker_consumption_loss": [],
+        "val_blocker_sr_loss": [],
     }
 
     best_val_loss = float("inf")
-
-    print(f"\nStarting training for {epochs} epochs...")
-    print("-" * 50)
-
+    patience_counter = 0
+    
+    print(f"Starting training for {epochs} epochs...")
+    
     for epoch in range(epochs):
         epoch_start_time = time.time()
-        print(f"\nEpoch {epoch + 1}/{epochs}")
-        print("-" * 50)
-
-        # Sample different training data for each epoch
-        train_indices = torch.randperm(len(train_data))[:samples_per_epoch]
-        sampled_train_data = torch.utils.data.Subset(train_data, train_indices)
         
-        # Create epoch-specific training loader
-        train_loader = DataLoader(
-            sampled_train_data,
-            batch_size=batch_size,
-            shuffle=True,
-            pin_memory=pin_memory,
-            num_workers=num_workers,
-            persistent_workers=True if num_workers > 0 else False,
+        # Create training data loader for this epoch
+        train_loader = load_chunked_data_for_training(
+            train_data,
+            batch_size,
+            samples_per_epoch,
+            pin_memory,
+            num_workers,
         )
         
-        print(f"Epoch {epoch + 1}: Using {len(sampled_train_data)} randomly sampled training examples")
-
-        # Training
+        # Training phase
         train_metrics = train_epoch(
             model,
             train_loader,
@@ -2251,8 +667,8 @@ def run_training_loop(
             scaler,
             gradient_accumulation_steps,
         )
-
-        # Validation
+        
+        # Validation phase
         val_metrics = validate_epoch(
             model,
             val_loader,
@@ -2263,33 +679,71 @@ def run_training_loop(
             model_config,
             scaler,
         )
-
+        
         epoch_time = time.time() - epoch_start_time
-
+        
         # Update history
-        for key in history:
-            if key == "epoch":
-                history[key].append(epoch + 1)
-            elif key == "epoch_time":
-                history[key].append(epoch_time)
-            elif key.startswith("train_"):
-                metric_name = key[6:]  # Remove "train_" prefix
-                history[key].append(train_metrics[metric_name])
-            elif key.startswith("val_"):
-                metric_name = key[4:]  # Remove "val_" prefix
-                history[key].append(val_metrics[metric_name])
-
-        # Print metrics using centralized function
+        history["epoch"].append(epoch + 1)
+        
+        # Training metrics
+        history["train_loss"].append(train_metrics["loss"])
+        history["train_action_loss"].append(train_metrics["action_loss"])
+        history["train_goal_loss"].append(train_metrics["goal_loss"])
+        history["train_agent_loss"].append(train_metrics["agent_loss"])
+        history["train_type_loss"].append(train_metrics["type_loss"])
+        history["train_consumption_loss"].append(train_metrics["consumption_loss"])
+        history["train_sr_loss"].append(train_metrics["sr_loss"])
+        history["train_action_accuracy"].append(train_metrics["action_accuracy"])
+        history["train_goal_accuracy"].append(train_metrics["goal_accuracy"])
+        history["train_agent_accuracy"].append(train_metrics["agent_accuracy"])
+        history["train_type_accuracy"].append(train_metrics["type_accuracy"])
+        history["train_achiever_action_accuracy"].append(train_metrics["achiever_action_accuracy"])
+        history["train_achiever_goal_accuracy"].append(train_metrics["achiever_goal_accuracy"])
+        history["train_blocker_action_accuracy"].append(train_metrics["blocker_action_accuracy"])
+        history["train_blocker_goal_accuracy"].append(train_metrics["blocker_goal_accuracy"])
+        history["train_achiever_action_loss"].append(train_metrics["achiever_action_loss"])
+        history["train_achiever_goal_loss"].append(train_metrics["achiever_goal_loss"])
+        history["train_achiever_consumption_loss"].append(train_metrics["achiever_consumption_loss"])
+        history["train_achiever_sr_loss"].append(train_metrics["achiever_sr_loss"])
+        history["train_blocker_action_loss"].append(train_metrics["blocker_action_loss"])
+        history["train_blocker_goal_loss"].append(train_metrics["blocker_goal_loss"])
+        history["train_blocker_consumption_loss"].append(train_metrics["blocker_consumption_loss"])
+        history["train_blocker_sr_loss"].append(train_metrics["blocker_sr_loss"])
+        
+        # Validation metrics
+        history["val_loss"].append(val_metrics["loss"])
+        history["val_action_loss"].append(val_metrics["action_loss"])
+        history["val_goal_loss"].append(val_metrics["goal_loss"])
+        history["val_agent_loss"].append(val_metrics["agent_loss"])
+        history["val_type_loss"].append(val_metrics["type_loss"])
+        history["val_consumption_loss"].append(val_metrics["consumption_loss"])
+        history["val_sr_loss"].append(val_metrics["sr_loss"])
+        history["val_action_accuracy"].append(val_metrics["action_accuracy"])
+        history["val_goal_accuracy"].append(val_metrics["goal_accuracy"])
+        history["val_agent_accuracy"].append(val_metrics["agent_accuracy"])
+        history["val_type_accuracy"].append(val_metrics["type_accuracy"])
+        history["val_achiever_action_accuracy"].append(val_metrics["achiever_action_accuracy"])
+        history["val_achiever_goal_accuracy"].append(val_metrics["achiever_goal_accuracy"])
+        history["val_blocker_action_accuracy"].append(val_metrics["blocker_action_accuracy"])
+        history["val_blocker_goal_accuracy"].append(val_metrics["blocker_goal_accuracy"])
+        history["val_achiever_action_loss"].append(val_metrics["achiever_action_loss"])
+        history["val_achiever_goal_loss"].append(val_metrics["achiever_goal_loss"])
+        history["val_achiever_consumption_loss"].append(val_metrics["achiever_consumption_loss"])
+        history["val_achiever_sr_loss"].append(val_metrics["achiever_sr_loss"])
+        history["val_blocker_action_loss"].append(val_metrics["blocker_action_loss"])
+        history["val_blocker_goal_loss"].append(val_metrics["blocker_goal_loss"])
+        history["val_blocker_consumption_loss"].append(val_metrics["blocker_consumption_loss"])
+        history["val_blocker_sr_loss"].append(val_metrics["blocker_sr_loss"])
+        
+        # Print epoch metrics
         print_epoch_metrics(epoch, epoch_time, train_metrics, val_metrics)
-
-        # Force flush to ensure real-time logging
-        sys.stdout.flush()
-        if hasattr(sys.stdout, "buffer"):
-            sys.stdout.buffer.flush()
-
-        # Save best model
+        
+        # Save model if validation loss improved
         if val_metrics["loss"] < best_val_loss:
             best_val_loss = val_metrics["loss"]
+            patience_counter = 0
+            
+            # Save best model
             if isinstance(model, torch.nn.DataParallel):
                 torch.save(
                     model.module.state_dict(),
@@ -2300,18 +754,49 @@ def run_training_loop(
                     model.state_dict(),
                     os.path.join(experiment_save_dir, "best_model.pth"),
                 )
-            print(f"New best model saved (val_loss: {best_val_loss:.4f})")
-
-        # Early stopping
-        if early_stopping(val_metrics["action_loss"], model):
-            print(f"Early stopping triggered after {epoch + 1} epochs")
+            
+            print(f"New best validation loss: {best_val_loss:.4f}")
+        else:
+            patience_counter += 1
+        
+        # Check early stopping
+        if early_stopping(val_metrics["loss"], model):
+            print(f"Early stopping triggered at epoch {epoch + 1}")
             break
-
-        # Memory cleanup after each epoch
+        
+        # Save checkpoint every 10 epochs
+        if (epoch + 1) % 10 == 0:
+            checkpoint_path = os.path.join(experiment_save_dir, f"checkpoint_epoch_{epoch + 1}.pth")
+            if isinstance(model, torch.nn.DataParallel):
+                torch.save(
+                    {
+                        "epoch": epoch + 1,
+                        "model_state_dict": model.module.state_dict(),
+                        "optimizer_state_dict": optimizer.state_dict(),
+                        "best_val_loss": best_val_loss,
+                        "history": history,
+                    },
+                    checkpoint_path,
+                )
+            else:
+                torch.save(
+                    {
+                        "epoch": epoch + 1,
+                        "model_state_dict": model.state_dict(),
+                        "optimizer_state_dict": optimizer.state_dict(),
+                        "best_val_loss": best_val_loss,
+                        "history": history,
+                    },
+                    checkpoint_path,
+                )
+        
+        # Memory cleanup
+        del train_loader
+        gc.collect()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
-        gc.collect()
-
+    
+    print("Training completed!")
     return history
 
 
@@ -2326,31 +811,26 @@ def train_tomnet(
     Main training function for KeyDoor ToMnet
 
     Args:
-        data_dir: Directory containing game data
+        data_dir: Directory containing training data
         save_dir: Directory to save results
-        config: Configuration object (Config instance)
-        achiever_type: Specific achiever type for this training session
-        blocker_type: Specific blocker type for this training session
+        config: Configuration object
+        achiever_type: Type of achiever agent
+        blocker_type: Type of blocker agent
+
+    Returns:
+        Training history dictionary
     """
-    # Use provided config or create default
     if config is None:
         config = Config()
 
-    # Set data_dir based on config if not provided
+    # Use default data directory if not provided
     if data_dir is None:
-        env_name = config.get_env_name()
-        # Use specific achiever and blocker types if provided
-        if achiever_type and blocker_type:
-            agent_type = config.get_agent_pair_name(achiever_type, blocker_type)
-            data_dir = f"./data/{env_name}/{agent_type}/"
-        else:
-            # Default to first combination if types not specified
-            achiever_type = config.achiever_types[0]
-            blocker_type = config.blocker_types[0]
-            agent_type = config.get_agent_pair_name(achiever_type, blocker_type)
-            data_dir = f"./data/{env_name}/{agent_type}/"
+        data_dir = config.get_data_dir(achiever_type, blocker_type)
 
-    # Extract parameters from config
+    # Agent type (we'll focus on one agent type for now)
+    agent_type = "achiever"  # or "blocker"
+
+    # Extract configuration
     training_kwargs = config.get_training_kwargs()
     model_kwargs = config.get_model_kwargs()
     model_config = config.get_model_config()
@@ -2475,15 +955,10 @@ def train_tomnet(
     print("Training completed successfully!")
     print(f"Results saved to: {experiment_save_dir}")
     
-    # Add best validation loss to history if it exists
-    if 'best_val_loss' in locals():
-        history["best_val_loss"] = best_val_loss
+    if history["val_loss"]:
+        history["best_val_loss"] = min(history["val_loss"])
     else:
-        # Calculate best val loss from history
-        if history["val_loss"]:
-            history["best_val_loss"] = min(history["val_loss"])
-        else:
-            history["best_val_loss"] = float('inf')
+        history["best_val_loss"] = float('inf')
     
     return history
 

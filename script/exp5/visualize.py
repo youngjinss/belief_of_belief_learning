@@ -23,9 +23,9 @@ warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 from config import Config
-from train import prepare_data_for_training, generate_past_episodes_from_batch
+from utils import prepare_data_for_training, generate_past_episodes_from_batch
 from data_generation import DataGenerator as DataReader, DataGenerator
-from utils import set_seed, load_test_data_all_combinations, get_data_for_combination, load_chunked_data_for_training
+from utils import set_seed, load_chunked_data_for_training
 
 # Set seed using Config default value
 config = Config()
@@ -1959,7 +1959,7 @@ if __name__ == "__main__":
         # Import load_model locally to avoid circular import
         from evaluate import load_model
         from data_generation import DataGenerator as DataReader
-        from train import prepare_data_for_training
+        from utils import prepare_data_for_training
         from torch.utils.data import DataLoader, TensorDataset
         import torch
 

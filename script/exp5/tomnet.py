@@ -1,9 +1,9 @@
+import os
+import sys
+
 import torch
 from torch import nn
 import torch.nn.functional as F
-import numpy as np
-import sys
-import os
 
 # Add lib to path for imports
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -960,7 +960,7 @@ class ToMnetLoss(nn.Module):
         )
 
         # SR loss using KL divergence
-        from train import calculate_sr_loss_kl_divergence
+        from utils import calculate_sr_loss_kl_divergence
 
         sr_loss = calculate_sr_loss_kl_divergence(sr_pred, sr_targets)
 

@@ -1498,7 +1498,7 @@ def train_tomnet(
     if achiever_type and blocker_type:
         achiever_games = config.achiever_types.get(achiever_type, 30000)
         blocker_games = config.blocker_types.get(blocker_type, 30000)
-        target_games = min(achiever_games, blocker_games)
+        target_games = achiever_games + blocker_games
 
         total_samples = data["trajectories"].shape[0]
         if total_samples > target_games:

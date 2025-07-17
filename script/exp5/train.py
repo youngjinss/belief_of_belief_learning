@@ -601,6 +601,16 @@ def train_epoch(
     blocker_correct_goals = 0
     blocker_total_samples = 0
 
+    # Agent-specific loss tracking
+    achiever_total_action_loss = 0
+    achiever_total_goal_loss = 0
+    achiever_total_consumption_loss = 0
+    achiever_total_sr_loss = 0
+    blocker_total_action_loss = 0
+    blocker_total_goal_loss = 0
+    blocker_total_consumption_loss = 0
+    blocker_total_sr_loss = 0
+
     for batch_idx, batch in enumerate(train_loader):
         # Unpack multi-agent data
         (
@@ -862,6 +872,35 @@ def train_epoch(
         )
         blocker_total_samples += blocker_mask.sum().item()
 
+        # Agent-specific loss accumulation
+        if achiever_mask.sum() > 0:
+            achiever_total_action_loss += action_loss_batch.item() * (
+                achiever_mask.sum().item() / batch_size
+            )
+            achiever_total_goal_loss += goal_loss_batch.item() * (
+                achiever_mask.sum().item() / batch_size
+            )
+            achiever_total_consumption_loss += consumption_loss_batch.item() * (
+                achiever_mask.sum().item() / batch_size
+            )
+            achiever_total_sr_loss += sr_loss_batch.item() * (
+                achiever_mask.sum().item() / batch_size
+            )
+
+        if blocker_mask.sum() > 0:
+            blocker_total_action_loss += action_loss_batch.item() * (
+                blocker_mask.sum().item() / batch_size
+            )
+            blocker_total_goal_loss += goal_loss_batch.item() * (
+                blocker_mask.sum().item() / batch_size
+            )
+            blocker_total_consumption_loss += consumption_loss_batch.item() * (
+                blocker_mask.sum().item() / batch_size
+            )
+            blocker_total_sr_loss += sr_loss_batch.item() * (
+                blocker_mask.sum().item() / batch_size
+            )
+
         # Memory cleanup for large batches (optimized)
         if batch_idx % 10 == 0:
             # Clear intermediate variables
@@ -925,6 +964,31 @@ def train_epoch(
         else 0
     )
 
+    # Calculate agent-specific average losses
+    achiever_avg_action_loss = (
+        achiever_total_action_loss / num_batches if num_batches > 0 else 0
+    )
+    achiever_avg_goal_loss = (
+        achiever_total_goal_loss / num_batches if num_batches > 0 else 0
+    )
+    achiever_avg_consumption_loss = (
+        achiever_total_consumption_loss / num_batches if num_batches > 0 else 0
+    )
+    achiever_avg_sr_loss = (
+        achiever_total_sr_loss / num_batches if num_batches > 0 else 0
+    )
+
+    blocker_avg_action_loss = (
+        blocker_total_action_loss / num_batches if num_batches > 0 else 0
+    )
+    blocker_avg_goal_loss = (
+        blocker_total_goal_loss / num_batches if num_batches > 0 else 0
+    )
+    blocker_avg_consumption_loss = (
+        blocker_total_consumption_loss / num_batches if num_batches > 0 else 0
+    )
+    blocker_avg_sr_loss = blocker_total_sr_loss / num_batches if num_batches > 0 else 0
+
     return {
         "loss": avg_loss,
         "action_loss": avg_action_loss,
@@ -941,6 +1005,15 @@ def train_epoch(
         "achiever_goal_accuracy": achiever_goal_accuracy,
         "blocker_action_accuracy": blocker_action_accuracy,
         "blocker_goal_accuracy": blocker_goal_accuracy,
+        # Agent-specific losses
+        "achiever_action_loss": achiever_avg_action_loss,
+        "achiever_goal_loss": achiever_avg_goal_loss,
+        "achiever_consumption_loss": achiever_avg_consumption_loss,
+        "achiever_sr_loss": achiever_avg_sr_loss,
+        "blocker_action_loss": blocker_avg_action_loss,
+        "blocker_goal_loss": blocker_avg_goal_loss,
+        "blocker_consumption_loss": blocker_avg_consumption_loss,
+        "blocker_sr_loss": blocker_avg_sr_loss,
     }
 
 
@@ -988,6 +1061,16 @@ def validate_epoch(
     blocker_correct_actions = 0
     blocker_correct_goals = 0
     blocker_total_samples = 0
+
+    # Agent-specific loss tracking
+    achiever_total_action_loss = 0
+    achiever_total_goal_loss = 0
+    achiever_total_consumption_loss = 0
+    achiever_total_sr_loss = 0
+    blocker_total_action_loss = 0
+    blocker_total_goal_loss = 0
+    blocker_total_consumption_loss = 0
+    blocker_total_sr_loss = 0
 
     with torch.no_grad():
         for batch_idx, batch in enumerate(val_loader):
@@ -1182,6 +1265,35 @@ def validate_epoch(
             )
             blocker_total_samples += blocker_mask.sum().item()
 
+            # Agent-specific loss accumulation
+            if achiever_mask.sum() > 0:
+                achiever_total_action_loss += action_loss_batch.item() * (
+                    achiever_mask.sum().item() / batch_size
+                )
+                achiever_total_goal_loss += goal_loss_batch.item() * (
+                    achiever_mask.sum().item() / batch_size
+                )
+                achiever_total_consumption_loss += consumption_loss_batch.item() * (
+                    achiever_mask.sum().item() / batch_size
+                )
+                achiever_total_sr_loss += sr_loss_batch.item() * (
+                    achiever_mask.sum().item() / batch_size
+                )
+
+            if blocker_mask.sum() > 0:
+                blocker_total_action_loss += action_loss_batch.item() * (
+                    blocker_mask.sum().item() / batch_size
+                )
+                blocker_total_goal_loss += goal_loss_batch.item() * (
+                    blocker_mask.sum().item() / batch_size
+                )
+                blocker_total_consumption_loss += consumption_loss_batch.item() * (
+                    blocker_mask.sum().item() / batch_size
+                )
+                blocker_total_sr_loss += sr_loss_batch.item() * (
+                    blocker_mask.sum().item() / batch_size
+                )
+
     num_batches = len(val_loader)
     avg_loss = total_loss / num_batches if num_batches > 0 else 0
     avg_action_loss = total_action_loss / num_batches if num_batches > 0 else 0
@@ -1219,6 +1331,31 @@ def validate_epoch(
         else 0
     )
 
+    # Calculate agent-specific average losses
+    achiever_avg_action_loss = (
+        achiever_total_action_loss / num_batches if num_batches > 0 else 0
+    )
+    achiever_avg_goal_loss = (
+        achiever_total_goal_loss / num_batches if num_batches > 0 else 0
+    )
+    achiever_avg_consumption_loss = (
+        achiever_total_consumption_loss / num_batches if num_batches > 0 else 0
+    )
+    achiever_avg_sr_loss = (
+        achiever_total_sr_loss / num_batches if num_batches > 0 else 0
+    )
+
+    blocker_avg_action_loss = (
+        blocker_total_action_loss / num_batches if num_batches > 0 else 0
+    )
+    blocker_avg_goal_loss = (
+        blocker_total_goal_loss / num_batches if num_batches > 0 else 0
+    )
+    blocker_avg_consumption_loss = (
+        blocker_total_consumption_loss / num_batches if num_batches > 0 else 0
+    )
+    blocker_avg_sr_loss = blocker_total_sr_loss / num_batches if num_batches > 0 else 0
+
     return {
         "loss": avg_loss,
         "action_loss": avg_action_loss,
@@ -1235,6 +1372,15 @@ def validate_epoch(
         "achiever_goal_accuracy": achiever_goal_accuracy,
         "blocker_action_accuracy": blocker_action_accuracy,
         "blocker_goal_accuracy": blocker_goal_accuracy,
+        # Agent-specific losses
+        "achiever_action_loss": achiever_avg_action_loss,
+        "achiever_goal_loss": achiever_avg_goal_loss,
+        "achiever_consumption_loss": achiever_avg_consumption_loss,
+        "achiever_sr_loss": achiever_avg_sr_loss,
+        "blocker_action_loss": blocker_avg_action_loss,
+        "blocker_goal_loss": blocker_avg_goal_loss,
+        "blocker_consumption_loss": blocker_avg_consumption_loss,
+        "blocker_sr_loss": blocker_avg_sr_loss,
     }
 
 
@@ -1564,6 +1710,502 @@ def save_training_plots(history, save_dir):
     print(f"  - {save_dir}/training_history_blocker.png")
 
 
+def print_epoch_metrics(epoch, epoch_time, train_metrics, val_metrics):
+    """
+    Print epoch metrics in an organized format with agent-specific losses
+
+    Args:
+        epoch: Current epoch number (0-indexed)
+        epoch_time: Time taken for this epoch
+        train_metrics: Dictionary of training metrics
+        val_metrics: Dictionary of validation metrics
+    """
+    # Extract metrics
+    train_loss = train_metrics["loss"]
+    train_acc = train_metrics["action_accuracy"] * 100
+    val_acc = val_metrics["action_accuracy"] * 100
+    train_goal_acc = train_metrics["goal_accuracy"] * 100
+    val_goal_acc = val_metrics["goal_accuracy"] * 100
+    train_agent_acc = train_metrics["agent_accuracy"] * 100
+    val_agent_acc = val_metrics["agent_accuracy"] * 100
+    train_type_acc = train_metrics["type_accuracy"] * 100
+    val_type_acc = val_metrics["type_accuracy"] * 100
+    train_action_loss = train_metrics["action_loss"]
+    train_agent_loss = train_metrics["agent_loss"]
+    train_type_loss = train_metrics["type_loss"]
+    train_consumption_loss = train_metrics["consumption_loss"]
+    train_sr_loss = train_metrics["sr_loss"]
+    val_action_loss = val_metrics["action_loss"]
+    val_agent_loss = val_metrics["agent_loss"]
+    val_type_loss = val_metrics["type_loss"]
+    val_consumption_loss = val_metrics["consumption_loss"]
+    val_sr_loss = val_metrics["sr_loss"]
+
+    # Achiever/Blocker specific metrics
+    train_achiever_acc = train_metrics["achiever_action_accuracy"] * 100
+    val_achiever_acc = val_metrics["achiever_action_accuracy"] * 100
+    train_achiever_goal_acc = train_metrics["achiever_goal_accuracy"] * 100
+    val_achiever_goal_acc = val_metrics["achiever_goal_accuracy"] * 100
+    train_blocker_acc = train_metrics["blocker_action_accuracy"] * 100
+    val_blocker_acc = val_metrics["blocker_action_accuracy"] * 100
+    train_blocker_goal_acc = train_metrics["blocker_goal_accuracy"] * 100
+    val_blocker_goal_acc = val_metrics["blocker_goal_accuracy"] * 100
+
+    # Agent-specific losses
+    train_achiever_action_loss = train_metrics.get(
+        "achiever_action_loss", train_action_loss
+    )
+    train_achiever_goal_loss = train_metrics.get(
+        "achiever_goal_loss", train_metrics["goal_loss"]
+    )
+    train_achiever_consumption_loss = train_metrics.get(
+        "achiever_consumption_loss", train_consumption_loss
+    )
+    train_achiever_sr_loss = train_metrics.get("achiever_sr_loss", train_sr_loss)
+
+    train_blocker_action_loss = train_metrics.get(
+        "blocker_action_loss", train_action_loss
+    )
+    train_blocker_goal_loss = train_metrics.get(
+        "blocker_goal_loss", train_metrics["goal_loss"]
+    )
+    train_blocker_consumption_loss = train_metrics.get(
+        "blocker_consumption_loss", train_consumption_loss
+    )
+    train_blocker_sr_loss = train_metrics.get("blocker_sr_loss", train_sr_loss)
+
+    # Print epoch results in 3 paragraphs: Total, Achiever, Blocker
+    print(f"Epoch: {epoch + 1:3d} | Time: {epoch_time:.2f}s")
+
+    # TOTAL Loss and Accuracy
+    val_loss = val_metrics["loss"]
+    train_goal_loss = train_metrics["goal_loss"]
+    val_goal_loss = val_metrics["goal_loss"]
+    print(f"  TOTAL    - Loss: Train {train_loss:.4f} | Val {val_loss:.4f}")
+    print(
+        f"           - Agent Acc: Train {train_agent_acc:.4f}% | Val {val_agent_acc:.4f}%"
+    )
+    print(
+        f"           - Type Acc: Train {train_type_acc:.4f}% | Val {val_type_acc:.4f}%"
+    )
+    print(
+        f"           - Goal Acc: Train {train_goal_acc:.4f}% | Val {val_goal_acc:.4f}%"
+    )
+    print(f"           - Action Acc: Train {train_acc:.4f}% | Val {val_acc:.4f}%")
+    print(
+        f"           - Losses: Action {train_action_loss:.4f} | Agent {train_agent_loss:.4f} | Type {train_type_loss:.4f} | Consumption {train_consumption_loss:.4f} | SR {train_sr_loss:.4f}"
+    )
+
+    # ACHIEVER-specific metrics
+    print(
+        f"  ACHIEVER - Goal Acc: Train {train_achiever_goal_acc:.4f}% | Val {val_achiever_goal_acc:.4f}%"
+    )
+    print(
+        f"           - Action Acc: Train {train_achiever_acc:.4f}% | Val {val_achiever_acc:.4f}%"
+    )
+    print(
+        f"           - Losses: Action {train_achiever_action_loss:.4f} | Goal {train_achiever_goal_loss:.4f} | Consumption {train_achiever_consumption_loss:.4f} | SR {train_achiever_sr_loss:.4f}"
+    )
+
+    # BLOCKER-specific metrics
+    print(
+        f"  BLOCKER  - Goal Acc: Train {train_blocker_goal_acc:.4f}% | Val {val_blocker_goal_acc:.4f}%"
+    )
+    print(
+        f"           - Action Acc: Train {train_blocker_acc:.4f}% | Val {val_blocker_acc:.4f}%"
+    )
+    print(
+        f"           - Losses: Action {train_blocker_action_loss:.4f} | Goal {train_blocker_goal_loss:.4f} | Consumption {train_blocker_consumption_loss:.4f} | SR {train_blocker_sr_loss:.4f}"
+    )
+
+    print("-" * 80)
+
+
+def setup_training_environment(
+    config, training_kwargs, training_config, device_setting
+):
+    """
+    Setup training environment including device, parallel training, and memory optimization
+
+    Args:
+        config: Configuration object
+        training_kwargs: Training keyword arguments
+        training_config: Training configuration dictionary
+        device_setting: Device string or "auto"
+
+    Returns:
+        tuple: (device, use_parallel, device_ids, use_amp, gradient_accumulation_steps, other_configs)
+    """
+    # Get configuration values
+    use_parallel = training_config.get("use_parallel", False)
+    device_ids = training_config.get("device_ids", [2, 3])
+    use_amp = training_config.get("use_amp", True)
+    gradient_accumulation_steps = training_config.get("gradient_accumulation_steps", 1)
+    pin_memory = training_config.get("pin_memory", True)
+    num_workers = training_config.get("num_workers", 4)
+
+    # Auto-detect CPU count if num_workers is 0
+    if num_workers == 0:
+        import multiprocessing as mp
+
+        num_workers = mp.cpu_count()
+        print(f"Auto-detected {num_workers} CPU cores for data loading")
+
+    # Device setup
+    if device_setting == "auto":
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    else:
+        device = torch.device(device_setting)
+
+    # Setup for parallel training
+    if use_parallel and torch.cuda.is_available() and len(device_ids) > 1:
+        available_gpus = []
+        for gpu_id in device_ids:
+            if gpu_id < torch.cuda.device_count():
+                torch.cuda.set_device(gpu_id)
+                test_tensor = torch.zeros(1, device=f"cuda:{gpu_id}")
+                available_gpus.append(gpu_id)
+                del test_tensor
+                torch.cuda.empty_cache()
+
+        if len(available_gpus) > 1:
+            print(f"Using parallel training on GPUs: {available_gpus}")
+            print(f"Primary device: cuda:{available_gpus[0]}")
+            device_ids = available_gpus
+            primary_device = torch.device(f"cuda:{available_gpus[0]}")
+            device = primary_device
+        else:
+            print(
+                f"Only {len(available_gpus)} GPU(s) available, using single GPU training"
+            )
+            if available_gpus:
+                device = torch.device(f"cuda:{available_gpus[0]}")
+                print(f"Using single device: {device}")
+            use_parallel = False
+    else:
+        print(f"Using single device: {device}")
+        use_parallel = False
+
+    # Memory optimization setup
+    if torch.cuda.is_available():
+        for i in range(torch.cuda.device_count()):
+            torch.cuda.set_device(i)
+            torch.cuda.empty_cache()
+
+        torch.cuda.set_device(device)
+        print(
+            f"GPU memory allocated: {torch.cuda.memory_allocated(device) / 1024**3:.2f} GB"
+        )
+        print(
+            f"GPU memory reserved: {torch.cuda.memory_reserved(device) / 1024**3:.2f} GB"
+        )
+
+        total_memory = torch.cuda.get_device_properties(device).total_memory / 1024**3
+        allocated_memory = torch.cuda.memory_allocated(device) / 1024**3
+        available_memory = total_memory - allocated_memory
+        print(f"Available GPU memory: {available_memory:.2f} GB")
+
+        if available_memory < 2.0:
+            print(
+                "Warning: Low GPU memory detected. Consider reducing batch size or model complexity."
+            )
+
+    print(f"Using AMP (Automatic Mixed Precision): {use_amp}")
+    print(f"Gradient accumulation steps: {gradient_accumulation_steps}")
+
+    other_configs = {"pin_memory": pin_memory, "num_workers": num_workers}
+
+    return (
+        device,
+        use_parallel,
+        device_ids,
+        use_amp,
+        gradient_accumulation_steps,
+        other_configs,
+    )
+
+
+def setup_model_and_data(
+    config,
+    model_kwargs,
+    data_dir,
+    agent_type,
+    achiever_type,
+    blocker_type,
+    training_proportion,
+    device,
+    use_parallel,
+    device_ids,
+    pin_memory,
+    num_workers,
+    training_process_config,
+    batch_size,
+    lr,
+    weight_decay,
+    patience,
+    min_delta,
+):
+    """
+    Setup model, data loaders, optimizer, and other training components
+
+    Returns:
+        tuple: (model, train_loader, val_loader, optimizer, loss_fn, scaler, early_stopping)
+    """
+    from torch.utils.data import DataLoader
+    from torch.cuda.amp import GradScaler
+    import torch.utils.data
+
+    # Load training data
+    all_training_data = load_training_data_all_combinations(
+        config, data_dir.replace(f"/{agent_type}", "")
+    )
+
+    data = get_data_for_combination(
+        all_training_data, achiever_type, blocker_type, "training"
+    )
+
+    # Convert numpy arrays to torch tensors
+    trajectories = torch.from_numpy(data["trajectories"]).float()
+    actions = torch.from_numpy(data["actions"]).long()
+    goals = torch.from_numpy(data["goals"]).float()
+    goal_ranks = torch.from_numpy(data["goal_ranks"]).long()
+    agents = torch.from_numpy(data["agents"]).long()
+    types = torch.from_numpy(data["types"]).long()
+    consumption_labels = torch.from_numpy(data["consumption_labels"]).float()
+    sr_labels = torch.from_numpy(data["sr_labels"]).float()
+
+    # Create TensorDataset from the tensors
+    dataset = TensorDataset(
+        trajectories,
+        actions,
+        goals,
+        goal_ranks,
+        agents,
+        types,
+        consumption_labels,
+        sr_labels,
+    )
+
+    # Split data
+    total_samples = len(dataset)
+    split_idx = int(total_samples * training_proportion)
+
+    train_data = torch.utils.data.Subset(dataset, range(split_idx))
+    val_data = torch.utils.data.Subset(dataset, range(split_idx, total_samples))
+
+    print(f"Training samples: {len(train_data)}")
+    print(f"Validation samples: {len(val_data)}")
+    print(f"Total samples: {total_samples}")
+
+    # Create data loaders
+    train_loader = DataLoader(
+        train_data,
+        batch_size=batch_size,
+        shuffle=True,
+        pin_memory=pin_memory,
+        num_workers=num_workers,
+        persistent_workers=True if num_workers > 0 else False,
+    )
+
+    val_loader = DataLoader(
+        val_data,
+        batch_size=batch_size,
+        shuffle=False,
+        pin_memory=pin_memory,
+        num_workers=num_workers,
+        persistent_workers=True if num_workers > 0 else False,
+    )
+
+    # Create model
+    model = create_model(model_kwargs)
+    model = model.to(device)
+
+    # Setup parallel training
+    if use_parallel and len(device_ids) > 1:
+        model = torch.nn.DataParallel(model, device_ids=device_ids)
+        print(f"Model wrapped with DataParallel using devices: {device_ids}")
+
+    # Create optimizer
+    optimizer = torch.optim.Adam(
+        model.parameters(),
+        lr=lr,
+        weight_decay=weight_decay,
+    )
+
+    # Create loss function
+    loss_fn = ToMnetLoss(
+        action_weight=training_process_config["action_weight"],
+        goal_weight=training_process_config["goal_weight"],
+        agent_weight=training_process_config.get("agent_weight", 1.0),
+        type_weight=training_process_config.get("type_weight", 1.0),
+        consumption_weight=training_process_config.get("consumption_weight", 1.0),
+        sr_weight=training_process_config.get("sr_weight", 1.0),
+    )
+
+    # Create scaler for AMP
+    use_amp = training_process_config.get("use_amp", True)
+    scaler = GradScaler() if use_amp else None
+
+    # Create early stopping
+    early_stopping = EarlyStopping(
+        patience=patience, min_delta=min_delta, restore_best_weights=True
+    )
+
+    return model, train_loader, val_loader, optimizer, loss_fn, scaler, early_stopping
+
+
+def run_training_loop(
+    model,
+    train_loader,
+    val_loader,
+    optimizer,
+    loss_fn,
+    device,
+    scaler,
+    early_stopping,
+    epochs,
+    max_n_past,
+    data_config,
+    training_process_config,
+    model_config,
+    gradient_accumulation_steps,
+    experiment_save_dir,
+):
+    """
+    Main training loop extracted from train_tomnet function
+
+    Returns:
+        dict: Training history
+    """
+    import time
+    import sys
+    import json
+    import gc
+
+    # Initialize training history
+    history = {
+        "epoch": [],
+        "train_loss": [],
+        "train_action_loss": [],
+        "train_goal_loss": [],
+        "train_agent_loss": [],
+        "train_type_loss": [],
+        "train_consumption_loss": [],
+        "train_sr_loss": [],
+        "train_action_accuracy": [],
+        "train_goal_accuracy": [],
+        "train_agent_accuracy": [],
+        "train_type_accuracy": [],
+        "train_achiever_action_accuracy": [],
+        "train_achiever_goal_accuracy": [],
+        "train_blocker_action_accuracy": [],
+        "train_blocker_goal_accuracy": [],
+        "val_loss": [],
+        "val_action_loss": [],
+        "val_goal_loss": [],
+        "val_agent_loss": [],
+        "val_type_loss": [],
+        "val_consumption_loss": [],
+        "val_sr_loss": [],
+        "val_action_accuracy": [],
+        "val_goal_accuracy": [],
+        "val_agent_accuracy": [],
+        "val_type_accuracy": [],
+        "val_achiever_action_accuracy": [],
+        "val_achiever_goal_accuracy": [],
+        "val_blocker_action_accuracy": [],
+        "val_blocker_goal_accuracy": [],
+        "epoch_time": [],
+    }
+
+    best_val_loss = float("inf")
+
+    print(f"\nStarting training for {epochs} epochs...")
+    print("-" * 50)
+
+    for epoch in range(epochs):
+        epoch_start_time = time.time()
+        print(f"\nEpoch {epoch + 1}/{epochs}")
+        print("-" * 50)
+
+        # Training
+        train_metrics = train_epoch(
+            model,
+            train_loader,
+            optimizer,
+            loss_fn,
+            device,
+            max_n_past,
+            data_config,
+            training_process_config,
+            model_config,
+            scaler,
+            gradient_accumulation_steps,
+        )
+
+        # Validation
+        val_metrics = validate_epoch(
+            model,
+            val_loader,
+            loss_fn,
+            device,
+            max_n_past,
+            data_config,
+            model_config,
+            scaler,
+        )
+
+        epoch_time = time.time() - epoch_start_time
+
+        # Update history
+        for key in history:
+            if key == "epoch":
+                history[key].append(epoch + 1)
+            elif key == "epoch_time":
+                history[key].append(epoch_time)
+            elif key.startswith("train_"):
+                metric_name = key[6:]  # Remove "train_" prefix
+                history[key].append(train_metrics[metric_name])
+            elif key.startswith("val_"):
+                metric_name = key[4:]  # Remove "val_" prefix
+                history[key].append(val_metrics[metric_name])
+
+        # Print metrics using centralized function
+        print_epoch_metrics(epoch, epoch_time, train_metrics, val_metrics)
+
+        # Force flush to ensure real-time logging
+        sys.stdout.flush()
+        if hasattr(sys.stdout, "buffer"):
+            sys.stdout.buffer.flush()
+
+        # Save best model
+        if val_metrics["loss"] < best_val_loss:
+            best_val_loss = val_metrics["loss"]
+            if isinstance(model, torch.nn.DataParallel):
+                torch.save(
+                    model.module.state_dict(),
+                    os.path.join(experiment_save_dir, "best_model.pth"),
+                )
+            else:
+                torch.save(
+                    model.state_dict(),
+                    os.path.join(experiment_save_dir, "best_model.pth"),
+                )
+            print(f"New best model saved (val_loss: {best_val_loss:.4f})")
+
+        # Early stopping
+        if early_stopping(val_metrics["action_loss"], model):
+            print(f"Early stopping triggered after {epoch + 1} epochs")
+            break
+
+        # Memory cleanup after each epoch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        gc.collect()
+
+    return history
+
+
 def train_tomnet(
     data_dir=None,
     save_dir="./results/exp5",
@@ -1613,571 +2255,74 @@ def train_tomnet(
     training_proportion = training_kwargs["training_proportion"]
     time_step = training_kwargs["time_step"]
     max_n_past = training_kwargs["max_n_past"]
-    device = training_kwargs["device"]
+    device_setting = training_kwargs["device"]
     patience = training_kwargs["patience"]
     min_delta = training_kwargs["min_delta"]
 
-    # Get parallel training configuration
-    use_parallel = training_config.get("use_parallel", False)
-    device_ids = training_config.get("device_ids", [2, 3])
-
-    # Memory and computation optimization settings
-    use_amp = training_config.get("use_amp", True)  # Automatic Mixed Precision
-    gradient_accumulation_steps = training_config.get("gradient_accumulation_steps", 1)
-    pin_memory = training_config.get("pin_memory", True)
-    num_workers = training_config.get("num_workers", 4)
-
-    # Auto-detect CPU count if num_workers is 0
-    if num_workers == 0:
-        num_workers = mp.cpu_count()
-        print(f"Auto-detected {num_workers} CPU cores for data loading")
     # Setup
     experiment_save_dir = save_dir
     os.makedirs(experiment_save_dir, exist_ok=True)
 
-    # Device setup
-    if device == "auto":
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    else:
-        device = torch.device(device)
+    # Setup training environment
+    (
+        device,
+        use_parallel,
+        device_ids,
+        use_amp,
+        gradient_accumulation_steps,
+        other_configs,
+    ) = setup_training_environment(
+        config, training_kwargs, training_config, device_setting
+    )
 
-    # Setup for parallel training
-    if use_parallel and torch.cuda.is_available() and len(device_ids) > 1:
-        # Check which GPUs are actually available
-        available_gpus = []
-        for gpu_id in device_ids:
-            if gpu_id < torch.cuda.device_count():
-                torch.cuda.set_device(gpu_id)
-                # Test GPU memory
-                test_tensor = torch.zeros(1, device=f"cuda:{gpu_id}")
-                available_gpus.append(gpu_id)
-                del test_tensor
-                torch.cuda.empty_cache()
+    pin_memory = other_configs["pin_memory"]
+    num_workers = other_configs["num_workers"]
 
-        if len(available_gpus) > 1:
-            print(f"Using parallel training on GPUs: {available_gpus}")
-            print(f"Primary device: cuda:{available_gpus[0]}")
-            device_ids = available_gpus  # Use only available GPUs
-            primary_device = torch.device(f"cuda:{available_gpus[0]}")
-            device = primary_device
-        else:
-            print(
-                f"Only {len(available_gpus)} GPU(s) available, using single GPU training"
-            )
-            if available_gpus:
-                device = torch.device(f"cuda:{available_gpus[0]}")
-                print(f"Using single device: {device}")
-            use_parallel = False
-    else:
-        print(f"Using single device: {device}")
-        use_parallel = False
-
-    # Memory optimization setup
-    if torch.cuda.is_available():
-        # Clear GPU cache on all available devices
-        for i in range(torch.cuda.device_count()):
-            torch.cuda.set_device(i)
-            torch.cuda.empty_cache()
-
-        # Set back to primary device
-        torch.cuda.set_device(device)
-        print(
-            f"GPU memory allocated: {torch.cuda.memory_allocated(device) / 1024**3:.2f} GB"
-        )
-        print(
-            f"GPU memory reserved: {torch.cuda.memory_reserved(device) / 1024**3:.2f} GB"
-        )
-
-        # Check if we need to reduce batch size due to larger model
-        total_memory = torch.cuda.get_device_properties(device).total_memory / 1024**3
-        allocated_memory = torch.cuda.memory_allocated(device) / 1024**3
-        available_memory = total_memory - allocated_memory
-        print(f"Available GPU memory: {available_memory:.2f} GB")
-
-        if available_memory < 2.0:  # Less than 2GB available
-            print(
-                "Warning: Low GPU memory detected. Consider reducing batch size or model complexity."
-            )
-
-    print(f"Using AMP (Automatic Mixed Precision): {use_amp}")
-    print(f"Gradient accumulation steps: {gradient_accumulation_steps}")
     print(f"Training {achiever_type} achiever with {blocker_type} blocker")
     print(f"Results will be saved to: {experiment_save_dir}")
 
-    # Load training data for all combinations efficiently
-    all_training_data = load_training_data_all_combinations(
-        config, data_dir.replace(f"/{agent_type}", "")
-    )
-
-    # Use data for the current combination
-    data = get_data_for_combination(
-        all_training_data, achiever_type, blocker_type, "training"
-    )
-
-    # Sample trajectories randomly for training if specified in config
-    if achiever_type and blocker_type:
-        achiever_games = config.achiever_types.get(achiever_type, 30000)
-        blocker_games = config.blocker_types.get(blocker_type, 30000)
-        target_games = achiever_games + blocker_games
-
-        total_samples = data["trajectories"].shape[0]
-        if total_samples > target_games:
-            print(
-                f"Sampling {target_games} trajectories from {total_samples} available samples"
-            )
-
-            # Set random seed for reproducible sampling
-            torch.manual_seed(config.seed)
-            np.random.seed(config.seed)
-
-            # Random sampling indices
-            sample_indices = np.random.choice(
-                total_samples, target_games, replace=False
-            )
-            sample_indices = np.sort(sample_indices)
-
-            # Sample all data arrays - create new dictionary to avoid modifying read-only NpzFile
-            sampled_data = {}
-            for key in data.keys():
-                if isinstance(data[key], np.ndarray):
-                    sampled_data[key] = data[key][sample_indices]
-                elif isinstance(data[key], torch.Tensor):
-                    sampled_data[key] = data[key][sample_indices]
-                else:
-                    sampled_data[key] = data[key]  # Keep non-array data as-is
-            data = sampled_data
-
-            print(f"Sampled data to {target_games} trajectories")
-        else:
-            print(f"Using all {total_samples} trajectories (target: {target_games})")
-
-    # Log data shapes for verification
-    print(f"Data shapes:")
-    print(f"Trajectories: {data['trajectories'].shape}")
-    print(f"Actions: {data['actions'].shape}")
-    print(f"Goals: {data['goals'].shape}")
-    print(f"Goal ranks: {data['goal_ranks'].shape}")
-    print(f"Agents: {data['agents'].shape}")
-    print(f"Types: {data['types'].shape}")
-    print(f"Consumption labels: {data['consumption_labels'].shape}")
-    print(f"SR labels: {data['sr_labels'].shape}")
-
-    # Create datasets with multi-agent data (optimized for memory-mapped data)
-    # Force regular tensors if using multiprocessing to avoid serialization issues
-    if (
-        hasattr(data, "files") and num_workers == 0
-    ):  # Memory-mapped data only if no multiprocessing
-        print("Using memory-mapped dataset for efficient loading")
-        # Create dataset with memory-mapped data
-        dataset = MemoryMappedDataset(data)
-    else:
-        # Use regular tensor dataset for multiprocessing compatibility
-        print("Using regular tensor dataset")
-
-        # Convert data to tensors if needed
-        trajectories_tensor = (
-            torch.from_numpy(data["trajectories"])
-            if isinstance(data["trajectories"], np.ndarray)
-            else data["trajectories"]
-        )
-        actions_tensor = (
-            torch.from_numpy(data["actions"])
-            if isinstance(data["actions"], np.ndarray)
-            else data["actions"]
-        )
-        goals_tensor = (
-            torch.from_numpy(data["goals"])
-            if isinstance(data["goals"], np.ndarray)
-            else data["goals"]
-        )
-        goal_ranks_tensor = (
-            torch.from_numpy(data["goal_ranks"])
-            if isinstance(data["goal_ranks"], np.ndarray)
-            else data["goal_ranks"]
-        )
-        agents_tensor = (
-            torch.from_numpy(data["agents"])
-            if isinstance(data["agents"], np.ndarray)
-            else data["agents"]
-        )
-        types_tensor = (
-            torch.from_numpy(data["types"])
-            if isinstance(data["types"], np.ndarray)
-            else data["types"]
-        )
-        consumption_labels_tensor = (
-            torch.from_numpy(data["consumption_labels"])
-            if isinstance(data["consumption_labels"], np.ndarray)
-            else data["consumption_labels"]
-        )
-        sr_labels_tensor = (
-            torch.from_numpy(data["sr_labels"])
-            if isinstance(data["sr_labels"], np.ndarray)
-            else data["sr_labels"]
-        )
-
-        dataset = TensorDataset(
-            trajectories_tensor,
-            actions_tensor,
-            goals_tensor,
-            goal_ranks_tensor,
-            agents_tensor,
-            types_tensor,
-            consumption_labels_tensor,
-            sr_labels_tensor,
-        )
-
-    # Train/validation split
-    total_size = len(dataset)
-    train_size = int(total_size * training_proportion)
-    val_size = total_size - train_size
-
-    train_dataset, val_dataset = torch.utils.data.random_split(
-        dataset, [train_size, val_size]
-    )
-
-    # Create data loaders
-    # Adjust batch size if dataset is too small and for parallel training
-    if use_parallel and len(device_ids) > 1:
-        # Increase batch size for parallel training (distribute across GPUs)
-        parallel_batch_size = batch_size * len(device_ids)
-        effective_batch_size = min(parallel_batch_size, len(train_dataset))
-        effective_val_batch_size = min(parallel_batch_size, len(val_dataset))
-        print(
-            f"Parallel training: increasing batch size from {batch_size} to {parallel_batch_size}"
-        )
-    else:
-        effective_batch_size = min(batch_size, len(train_dataset))
-        effective_val_batch_size = min(batch_size, len(val_dataset))
-
-        # Dynamic batch size reduction for memory optimization
-        if torch.cuda.is_available():
-            available_memory = (
-                torch.cuda.get_device_properties(device).total_memory
-                - torch.cuda.memory_allocated(device)
-            ) / 1024**3
-            if available_memory < 3.0 and effective_batch_size > 256:
-                new_batch_size = max(256, effective_batch_size // 2)
-                print(
-                    f"Reducing batch size from {effective_batch_size} to {new_batch_size} due to memory constraints"
-                )
-                effective_batch_size = new_batch_size
-                effective_val_batch_size = min(new_batch_size, len(val_dataset))
-
-    train_loader = DataLoader(
-        train_dataset,
-        batch_size=effective_batch_size,
-        shuffle=True,
-        drop_last=False,
-        pin_memory=pin_memory,
-        num_workers=num_workers,
-        persistent_workers=True if num_workers > 0 else False,
-        worker_init_fn=seed_worker,
-    )
-    val_loader = DataLoader(
-        val_dataset,
-        batch_size=effective_val_batch_size,
-        shuffle=False,
-        drop_last=False,
-        pin_memory=pin_memory,
-        num_workers=num_workers,
-        persistent_workers=True if num_workers > 0 else False,
-        worker_init_fn=seed_worker,
-    )
-
-    print(f"Training samples: {len(train_dataset)}")
-    print(f"Validation samples: {len(val_dataset)}")
-    print(
-        f"Effective batch sizes: train={effective_batch_size}, val={effective_val_batch_size}"
-    )
-
-    if len(train_dataset) == 0 or len(val_dataset) == 0:
-        raise ValueError("Dataset too small for training. Need at least 2 samples.")
-
-    # Create model using config
-    # Ensure the model gets current_state_channels for MentalNet
-    model_kwargs_updated = model_kwargs.copy()
-    model_kwargs_updated["current_state_channels"] = model_config.get(
-        "current_state_channels", 8
-    )
-
-    model = create_model(model_kwargs_updated)
-    model = model.to(device)
-
-    if torch.cuda.is_available():
-        print(
-            f"Model loaded to GPU. Memory after model: {torch.cuda.memory_allocated(device) / 1024**3:.2f} GB"
-        )
-
-    # Setup parallel training if enabled
-    if use_parallel and torch.cuda.is_available() and len(device_ids) > 1:
-        print(f"Wrapping model with DataParallel for GPUs: {device_ids}")
-        model = torch.nn.DataParallel(model, device_ids=device_ids)
-
-    # Count parameters correctly for DataParallel
-    if isinstance(model, torch.nn.DataParallel):
-        param_count = count_parameters(model.module)
-    else:
-        param_count = count_parameters(model)
-    print(f"Model created with {param_count:,} parameters")
-
-    # Loss function and optimizer
-    loss_fn = ToMnetLoss(
-        action_weight=training_process_config["action_weight"],
-        goal_weight=training_process_config["goal_weight"],
-        agent_weight=training_process_config.get("agent_weight", 1.0),
-        type_weight=training_process_config.get("type_weight", 1.0),
-        consumption_weight=training_process_config.get("consumption_weight", 1.0),
-        sr_weight=training_process_config.get("sr_weight", 1.0),
-    )
-    optimizer = torch.optim.Adam(
-        model.parameters(), lr=lr, weight_decay=config.training_config["weight_decay"]
-    )
-
-    # Initialize AMP scaler for mixed precision training
-    device_type = (
-        "cuda" if torch.cuda.is_available() and "cuda" in str(device) else "cpu"
-    )
-    scaler = GradScaler() if use_amp and device_type == "cuda" else None
-
-    # Early stopping
-    early_stopping = EarlyStopping(
-        patience=patience, min_delta=min_delta, restore_best_weights=True
-    )
-
-    # Training history
-    history = {
-        "epoch": [],
-        "train_loss": [],
-        "train_action_loss": [],
-        "train_goal_loss": [],
-        "train_agent_loss": [],
-        "train_type_loss": [],
-        "train_consumption_loss": [],
-        "train_sr_loss": [],
-        "train_action_accuracy": [],
-        "train_goal_accuracy": [],
-        "train_agent_accuracy": [],
-        "train_type_accuracy": [],
-        "train_achiever_action_accuracy": [],
-        "train_achiever_goal_accuracy": [],
-        "train_blocker_action_accuracy": [],
-        "train_blocker_goal_accuracy": [],
-        "val_loss": [],
-        "val_action_loss": [],
-        "val_goal_loss": [],
-        "val_agent_loss": [],
-        "val_type_loss": [],
-        "val_consumption_loss": [],
-        "val_sr_loss": [],
-        "val_action_accuracy": [],
-        "val_goal_accuracy": [],
-        "val_agent_accuracy": [],
-        "val_type_accuracy": [],
-        "val_achiever_action_accuracy": [],
-        "val_achiever_goal_accuracy": [],
-        "val_blocker_action_accuracy": [],
-        "val_blocker_goal_accuracy": [],
-        "epoch_time": [],
-    }
-
-    # Training loop
-    print("Starting training...")
-    best_val_loss = float("inf")
-
-    for epoch in range(epochs):
-        epoch_start_time = time.time()
-
-        print(f"\nEpoch {epoch + 1}/{epochs}")
-        print("-" * 50)
-
-        # Training
-        train_metrics = train_epoch(
-            model,
-            train_loader,
-            optimizer,
-            loss_fn,
+    # Setup model, data, and training components
+    model, train_loader, val_loader, optimizer, loss_fn, scaler, early_stopping = (
+        setup_model_and_data(
+            config,
+            model_kwargs,
+            data_dir,
+            agent_type,
+            achiever_type,
+            blocker_type,
+            training_proportion,
             device,
-            max_n_past,
-            data_config,
+            use_parallel,
+            device_ids,
+            pin_memory,
+            num_workers,
             training_process_config,
-            model_config,
-            scaler,
-            gradient_accumulation_steps,
+            batch_size,
+            lr,
+            training_kwargs.get("weight_decay", 0.001),
+            patience,
+            min_delta,
         )
+    )
 
-        # Validation
-        val_metrics = validate_epoch(
-            model,
-            val_loader,
-            loss_fn,
-            device,
-            max_n_past,
-            data_config,
-            model_config,
-            scaler,
-        )
-
-        epoch_time = time.time() - epoch_start_time
-
-        # Update history
-        history["epoch"].append(epoch + 1)
-        history["train_loss"].append(train_metrics["loss"])
-        history["train_action_loss"].append(train_metrics["action_loss"])
-        history["train_goal_loss"].append(train_metrics["goal_loss"])
-        history["train_agent_loss"].append(train_metrics["agent_loss"])
-        history["train_type_loss"].append(train_metrics["type_loss"])
-        history["train_consumption_loss"].append(train_metrics["consumption_loss"])
-        history["train_sr_loss"].append(train_metrics["sr_loss"])
-        history["train_action_accuracy"].append(train_metrics["action_accuracy"])
-        history["train_goal_accuracy"].append(train_metrics["goal_accuracy"])
-        history["train_agent_accuracy"].append(train_metrics["agent_accuracy"])
-        history["train_type_accuracy"].append(train_metrics["type_accuracy"])
-        history["train_achiever_action_accuracy"].append(
-            train_metrics["achiever_action_accuracy"]
-        )
-        history["train_achiever_goal_accuracy"].append(
-            train_metrics["achiever_goal_accuracy"]
-        )
-        history["train_blocker_action_accuracy"].append(
-            train_metrics["blocker_action_accuracy"]
-        )
-        history["train_blocker_goal_accuracy"].append(
-            train_metrics["blocker_goal_accuracy"]
-        )
-        history["val_loss"].append(val_metrics["loss"])
-        history["val_action_loss"].append(val_metrics["action_loss"])
-        history["val_goal_loss"].append(val_metrics["goal_loss"])
-        history["val_agent_loss"].append(val_metrics["agent_loss"])
-        history["val_type_loss"].append(val_metrics["type_loss"])
-        history["val_consumption_loss"].append(val_metrics["consumption_loss"])
-        history["val_sr_loss"].append(val_metrics["sr_loss"])
-        history["val_action_accuracy"].append(val_metrics["action_accuracy"])
-        history["val_goal_accuracy"].append(val_metrics["goal_accuracy"])
-        history["val_agent_accuracy"].append(val_metrics["agent_accuracy"])
-        history["val_type_accuracy"].append(val_metrics["type_accuracy"])
-        history["val_achiever_action_accuracy"].append(
-            val_metrics["achiever_action_accuracy"]
-        )
-        history["val_achiever_goal_accuracy"].append(
-            val_metrics["achiever_goal_accuracy"]
-        )
-        history["val_blocker_action_accuracy"].append(
-            val_metrics["blocker_action_accuracy"]
-        )
-        history["val_blocker_goal_accuracy"].append(
-            val_metrics["blocker_goal_accuracy"]
-        )
-        history["epoch_time"].append(epoch_time)
-
-        # Print metrics
-        train_loss = train_metrics["loss"]
-        train_acc = train_metrics["action_accuracy"] * 100
-        val_acc = val_metrics["action_accuracy"] * 100
-        train_goal_acc = train_metrics["goal_accuracy"] * 100
-        val_goal_acc = val_metrics["goal_accuracy"] * 100
-        train_agent_acc = train_metrics["agent_accuracy"] * 100
-        val_agent_acc = val_metrics["agent_accuracy"] * 100
-        train_type_acc = train_metrics["type_accuracy"] * 100
-        val_type_acc = val_metrics["type_accuracy"] * 100
-        train_action_loss = train_metrics["action_loss"]
-        train_agent_loss = train_metrics["agent_loss"]
-        train_type_loss = train_metrics["type_loss"]
-        train_consumption_loss = train_metrics["consumption_loss"]
-        train_sr_loss = train_metrics["sr_loss"]
-        val_action_loss = val_metrics["action_loss"]
-        val_agent_loss = val_metrics["agent_loss"]
-        val_type_loss = val_metrics["type_loss"]
-        val_consumption_loss = val_metrics["consumption_loss"]
-        val_sr_loss = val_metrics["sr_loss"]
-
-        # Achiever/Blocker specific metrics
-        train_achiever_acc = train_metrics["achiever_action_accuracy"] * 100
-        val_achiever_acc = val_metrics["achiever_action_accuracy"] * 100
-        train_achiever_goal_acc = train_metrics["achiever_goal_accuracy"] * 100
-        val_achiever_goal_acc = val_metrics["achiever_goal_accuracy"] * 100
-        train_blocker_acc = train_metrics["blocker_action_accuracy"] * 100
-        val_blocker_acc = val_metrics["blocker_action_accuracy"] * 100
-        train_blocker_goal_acc = train_metrics["blocker_goal_accuracy"] * 100
-        val_blocker_goal_acc = val_metrics["blocker_goal_accuracy"] * 100
-
-        # Print epoch results in 3 paragraphs: Total, Achiever, Blocker
-        print(f"Epoch: {epoch + 1:3d} | Time: {epoch_time:.2f}s")
-
-        # TOTAL Loss and Accuracy
-        val_loss = val_metrics["loss"]
-        train_goal_loss = train_metrics["goal_loss"]
-        val_goal_loss = val_metrics["goal_loss"]
-        print(f"  TOTAL    - Loss: Train {train_loss:.4f} | Val {val_loss:.4f}")
-        print(
-            f"           - Agent Acc: Train {train_agent_acc:.4f}% | Val {val_agent_acc:.4f}%"
-        )
-        print(
-            f"           - Type Acc: Train {train_type_acc:.4f}% | Val {val_type_acc:.4f}%"
-        )
-        print(
-            f"           - Goal Acc: Train {train_goal_acc:.4f}% | Val {val_goal_acc:.4f}%"
-        )
-        print(f"           - Action Acc: Train {train_acc:.4f}% | Val {val_acc:.4f}%")
-        print(
-            f"           - Losses: Action {train_action_loss:.4f} | Agent {train_agent_loss:.4f} | Type {train_type_loss:.4f} | Consumption {train_consumption_loss:.4f} | SR {train_sr_loss:.4f}"
-        )
-
-        # ACHIEVER-specific metrics
-        print(
-            f"  ACHIEVER - Goal Acc: Train {train_achiever_goal_acc:.4f}% | Val {val_achiever_goal_acc:.4f}%"
-        )
-        print(
-            f"           - Action Acc: Train {train_achiever_acc:.4f}% | Val {val_achiever_acc:.4f}%"
-        )
-        print(
-            f"           - Losses: Action {train_action_loss:.4f} | Goal {train_goal_loss:.4f} | Consumption {train_consumption_loss:.4f} | SR {train_sr_loss:.4f}"
-        )
-
-        # BLOCKER-specific metrics
-        print(
-            f"  BLOCKER  - Goal Acc: Train {train_blocker_goal_acc:.4f}% | Val {val_blocker_goal_acc:.4f}%"
-        )
-        print(
-            f"           - Action Acc: Train {train_blocker_acc:.4f}% | Val {val_blocker_acc:.4f}%"
-        )
-        print(
-            f"           - Losses: Action {train_action_loss:.4f} | Goal {train_goal_loss:.4f} | Consumption {train_consumption_loss:.4f} | SR {train_sr_loss:.4f}"
-        )
-
-        print("-" * 80)
-
-        # Force flush to ensure real-time logging
-        sys.stdout.flush()
-        # Also flush any file handlers if redirected
-        if hasattr(sys.stdout, "buffer"):
-            sys.stdout.buffer.flush()
-
-        # Save best model
-        if val_metrics["loss"] < best_val_loss:
-            best_val_loss = val_metrics["loss"]
-            # Save model correctly for DataParallel
-            if isinstance(model, torch.nn.DataParallel):
-                torch.save(
-                    model.module.state_dict(),
-                    os.path.join(experiment_save_dir, "best_model.pth"),
-                )
-            else:
-                torch.save(
-                    model.state_dict(),
-                    os.path.join(experiment_save_dir, "best_model.pth"),
-                )
-            print(f"New best model saved (val_loss: {best_val_loss:.4f})")
-
-        # Early stopping
-        if early_stopping(val_metrics["action_loss"], model):
-            print(f"Early stopping triggered after {epoch + 1} epochs")
-            break
-
-        # Memory cleanup after each epoch
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-        gc.collect()
+    # Run training loop
+    history = run_training_loop(
+        model,
+        train_loader,
+        val_loader,
+        optimizer,
+        loss_fn,
+        device,
+        scaler,
+        early_stopping,
+        epochs,
+        max_n_past,
+        data_config,
+        training_process_config,
+        model_config,
+        gradient_accumulation_steps,
+        experiment_save_dir,
+    )
 
     # Save final results
     print("\nSaving results...")
@@ -2214,60 +2359,9 @@ def train_tomnet(
             model.state_dict(), os.path.join(experiment_save_dir, "final_model.pth")
         )
 
-    print(
-        f"\nTraining completed for {achiever_type} achiever with {blocker_type} blocker!"
-    )
+    print("Training completed successfully!")
     print(f"Results saved to: {experiment_save_dir}")
-    print(f"Best validation loss: {best_val_loss:.4f}")
-
-    return {
-        "model": model,
-        "history": history,
-        "save_dir": experiment_save_dir,
-        "best_val_loss": best_val_loss,
-    }
-
-
-# Data loading functions moved to utils.py
-
-
-class MemoryMappedDataset(torch.utils.data.Dataset):
-    """Dataset that works with memory-mapped data"""
-
-    def __init__(self, mmap_data, indices=None):
-        self.mmap_data = mmap_data
-        self.indices = (
-            indices if indices is not None else range(len(mmap_data["trajectories"]))
-        )
-
-    def __len__(self):
-        return len(self.indices)
-
-    def __getitem__(self, idx):
-        real_idx = self.indices[idx]
-
-        # Convert numpy arrays to torch tensors on access
-        return (
-            torch.from_numpy(self.mmap_data["trajectories"][real_idx].copy()),
-            torch.from_numpy(self.mmap_data["actions"][real_idx].copy()),
-            torch.from_numpy(self.mmap_data["goals"][real_idx].copy()),
-            torch.from_numpy(self.mmap_data["goal_ranks"][real_idx].copy()),
-            torch.from_numpy(self.mmap_data["agents"][real_idx].copy()),
-            torch.from_numpy(self.mmap_data["types"][real_idx].copy()),
-            torch.from_numpy(self.mmap_data["consumption_labels"][real_idx].copy()),
-            torch.from_numpy(self.mmap_data["sr_labels"][real_idx].copy()),
-        )
-
-
-def seed_worker(worker_id):
-    """Worker init function for DataLoader to ensure reproducible random seeds"""
-    import random
-    import numpy as np
-    import torch
-
-    worker_seed = torch.initial_seed() % 2**32
-    np.random.seed(worker_seed)
-    random.seed(worker_seed)
+    return history
 
 
 if __name__ == "__main__":

@@ -985,13 +985,24 @@ class ToMnetLoss(nn.Module):
 
 
 # Utility functions
-def create_model(config):
-    """Create ToMnet model from configuration"""
+def create_model(config, save_dir=None):
+    """Create ToMnet model from configuration
+
+    Args:
+        config: Configuration object or dictionary
+        save_dir: Directory where model checkpoint might be saved
+
+    Returns:
+        model: ToMnet model instance (with loaded weights if checkpoint exists)
+    """
     # Handle both Config object and dictionary
     if hasattr(config, "get_model_kwargs"):
         # Config object
         model_kwargs = config.get_model_kwargs()
         model = ToMnet(**model_kwargs)
+        # Get device from training config
+        training_config = config.get_training_config()
+        device = training_config.get("device", "cpu")
     else:
         # Dictionary
         model = ToMnet(
@@ -1012,6 +1023,22 @@ def create_model(config):
             env_height=config.get("env_height", 9),
             hidden_size_lstm=config.get("hidden_size_lstm", 64),
         )
+        # For dictionary config, assume device is passed at the same level
+        device = config.get("device", "cpu")
+
+    # Check if save_dir is provided and if a checkpoint exists
+    if save_dir is not None:
+        checkpoint_path = os.path.join(save_dir, "best_model.pth")
+        if os.path.exists(checkpoint_path):
+            print(f"Found existing checkpoint at: {checkpoint_path}")
+            try:
+                # Use the device from config for map_location
+                checkpoint = torch.load(checkpoint_path, map_location=device)
+                model.load_state_dict(checkpoint)
+                print("Successfully loaded model parameters from checkpoint")
+            except Exception as e:
+                print(f"Warning: Failed to load checkpoint: {e}")
+                print("Proceeding with randomly initialized model")
 
     return model
 

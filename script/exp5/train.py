@@ -1988,24 +1988,24 @@ def setup_model_and_data(
 
     # Split data
     total_samples = len(dataset)
-    split_idx = int(total_samples * training_proportion)
+    val_size = int(config.n_games_per_type * (1 - training_proportion))
+    split_idx = total_samples - val_size
 
     train_data = torch.utils.data.Subset(dataset, range(split_idx))
     val_data = torch.utils.data.Subset(dataset, range(split_idx, total_samples))
 
-    print(f"Training samples: {len(train_data)}")
-    print(f"Validation samples: {len(val_data)}")
-    print(f"Total samples: {total_samples}")
+    # Calculate samples per epoch based on agent types
+    total_achiever_samples = sum(config.achiever_types.values())
+    total_blocker_samples = sum(config.blocker_types.values())
+    samples_per_epoch = total_achiever_samples + total_blocker_samples
 
-    # Create data loaders
-    train_loader = DataLoader(
-        train_data,
-        batch_size=batch_size,
-        shuffle=True,
-        pin_memory=pin_memory,
-        num_workers=num_workers,
-        persistent_workers=True if num_workers > 0 else False,
-    )
+    print(f"Training samples: {len(train_data)}")
+    print(f"Validation samples: {len(val_data)} (using n_games_per_type * 0.1 = {val_size})")
+    print(f"Total samples: {total_samples}")
+    print(f"Samples per epoch: {samples_per_epoch} (achiever: {total_achiever_samples}, blocker: {total_blocker_samples})")
+
+    # Training loader will be created dynamically each epoch
+    train_loader = None  # Will be created in training loop
 
     val_loader = DataLoader(
         val_data,
@@ -2051,12 +2051,12 @@ def setup_model_and_data(
         patience=patience, min_delta=min_delta, restore_best_weights=True
     )
 
-    return model, train_loader, val_loader, optimizer, loss_fn, scaler, early_stopping
+    return model, train_data, val_loader, optimizer, loss_fn, scaler, early_stopping, samples_per_epoch, batch_size, pin_memory, num_workers
 
 
 def run_training_loop(
     model,
-    train_loader,
+    train_data,
     val_loader,
     optimizer,
     loss_fn,
@@ -2070,6 +2070,10 @@ def run_training_loop(
     model_config,
     gradient_accumulation_steps,
     experiment_save_dir,
+    samples_per_epoch,
+    batch_size,
+    pin_memory,
+    num_workers,
 ):
     """
     Main training loop extracted from train_tomnet function
@@ -2127,6 +2131,22 @@ def run_training_loop(
         epoch_start_time = time.time()
         print(f"\nEpoch {epoch + 1}/{epochs}")
         print("-" * 50)
+
+        # Sample different training data for each epoch
+        train_indices = torch.randperm(len(train_data))[:samples_per_epoch]
+        sampled_train_data = torch.utils.data.Subset(train_data, train_indices)
+        
+        # Create epoch-specific training loader
+        train_loader = DataLoader(
+            sampled_train_data,
+            batch_size=batch_size,
+            shuffle=True,
+            pin_memory=pin_memory,
+            num_workers=num_workers,
+            persistent_workers=True if num_workers > 0 else False,
+        )
+        
+        print(f"Epoch {epoch + 1}: Using {len(sampled_train_data)} randomly sampled training examples")
 
         # Training
         train_metrics = train_epoch(
@@ -2282,7 +2302,7 @@ def train_tomnet(
     print(f"Results will be saved to: {experiment_save_dir}")
 
     # Setup model, data, and training components
-    model, train_loader, val_loader, optimizer, loss_fn, scaler, early_stopping = (
+    model, train_data, val_loader, optimizer, loss_fn, scaler, early_stopping, samples_per_epoch, batch_size, pin_memory, num_workers = (
         setup_model_and_data(
             config,
             model_kwargs,
@@ -2308,7 +2328,7 @@ def train_tomnet(
     # Run training loop
     history = run_training_loop(
         model,
-        train_loader,
+        train_data,
         val_loader,
         optimizer,
         loss_fn,
@@ -2322,6 +2342,10 @@ def train_tomnet(
         model_config,
         gradient_accumulation_steps,
         experiment_save_dir,
+        samples_per_epoch,
+        batch_size,
+        pin_memory,
+        num_workers,
     )
 
     # Save final results

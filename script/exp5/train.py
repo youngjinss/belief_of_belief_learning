@@ -2123,7 +2123,7 @@ def setup_model_and_data(
     samples_per_epoch = total_achiever_samples + total_blocker_samples
 
     print(f"Training samples: {len(train_data)}")
-    print(f"Validation samples: {len(val_data)} (using n_games_per_type * 0.1 = {val_size})")
+    print(f"Validation samples: {len(val_data)} (using n_games_per_type * (1 - training_proportion) = {val_size})")
     print(f"Total samples: {total_samples}")
     print(f"Samples per epoch: {samples_per_epoch} (achiever: {total_achiever_samples}, blocker: {total_blocker_samples})")
 

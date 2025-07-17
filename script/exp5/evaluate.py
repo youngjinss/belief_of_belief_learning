@@ -547,19 +547,25 @@ def evaluate_achieverblocker_model(
     print(f"Model loaded successfully")
 
     # Load test data for all combinations efficiently
-    all_test_data = load_test_data_all_combinations(config, test_data_dir_base=test_data_dir.replace(f"/{agent_pair}/test", ""))
-    
+    all_test_data = load_test_data_all_combinations(
+        config, test_data_dir_base=test_data_dir.replace(f"/{agent_pair}/test", "")
+    )
+
     # Use test data for the specified combination
-    test_data = get_data_for_combination(all_test_data, achiever_type, blocker_type, "test")
+    test_data = get_data_for_combination(
+        all_test_data, achiever_type, blocker_type, "test"
+    )
 
     # Use all available test data (no sampling)
     total_test_samples = test_data["trajectories"].shape[0]
-    
+
     print(f"Test data usage:")
     print(f"  Using all available test samples: {total_test_samples}")
-    
+
     if total_test_samples == 0:
-        raise ValueError(f"No test data found. Please generate test data first using --test_data flag.")
+        raise ValueError(
+            f"No test data found. Please generate test data first using --test_data flag."
+        )
 
     # Log test data shapes for verification
     print(f"Test data shapes:")
@@ -755,19 +761,25 @@ def analyze_action_likelihood(
         test_data_dir_default = f"./data/{env_name}/{agent_pair}/test"
 
         # Load test data for all combinations efficiently
-        all_test_data = load_test_data_all_combinations(config, test_data_dir_default.replace(f"/{agent_pair}/test", ""))
-        
+        all_test_data = load_test_data_all_combinations(
+            config, test_data_dir_default.replace(f"/{agent_pair}/test", "")
+        )
+
         # Use test data for the specified combination
-        test_data = get_data_for_combination(all_test_data, achiever_type, blocker_type, "test")
+        test_data = get_data_for_combination(
+            all_test_data, achiever_type, blocker_type, "test"
+        )
 
         # Use all available test data (no sampling)
         total_test_samples = test_data["trajectories"].shape[0]
-        
+
         print(f"Test data usage:")
         print(f"  Using all available test samples: {total_test_samples}")
-        
+
         if total_test_samples == 0:
-            raise ValueError(f"No test data found. Please generate test data first using --test_data flag.")
+            raise ValueError(
+                f"No test data found. Please generate test data first using --test_data flag."
+            )
 
         test_dataset = TensorDataset(
             test_data["trajectories"],

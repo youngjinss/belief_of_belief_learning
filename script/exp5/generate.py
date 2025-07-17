@@ -85,63 +85,63 @@ def calculate_successor_representation_vectorized(positions, grid_size=9, gammas
 
     # Convert positions to numpy array for vectorized operations
     pos_array = np.array(positions, dtype=np.int32)  # Shape: (T, 2)
-    
+
     # Precompute all discount factors for all gammas and timesteps
     gammas_array = np.array(gammas, dtype=np.float32)  # Shape: (n_gammas,)
     timesteps = np.arange(T, dtype=np.int32)  # Shape: (T,)
-    
+
     # Broadcast to create discount matrix: (n_gammas, T)
     gamma_powers = gammas_array[:, np.newaxis] ** timesteps[np.newaxis, :]
-    
+
     # Pre-allocate output list
     sr_labels_per_timestep = []
-    
+
     # Vectorized processing using advanced indexing
     # Create coordinate grids for efficient sparse representation
     grid_coords = np.mgrid[0:grid_size, 0:grid_size]
-    
+
     # Process all timesteps in batches for memory efficiency
     batch_size = min(64, T)  # Process in batches to manage memory
-    
+
     for batch_start in range(0, T, batch_size):
         batch_end = min(batch_start + batch_size, T)
         batch_queries = range(batch_start, batch_end)
-        
+
         # Process batch of query timesteps
         batch_sr_results = []
-        
+
         for query_t in batch_queries:
             remaining_steps = T - query_t
-            
+
             if remaining_steps == 0:
                 batch_sr_results.append([[] for _ in gammas])
                 continue
-            
+
             # Get future positions from query_t onwards
             future_pos = pos_array[query_t:]  # Shape: (remaining_steps, 2)
-            
+
             # Initialize SR maps for all gammas: (n_gammas, grid_size, grid_size)
             sr_maps = np.zeros((n_gammas, grid_size, grid_size), dtype=np.float32)
-            
+
             # Vectorized accumulation using advanced indexing
             # Extract x, y coordinates
             x_coords = future_pos[:, 0]  # Shape: (remaining_steps,)
             y_coords = future_pos[:, 1]  # Shape: (remaining_steps,)
-            
+
             # Get discount factors for this timestep: (n_gammas, remaining_steps)
             discounts = gamma_powers[:, :remaining_steps]
-            
+
             # Vectorized accumulation for all gammas simultaneously
             for step_idx in range(remaining_steps):
                 x, y = x_coords[step_idx], y_coords[step_idx]
                 if 0 <= x < grid_size and 0 <= y < grid_size:
                     sr_maps[:, x, y] += discounts[:, step_idx]
-            
+
             # Vectorized normalization
             sr_sums = sr_maps.sum(axis=(1, 2), keepdims=True)  # Shape: (n_gammas, 1, 1)
             sr_sums = np.where(sr_sums > 0, sr_sums, 1.0)
             sr_maps /= sr_sums
-            
+
             # Vectorized sparse conversion
             sparse_representations = []
             for g_idx in range(n_gammas):
@@ -149,17 +149,19 @@ def calculate_successor_representation_vectorized(positions, grid_size=9, gammas
                 nonzero_mask = sr_maps[g_idx] > 0
                 if np.any(nonzero_mask):
                     nonzero_coords = np.where(nonzero_mask)
-                    sparse_sr = [((int(i), int(j)), float(sr_maps[g_idx, i, j])) 
-                                for i, j in zip(nonzero_coords[0], nonzero_coords[1])]
+                    sparse_sr = [
+                        ((int(i), int(j)), float(sr_maps[g_idx, i, j]))
+                        for i, j in zip(nonzero_coords[0], nonzero_coords[1])
+                    ]
                 else:
                     sparse_sr = []
                 sparse_representations.append(sparse_sr)
-            
+
             batch_sr_results.append(sparse_representations)
-        
+
         # Add batch results to output
         sr_labels_per_timestep.extend(batch_sr_results)
-    
+
     return sr_labels_per_timestep
 
 
@@ -1033,7 +1035,7 @@ def generate_trajectories(
             achiever_games = config.achiever_types[achiever_type]
             blocker_games = config.blocker_types[blocker_type]
             combination_games = min(achiever_games, blocker_games)
-            
+
             # If generating test data, use 10% of n_games_per_type
             if test_data:
                 combination_games = int(config.n_games_per_type * 0.1)
@@ -1120,7 +1122,9 @@ def generate_trajectories_for_combination(
         chunk_size = max(1, num_games // (n_processes * 10))
         results = []
 
-        for i, result in enumerate(pool.imap(game_func, game_assignments, chunksize=chunk_size)):
+        for i, result in enumerate(
+            pool.imap(game_func, game_assignments, chunksize=chunk_size)
+        ):
             results.append(result)
             if (i + 1) % 5000 == 0 or (i + 1) == num_games:
                 print(f"Generated {i + 1}/{num_games} games")

@@ -10,12 +10,13 @@ import multiprocessing as mp
 from functools import partial
 from tqdm import tqdm
 
+
 def process_file_batch_worker(file_batch: List[str]) -> List[Dict[str, Any]]:
     """Standalone worker function for multiprocessing"""
     # Create a DataGenerator instance for this worker
     generator = DataGenerator()
     batch_samples = []
-    
+
     for filepath in file_batch:
         # Parse trajectory file
         parsed_data = generator.parse_trajectory_file(filepath)
@@ -30,10 +31,11 @@ def process_file_batch_worker(file_batch: List[str]) -> List[Dict[str, Any]]:
 
         # Clean up after each file processing
         del parsed_data, achiever_sample, blocker_sample
-    
+
     # Collect garbage once per batch instead of per file
     gc.collect()
     return batch_samples
+
 
 # Add lib to path for imports
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -62,7 +64,7 @@ class DataGenerator:
         self.MAZE_WIDTH = w
         self.MAZE_HEIGHT = h
         self.MAZE_DEPTH = d
-        
+
         # Pre-compile regex patterns for better performance
         self.trajectory_pattern = re.compile(
             r"\[(\d+),\s*(\d+)\]\[(\d+),\s*(\d+)\]\s*:\s*(\d+),(\d+)\s*:\s*(\w+),(\w+)"
@@ -207,7 +209,9 @@ class DataGenerator:
                 sr_gamma_match = self.sr_gamma_pattern.match(line)
                 if sr_gamma_match:
                     gamma = float(sr_gamma_match.group(1))
-                    sparse_data_str = sr_gamma_match.group(2) if sr_gamma_match.group(2) else ""
+                    sparse_data_str = (
+                        sr_gamma_match.group(2) if sr_gamma_match.group(2) else ""
+                    )
 
                     # Parse sparse SR data
                     sparse_data = []
@@ -254,7 +258,7 @@ class DataGenerator:
                     int(r.strip()) for r in rank_str.split(",")
                 ]
                 continue
-                
+
             goal_rewards_match = self.goal_rewards_pattern.match(line)
             if goal_rewards_match:
                 rewards_str = goal_rewards_match.group(1)
@@ -262,11 +266,11 @@ class DataGenerator:
                     float(r) for r in rewards_str.split(",")
                 ]
                 continue
-                
+
             if line.startswith("Goal Rewards Sum:"):
                 achiever_data["goal_rewards_sum"] = float(line.split(":")[1].strip())
                 continue
-                
+
             consumption_match = self.consumption_pattern.match(line)
             if consumption_match:
                 consumption_str = consumption_match.group(1)
@@ -435,7 +439,8 @@ class DataGenerator:
 
         seq_len = min(trajectory_length, self.MAX_TRAJECTORY_SIZE)
         trajectory = np.zeros(
-            (seq_len, self.MAZE_DEPTH, self.MAZE_HEIGHT, self.MAZE_WIDTH), dtype=np.float32
+            (seq_len, self.MAZE_DEPTH, self.MAZE_HEIGHT, self.MAZE_WIDTH),
+            dtype=np.float32,
         )
 
         # Vectorized static layer creation (same for all timesteps)
@@ -466,27 +471,39 @@ class DataGenerator:
         if steps_to_process > 0:
             # Extract positions for all timesteps at once
             if agent_type == "achiever":
-                positions = np.array([step["achiever_pos"] for step in trajectory_steps[:steps_to_process]])
+                positions = np.array(
+                    [
+                        step["achiever_pos"]
+                        for step in trajectory_steps[:steps_to_process]
+                    ]
+                )
             else:  # blocker
-                positions = np.array([step["blocker_pos"] for step in trajectory_steps[:steps_to_process]])
-            
+                positions = np.array(
+                    [
+                        step["blocker_pos"]
+                        for step in trajectory_steps[:steps_to_process]
+                    ]
+                )
+
             # Vectorized bounds checking
             valid_positions = (
-                (positions[:, 0] >= 0) & (positions[:, 0] < self.MAZE_WIDTH) &
-                (positions[:, 1] >= 0) & (positions[:, 1] < self.MAZE_HEIGHT)
+                (positions[:, 0] >= 0)
+                & (positions[:, 0] < self.MAZE_WIDTH)
+                & (positions[:, 1] >= 0)
+                & (positions[:, 1] < self.MAZE_HEIGHT)
             )
-            
+
             # Process all valid positions at once
             if np.any(valid_positions):
                 valid_times = np.arange(steps_to_process)[valid_positions]
                 valid_pos = positions[valid_positions]
-                
+
                 # Clear other objects at agent positions (vectorized)
                 trajectory[valid_times, :, valid_pos[:, 1], valid_pos[:, 0]] = 0
-                
+
                 # Set agent in empty space layer (vectorized)
                 trajectory[valid_times, 1, valid_pos[:, 1], valid_pos[:, 0]] = 1
-                
+
                 # Set heading direction (vectorized)
                 trajectory[valid_times, 8, valid_pos[:, 1], valid_pos[:, 0]] = 2
 
@@ -502,7 +519,7 @@ class DataGenerator:
     def process_file_batch(self, file_batch: List[str]) -> List[Dict[str, Any]]:
         """Process a batch of files in parallel worker"""
         batch_samples = []
-        
+
         for filepath in file_batch:
             # Parse trajectory file
             parsed_data = self.parse_trajectory_file(filepath)
@@ -517,12 +534,14 @@ class DataGenerator:
 
             # Clean up after each file processing
             del parsed_data, achiever_sample, blocker_sample
-        
+
         # Collect garbage once per batch instead of per file
         gc.collect()
         return batch_samples
 
-    def process_directory(self, data_dir: str, n_processes: int = None, use_multiprocessing: bool = True) -> List[Dict[str, Any]]:
+    def process_directory(
+        self, data_dir: str, n_processes: int = None, use_multiprocessing: bool = True
+    ) -> List[Dict[str, Any]]:
         """Process all trajectory files in directory with optional multiprocessing"""
 
         if not os.path.exists(data_dir):
@@ -562,21 +581,26 @@ class DataGenerator:
             # Use multiprocessing for large datasets
             if n_processes is None:
                 n_processes = mp.cpu_count()
-            
+
             print(f"Using multiprocessing with {n_processes} processes...")
-            
+
             # Create batches of files for better load balancing
             batch_size = max(1, len(test_files) // (n_processes * 5))
-            file_batches = [test_files[i:i+batch_size] for i in range(0, len(test_files), batch_size)]
-            
+            file_batches = [
+                test_files[i : i + batch_size]
+                for i in range(0, len(test_files), batch_size)
+            ]
+
             # Process batches in parallel
             with mp.Pool(processes=n_processes, maxtasksperchild=100) as pool:
-                batch_results = list(tqdm(
-                    pool.imap(process_file_batch_worker, file_batches),
-                    total=len(file_batches),
-                    desc="Processing trajectory files"
-                ))
-            
+                batch_results = list(
+                    tqdm(
+                        pool.imap(process_file_batch_worker, file_batches),
+                        total=len(file_batches),
+                        desc="Processing trajectory files",
+                    )
+                )
+
             # Combine results from all batches
             all_samples = []
             for batch_result in batch_results:

@@ -22,7 +22,13 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from tomnet import ToMnet, ToMnetLoss, create_model, count_parameters
 from data_generation import DataGenerator
 from config import Config
-from utils import set_seed, load_data_efficient, save_data_for_mmap, load_training_data_all_combinations, get_data_for_combination
+from utils import (
+    set_seed,
+    load_data_efficient,
+    save_data_for_mmap,
+    load_training_data_all_combinations,
+    get_data_for_combination,
+)
 
 # Set seed using Config default value
 config = Config()
@@ -287,26 +293,28 @@ def process_sample_batch(samples, grid_size, min_timestep, max_trajectory_length
     """
     if not isinstance(samples, list):
         samples = [samples]
-    
+
     # Batch results
     batch_results = {
-        'trajectories': [],
-        'actions': [],
-        'goals': [],
-        'goal_ranks': [],
-        'agents': [],
-        'types': [],
-        'consumption_labels': [],
-        'sr_labels': [],
+        "trajectories": [],
+        "actions": [],
+        "goals": [],
+        "goal_ranks": [],
+        "agents": [],
+        "types": [],
+        "consumption_labels": [],
+        "sr_labels": [],
     }
-    
+
     for sample in samples:
-        sample_result = process_single_sample(sample, grid_size, min_timestep, max_trajectory_length)
-        
+        sample_result = process_single_sample(
+            sample, grid_size, min_timestep, max_trajectory_length
+        )
+
         # Combine results
         for key in batch_results:
             batch_results[key].extend(sample_result[key])
-    
+
     return batch_results
 
 
@@ -318,7 +326,9 @@ def process_single_sample(sample, grid_size, min_timestep, max_trajectory_length
     trajectory = sample["trajectory"]  # [seq_len, channels, height, width]
     goal_tensor = sample["goal"]  # [4] one-hot encoded
     agent_type = sample["agent"]  # 'achiever' or 'blocker'
-    type_label = sample["type"]  # 0 for randomly select / achiever, 1 for rule-based blocker
+    type_label = sample[
+        "type"
+    ]  # 0 for randomly select / achiever, 1 for rule-based blocker
     consumption = sample["consumption_labels"]  # [8] consumption labels
     sr_data_per_timestep = sample.get("sr_data_per_timestep", {})
 
@@ -397,19 +407,24 @@ def process_single_sample(sample, grid_size, min_timestep, max_trajectory_length
         sample_sr_labels.append(sr_dense)
 
     return {
-        'trajectories': sample_trajectories,
-        'actions': sample_actions,
-        'goals': sample_goals,
-        'goal_ranks': sample_goal_ranks,
-        'agents': sample_agents,
-        'types': sample_types,
-        'consumption_labels': sample_consumption_labels,
-        'sr_labels': sample_sr_labels,
+        "trajectories": sample_trajectories,
+        "actions": sample_actions,
+        "goals": sample_goals,
+        "goal_ranks": sample_goal_ranks,
+        "agents": sample_agents,
+        "types": sample_types,
+        "consumption_labels": sample_consumption_labels,
+        "sr_labels": sample_sr_labels,
     }
 
 
 def prepare_data_for_training(
-    samples, grid_size=9, min_timestep=3, max_trajectory_length=100, n_processes=None, use_batch_processing=True
+    samples,
+    grid_size=9,
+    min_timestep=3,
+    max_trajectory_length=100,
+    n_processes=None,
+    use_batch_processing=True,
 ):
     """
     Prepare multi-agent sample data for training from processed samples with trajectory slicing
@@ -426,53 +441,63 @@ def prepare_data_for_training(
     Returns:
         Dictionary containing prepared training data
     """
-    
+
     if n_processes is None:
         n_processes = mp.cpu_count()
-    
-    print(f"Preparing data from {len(samples)} samples with trajectory slicing using {n_processes} processes...")
+
+    print(
+        f"Preparing data from {len(samples)} samples with trajectory slicing using {n_processes} processes..."
+    )
 
     if use_batch_processing:
         # Create batches of samples for better CPU utilization
-        batch_size = max(1, len(samples) // (n_processes * 5))  # Larger batches for better efficiency
-        sample_batches = [samples[i:i+batch_size] for i in range(0, len(samples), batch_size)]
-        
+        batch_size = max(
+            1, len(samples) // (n_processes * 5)
+        )  # Larger batches for better efficiency
+        sample_batches = [
+            samples[i : i + batch_size] for i in range(0, len(samples), batch_size)
+        ]
+
         # Create partial function for batch processing
         batch_worker_func = partial(
             process_sample_batch,
             grid_size=grid_size,
             min_timestep=min_timestep,
-            max_trajectory_length=max_trajectory_length
+            max_trajectory_length=max_trajectory_length,
         )
-        
+
         # Process batches in parallel
         with mp.Pool(processes=n_processes, maxtasksperchild=100) as pool:
             # No need for additional chunking when using batch processing
-            results = list(tqdm(
-                pool.imap(batch_worker_func, sample_batches),
-                total=len(sample_batches),
-                desc="Dataset processing (batch multiprocessing)"
-            ))
+            results = list(
+                tqdm(
+                    pool.imap(batch_worker_func, sample_batches),
+                    total=len(sample_batches),
+                    desc="Dataset processing (batch multiprocessing)",
+                )
+            )
     else:
         # Original single-sample processing with chunking
         worker_func = partial(
             process_single_sample,
             grid_size=grid_size,
             min_timestep=min_timestep,
-            max_trajectory_length=max_trajectory_length
+            max_trajectory_length=max_trajectory_length,
         )
 
         # Process samples in parallel with chunking for better CPU utilization
         with mp.Pool(processes=n_processes, maxtasksperchild=100) as pool:
             # Calculate optimal chunk size (similar to generate.py)
             chunk_size = max(1, len(samples) // (n_processes * 10))
-            
+
             # Use imap with chunking for better performance
-            results = list(tqdm(
-                pool.imap(worker_func, samples, chunksize=chunk_size),
-                total=len(samples),
-                desc="Dataset processing (multiprocessing)"
-            ))
+            results = list(
+                tqdm(
+                    pool.imap(worker_func, samples, chunksize=chunk_size),
+                    total=len(samples),
+                    desc="Dataset processing (multiprocessing)",
+                )
+            )
 
     # Combine results from all processes
     trajectories = []
@@ -485,15 +510,14 @@ def prepare_data_for_training(
     sr_labels = []
 
     for result in results:
-        trajectories.extend(result['trajectories'])
-        actions.extend(result['actions'])
-        goals.extend(result['goals'])
-        goal_ranks.extend(result['goal_ranks'])
-        agents.extend(result['agents'])
-        types.extend(result['types'])
-        consumption_labels.extend(result['consumption_labels'])
-        sr_labels.extend(result['sr_labels'])
-        
+        trajectories.extend(result["trajectories"])
+        actions.extend(result["actions"])
+        goals.extend(result["goals"])
+        goal_ranks.extend(result["goal_ranks"])
+        agents.extend(result["agents"])
+        types.extend(result["types"])
+        consumption_labels.extend(result["consumption_labels"])
+        sr_labels.extend(result["sr_labels"])
 
     # Convert to tensors
     trajectories = torch.tensor(np.array(trajectories), dtype=torch.float32)
@@ -618,14 +642,20 @@ def train_epoch(
             traj_sums = trajectories.sum(dim=(2, 3, 4))
             # Find last non-zero timestep for each batch sample (vectorized)
             non_zero_mask = traj_sums > 0
-            
+
             # Use flip and argmax trick for efficient last non-zero index finding
             flipped_mask = torch.flip(non_zero_mask, dims=[1])
-            last_nonzero_positions = non_zero_mask.size(1) - 1 - torch.argmax(flipped_mask.float(), dim=1)
-            
+            last_nonzero_positions = (
+                non_zero_mask.size(1) - 1 - torch.argmax(flipped_mask.float(), dim=1)
+            )
+
             # Handle edge case where all timesteps are zero
             all_zero_mask = ~non_zero_mask.any(dim=1)
-            effective_lengths = torch.where(all_zero_mask, torch.zeros_like(last_nonzero_positions), last_nonzero_positions)
+            effective_lengths = torch.where(
+                all_zero_mask,
+                torch.zeros_like(last_nonzero_positions),
+                last_nonzero_positions,
+            )
             effective_lengths = torch.clamp(effective_lengths, min=0)
 
         # Use trajectory without heading direction for MentalNet (first 8 channels only)
@@ -804,9 +834,23 @@ def train_epoch(
         if batch_idx % 10 == 0:
             # Clear intermediate variables
             del past_episodes, recent_trajectory, current_state
-            del action_logits, goal_logits, agent_logits, type_logits, consumption_logits, sr_pred
-            del action_targets, goal_targets, agent_targets, type_targets, consumption_targets, sr_targets
-            
+            del (
+                action_logits,
+                goal_logits,
+                agent_logits,
+                type_logits,
+                consumption_logits,
+                sr_pred,
+            )
+            del (
+                action_targets,
+                goal_targets,
+                agent_targets,
+                type_targets,
+                consumption_targets,
+                sr_targets,
+            )
+
             # GPU memory cleanup
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
@@ -926,14 +970,22 @@ def validate_epoch(
                 traj_sums = trajectories.sum(dim=(2, 3, 4))
                 # Find last non-zero timestep for each batch sample (vectorized)
                 non_zero_mask = traj_sums > 0
-                
+
                 # Use flip and argmax trick for efficient last non-zero index finding
                 flipped_mask = torch.flip(non_zero_mask, dims=[1])
-                last_nonzero_positions = non_zero_mask.size(1) - 1 - torch.argmax(flipped_mask.float(), dim=1)
-                
+                last_nonzero_positions = (
+                    non_zero_mask.size(1)
+                    - 1
+                    - torch.argmax(flipped_mask.float(), dim=1)
+                )
+
                 # Handle edge case where all timesteps are zero
                 all_zero_mask = ~non_zero_mask.any(dim=1)
-                effective_lengths = torch.where(all_zero_mask, torch.zeros_like(last_nonzero_positions), last_nonzero_positions)
+                effective_lengths = torch.where(
+                    all_zero_mask,
+                    torch.zeros_like(last_nonzero_positions),
+                    last_nonzero_positions,
+                )
                 effective_lengths = torch.clamp(effective_lengths, min=0)
 
             # Use trajectory without heading direction for MentalNet (first 8 channels only)
@@ -1077,16 +1129,18 @@ def save_training_plots(history, save_dir):
     os.makedirs(save_dir, exist_ok=True)
 
     # Create 3 separate figures for Total, Achiever, and Blocker
-    
+
     # 1. TOTAL metrics plot
     fig_total, axes_total = plt.subplots(2, 2, figsize=(15, 10))
-    fig_total.suptitle("TOTAL Metrics", fontsize=16, fontweight='bold')
-    
+    fig_total.suptitle("TOTAL Metrics", fontsize=16, fontweight="bold")
+
     # Total Loss plot
     axes_total[0, 0].plot(
         history["epoch"], history["train_loss"], label="Train Loss", marker="o"
     )
-    axes_total[0, 0].plot(history["epoch"], history["val_loss"], label="Val Loss", marker="s")
+    axes_total[0, 0].plot(
+        history["epoch"], history["val_loss"], label="Val Loss", marker="s"
+    )
     axes_total[0, 0].set_title("Total Loss")
     axes_total[0, 0].set_xlabel("Epoch")
     axes_total[0, 0].set_ylabel("Loss")
@@ -1158,19 +1212,31 @@ def save_training_plots(history, save_dir):
 
     plt.tight_layout()
     plt.savefig(
-        os.path.join(save_dir, "training_history_total.png"), dpi=300, bbox_inches="tight"
+        os.path.join(save_dir, "training_history_total.png"),
+        dpi=300,
+        bbox_inches="tight",
     )
     plt.close(fig_total)
 
     # 2. ACHIEVER metrics plot (Note: Currently using total metrics - placeholder for future achiever-specific metrics)
     fig_achiever, axes_achiever = plt.subplots(2, 2, figsize=(15, 10))
-    fig_achiever.suptitle("ACHIEVER Metrics", fontsize=16, fontweight='bold')
-    
+    fig_achiever.suptitle("ACHIEVER Metrics", fontsize=16, fontweight="bold")
+
     # Achiever Loss plot (using total metrics as placeholder)
     axes_achiever[0, 0].plot(
-        history["epoch"], history["train_loss"], label="Train Loss", marker="o", color="green"
+        history["epoch"],
+        history["train_loss"],
+        label="Train Loss",
+        marker="o",
+        color="green",
     )
-    axes_achiever[0, 0].plot(history["epoch"], history["val_loss"], label="Val Loss", marker="s", color="lightgreen")
+    axes_achiever[0, 0].plot(
+        history["epoch"],
+        history["val_loss"],
+        label="Val Loss",
+        marker="s",
+        color="lightgreen",
+    )
     axes_achiever[0, 0].set_title("Achiever Loss")
     axes_achiever[0, 0].set_xlabel("Epoch")
     axes_achiever[0, 0].set_ylabel("Loss")
@@ -1183,14 +1249,14 @@ def save_training_plots(history, save_dir):
         history["train_action_accuracy"],
         label="Train Action Acc",
         marker="o",
-        color="green"
+        color="green",
     )
     axes_achiever[0, 1].plot(
         history["epoch"],
         history["val_action_accuracy"],
         label="Val Action Acc",
         marker="s",
-        color="lightgreen"
+        color="lightgreen",
     )
     axes_achiever[0, 1].set_title("Achiever Action Accuracy")
     axes_achiever[0, 1].set_xlabel("Epoch")
@@ -1204,10 +1270,14 @@ def save_training_plots(history, save_dir):
         history["train_goal_accuracy"],
         label="Train Goal Acc",
         marker="o",
-        color="green"
+        color="green",
     )
     axes_achiever[1, 0].plot(
-        history["epoch"], history["val_goal_accuracy"], label="Val Goal Acc", marker="s", color="lightgreen"
+        history["epoch"],
+        history["val_goal_accuracy"],
+        label="Val Goal Acc",
+        marker="s",
+        color="lightgreen",
     )
     axes_achiever[1, 0].set_title("Achiever Goal Accuracy")
     axes_achiever[1, 0].set_xlabel("Epoch")
@@ -1221,24 +1291,28 @@ def save_training_plots(history, save_dir):
         history["train_action_loss"],
         label="Train Action Loss",
         marker="o",
-        color="green"
+        color="green",
     )
     axes_achiever[1, 1].plot(
         history["epoch"],
         history["train_goal_loss"],
         label="Train Goal Loss",
         marker="s",
-        color="lightgreen"
+        color="lightgreen",
     )
     axes_achiever[1, 1].plot(
         history["epoch"],
         history["train_consumption_loss"],
         label="Train Consumption Loss",
         marker="^",
-        color="darkgreen"
+        color="darkgreen",
     )
     axes_achiever[1, 1].plot(
-        history["epoch"], history["train_sr_loss"], label="Train SR Loss", marker="v", color="olive"
+        history["epoch"],
+        history["train_sr_loss"],
+        label="Train SR Loss",
+        marker="v",
+        color="olive",
     )
     axes_achiever[1, 1].set_title("Achiever Loss Components")
     axes_achiever[1, 1].set_xlabel("Epoch")
@@ -1248,19 +1322,31 @@ def save_training_plots(history, save_dir):
 
     plt.tight_layout()
     plt.savefig(
-        os.path.join(save_dir, "training_history_achiever.png"), dpi=300, bbox_inches="tight"
+        os.path.join(save_dir, "training_history_achiever.png"),
+        dpi=300,
+        bbox_inches="tight",
     )
     plt.close(fig_achiever)
 
     # 3. BLOCKER metrics plot (Note: Currently using total metrics - placeholder for future blocker-specific metrics)
     fig_blocker, axes_blocker = plt.subplots(2, 2, figsize=(15, 10))
-    fig_blocker.suptitle("BLOCKER Metrics", fontsize=16, fontweight='bold')
-    
+    fig_blocker.suptitle("BLOCKER Metrics", fontsize=16, fontweight="bold")
+
     # Blocker Loss plot (using total metrics as placeholder)
     axes_blocker[0, 0].plot(
-        history["epoch"], history["train_loss"], label="Train Loss", marker="o", color="red"
+        history["epoch"],
+        history["train_loss"],
+        label="Train Loss",
+        marker="o",
+        color="red",
     )
-    axes_blocker[0, 0].plot(history["epoch"], history["val_loss"], label="Val Loss", marker="s", color="lightcoral")
+    axes_blocker[0, 0].plot(
+        history["epoch"],
+        history["val_loss"],
+        label="Val Loss",
+        marker="s",
+        color="lightcoral",
+    )
     axes_blocker[0, 0].set_title("Blocker Loss")
     axes_blocker[0, 0].set_xlabel("Epoch")
     axes_blocker[0, 0].set_ylabel("Loss")
@@ -1273,14 +1359,14 @@ def save_training_plots(history, save_dir):
         history["train_action_accuracy"],
         label="Train Action Acc",
         marker="o",
-        color="red"
+        color="red",
     )
     axes_blocker[0, 1].plot(
         history["epoch"],
         history["val_action_accuracy"],
         label="Val Action Acc",
         marker="s",
-        color="lightcoral"
+        color="lightcoral",
     )
     axes_blocker[0, 1].set_title("Blocker Action Accuracy")
     axes_blocker[0, 1].set_xlabel("Epoch")
@@ -1294,10 +1380,14 @@ def save_training_plots(history, save_dir):
         history["train_goal_accuracy"],
         label="Train Goal Acc",
         marker="o",
-        color="red"
+        color="red",
     )
     axes_blocker[1, 0].plot(
-        history["epoch"], history["val_goal_accuracy"], label="Val Goal Acc", marker="s", color="lightcoral"
+        history["epoch"],
+        history["val_goal_accuracy"],
+        label="Val Goal Acc",
+        marker="s",
+        color="lightcoral",
     )
     axes_blocker[1, 0].set_title("Blocker Goal Accuracy")
     axes_blocker[1, 0].set_xlabel("Epoch")
@@ -1311,24 +1401,28 @@ def save_training_plots(history, save_dir):
         history["train_action_loss"],
         label="Train Action Loss",
         marker="o",
-        color="red"
+        color="red",
     )
     axes_blocker[1, 1].plot(
         history["epoch"],
         history["train_goal_loss"],
         label="Train Goal Loss",
         marker="s",
-        color="lightcoral"
+        color="lightcoral",
     )
     axes_blocker[1, 1].plot(
         history["epoch"],
         history["train_consumption_loss"],
         label="Train Consumption Loss",
         marker="^",
-        color="darkred"
+        color="darkred",
     )
     axes_blocker[1, 1].plot(
-        history["epoch"], history["train_sr_loss"], label="Train SR Loss", marker="v", color="maroon"
+        history["epoch"],
+        history["train_sr_loss"],
+        label="Train SR Loss",
+        marker="v",
+        color="maroon",
     )
     axes_blocker[1, 1].set_title("Blocker Loss Components")
     axes_blocker[1, 1].set_xlabel("Epoch")
@@ -1338,7 +1432,9 @@ def save_training_plots(history, save_dir):
 
     plt.tight_layout()
     plt.savefig(
-        os.path.join(save_dir, "training_history_blocker.png"), dpi=300, bbox_inches="tight"
+        os.path.join(save_dir, "training_history_blocker.png"),
+        dpi=300,
+        bbox_inches="tight",
     )
     plt.close(fig_blocker)
 
@@ -1410,7 +1506,7 @@ def train_tomnet(
     gradient_accumulation_steps = training_config.get("gradient_accumulation_steps", 1)
     pin_memory = training_config.get("pin_memory", True)
     num_workers = training_config.get("num_workers", 4)
-    
+
     # Auto-detect CPU count if num_workers is 0
     if num_workers == 0:
         num_workers = mp.cpu_count()
@@ -1489,10 +1585,14 @@ def train_tomnet(
     print(f"Results will be saved to: {experiment_save_dir}")
 
     # Load training data for all combinations efficiently
-    all_training_data = load_training_data_all_combinations(config, data_dir.replace(f"/{agent_type}", ""))
-    
+    all_training_data = load_training_data_all_combinations(
+        config, data_dir.replace(f"/{agent_type}", "")
+    )
+
     # Use data for the current combination
-    data = get_data_for_combination(all_training_data, achiever_type, blocker_type, "training")
+    data = get_data_for_combination(
+        all_training_data, achiever_type, blocker_type, "training"
+    )
 
     # Sample trajectories randomly for training if specified in config
     if achiever_type and blocker_type:
@@ -1544,24 +1644,58 @@ def train_tomnet(
 
     # Create datasets with multi-agent data (optimized for memory-mapped data)
     # Force regular tensors if using multiprocessing to avoid serialization issues
-    if hasattr(data, 'files') and num_workers == 0:  # Memory-mapped data only if no multiprocessing
+    if (
+        hasattr(data, "files") and num_workers == 0
+    ):  # Memory-mapped data only if no multiprocessing
         print("Using memory-mapped dataset for efficient loading")
         # Create dataset with memory-mapped data
         dataset = MemoryMappedDataset(data)
     else:
         # Use regular tensor dataset for multiprocessing compatibility
         print("Using regular tensor dataset")
-        
+
         # Convert data to tensors if needed
-        trajectories_tensor = torch.from_numpy(data["trajectories"]) if isinstance(data["trajectories"], np.ndarray) else data["trajectories"]
-        actions_tensor = torch.from_numpy(data["actions"]) if isinstance(data["actions"], np.ndarray) else data["actions"]
-        goals_tensor = torch.from_numpy(data["goals"]) if isinstance(data["goals"], np.ndarray) else data["goals"]
-        goal_ranks_tensor = torch.from_numpy(data["goal_ranks"]) if isinstance(data["goal_ranks"], np.ndarray) else data["goal_ranks"]
-        agents_tensor = torch.from_numpy(data["agents"]) if isinstance(data["agents"], np.ndarray) else data["agents"]
-        types_tensor = torch.from_numpy(data["types"]) if isinstance(data["types"], np.ndarray) else data["types"]
-        consumption_labels_tensor = torch.from_numpy(data["consumption_labels"]) if isinstance(data["consumption_labels"], np.ndarray) else data["consumption_labels"]
-        sr_labels_tensor = torch.from_numpy(data["sr_labels"]) if isinstance(data["sr_labels"], np.ndarray) else data["sr_labels"]
-        
+        trajectories_tensor = (
+            torch.from_numpy(data["trajectories"])
+            if isinstance(data["trajectories"], np.ndarray)
+            else data["trajectories"]
+        )
+        actions_tensor = (
+            torch.from_numpy(data["actions"])
+            if isinstance(data["actions"], np.ndarray)
+            else data["actions"]
+        )
+        goals_tensor = (
+            torch.from_numpy(data["goals"])
+            if isinstance(data["goals"], np.ndarray)
+            else data["goals"]
+        )
+        goal_ranks_tensor = (
+            torch.from_numpy(data["goal_ranks"])
+            if isinstance(data["goal_ranks"], np.ndarray)
+            else data["goal_ranks"]
+        )
+        agents_tensor = (
+            torch.from_numpy(data["agents"])
+            if isinstance(data["agents"], np.ndarray)
+            else data["agents"]
+        )
+        types_tensor = (
+            torch.from_numpy(data["types"])
+            if isinstance(data["types"], np.ndarray)
+            else data["types"]
+        )
+        consumption_labels_tensor = (
+            torch.from_numpy(data["consumption_labels"])
+            if isinstance(data["consumption_labels"], np.ndarray)
+            else data["consumption_labels"]
+        )
+        sr_labels_tensor = (
+            torch.from_numpy(data["sr_labels"])
+            if isinstance(data["sr_labels"], np.ndarray)
+            else data["sr_labels"]
+        )
+
         dataset = TensorDataset(
             trajectories_tensor,
             actions_tensor,
@@ -1807,28 +1941,44 @@ def train_tomnet(
 
         # Print epoch results in 3 paragraphs: Total, Achiever, Blocker
         print(f"Epoch: {epoch + 1:3d} | Time: {epoch_time:.2f}s")
-        
+
         # TOTAL Loss and Accuracy
         val_loss = val_metrics["loss"]
         train_goal_loss = train_metrics["goal_loss"]
         val_goal_loss = val_metrics["goal_loss"]
         print(f"  TOTAL    - Loss: Train {train_loss:.4f} | Val {val_loss:.4f}")
-        print(f"           - Agent Acc: Train {train_agent_acc:.4f}% | Val {val_agent_acc:.4f}%")
-        print(f"           - Type Acc: Train {train_type_acc:.4f}% | Val {val_type_acc:.4f}%")
-        print(f"           - Goal Acc: Train {train_goal_acc:.4f}% | Val {val_goal_acc:.4f}%")
+        print(
+            f"           - Agent Acc: Train {train_agent_acc:.4f}% | Val {val_agent_acc:.4f}%"
+        )
+        print(
+            f"           - Type Acc: Train {train_type_acc:.4f}% | Val {val_type_acc:.4f}%"
+        )
+        print(
+            f"           - Goal Acc: Train {train_goal_acc:.4f}% | Val {val_goal_acc:.4f}%"
+        )
         print(f"           - Action Acc: Train {train_acc:.4f}% | Val {val_acc:.4f}%")
-        print(f"           - Losses: Action {train_action_loss:.4f} | Agent {train_agent_loss:.4f} | Type {train_type_loss:.4f} | Consumption {train_consumption_loss:.4f} | SR {train_sr_loss:.4f}")
-        
+        print(
+            f"           - Losses: Action {train_action_loss:.4f} | Agent {train_agent_loss:.4f} | Type {train_type_loss:.4f} | Consumption {train_consumption_loss:.4f} | SR {train_sr_loss:.4f}"
+        )
+
         # ACHIEVER-specific metrics (Note: Currently showing total metrics - would need separate calculation for true achiever-only metrics)
-        print(f"  ACHIEVER - Goal Acc: Train {train_goal_acc:.4f}% | Val {val_goal_acc:.4f}%")
+        print(
+            f"  ACHIEVER - Goal Acc: Train {train_goal_acc:.4f}% | Val {val_goal_acc:.4f}%"
+        )
         print(f"           - Action Acc: Train {train_acc:.4f}% | Val {val_acc:.4f}%")
-        print(f"           - Losses: Action {train_action_loss:.4f} | Goal {train_goal_loss:.4f} | Consumption {train_consumption_loss:.4f} | SR {train_sr_loss:.4f}")
-        
+        print(
+            f"           - Losses: Action {train_action_loss:.4f} | Goal {train_goal_loss:.4f} | Consumption {train_consumption_loss:.4f} | SR {train_sr_loss:.4f}"
+        )
+
         # BLOCKER-specific metrics (Note: Currently showing total metrics - would need separate calculation for true blocker-only metrics)
-        print(f"  BLOCKER  - Goal Acc: Train {train_goal_acc:.4f}% | Val {val_goal_acc:.4f}%")
+        print(
+            f"  BLOCKER  - Goal Acc: Train {train_goal_acc:.4f}% | Val {val_goal_acc:.4f}%"
+        )
         print(f"           - Action Acc: Train {train_acc:.4f}% | Val {val_acc:.4f}%")
-        print(f"           - Losses: Action {train_action_loss:.4f} | Goal {train_goal_loss:.4f} | Consumption {train_consumption_loss:.4f} | SR {train_sr_loss:.4f}")
-        
+        print(
+            f"           - Losses: Action {train_action_loss:.4f} | Goal {train_goal_loss:.4f} | Consumption {train_consumption_loss:.4f} | SR {train_sr_loss:.4f}"
+        )
+
         print("-" * 80)
 
         # Force flush to ensure real-time logging
@@ -1857,7 +2007,7 @@ def train_tomnet(
         if early_stopping(val_metrics["loss"], model):
             print(f"Early stopping triggered after {epoch + 1} epochs")
             break
-            
+
         # Memory cleanup after each epoch
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
@@ -1898,7 +2048,6 @@ def train_tomnet(
             model.state_dict(), os.path.join(experiment_save_dir, "final_model.pth")
         )
 
-
     print(
         f"\nTraining completed for {achiever_type} achiever with {blocker_type} blocker!"
     )
@@ -1918,27 +2067,29 @@ def train_tomnet(
 
 class MemoryMappedDataset(torch.utils.data.Dataset):
     """Dataset that works with memory-mapped data"""
-    
+
     def __init__(self, mmap_data, indices=None):
         self.mmap_data = mmap_data
-        self.indices = indices if indices is not None else range(len(mmap_data['trajectories']))
-        
+        self.indices = (
+            indices if indices is not None else range(len(mmap_data["trajectories"]))
+        )
+
     def __len__(self):
         return len(self.indices)
-    
+
     def __getitem__(self, idx):
         real_idx = self.indices[idx]
-        
+
         # Convert numpy arrays to torch tensors on access
         return (
-            torch.from_numpy(self.mmap_data['trajectories'][real_idx].copy()),
-            torch.from_numpy(self.mmap_data['actions'][real_idx].copy()),
-            torch.from_numpy(self.mmap_data['goals'][real_idx].copy()),
-            torch.from_numpy(self.mmap_data['goal_ranks'][real_idx].copy()),
-            torch.from_numpy(self.mmap_data['agents'][real_idx].copy()),
-            torch.from_numpy(self.mmap_data['types'][real_idx].copy()),
-            torch.from_numpy(self.mmap_data['consumption_labels'][real_idx].copy()),
-            torch.from_numpy(self.mmap_data['sr_labels'][real_idx].copy()),
+            torch.from_numpy(self.mmap_data["trajectories"][real_idx].copy()),
+            torch.from_numpy(self.mmap_data["actions"][real_idx].copy()),
+            torch.from_numpy(self.mmap_data["goals"][real_idx].copy()),
+            torch.from_numpy(self.mmap_data["goal_ranks"][real_idx].copy()),
+            torch.from_numpy(self.mmap_data["agents"][real_idx].copy()),
+            torch.from_numpy(self.mmap_data["types"][real_idx].copy()),
+            torch.from_numpy(self.mmap_data["consumption_labels"][real_idx].copy()),
+            torch.from_numpy(self.mmap_data["sr_labels"][real_idx].copy()),
         )
 
 
@@ -1951,7 +2102,6 @@ def seed_worker(worker_id):
     worker_seed = torch.initial_seed() % 2**32
     np.random.seed(worker_seed)
     random.seed(worker_seed)
-
 
 
 if __name__ == "__main__":

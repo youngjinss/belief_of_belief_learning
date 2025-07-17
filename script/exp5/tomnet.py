@@ -343,7 +343,9 @@ class MentalNet(nn.Module):
         # Paper spec: state channels (8) + action channel (1) = 9 total input channels
         self.state_channels = channels_in  # Use channels_in directly (8 state channels)
         self.action_space = action_space  # Number of possible actions from config
-        self.input_channels = self.state_channels + 1  # State + spatialized action (8+1=9)
+        self.input_channels = (
+            self.state_channels + 1
+        )  # State + spatialized action (8+1=9)
 
         # Use configurable n_ement channels throughout
         self.resnet_channels = n_ement

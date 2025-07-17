@@ -189,6 +189,9 @@ def load_training_data_all_combinations(config, data_dir_base=None):
                 train_games,
                 min_timestep=data_config.get("min_time_steps", 6),
                 max_trajectory_length=data_config.get("time_step", 500),
+                memory_efficient=data_config.get("memory_efficient", True),
+                chunk_size=data_config.get("chunk_size", 1000),
+                n_processes=data_config.get("n_processes", 4),
             )
 
             # Save processed training data
@@ -294,6 +297,9 @@ def load_test_data_all_combinations(config, test_data_dir_base=None):
                 test_games,
                 min_timestep=data_config.get("min_time_steps", 6),
                 max_trajectory_length=data_config.get("time_step", 500),
+                memory_efficient=data_config.get("memory_efficient", True),
+                chunk_size=data_config.get("chunk_size", 1000),
+                n_processes=data_config.get("n_processes", 4),
             )
 
             # Save processed test data

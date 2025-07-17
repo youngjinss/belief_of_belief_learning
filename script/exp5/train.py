@@ -418,6 +418,110 @@ def process_single_sample(sample, grid_size, min_timestep, max_trajectory_length
     }
 
 
+def prepare_data_memory_efficient(
+    samples, grid_size, min_timestep, max_trajectory_length, chunk_size
+):
+    """
+    Memory-efficient version of data preparation that processes samples sequentially
+    to avoid memory issues with multiprocessing.
+    
+    Args:
+        samples: List of processed samples
+        grid_size: Size of the grid
+        min_timestep: Minimum timestep to start slicing from
+        max_trajectory_length: Maximum length of trajectory to use
+        chunk_size: Size of chunks to process at a time
+    
+    Returns:
+        Dictionary containing prepared training data
+    """
+    print(f"Processing {len(samples)} samples sequentially (memory-efficient mode)...")
+    
+    # Process in smaller chunks to avoid memory issues
+    all_results = []
+    
+    for i in tqdm(range(0, len(samples), chunk_size), desc="Processing chunks"):
+        chunk = samples[i:i+chunk_size]
+        chunk_results = []
+        
+        for sample in chunk:
+            result = process_single_sample(
+                sample, grid_size, min_timestep, max_trajectory_length
+            )
+            chunk_results.append(result)
+        
+        # Combine chunk results
+        combined = {
+            "trajectories": [],
+            "actions": [],
+            "goals": [],
+            "goal_ranks": [],
+            "agents": [],
+            "types": [],
+            "consumption_labels": [],
+            "sr_labels": [],
+        }
+        
+        for result in chunk_results:
+            for key in combined:
+                combined[key].extend(result[key])
+        
+        all_results.append(combined)
+        
+        # Clear chunk results to free memory
+        del chunk_results
+        gc.collect()
+    
+    # Combine all results
+    print("Combining all results...")
+    final_results = {
+        "trajectories": [],
+        "actions": [],
+        "goals": [],
+        "goal_ranks": [],
+        "agents": [],
+        "types": [],
+        "consumption_labels": [],
+        "sr_labels": [],
+    }
+    
+    for result in all_results:
+        for key in final_results:
+            final_results[key].extend(result[key])
+    
+    # Convert to tensors
+    print("Converting to tensors...")
+    trajectories = torch.tensor(np.array(final_results["trajectories"]), dtype=torch.float32)
+    actions = torch.tensor(np.array(final_results["actions"]), dtype=torch.long)
+    goals = torch.tensor(np.array(final_results["goals"]), dtype=torch.float32)
+    goal_ranks = torch.tensor(np.array(final_results["goal_ranks"]), dtype=torch.long)
+    agents = torch.tensor(np.array(final_results["agents"]), dtype=torch.long)
+    types = torch.tensor(np.array(final_results["types"]), dtype=torch.long)
+    consumption_labels = torch.tensor(np.array(final_results["consumption_labels"]), dtype=torch.float32)
+    sr_labels = torch.tensor(np.array(final_results["sr_labels"]), dtype=torch.float32)
+    
+    print(f"Data shapes:")
+    print(f"  Trajectories: {trajectories.shape}")
+    print(f"  Actions: {actions.shape}")
+    print(f"  Goals: {goals.shape}")
+    print(f"  Goal ranks: {goal_ranks.shape}")
+    print(f"  Agents: {agents.shape}")
+    print(f"  Types: {types.shape}")
+    print(f"  Consumption labels: {consumption_labels.shape}")
+    print(f"  SR labels: {sr_labels.shape}")
+    
+    return {
+        "trajectories": trajectories,
+        "actions": actions,
+        "goals": goals,
+        "goal_ranks": goal_ranks,
+        "agents": agents,
+        "types": types,
+        "consumption_labels": consumption_labels,
+        "sr_labels": sr_labels,
+    }
+
+
 def prepare_data_for_training(
     samples,
     grid_size=9,
@@ -425,6 +529,8 @@ def prepare_data_for_training(
     max_trajectory_length=100,
     n_processes=None,
     use_batch_processing=True,
+    memory_efficient=None,
+    chunk_size=None,
 ):
     """
     Prepare multi-agent sample data for training from processed samples with trajectory slicing
@@ -435,15 +541,32 @@ def prepare_data_for_training(
         grid_size: Size of the grid (default 9 for 9x9)
         min_timestep: Minimum timestep to start slicing from
         max_trajectory_length: Maximum length of trajectory to use
-        n_processes: Number of processes to use (default: CPU count)
+        n_processes: Number of processes to use (default: from config)
         use_batch_processing: Whether to use batch processing for better efficiency (default: True)
+        memory_efficient: Whether to use memory-efficient processing (default: from config)
+        chunk_size: Chunk size for memory-efficient processing (default: from config)
 
     Returns:
         Dictionary containing prepared training data
     """
-
+    
+    if memory_efficient is None:
+        memory_efficient = True
+    if chunk_size is None:
+        chunk_size = 1000
     if n_processes is None:
         n_processes = mp.cpu_count()
+    
+    if memory_efficient:
+        # Use memory-efficient sequential processing
+        return prepare_data_memory_efficient(
+            samples, grid_size, min_timestep, max_trajectory_length, chunk_size
+        )
+
+    # Limit processes to avoid memory issues
+    if n_processes > 4:
+        n_processes = 4
+        print(f"Limiting to {n_processes} processes to avoid memory issues")
 
     print(
         f"Preparing data from {len(samples)} samples with trajectory slicing using {n_processes} processes..."
@@ -2385,6 +2508,17 @@ def train_tomnet(
 
     print("Training completed successfully!")
     print(f"Results saved to: {experiment_save_dir}")
+    
+    # Add best validation loss to history if it exists
+    if 'best_val_loss' in locals():
+        history["best_val_loss"] = best_val_loss
+    else:
+        # Calculate best val loss from history
+        if history["val_loss"]:
+            history["best_val_loss"] = min(history["val_loss"])
+        else:
+            history["best_val_loss"] = float('inf')
+    
     return history
 
 

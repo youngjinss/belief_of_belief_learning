@@ -1,6 +1,6 @@
-import numpy as np
-import sys
 import os
+import sys
+import numpy as np
 
 # Add the lib directory to the path
 lib_path = os.path.join(os.path.dirname(__file__), "..", "..", "lib")

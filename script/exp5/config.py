@@ -291,7 +291,7 @@ class Config:
 
         # Training process configuration
         self.training_process_config = {
-            "early_stopping_patience": 30,
+            "early_stopping_patience": 100,
             "early_stopping_min_delta": 0.001,
             "max_grad_norm": 1.0,
             "action_weight": 1,

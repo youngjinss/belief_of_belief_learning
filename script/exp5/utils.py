@@ -1231,7 +1231,7 @@ def _standard_chunk_loading(chunk_metadata):
     
     # Load each chunk
     for chunk_idx in range(chunk_metadata['num_chunks']):
-        chunk_path = os.path.join(chunk_metadata['chunk_dir'], f"chunk_{chunk_idx:04d}.pt")
+        chunk_path = os.path.join(chunk_metadata['output_dir'], f"chunk_{chunk_idx:04d}.pt")
         print(f"Loading chunk {chunk_idx} from {chunk_path}")
         
         chunk_data = torch.load(chunk_path, map_location='cpu')

@@ -373,18 +373,34 @@ def load_chunked_data_for_training(chunk_metadata):
         # Free memory
         del chunk_data
     
-    # Combine all data
+    # Combine all data efficiently
     print("Combining all chunks...")
-    combined_data = {
-        'trajectories': torch.cat(all_trajectories, dim=0).numpy(),
-        'actions': torch.cat(all_actions, dim=0).numpy(),
-        'goals': torch.cat(all_goals, dim=0).numpy(),
-        'goal_ranks': torch.cat(all_goal_ranks, dim=0).numpy(),
-        'agents': torch.cat(all_agents, dim=0).numpy(),
-        'types': torch.cat(all_types, dim=0).numpy(),
-        'consumption_labels': torch.cat(all_consumption_labels, dim=0).numpy(),
-        'sr_labels': torch.cat(all_sr_labels, dim=0).numpy(),
-    }
+    import gc
+    
+    # Use torch.cat with reduced memory footprint
+    combined_data = {}
+    
+    # Process each data type separately to reduce peak memory usage
+    for key, data_list in [
+        ('trajectories', all_trajectories),
+        ('actions', all_actions),
+        ('goals', all_goals),
+        ('goal_ranks', all_goal_ranks),
+        ('agents', all_agents),
+        ('types', all_types),
+        ('consumption_labels', all_consumption_labels),
+        ('sr_labels', all_sr_labels),
+    ]:
+        print(f"  Combining {key}...")
+        combined_data[key] = torch.cat(data_list, dim=0).numpy()
+        # Clear the list to free memory
+        del data_list
+        gc.collect()
+    
+    # Clear all temporary lists
+    del all_trajectories, all_actions, all_goals, all_goal_ranks
+    del all_agents, all_types, all_consumption_labels, all_sr_labels
+    gc.collect()
     
     print(f"Combined data shapes:")
     for key, value in combined_data.items():

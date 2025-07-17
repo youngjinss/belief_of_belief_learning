@@ -1180,20 +1180,26 @@ def _load_chunks_memory_efficient(chunk_metadata):
         
         for chunk_idx in range(num_chunks):
             chunk_path = os.path.join(chunk_dir, f"chunk_{chunk_idx:04d}.pt")
-            chunk_data = torch.load(chunk_path, map_location='cpu')
             
-            for key in data_keys:
-                if key in chunk_data:
-                    if key not in accumulated_data:
-                        accumulated_data[key] = []
-                    # Convert to numpy immediately to save memory
-                    accumulated_data[key].append(chunk_data[key].numpy())
+            try:
+                chunk_data = torch.load(chunk_path, map_location='cpu')
             
-            del chunk_data
-            gc.collect()
+                for key in data_keys:
+                    if key in chunk_data:
+                        if key not in accumulated_data:
+                            accumulated_data[key] = []
+                        # Convert to numpy immediately to save memory
+                        accumulated_data[key].append(chunk_data[key].numpy())
+                
+                del chunk_data
+                gc.collect()
+                
+                if chunk_idx % 5 == 0:
+                    print(f"  Loaded {chunk_idx + 1}/{num_chunks} chunks...")
             
-            if chunk_idx % 5 == 0:
-                print(f"  Loaded {chunk_idx + 1}/{num_chunks} chunks...")
+            except:
+                print(f"{chunk_path} end")
+                break
         
         # Final combination
         print("Combining all data...")
@@ -1234,20 +1240,23 @@ def _standard_chunk_loading(chunk_metadata):
         chunk_path = os.path.join(chunk_metadata['output_dir'], f"chunk_{chunk_idx:04d}.pt")
         print(f"Loading chunk {chunk_idx} from {chunk_path}")
         
-        chunk_data = torch.load(chunk_path, map_location='cpu')
-        
-        # Append to lists
-        all_trajectories.append(chunk_data['trajectories'])
-        all_actions.append(chunk_data['actions'])
-        all_goals.append(chunk_data['goals'])
-        all_goal_ranks.append(chunk_data['goal_ranks'])
-        all_agents.append(chunk_data['agents'])
-        all_types.append(chunk_data['types'])
-        all_consumption_labels.append(chunk_data['consumption_labels'])
-        all_sr_labels.append(chunk_data['sr_labels'])
-        
-        # Free memory
-        del chunk_data
+        try:
+            chunk_data = torch.load(chunk_path, map_location='cpu')
+            
+            # Append to lists
+            all_trajectories.append(chunk_data['trajectories'])
+            all_actions.append(chunk_data['actions'])
+            all_goals.append(chunk_data['goals'])
+            all_goal_ranks.append(chunk_data['goal_ranks'])
+            all_agents.append(chunk_data['agents'])
+            all_types.append(chunk_data['types'])
+            all_consumption_labels.append(chunk_data['consumption_labels'])
+            all_sr_labels.append(chunk_data['sr_labels'])
+            
+            # Free memory
+            del chunk_data
+        except:
+            print(f"{chunk_path} end")
     
     # Combine all data efficiently
     print("Combining all chunks...")

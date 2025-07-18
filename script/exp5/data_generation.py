@@ -287,7 +287,30 @@ class DataGenerator:
                 blocker_data["type"] = int(line.split(":")[1].strip())
                 continue
             elif line.startswith("Infer Goal:"):
-                blocker_data["inferred_goal"] = line.split(":")[1].strip()
+                infer_goal_str = line.split(":")[1].strip()
+                if "," in infer_goal_str:
+                    # Multi-hot vector format: [key_red, key_green, key_blue, key_yellow, door_red, door_green, door_blue, door_yellow]
+                    infer_goal_vector = [int(x) for x in infer_goal_str.split(",")]
+                    blocker_data["inferred_goal_vector"] = infer_goal_vector
+                    
+                    # For backward compatibility, also store the first door that was inferred
+                    door_colors = ["red", "green", "blue", "yellow"]
+                    door_indices = [4, 5, 6, 7]  # door positions in the vector
+                    inferred_door = None
+                    for i, door_idx in enumerate(door_indices):
+                        if infer_goal_vector[door_idx] == 1:
+                            inferred_door = door_colors[i]
+                            break
+                    blocker_data["inferred_goal"] = inferred_door if inferred_door else "X"
+                else:
+                    # Legacy format (single color or X)
+                    blocker_data["inferred_goal"] = infer_goal_str
+                    # Convert to multi-hot vector for consistency
+                    infer_goal_vector = [0, 0, 0, 0, 0, 0, 0, 0]
+                    if infer_goal_str in ["red", "green", "blue", "yellow"]:
+                        color_to_door_idx = {"red": 4, "green": 5, "blue": 6, "yellow": 7}
+                        infer_goal_vector[color_to_door_idx[infer_goal_str]] = 1
+                    blocker_data["inferred_goal_vector"] = infer_goal_vector
                 continue
             elif line.startswith("Interaction:"):
                 blocker_data["interaction"] = line.split(":")[1].strip()
@@ -371,7 +394,8 @@ class DataGenerator:
     def create_blocker_sample(self, parsed_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create blocker sample with adapted structure"""
 
-        # Get blocker's inferred goal
+        # Get blocker's inferred goal (use multi-hot vector if available)
+        inferred_goal_vector = parsed_data["blocker_data"].get("inferred_goal_vector", None)
         inferred_goal_color = parsed_data["blocker_data"]["inferred_goal"]
         inferred_goal_letter = self.COLOR_TO_LETTER.get(inferred_goal_color, "A")
 
@@ -381,25 +405,37 @@ class DataGenerator:
         # Get interaction result
         interaction_result = parsed_data["blocker_data"]["interaction"]
 
-        # Create consumption labels for blocker (only door dimensions matter)
-        # Set 1.0 for the inferred goal door, 0.0 for others
+        # Create consumption labels for blocker based on actual door interactions
+        # Extract door interactions from trajectory steps
         consumption_labels = np.zeros(
             8, dtype=np.float32
         )  # [key_A, key_B, key_C, key_D, door_A, door_B, door_C, door_D]
 
-        if inferred_goal_letter in self.LETTER_TO_IDX:
-            door_idx = (
-                4 + self.LETTER_TO_IDX[inferred_goal_letter]
-            )  # Door indices are 4-7
-            consumption_labels[door_idx] = 1.0
+        # Extract door interactions from trajectory steps
+        door_interactions = []
+        for step in parsed_data["trajectory_steps"]:
+            blocker_interaction = step["blocker_interaction"]
+            if blocker_interaction in ["a", "b", "c", "d"]:
+                door_interactions.append(blocker_interaction)
 
-        # Determine consumed goal based on interaction result
+        # Set consumption labels based on door interactions
+        # Only care about doors (indices 4-7), not keys (indices 0-3)
+        door_color_to_idx = {"a": 4, "b": 5, "c": 6, "d": 7}  # door indices
+        
+        for door_interaction in door_interactions:
+            if door_interaction in door_color_to_idx:
+                door_idx = door_color_to_idx[door_interaction]
+                consumption_labels[door_idx] = 1.0
+
+        # Determine consumed goal based on door interactions
         consumed_goal = None
-        if interaction_result == "1":  # Success
-            consumed_goal = inferred_goal_letter
-        elif interaction_result == "0":  # Failure
-            consumed_goal = inferred_goal_letter  # Still attempted this goal
-        else:  # "X" - no interaction
+        if door_interactions:
+            # Use the last door interaction as the consumed goal
+            last_door_interaction = door_interactions[-1]
+            # Convert door color to goal letter
+            door_to_goal_map = {"a": "A", "b": "B", "c": "C", "d": "D"}
+            consumed_goal = door_to_goal_map.get(last_door_interaction, None)
+        else:
             consumed_goal = None
 
         # Create trajectory tensor
@@ -431,6 +467,7 @@ class DataGenerator:
             "agent": "blocker",
             "type": blocker_type,
             "sr_data_per_timestep": sr_data_per_timestep,
+            "inferred_goal_vector": inferred_goal_vector,
             "filename": parsed_data["filename"],
         }
 

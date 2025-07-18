@@ -448,11 +448,26 @@ def save_game_with_labels(
                 if attempt["is_target_door"]
             ]
             if successful_attempts:
-                blocker_interaction_result = "1"  # Success: broke actual target door
+                # Use the color of the target door that was successfully broken
+                target_door_color = successful_attempts[0]["door_color"]
+                color_map = {
+                    "red": "a",
+                    "green": "b", 
+                    "blue": "c",
+                    "yellow": "d",
+                }
+                blocker_interaction_result = color_map.get(target_door_color, "X")
             else:
-                blocker_interaction_result = (
-                    "0"  # Failure: attempted but broke wrong door(s)
-                )
+                # Use the color of the last door that was attempted (wrong door)
+                last_attempt = blocker_break_attempts[-1]
+                last_door_color = last_attempt["door_color"]
+                color_map = {
+                    "red": "a",
+                    "green": "b", 
+                    "blue": "c",
+                    "yellow": "d",
+                }
+                blocker_interaction_result = color_map.get(last_door_color, "X")
 
         # Write trajectory with 2-agent actions and interactions
         for i in range(len(trajectory_data["achiever_actions"])):
@@ -497,11 +512,15 @@ def save_game_with_labels(
             blocker_interaction = "X"  # Default no interaction
             for attempt in blocker_break_attempts:
                 if attempt["step"] == i:
-                    # This step is a break attempt
-                    if attempt["is_target_door"]:
-                        blocker_interaction = "1"  # Success: broke actual target door
-                    else:
-                        blocker_interaction = "0"  # Failure: broke wrong door
+                    # This step is a break attempt - use door color
+                    door_color = attempt["door_color"]
+                    color_map = {
+                        "red": "a",
+                        "green": "b", 
+                        "blue": "c",
+                        "yellow": "d",
+                    }
+                    blocker_interaction = color_map.get(door_color, "X")
                     break
 
             f.write(
@@ -576,11 +595,22 @@ def save_game_with_labels(
         blocker_inferred_goal = getattr(blocker_agent, "target_door_color", None)
         actual_target_door = getattr(env, "target_door_color", None)
 
-        # Write inferred goal
-        if blocker_inferred_goal:
-            f.write("Infer Goal: " + str(blocker_inferred_goal) + "\n")
-        else:
-            f.write("Infer Goal: X\n")  # No inference made
+        # Write inferred goal as multi-hot vector based on break attempts and blocker's inferred goal
+        # Format: [key_red, key_green, key_blue, key_yellow, door_red, door_green, door_blue, door_yellow]
+        infer_goal_vector = [0, 0, 0, 0, 0, 0, 0, 0]
+        
+        # Mark doors that were attempted to be broken
+        color_to_door_idx = {"red": 4, "green": 5, "blue": 6, "yellow": 7}
+        for attempt in blocker_break_attempts:
+            door_color = attempt["door_color"]
+            if door_color in color_to_door_idx:
+                infer_goal_vector[color_to_door_idx[door_color]] = 1
+        
+        # Also mark the blocker's inferred goal if available
+        if blocker_inferred_goal and blocker_inferred_goal in color_to_door_idx:
+            infer_goal_vector[color_to_door_idx[blocker_inferred_goal]] = 1
+        
+        f.write("Infer Goal: " + ",".join(map(str, infer_goal_vector)) + "\n")
 
         # Use the pre-calculated blocker interaction result
         f.write("Interaction: " + blocker_interaction_result + "\n")

@@ -873,18 +873,12 @@ class Level1ValueBlocker(BaseValueAgent):
     def target_door_color(self):
         """
         Get the current target door color for interaction checking.
-
-        Constraint: Once final inference happens (after achiever picks up key),
-        this should be fixed to the inferred color and not change anymore.
+        For Level1ValueBlocker, this returns the inferred target color.
 
         Returns:
-            str: Current target door color (initial random or final inferred)
+            str: Current target door color
         """
-        # Once final target is inferred and fixed, always return that
-        if self.final_target_color is not None:
-            return self.final_target_color
-        # Otherwise return initial random target
-        return self.initial_target_color
+        return self.target_color
 
     @property
     def target_inferred_color(self):

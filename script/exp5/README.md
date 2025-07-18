@@ -591,8 +591,25 @@ These optimizations provide substantial performance improvements while maintaini
 
 ## Recent Updates
 
-### **Achiever Type Integration (Latest)**
+### **Blocker Interaction Format & Consumption Labels Fix (Latest)**
+- **generate.py**: Changed blocker interaction format from "0", "1", "X" to door colors "a", "b", "c", "d", "X"
+- **generate.py**: Updated both step-by-step trajectory writing and overall blocker interaction result to use actual door colors
+- **data_generation.py**: Fixed blocker consumption labels to be based on actual door interactions from trajectory
+- **Logic**: Consumption labels now reflect actual door-breaking behavior (e.g., "X,X,X,a,X,d" → [0,0,0,0,1,0,0,1])
+- **Improvement**: Provides more accurate training data by using observed behavior rather than inferred goals
+
+### **Achiever Type Integration**
 - **data_generation.py**: Added parsing for achiever "Type:" field in trajectory files
 - **data_generation.py**: Modified `create_achiever_sample` to use parsed achiever type instead of hardcoded value
 - **Integration**: Training pipeline now properly handles achiever type information from generate.py
 - **Compatibility**: Maintains backward compatibility with existing data formats
+
+### **Blocker Infer Goal Multi-Hot Vector Format (Latest)**
+- **generate.py**: Changed "Infer Goal" from single color string to multi-hot vector format
+- **Vector Format**: `[key_red, key_green, key_blue, key_yellow, door_red, door_green, door_blue, door_yellow]`
+- **Logic**: Marks doors that were attempted to be broken (action 5 at door positions) AND blocker's inferred goal
+- **Example**: If blocker goes to doors "a" and "c", vector becomes `[0, 0, 0, 0, 1, 0, 1, 0]`
+- **data_generation.py**: Updated parsing to handle both new multi-hot vector format and legacy single color format
+- **data_generation.py**: Added `inferred_goal_vector` field to blocker sample data structure
+- **Backward Compatibility**: Maintains support for existing single color format files
+- **Improvement**: Provides complete information about multiple door attempts instead of just the first inferred goal

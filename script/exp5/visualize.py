@@ -808,7 +808,7 @@ def plot_character_embeddings(
     )
 
     processed_data = data_reader.load_processed_data(processed_test_data_path)
-    
+
     # Check if processed_data is in chunked format and load accordingly
     if isinstance(processed_data, dict) and "chunk_metadata" in processed_data:
         # Load chunked data
@@ -816,7 +816,7 @@ def plot_character_embeddings(
         print(
             f"Loaded chunked processed data with {processed_data['trajectories'].shape[0]} samples"
         )
-        
+
         # Extract agent labels, goal labels, and types from processed tensors
         # agents tensor: 0=achiever, 1=blocker
         agent_indices = processed_data["agents"]
@@ -836,7 +836,7 @@ def plot_character_embeddings(
         print(
             f"Loaded processed data with {processed_data['trajectories'].shape[0]} samples"
         )
-        
+
         # Extract agent labels, goal labels, and types from processed tensors
         # agents tensor: 0=achiever, 1=blocker
         agent_indices = processed_data["agents"].numpy()

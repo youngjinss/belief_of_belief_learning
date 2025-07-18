@@ -439,9 +439,13 @@ def prepare_data_for_training(
     chunk_metadata = []
     total_samples = 0
 
-    for chunk_idx, chunk_samples in enumerate(tqdm(sample_chunks, desc="Processing chunks")):
-        print(f"Processing chunk {chunk_idx + 1}/{len(sample_chunks)} ({len(chunk_samples)} samples)")
-        
+    for chunk_idx, chunk_samples in enumerate(
+        tqdm(sample_chunks, desc="Processing chunks")
+    ):
+        print(
+            f"Processing chunk {chunk_idx + 1}/{len(sample_chunks)} ({len(chunk_samples)} samples)"
+        )
+
         # Process current chunk
         chunk_data = prepare_data_memory_efficient(
             chunk_samples,
@@ -451,11 +455,11 @@ def prepare_data_for_training(
             n_processes=n_processes,
             use_batch_processing=use_batch_processing,
         )
-        
+
         # Save chunk to disk
         chunk_file = os.path.join(output_dir, f"chunk_{chunk_idx:04d}.pt")
         torch.save(chunk_data, chunk_file)
-        
+
         # Record metadata
         chunk_info = {
             "chunk_idx": chunk_idx,
@@ -470,13 +474,15 @@ def prepare_data_for_training(
                 "types": chunk_data["types"].shape,
                 "consumption_labels": chunk_data["consumption_labels"].shape,
                 "sr_labels": chunk_data["sr_labels"].shape,
-            }
+            },
         }
         chunk_metadata.append(chunk_info)
         total_samples += len(chunk_data["trajectories"])
-        
-        print(f"  Saved chunk {chunk_idx} with {len(chunk_data['trajectories'])} samples to {chunk_file}")
-        
+
+        print(
+            f"  Saved chunk {chunk_idx} with {len(chunk_data['trajectories'])} samples to {chunk_file}"
+        )
+
         # Free memory
         del chunk_data
         gc.collect()
@@ -1155,52 +1161,56 @@ def _load_chunks_memory_efficient(chunk_metadata):
     if "chunk_metadata" not in chunk_metadata:
         # Old format
         return chunk_metadata
-    
+
     import os
-    
-    num_chunks = chunk_metadata['num_chunks']
-    chunk_dir = chunk_metadata['output_dir']
-    
+
+    num_chunks = chunk_metadata["num_chunks"]
+    chunk_dir = chunk_metadata["output_dir"]
+
     print(f"Loading {num_chunks} chunks with memory-efficient strategy...")
-    
+
     # Check available memory
     process = psutil.Process()
     available_memory = psutil.virtual_memory().available / (1024**3)
-    
+
     # For very low memory, process one chunk at a time and accumulate
     if available_memory < 8.0:
-        print(f"Very low memory ({available_memory:.1f} GB). Using single-chunk processing.")
-        
+        print(
+            f"Very low memory ({available_memory:.1f} GB). Using single-chunk processing."
+        )
+
         # First pass: get shapes
-        first_chunk = torch.load(os.path.join(chunk_dir, "chunk_0000.pt"), map_location='cpu')
+        first_chunk = torch.load(
+            os.path.join(chunk_dir, "chunk_0000.pt"), map_location="cpu"
+        )
         data_keys = list(first_chunk.keys())
-        
+
         # Accumulate data arrays
         accumulated_data = {}
-        
+
         for chunk_idx in range(num_chunks):
             chunk_path = os.path.join(chunk_dir, f"chunk_{chunk_idx:04d}.pt")
-            
+
             try:
-                chunk_data = torch.load(chunk_path, map_location='cpu')
-            
+                chunk_data = torch.load(chunk_path, map_location="cpu")
+
                 for key in data_keys:
                     if key in chunk_data:
                         if key not in accumulated_data:
                             accumulated_data[key] = []
                         # Convert to numpy immediately to save memory
                         accumulated_data[key].append(chunk_data[key].numpy())
-                
+
                 del chunk_data
                 gc.collect()
-                
+
                 if chunk_idx % 5 == 0:
                     print(f"  Loaded {chunk_idx + 1}/{num_chunks} chunks...")
-            
+
             except:
                 print(f"{chunk_path} end")
                 break
-        
+
         # Final combination
         print("Combining all data...")
         combined_data = {}
@@ -1208,12 +1218,12 @@ def _load_chunks_memory_efficient(chunk_metadata):
             if key in accumulated_data and accumulated_data[key]:
                 combined_data[key] = np.concatenate(accumulated_data[key], axis=0)
                 accumulated_data[key].clear()
-        
+
         del accumulated_data
         gc.collect()
-        
+
         return combined_data
-    
+
     # Standard loading for sufficient memory
     return _standard_chunk_loading(chunk_metadata)
 
@@ -1222,9 +1232,9 @@ def _standard_chunk_loading(chunk_metadata):
     """Standard chunk loading when memory is sufficient"""
     if "chunk_metadata" not in chunk_metadata:
         return chunk_metadata
-        
+
     print(f"Loading {chunk_metadata['num_chunks']} chunks for training...")
-    
+
     # Initialize lists to collect data
     all_trajectories = []
     all_actions = []
@@ -1234,51 +1244,53 @@ def _standard_chunk_loading(chunk_metadata):
     all_types = []
     all_consumption_labels = []
     all_sr_labels = []
-    
+
     # Load each chunk
-    for chunk_idx in range(chunk_metadata['num_chunks']):
-        chunk_path = os.path.join(chunk_metadata['output_dir'], f"chunk_{chunk_idx:04d}.pt")
+    for chunk_idx in range(chunk_metadata["num_chunks"]):
+        chunk_path = os.path.join(
+            chunk_metadata["output_dir"], f"chunk_{chunk_idx:04d}.pt"
+        )
         print(f"Loading chunk {chunk_idx} from {chunk_path}")
-        
+
         try:
-            chunk_data = torch.load(chunk_path, map_location='cpu')
-            
+            chunk_data = torch.load(chunk_path, map_location="cpu")
+
             # Append to lists
-            all_trajectories.append(chunk_data['trajectories'])
-            all_actions.append(chunk_data['actions'])
-            all_goals.append(chunk_data['goals'])
-            all_goal_ranks.append(chunk_data['goal_ranks'])
-            all_agents.append(chunk_data['agents'])
-            all_types.append(chunk_data['types'])
-            all_consumption_labels.append(chunk_data['consumption_labels'])
-            all_sr_labels.append(chunk_data['sr_labels'])
-            
+            all_trajectories.append(chunk_data["trajectories"])
+            all_actions.append(chunk_data["actions"])
+            all_goals.append(chunk_data["goals"])
+            all_goal_ranks.append(chunk_data["goal_ranks"])
+            all_agents.append(chunk_data["agents"])
+            all_types.append(chunk_data["types"])
+            all_consumption_labels.append(chunk_data["consumption_labels"])
+            all_sr_labels.append(chunk_data["sr_labels"])
+
             # Free memory
             del chunk_data
         except:
             print(f"{chunk_path} end")
-    
+
     # Combine all data efficiently
     print("Combining all chunks...")
-    
+
     combined_data = {}
-    
+
     # Process each data type separately
     for key, data_list in [
-        ('trajectories', all_trajectories),
-        ('actions', all_actions),
-        ('goals', all_goals),
-        ('goal_ranks', all_goal_ranks),
-        ('agents', all_agents),
-        ('types', all_types),
-        ('consumption_labels', all_consumption_labels),
-        ('sr_labels', all_sr_labels),
+        ("trajectories", all_trajectories),
+        ("actions", all_actions),
+        ("goals", all_goals),
+        ("goal_ranks", all_goal_ranks),
+        ("agents", all_agents),
+        ("types", all_types),
+        ("consumption_labels", all_consumption_labels),
+        ("sr_labels", all_sr_labels),
     ]:
         print(f"  Combining {key}...")
         combined_data[key] = torch.cat(data_list, dim=0).numpy()
         data_list.clear()
         gc.collect()
-    
+
     return combined_data
 
 
@@ -1312,16 +1324,14 @@ def setup_model_and_data(
     from torch.utils.data import DataLoader
     from torch.cuda.amp import GradScaler
     import torch.utils.data
-    
+
     # Import these here to avoid circular imports
     from tomnet import ToMnetLoss, create_model
 
     # Load training data
     # Extract base directory from full data path
     data_dir_base = os.path.dirname(data_dir)
-    all_training_data = load_training_data_all_combinations(
-        config, data_dir_base
-    )
+    all_training_data = load_training_data_all_combinations(config, data_dir_base)
 
     chunk_metadata = get_data_for_combination(
         all_training_data, achiever_type, blocker_type, "training"
@@ -1366,9 +1376,13 @@ def setup_model_and_data(
     samples_per_epoch = total_achiever_samples + total_blocker_samples
 
     print(f"Training samples: {len(train_data)}")
-    print(f"Validation samples: {len(val_data)} (using n_games_per_type * (1 - training_proportion) = {val_size})")
+    print(
+        f"Validation samples: {len(val_data)} (using n_games_per_type * (1 - training_proportion) = {val_size})"
+    )
     print(f"Total samples: {total_samples}")
-    print(f"Samples per epoch: {samples_per_epoch} (achiever: {total_achiever_samples}, blocker: {total_blocker_samples})")
+    print(
+        f"Samples per epoch: {samples_per_epoch} (achiever: {total_achiever_samples}, blocker: {total_blocker_samples})"
+    )
 
     # Training loader will be created dynamically each epoch
     train_loader = None  # Will be created in training loop
@@ -1417,7 +1431,20 @@ def setup_model_and_data(
         patience=patience, min_delta=min_delta, restore_best_weights=True
     )
 
-    return model, train_data, val_loader, optimizer, loss_fn, scaler, early_stopping, samples_per_epoch, batch_size, pin_memory, num_workers
+    return (
+        model,
+        train_data,
+        val_loader,
+        optimizer,
+        loss_fn,
+        scaler,
+        early_stopping,
+        samples_per_epoch,
+        batch_size,
+        pin_memory,
+        num_workers,
+    )
+
 
 import os
 import pickle
@@ -1486,7 +1513,6 @@ def load_data_efficient(filepath):
     return None
 
 
-
 def load_training_data_all_combinations(config, data_dir_base=None):
     """
     Load training data for all combinations following train.py pattern
@@ -1549,15 +1575,16 @@ def load_training_data_all_combinations(config, data_dir_base=None):
                 f"processed_data_exp{config.experiment_no}_{combo_achiever}_{combo_blocker}.pkl",
             )
 
-
             if not os.path.exists(train_data_dir):
                 print(f"Training data directory not found: {train_data_dir}")
                 print(f"Skipping combination {combo_achiever}_{combo_blocker}")
                 continue
 
             # Create chunk directory for this combination
-            chunk_dir = os.path.join(train_data_dir, f"chunks_{combo_achiever}_{combo_blocker}")
-            
+            chunk_dir = os.path.join(
+                train_data_dir, f"chunks_{combo_achiever}_{combo_blocker}"
+            )
+
             # Check if processed data already exists
             if os.path.exists(processed_data_path):
                 print(f"Loading existing processed data from: {processed_data_path}")
@@ -1565,9 +1592,14 @@ def load_training_data_all_combinations(config, data_dir_base=None):
                 if train_data is not None:
                     # Check if this is chunk metadata (new format) or old format
                     if isinstance(train_data, dict) and "chunk_metadata" in train_data:
-                        print(f"  Found chunk metadata with {train_data['num_chunks']} chunks")
+                        print(
+                            f"  Found chunk metadata with {train_data['num_chunks']} chunks"
+                        )
                         # Verify chunks still exist
-                        chunks_exist = all(os.path.exists(chunk['file_path']) for chunk in train_data['chunk_metadata'])
+                        chunks_exist = all(
+                            os.path.exists(chunk["file_path"])
+                            for chunk in train_data["chunk_metadata"]
+                        )
                         if chunks_exist:
                             print(f"  All chunks verified in {chunk_dir}")
                             existing_data[(combo_achiever, combo_blocker)] = train_data
@@ -1575,7 +1607,9 @@ def load_training_data_all_combinations(config, data_dir_base=None):
                         else:
                             print(f"  Some chunks are missing, regenerating...")
                     else:
-                        print(f"  Found old format data, converting to chunked format...")
+                        print(
+                            f"  Found old format data, converting to chunked format..."
+                        )
                         # Remove old pkl file to force regeneration
                         os.remove(processed_data_path)
 
@@ -1601,7 +1635,9 @@ def load_training_data_all_combinations(config, data_dir_base=None):
                 train_games,
                 min_timestep=data_config.get("min_time_steps", 6),
                 max_trajectory_length=data_config.get("time_step", 500),
-                chunk_size=data_config.get("chunk_size", 5000),  # Process in smaller chunks to avoid memory issues
+                chunk_size=data_config.get(
+                    "chunk_size", 5000
+                ),  # Process in smaller chunks to avoid memory issues
                 output_dir=chunk_dir,
             )
 
@@ -1742,36 +1778,42 @@ def get_data_for_combination(
         )
 
 
-def load_chunked_data_for_training(train_data, batch_size, samples_per_epoch, pin_memory=True, num_workers=0):
+def load_chunked_data_for_training(
+    train_data, batch_size, samples_per_epoch, pin_memory=True, num_workers=0
+):
     """
     Create a DataLoader for one epoch from training data
-    
+
     Args:
         train_data: Training dataset or chunk metadata (for backward compatibility)
         batch_size: Batch size
         samples_per_epoch: Number of samples per epoch
         pin_memory: Whether to pin memory
         num_workers: Number of workers
-        
+
     Returns:
         DataLoader for one epoch (if called with multiple args) or combined data dict (if called with single arg)
     """
     # Check if this is the new signature (multiple arguments)
     import torch.utils.data
-    if isinstance(train_data, (torch.utils.data.Subset, torch.utils.data.Dataset)) and batch_size is not None:
+
+    if (
+        isinstance(train_data, (torch.utils.data.Subset, torch.utils.data.Dataset))
+        and batch_size is not None
+    ):
         # New signature - create epoch data loader
         import random
         from torch.utils.data import DataLoader, Subset
-        
+
         total_samples = len(train_data)
-        
+
         # Randomly sample indices for this epoch
         if samples_per_epoch and samples_per_epoch < total_samples:
             epoch_indices = random.sample(range(total_samples), samples_per_epoch)
             epoch_data = Subset(train_data, epoch_indices)
         else:
             epoch_data = train_data
-        
+
         return DataLoader(
             epoch_data,
             batch_size=batch_size,
@@ -1781,15 +1823,15 @@ def load_chunked_data_for_training(train_data, batch_size, samples_per_epoch, pi
             persistent_workers=True if num_workers > 0 else False,
             drop_last=True,
         )
-    
+
     # Old signature - load chunks (backward compatibility)
     chunk_metadata = train_data
     if "chunk_metadata" not in chunk_metadata:
         # This is old format data, return as-is
         return chunk_metadata
-        
+
     print(f"Loading {chunk_metadata['num_chunks']} chunks for training...")
-    
+
     # Initialize lists to collect data
     all_trajectories = []
     all_actions = []
@@ -1799,88 +1841,90 @@ def load_chunked_data_for_training(train_data, batch_size, samples_per_epoch, pi
     all_types = []
     all_consumption_labels = []
     all_sr_labels = []
-    
+
     # Load and combine all chunks
-    for chunk_info in chunk_metadata['chunk_metadata']:
+    for chunk_info in chunk_metadata["chunk_metadata"]:
         print(f"Loading chunk {chunk_info['chunk_idx']} from {chunk_info['file_path']}")
-        chunk_data = torch.load(chunk_info['file_path'])
-        
-        all_trajectories.append(chunk_data['trajectories'])
-        all_actions.append(chunk_data['actions'])
-        all_goals.append(chunk_data['goals'])
-        all_goal_ranks.append(chunk_data['goal_ranks'])
-        all_agents.append(chunk_data['agents'])
-        all_types.append(chunk_data['types'])
-        all_consumption_labels.append(chunk_data['consumption_labels'])
-        all_sr_labels.append(chunk_data['sr_labels'])
-        
+        chunk_data = torch.load(chunk_info["file_path"])
+
+        all_trajectories.append(chunk_data["trajectories"])
+        all_actions.append(chunk_data["actions"])
+        all_goals.append(chunk_data["goals"])
+        all_goal_ranks.append(chunk_data["goal_ranks"])
+        all_agents.append(chunk_data["agents"])
+        all_types.append(chunk_data["types"])
+        all_consumption_labels.append(chunk_data["consumption_labels"])
+        all_sr_labels.append(chunk_data["sr_labels"])
+
         # Free memory
         del chunk_data
-    
+
     # Combine all data efficiently
     print("Combining all chunks...")
     import gc
     import psutil
-    
+
     # Check available memory before combining
     process = psutil.Process()
     available_memory = psutil.virtual_memory().available / (1024**3)  # GB
     current_usage = process.memory_info().rss / (1024**3)  # GB
     print(f"  Available system memory: {available_memory:.2f} GB")
     print(f"  Current process memory: {current_usage:.2f} GB")
-    
+
     # Use torch.cat with reduced memory footprint
     combined_data = {}
-    
+
     # Process each data type separately to reduce peak memory usage
     for key, data_list in [
-        ('trajectories', all_trajectories),
-        ('actions', all_actions),
-        ('goals', all_goals),
-        ('goal_ranks', all_goal_ranks),
-        ('agents', all_agents),
-        ('types', all_types),
-        ('consumption_labels', all_consumption_labels),
-        ('sr_labels', all_sr_labels),
+        ("trajectories", all_trajectories),
+        ("actions", all_actions),
+        ("goals", all_goals),
+        ("goal_ranks", all_goal_ranks),
+        ("agents", all_agents),
+        ("types", all_types),
+        ("consumption_labels", all_consumption_labels),
+        ("sr_labels", all_sr_labels),
     ]:
         print(f"  Combining {key}...")
-        
+
         # Check memory before combining
         if available_memory < 10.0:  # Less than 10GB available
-            print(f"    WARNING: Low memory ({available_memory:.2f} GB). Using chunked processing...")
+            print(
+                f"    WARNING: Low memory ({available_memory:.2f} GB). Using chunked processing..."
+            )
             # Process in smaller chunks if memory is low
             chunk_size = max(1, len(data_list) // 4)
             combined_chunks = []
-            
+
             for i in range(0, len(data_list), chunk_size):
-                chunk = torch.cat(data_list[i:i+chunk_size], dim=0)
+                chunk = torch.cat(data_list[i : i + chunk_size], dim=0)
                 combined_chunks.append(chunk.numpy())
                 del chunk
                 gc.collect()
-            
+
             # Final combination
             combined_data[key] = np.concatenate(combined_chunks, axis=0)
             del combined_chunks
         else:
             # Normal processing if enough memory
             combined_data[key] = torch.cat(data_list, dim=0).numpy()
-        
+
         # Clear the list to free memory
         data_list.clear()
         gc.collect()
-        
+
         # Update available memory
         available_memory = psutil.virtual_memory().available / (1024**3)
-    
+
     # Clear all temporary lists
     del all_trajectories, all_actions, all_goals, all_goal_ranks
     del all_agents, all_types, all_consumption_labels, all_sr_labels
     gc.collect()
-    
+
     print(f"Combined data shapes:")
     for key, value in combined_data.items():
         print(f"  {key}: {value.shape}")
-    
+
     return combined_data
 
 

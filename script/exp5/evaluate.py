@@ -22,7 +22,12 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from tomnet import create_model
 from config import Config
 from utils import generate_past_episodes_from_batch
-from utils import set_seed, load_test_data_all_combinations, get_data_for_combination, load_chunked_data_for_training
+from utils import (
+    set_seed,
+    load_test_data_all_combinations,
+    get_data_for_combination,
+    load_chunked_data_for_training,
+)
 
 # Set seed using Config default value
 config = Config()

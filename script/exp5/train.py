@@ -4,6 +4,7 @@ import sys
 
 import torch
 from torch.cuda.amp import autocast
+
 # Add current directory to path
 sys.path.append(os.path.dirname(__file__))
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -141,8 +142,10 @@ def train_epoch(
         # Prepare inputs for ToMnet
         # Split combined_episodes into past_trajectories and recent_trajectory
         recent_trajectory = combined_episodes[:, 0]  # Current trajectory
-        past_trajectories = combined_episodes[:, 1:] if combined_episodes.size(1) > 1 else None  # Past episodes
-        
+        past_trajectories = (
+            combined_episodes[:, 1:] if combined_episodes.size(1) > 1 else None
+        )  # Past episodes
+
         # Extract current state from recent trajectory (last timestep)
         current_state = recent_trajectory[:, -1]  # Last timestep of recent trajectory
 
@@ -150,7 +153,7 @@ def train_epoch(
             with autocast():
                 # Forward pass
                 outputs = model(past_trajectories, recent_trajectory, current_state)
-                
+
                 # Compute loss
                 loss_dict = loss_fn(
                     outputs["action_logits"],
@@ -166,18 +169,18 @@ def train_epoch(
                     consumption_labels,
                     sr_labels,
                 )
-                
+
                 loss = loss_dict["loss"]
-                
+
                 # Scale loss for gradient accumulation
                 loss = loss / gradient_accumulation_steps
-                
+
                 # Accumulate gradients
                 accumulation_loss += loss.item()
         else:
             # Forward pass without mixed precision
             outputs = model(past_trajectories, recent_trajectory, current_state)
-            
+
             # Compute loss
             loss_dict = loss_fn(
                 outputs["action_logits"],
@@ -193,12 +196,12 @@ def train_epoch(
                 consumption_labels,
                 sr_labels,
             )
-            
+
             loss = loss_dict["loss"]
-            
+
             # Scale loss for gradient accumulation
             loss = loss / gradient_accumulation_steps
-            
+
             # Accumulate gradients
             accumulation_loss += loss.item()
 
@@ -216,7 +219,7 @@ def train_epoch(
             else:
                 optimizer.step()
             optimizer.zero_grad()
-            
+
             # Add accumulated loss to total
             total_loss += accumulation_loss
             accumulation_loss = 0
@@ -237,7 +240,7 @@ def train_epoch(
 
         # Convert goals to class indices (they are one-hot encoded)
         goals_indices = torch.argmax(goals, dim=1)
-        
+
         correct_actions += (action_preds == actions[:, 1]).sum().item()
         correct_goals += (goal_preds == goals_indices).sum().item()
         correct_agents += (agent_preds == agents).sum().item()
@@ -245,29 +248,59 @@ def train_epoch(
         total_samples += batch_size
 
         # Agent-specific metrics
-        achiever_mask = (agents == 0)
-        blocker_mask = (agents == 1)
+        achiever_mask = agents == 0
+        blocker_mask = agents == 1
 
-        achiever_correct_actions += (action_preds[achiever_mask] == actions[achiever_mask, 1]).sum().item()
-        achiever_correct_goals += (goal_preds[achiever_mask] == goals_indices[achiever_mask]).sum().item()
+        achiever_correct_actions += (
+            (action_preds[achiever_mask] == actions[achiever_mask, 1]).sum().item()
+        )
+        achiever_correct_goals += (
+            (goal_preds[achiever_mask] == goals_indices[achiever_mask]).sum().item()
+        )
         achiever_total_samples += achiever_mask.sum().item()
 
-        blocker_correct_actions += (action_preds[blocker_mask] == actions[blocker_mask, 1]).sum().item()
-        blocker_correct_goals += (goal_preds[blocker_mask] == goals_indices[blocker_mask]).sum().item()
+        blocker_correct_actions += (
+            (action_preds[blocker_mask] == actions[blocker_mask, 1]).sum().item()
+        )
+        blocker_correct_goals += (
+            (goal_preds[blocker_mask] == goals_indices[blocker_mask]).sum().item()
+        )
         blocker_total_samples += blocker_mask.sum().item()
 
         # Agent-specific loss accumulation
         if achiever_mask.sum() > 0:
-            achiever_total_action_loss += loss_dict["action_loss"].item() * achiever_mask.sum().item() / batch_size
-            achiever_total_goal_loss += loss_dict["goal_loss"].item() * achiever_mask.sum().item() / batch_size
-            achiever_total_consumption_loss += loss_dict["consumption_loss"].item() * achiever_mask.sum().item() / batch_size
-            achiever_total_sr_loss += loss_dict["sr_loss"].item() * achiever_mask.sum().item() / batch_size
+            achiever_total_action_loss += (
+                loss_dict["action_loss"].item()
+                * achiever_mask.sum().item()
+                / batch_size
+            )
+            achiever_total_goal_loss += (
+                loss_dict["goal_loss"].item() * achiever_mask.sum().item() / batch_size
+            )
+            achiever_total_consumption_loss += (
+                loss_dict["consumption_loss"].item()
+                * achiever_mask.sum().item()
+                / batch_size
+            )
+            achiever_total_sr_loss += (
+                loss_dict["sr_loss"].item() * achiever_mask.sum().item() / batch_size
+            )
 
         if blocker_mask.sum() > 0:
-            blocker_total_action_loss += loss_dict["action_loss"].item() * blocker_mask.sum().item() / batch_size
-            blocker_total_goal_loss += loss_dict["goal_loss"].item() * blocker_mask.sum().item() / batch_size
-            blocker_total_consumption_loss += loss_dict["consumption_loss"].item() * blocker_mask.sum().item() / batch_size
-            blocker_total_sr_loss += loss_dict["sr_loss"].item() * blocker_mask.sum().item() / batch_size
+            blocker_total_action_loss += (
+                loss_dict["action_loss"].item() * blocker_mask.sum().item() / batch_size
+            )
+            blocker_total_goal_loss += (
+                loss_dict["goal_loss"].item() * blocker_mask.sum().item() / batch_size
+            )
+            blocker_total_consumption_loss += (
+                loss_dict["consumption_loss"].item()
+                * blocker_mask.sum().item()
+                / batch_size
+            )
+            blocker_total_sr_loss += (
+                loss_dict["sr_loss"].item() * blocker_mask.sum().item() / batch_size
+            )
 
     # Handle remaining gradients if gradient accumulation is used
     if accumulation_loss > 0:
@@ -296,10 +329,26 @@ def train_epoch(
     type_accuracy = correct_types / total_samples if total_samples > 0 else 0
 
     # Agent-specific accuracies
-    achiever_action_accuracy = achiever_correct_actions / achiever_total_samples if achiever_total_samples > 0 else 0
-    achiever_goal_accuracy = achiever_correct_goals / achiever_total_samples if achiever_total_samples > 0 else 0
-    blocker_action_accuracy = blocker_correct_actions / blocker_total_samples if blocker_total_samples > 0 else 0
-    blocker_goal_accuracy = blocker_correct_goals / blocker_total_samples if blocker_total_samples > 0 else 0
+    achiever_action_accuracy = (
+        achiever_correct_actions / achiever_total_samples
+        if achiever_total_samples > 0
+        else 0
+    )
+    achiever_goal_accuracy = (
+        achiever_correct_goals / achiever_total_samples
+        if achiever_total_samples > 0
+        else 0
+    )
+    blocker_action_accuracy = (
+        blocker_correct_actions / blocker_total_samples
+        if blocker_total_samples > 0
+        else 0
+    )
+    blocker_goal_accuracy = (
+        blocker_correct_goals / blocker_total_samples
+        if blocker_total_samples > 0
+        else 0
+    )
 
     # Agent-specific average losses
     achiever_avg_action_loss = achiever_total_action_loss / num_batches
@@ -435,15 +484,21 @@ def validate_epoch(
             time_steps = actions[:, 0]
 
             # Concatenate current and past episodes
-            combined_episodes = torch.cat([trajectories.unsqueeze(1), past_episodes], dim=1)
+            combined_episodes = torch.cat(
+                [trajectories.unsqueeze(1), past_episodes], dim=1
+            )
 
             # Prepare inputs for ToMnet
             # Split combined_episodes into past_trajectories and recent_trajectory
             recent_trajectory = combined_episodes[:, 0]  # Current trajectory
-            past_trajectories = combined_episodes[:, 1:] if combined_episodes.size(1) > 1 else None  # Past episodes
-            
+            past_trajectories = (
+                combined_episodes[:, 1:] if combined_episodes.size(1) > 1 else None
+            )  # Past episodes
+
             # Extract current state from recent trajectory (last timestep)
-            current_state = recent_trajectory[:, -1]  # Last timestep of recent trajectory
+            current_state = recent_trajectory[
+                :, -1
+            ]  # Last timestep of recent trajectory
 
             # Forward pass
             if scaler is not None:
@@ -497,7 +552,7 @@ def validate_epoch(
 
             # Convert goals to class indices (they are one-hot encoded)
             goals_indices = torch.argmax(goals, dim=1)
-            
+
             correct_actions += (action_preds == actions[:, 1]).sum().item()
             correct_goals += (goal_preds == goals_indices).sum().item()
             correct_agents += (agent_preds == agents).sum().item()
@@ -505,29 +560,67 @@ def validate_epoch(
             total_samples += batch_size
 
             # Agent-specific metrics
-            achiever_mask = (agents == 0)
-            blocker_mask = (agents == 1)
+            achiever_mask = agents == 0
+            blocker_mask = agents == 1
 
-            achiever_correct_actions += (action_preds[achiever_mask] == actions[achiever_mask, 1]).sum().item()
-            achiever_correct_goals += (goal_preds[achiever_mask] == goals_indices[achiever_mask]).sum().item()
+            achiever_correct_actions += (
+                (action_preds[achiever_mask] == actions[achiever_mask, 1]).sum().item()
+            )
+            achiever_correct_goals += (
+                (goal_preds[achiever_mask] == goals_indices[achiever_mask]).sum().item()
+            )
             achiever_total_samples += achiever_mask.sum().item()
 
-            blocker_correct_actions += (action_preds[blocker_mask] == actions[blocker_mask, 1]).sum().item()
-            blocker_correct_goals += (goal_preds[blocker_mask] == goals_indices[blocker_mask]).sum().item()
+            blocker_correct_actions += (
+                (action_preds[blocker_mask] == actions[blocker_mask, 1]).sum().item()
+            )
+            blocker_correct_goals += (
+                (goal_preds[blocker_mask] == goals_indices[blocker_mask]).sum().item()
+            )
             blocker_total_samples += blocker_mask.sum().item()
 
             # Agent-specific loss accumulation
             if achiever_mask.sum() > 0:
-                achiever_total_action_loss += loss_dict["action_loss"].item() * achiever_mask.sum().item() / batch_size
-                achiever_total_goal_loss += loss_dict["goal_loss"].item() * achiever_mask.sum().item() / batch_size
-                achiever_total_consumption_loss += loss_dict["consumption_loss"].item() * achiever_mask.sum().item() / batch_size
-                achiever_total_sr_loss += loss_dict["sr_loss"].item() * achiever_mask.sum().item() / batch_size
+                achiever_total_action_loss += (
+                    loss_dict["action_loss"].item()
+                    * achiever_mask.sum().item()
+                    / batch_size
+                )
+                achiever_total_goal_loss += (
+                    loss_dict["goal_loss"].item()
+                    * achiever_mask.sum().item()
+                    / batch_size
+                )
+                achiever_total_consumption_loss += (
+                    loss_dict["consumption_loss"].item()
+                    * achiever_mask.sum().item()
+                    / batch_size
+                )
+                achiever_total_sr_loss += (
+                    loss_dict["sr_loss"].item()
+                    * achiever_mask.sum().item()
+                    / batch_size
+                )
 
             if blocker_mask.sum() > 0:
-                blocker_total_action_loss += loss_dict["action_loss"].item() * blocker_mask.sum().item() / batch_size
-                blocker_total_goal_loss += loss_dict["goal_loss"].item() * blocker_mask.sum().item() / batch_size
-                blocker_total_consumption_loss += loss_dict["consumption_loss"].item() * blocker_mask.sum().item() / batch_size
-                blocker_total_sr_loss += loss_dict["sr_loss"].item() * blocker_mask.sum().item() / batch_size
+                blocker_total_action_loss += (
+                    loss_dict["action_loss"].item()
+                    * blocker_mask.sum().item()
+                    / batch_size
+                )
+                blocker_total_goal_loss += (
+                    loss_dict["goal_loss"].item()
+                    * blocker_mask.sum().item()
+                    / batch_size
+                )
+                blocker_total_consumption_loss += (
+                    loss_dict["consumption_loss"].item()
+                    * blocker_mask.sum().item()
+                    / batch_size
+                )
+                blocker_total_sr_loss += (
+                    loss_dict["sr_loss"].item() * blocker_mask.sum().item() / batch_size
+                )
 
     # Calculate averages
     num_batches = len(val_loader)
@@ -546,10 +639,26 @@ def validate_epoch(
     type_accuracy = correct_types / total_samples if total_samples > 0 else 0
 
     # Agent-specific accuracies
-    achiever_action_accuracy = achiever_correct_actions / achiever_total_samples if achiever_total_samples > 0 else 0
-    achiever_goal_accuracy = achiever_correct_goals / achiever_total_samples if achiever_total_samples > 0 else 0
-    blocker_action_accuracy = blocker_correct_actions / blocker_total_samples if blocker_total_samples > 0 else 0
-    blocker_goal_accuracy = blocker_correct_goals / blocker_total_samples if blocker_total_samples > 0 else 0
+    achiever_action_accuracy = (
+        achiever_correct_actions / achiever_total_samples
+        if achiever_total_samples > 0
+        else 0
+    )
+    achiever_goal_accuracy = (
+        achiever_correct_goals / achiever_total_samples
+        if achiever_total_samples > 0
+        else 0
+    )
+    blocker_action_accuracy = (
+        blocker_correct_actions / blocker_total_samples
+        if blocker_total_samples > 0
+        else 0
+    )
+    blocker_goal_accuracy = (
+        blocker_correct_goals / blocker_total_samples
+        if blocker_total_samples > 0
+        else 0
+    )
 
     # Agent-specific average losses
     achiever_avg_action_loss = achiever_total_action_loss / num_batches
@@ -674,12 +783,12 @@ def run_training_loop(
 
     best_val_loss = float("inf")
     patience_counter = 0
-    
+
     print(f"Starting training for {epochs} epochs...")
-    
+
     for epoch in range(epochs):
         epoch_start_time = time.time()
-        
+
         # Create training data loader for this epoch
         train_loader = load_chunked_data_for_training(
             train_data,
@@ -688,7 +797,7 @@ def run_training_loop(
             pin_memory,
             num_workers,
         )
-        
+
         # Training phase
         train_metrics = train_epoch(
             model,
@@ -703,7 +812,7 @@ def run_training_loop(
             scaler,
             gradient_accumulation_steps,
         )
-        
+
         # Validation phase
         val_metrics = validate_epoch(
             model,
@@ -715,12 +824,12 @@ def run_training_loop(
             model_config,
             scaler,
         )
-        
+
         epoch_time = time.time() - epoch_start_time
-        
+
         # Update history
         history["epoch"].append(epoch + 1)
-        
+
         # Training metrics
         history["train_loss"].append(train_metrics["loss"])
         history["train_action_loss"].append(train_metrics["action_loss"])
@@ -733,19 +842,35 @@ def run_training_loop(
         history["train_goal_accuracy"].append(train_metrics["goal_accuracy"])
         history["train_agent_accuracy"].append(train_metrics["agent_accuracy"])
         history["train_type_accuracy"].append(train_metrics["type_accuracy"])
-        history["train_achiever_action_accuracy"].append(train_metrics["achiever_action_accuracy"])
-        history["train_achiever_goal_accuracy"].append(train_metrics["achiever_goal_accuracy"])
-        history["train_blocker_action_accuracy"].append(train_metrics["blocker_action_accuracy"])
-        history["train_blocker_goal_accuracy"].append(train_metrics["blocker_goal_accuracy"])
-        history["train_achiever_action_loss"].append(train_metrics["achiever_action_loss"])
+        history["train_achiever_action_accuracy"].append(
+            train_metrics["achiever_action_accuracy"]
+        )
+        history["train_achiever_goal_accuracy"].append(
+            train_metrics["achiever_goal_accuracy"]
+        )
+        history["train_blocker_action_accuracy"].append(
+            train_metrics["blocker_action_accuracy"]
+        )
+        history["train_blocker_goal_accuracy"].append(
+            train_metrics["blocker_goal_accuracy"]
+        )
+        history["train_achiever_action_loss"].append(
+            train_metrics["achiever_action_loss"]
+        )
         history["train_achiever_goal_loss"].append(train_metrics["achiever_goal_loss"])
-        history["train_achiever_consumption_loss"].append(train_metrics["achiever_consumption_loss"])
+        history["train_achiever_consumption_loss"].append(
+            train_metrics["achiever_consumption_loss"]
+        )
         history["train_achiever_sr_loss"].append(train_metrics["achiever_sr_loss"])
-        history["train_blocker_action_loss"].append(train_metrics["blocker_action_loss"])
+        history["train_blocker_action_loss"].append(
+            train_metrics["blocker_action_loss"]
+        )
         history["train_blocker_goal_loss"].append(train_metrics["blocker_goal_loss"])
-        history["train_blocker_consumption_loss"].append(train_metrics["blocker_consumption_loss"])
+        history["train_blocker_consumption_loss"].append(
+            train_metrics["blocker_consumption_loss"]
+        )
         history["train_blocker_sr_loss"].append(train_metrics["blocker_sr_loss"])
-        
+
         # Validation metrics
         history["val_loss"].append(val_metrics["loss"])
         history["val_action_loss"].append(val_metrics["action_loss"])
@@ -758,27 +883,39 @@ def run_training_loop(
         history["val_goal_accuracy"].append(val_metrics["goal_accuracy"])
         history["val_agent_accuracy"].append(val_metrics["agent_accuracy"])
         history["val_type_accuracy"].append(val_metrics["type_accuracy"])
-        history["val_achiever_action_accuracy"].append(val_metrics["achiever_action_accuracy"])
-        history["val_achiever_goal_accuracy"].append(val_metrics["achiever_goal_accuracy"])
-        history["val_blocker_action_accuracy"].append(val_metrics["blocker_action_accuracy"])
-        history["val_blocker_goal_accuracy"].append(val_metrics["blocker_goal_accuracy"])
+        history["val_achiever_action_accuracy"].append(
+            val_metrics["achiever_action_accuracy"]
+        )
+        history["val_achiever_goal_accuracy"].append(
+            val_metrics["achiever_goal_accuracy"]
+        )
+        history["val_blocker_action_accuracy"].append(
+            val_metrics["blocker_action_accuracy"]
+        )
+        history["val_blocker_goal_accuracy"].append(
+            val_metrics["blocker_goal_accuracy"]
+        )
         history["val_achiever_action_loss"].append(val_metrics["achiever_action_loss"])
         history["val_achiever_goal_loss"].append(val_metrics["achiever_goal_loss"])
-        history["val_achiever_consumption_loss"].append(val_metrics["achiever_consumption_loss"])
+        history["val_achiever_consumption_loss"].append(
+            val_metrics["achiever_consumption_loss"]
+        )
         history["val_achiever_sr_loss"].append(val_metrics["achiever_sr_loss"])
         history["val_blocker_action_loss"].append(val_metrics["blocker_action_loss"])
         history["val_blocker_goal_loss"].append(val_metrics["blocker_goal_loss"])
-        history["val_blocker_consumption_loss"].append(val_metrics["blocker_consumption_loss"])
+        history["val_blocker_consumption_loss"].append(
+            val_metrics["blocker_consumption_loss"]
+        )
         history["val_blocker_sr_loss"].append(val_metrics["blocker_sr_loss"])
-        
+
         # Print epoch metrics
         print_epoch_metrics(epoch, epoch_time, train_metrics, val_metrics)
-        
+
         # Save model if validation loss improved
         if val_metrics["loss"] < best_val_loss:
             best_val_loss = val_metrics["loss"]
             patience_counter = 0
-            
+
             # Save best model
             if isinstance(model, torch.nn.DataParallel):
                 torch.save(
@@ -790,19 +927,21 @@ def run_training_loop(
                     model.state_dict(),
                     os.path.join(experiment_save_dir, "best_model.pth"),
                 )
-            
+
             print(f"New best validation loss: {best_val_loss:.4f}")
         else:
             patience_counter += 1
-        
+
         # Check early stopping
         if early_stopping(val_metrics["loss"], model):
             print(f"Early stopping triggered at epoch {epoch + 1}")
             break
-        
+
         # Save checkpoint every 10 epochs
         if (epoch + 1) % 10 == 0:
-            checkpoint_path = os.path.join(experiment_save_dir, f"checkpoint_epoch_{epoch + 1}.pth")
+            checkpoint_path = os.path.join(
+                experiment_save_dir, f"checkpoint_epoch_{epoch + 1}.pth"
+            )
             if isinstance(model, torch.nn.DataParallel):
                 torch.save(
                     {
@@ -825,13 +964,13 @@ def run_training_loop(
                     },
                     checkpoint_path,
                 )
-        
+
         # Memory cleanup
         del train_loader
         gc.collect()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
-    
+
     print("Training completed!")
     return history
 
@@ -907,28 +1046,38 @@ def train_tomnet(
     print(f"Results will be saved to: {experiment_save_dir}")
 
     # Setup model, data, and training components
-    model, train_data, val_loader, optimizer, loss_fn, scaler, early_stopping, samples_per_epoch, batch_size, pin_memory, num_workers = (
-        setup_model_and_data(
-            config,
-            model_kwargs,
-            data_dir,
-            agent_type,
-            achiever_type,
-            blocker_type,
-            training_proportion,
-            device,
-            use_parallel,
-            device_ids,
-            pin_memory,
-            num_workers,
-            training_process_config,
-            batch_size,
-            lr,
-            training_kwargs.get("weight_decay", 0.001),
-            patience,
-            min_delta,
-            experiment_save_dir,
-        )
+    (
+        model,
+        train_data,
+        val_loader,
+        optimizer,
+        loss_fn,
+        scaler,
+        early_stopping,
+        samples_per_epoch,
+        batch_size,
+        pin_memory,
+        num_workers,
+    ) = setup_model_and_data(
+        config,
+        model_kwargs,
+        data_dir,
+        agent_type,
+        achiever_type,
+        blocker_type,
+        training_proportion,
+        device,
+        use_parallel,
+        device_ids,
+        pin_memory,
+        num_workers,
+        training_process_config,
+        batch_size,
+        lr,
+        training_kwargs.get("weight_decay", 0.001),
+        patience,
+        min_delta,
+        experiment_save_dir,
     )
 
     # Run training loop
@@ -991,12 +1140,12 @@ def train_tomnet(
 
     print("Training completed successfully!")
     print(f"Results saved to: {experiment_save_dir}")
-    
+
     if history["val_loss"]:
         history["best_val_loss"] = min(history["val_loss"])
     else:
-        history["best_val_loss"] = float('inf')
-    
+        history["best_val_loss"] = float("inf")
+
     return history
 
 

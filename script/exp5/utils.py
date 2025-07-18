@@ -1301,6 +1301,7 @@ def setup_model_and_data(
     weight_decay,
     patience,
     min_delta,
+    save_dir=None,
 ):
     """
     Setup model, data loaders, optimizer, and other training components
@@ -1382,7 +1383,7 @@ def setup_model_and_data(
     )
 
     # Create model
-    model = create_model(model_kwargs)
+    model = create_model(model_kwargs, save_dir=save_dir)
     model = model.to(device)
 
     # Setup parallel training

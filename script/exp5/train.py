@@ -927,6 +927,7 @@ def train_tomnet(
             training_kwargs.get("weight_decay", 0.001),
             patience,
             min_delta,
+            experiment_save_dir,
         )
     )
 

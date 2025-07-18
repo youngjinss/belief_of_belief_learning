@@ -1000,9 +1000,6 @@ def create_model(config, save_dir=None):
         # Config object
         model_kwargs = config.get_model_kwargs()
         model = ToMnet(**model_kwargs)
-        # Get device from training config
-        training_config = config.get_training_config()
-        device = training_config.get("device", "cpu")
     else:
         # Dictionary
         model = ToMnet(
@@ -1023,8 +1020,6 @@ def create_model(config, save_dir=None):
             env_height=config.get("env_height", 9),
             hidden_size_lstm=config.get("hidden_size_lstm", 64),
         )
-        # For dictionary config, assume device is passed at the same level
-        device = config.get("device", "cpu")
 
     # Check if save_dir is provided and if a checkpoint exists
     if save_dir is not None:
@@ -1033,7 +1028,7 @@ def create_model(config, save_dir=None):
             print(f"Found existing checkpoint at: {checkpoint_path}")
             try:
                 # Use the device from config for map_location
-                checkpoint = torch.load(checkpoint_path, map_location=device)
+                checkpoint = torch.load(checkpoint_path, map_location="cpu")
                 model.load_state_dict(checkpoint)
                 print("Successfully loaded model parameters from checkpoint")
             except Exception as e:

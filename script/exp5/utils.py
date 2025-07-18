@@ -1429,7 +1429,7 @@ def setup_model_and_data(
 
     # Create scaler for AMP
     use_amp = training_process_config.get("use_amp", True)
-    scaler = GradScaler("cuda") if use_amp and torch.cuda.is_available() else None
+    scaler = GradScaler() if use_amp and torch.cuda.is_available() else None
 
     # Create early stopping
     early_stopping = EarlyStopping(

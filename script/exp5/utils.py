@@ -1820,7 +1820,7 @@ def load_chunked_data_for_training(
             shuffle=True,
             pin_memory=pin_memory,
             num_workers=num_workers,
-            persistent_workers=True if num_workers > 0 else False,
+            persistent_workers=False,  # Disable to prevent file descriptor leaks
             drop_last=True,
         )
 

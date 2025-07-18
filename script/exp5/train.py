@@ -1152,6 +1152,10 @@ def train_tomnet(
 if __name__ == "__main__":
     import argparse
     import os
+    import torch.multiprocessing as mp
+    
+    # Set multiprocessing start method to prevent file descriptor issues
+    mp.set_start_method('spawn', force=True)
 
     parser = argparse.ArgumentParser(description="Train KeyDoor ToMnet")
 

@@ -362,6 +362,7 @@ def save_game_with_labels(
     goal_rewards=None,
     game_costs=None,
     trajectory_data=None,
+    achiever_type=None,
     blocker_type=None,
     config_dict=None,
 ):
@@ -511,6 +512,16 @@ def save_game_with_labels(
 
         # Section 2: Achiever
         f.write("Achiever:\n")
+        
+        # Write achiever type
+        if achiever_type:
+            # Get achiever type map from config_dict if available
+            achiever_type_map = config_dict.get("achiever_type_map", {})
+            achiever_type_id = achiever_type_map.get(achiever_type, -1)
+            f.write(f"Type: {achiever_type_id}\n")
+        else:
+            f.write("Type: -1\n")  # Unknown type
+        
         f.write("Goal Consumed Rank : " + str(key_door_rank) + "\n")
 
         if goal_rewards is not None:
@@ -951,6 +962,7 @@ def run_single_game(game_id, config_dict, save_dir, blocker_type=None):
         goal_rewards=goal_rewards,
         game_costs=game_costs,
         trajectory_data=trajectory_data,
+        achiever_type=achiever_type,
         blocker_type=current_blocker_type,
         config_dict=config_dict,
     )
@@ -1098,7 +1110,8 @@ def generate_trajectories_for_combination(
         "random_movement_prob": config.achiever_configs.get("random", {}).get(
             "movement_prob", 0.8
         ),
-        # Blocker type mapping
+        # Type mappings
+        "achiever_type_map": config.achiever_type_map,
         "blocker_type_map": config.blocker_type_map,
     }
 

@@ -588,3 +588,11 @@ The exp5 codebase has been comprehensively optimized for time consumption with s
 - **Error Handling**: Robust handling of edge cases and failures
 
 These optimizations provide substantial performance improvements while maintaining full compatibility with existing code and data formats. The improvements are particularly beneficial for large-scale training runs and extensive data generation tasks.
+
+## Recent Updates
+
+### **Achiever Type Integration (Latest)**
+- **data_generation.py**: Added parsing for achiever "Type:" field in trajectory files
+- **data_generation.py**: Modified `create_achiever_sample` to use parsed achiever type instead of hardcoded value
+- **Integration**: Training pipeline now properly handles achiever type information from generate.py
+- **Compatibility**: Maintains backward compatibility with existing data formats

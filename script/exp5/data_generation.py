@@ -250,6 +250,10 @@ class DataGenerator:
                     continue
 
             # Parse achiever data using pre-compiled regex
+            if line.startswith("Type:") and current_section == "achiever":
+                achiever_data["type"] = int(line.split(":")[1].strip())
+                continue
+            
             goal_rank_match = self.goal_rank_pattern.match(line)
             if goal_rank_match:
                 rank_str = goal_rank_match.group(1)
@@ -348,6 +352,9 @@ class DataGenerator:
             "sr_data_per_timestep", {}
         )
 
+        # Get achiever type from parsed data
+        achiever_type = parsed_data["achiever_data"].get("type", -1)
+
         return {
             "trajectory": trajectory_tensor,
             "actions": actions,
@@ -356,7 +363,7 @@ class DataGenerator:
             "intended_goal": intended_goal,
             "consumed_goal": consumed_goal,
             "agent": "achiever",
-            "type": 0,  # Achiever type is always 0
+            "type": achiever_type,
             "sr_data_per_timestep": sr_data_per_timestep,
             "filename": parsed_data["filename"],
         }

@@ -1039,6 +1039,10 @@ def create_model(config, save_dir=None):
             except Exception as e:
                 print(f"Warning: Failed to load checkpoint: {e}")
                 print("Proceeding with randomly initialized model")
+        else:
+            print(f"No loading model: {checkpoint_path}")
+    else:
+        print("No loading model: save_dir is None")
 
     return model
 

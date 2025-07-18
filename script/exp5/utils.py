@@ -13,6 +13,14 @@ import gc
 import multiprocessing as mp
 from functools import partial
 import psutil
+import atexit
+
+# Set multiprocessing start method to prevent semaphore leaks
+try:
+    mp.set_start_method("spawn", force=True)
+except RuntimeError:
+    # Start method already set, which is fine
+    pass
 
 
 def convert_sparse_sr_to_dense(
@@ -540,6 +548,8 @@ def prepare_data_memory_efficient(
                     desc="Dataset processing (batch multiprocessing)",
                 )
             )
+            pool.close()
+            pool.join()
     else:
         # Original single-sample processing with chunking
         worker_func = partial(
@@ -562,6 +572,8 @@ def prepare_data_memory_efficient(
                     desc="Dataset processing (multiprocessing)",
                 )
             )
+            pool.close()
+            pool.join()
 
     # Combine results from all processes
     trajectories = []

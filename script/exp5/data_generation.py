@@ -678,6 +678,8 @@ class DataGenerator:
                         desc="Processing trajectory files",
                     )
                 )
+                pool.close()
+                pool.join()
 
             # Combine results from all batches
             all_samples = []

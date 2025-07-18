@@ -132,12 +132,8 @@ def train_epoch(
         )
 
         # With trajectory slicing, we use dynamic timesteps
-        # Each sample has a different effective length, stored in actions[:,0]
+        # Each sample has a different effective length
         batch_size = trajectories.size(0)
-
-        # Get the timesteps for each sample (trajectory slicing)
-        # Each trajectory may have different lengths
-        time_steps = actions[:, 0]
         seq_len = trajectories.size(1)  # Fixed sequence length
 
         # Concatenate current and past episodes
@@ -167,7 +163,7 @@ def train_epoch(
                     outputs["type_logits"],
                     outputs["consumption_logits"],
                     outputs["sr_pred"],
-                    actions[:, 1],  # Remove timestep, just get action
+                    actions[:, 0],  # Get action target (first element)
                     torch.argmax(goals, dim=1),  # Convert one-hot to class indices
                     agents,
                     types,
@@ -194,7 +190,7 @@ def train_epoch(
                 outputs["type_logits"],
                 outputs["consumption_logits"],
                 outputs["sr_pred"],
-                actions[:, 1],  # Remove timestep, just get action
+                actions[:, 0],  # Get action target (first element)
                 torch.argmax(goals, dim=1),  # Convert one-hot to class indices
                 agents,
                 types,
@@ -246,31 +242,44 @@ def train_epoch(
         # Convert goals to class indices (they are one-hot encoded)
         goals_indices = torch.argmax(goals, dim=1)
 
-        correct_actions += (action_preds == actions[:, 1]).sum().item()
+        # Mask padded actions (-1) for accuracy calculation
+        action_mask = actions[:, 0] != -1
+        valid_action_samples = action_mask.sum().item()
+        
+        if valid_action_samples > 0:
+            correct_actions += (action_preds[action_mask] == actions[action_mask, 0]).sum().item()
+            # Update total samples to only count valid actions
+            total_samples += valid_action_samples
+        else:
+            total_samples += batch_size
+        
         correct_goals += (goal_preds == goals_indices).sum().item()
         correct_agents += (agent_preds == agents).sum().item()
         correct_types += (type_preds == types).sum().item()
-        total_samples += batch_size
 
         # Agent-specific metrics
         achiever_mask = agents == 0
         blocker_mask = agents == 1
 
+        # Apply action mask for agent-specific metrics
+        achiever_valid_mask = achiever_mask & action_mask
+        blocker_valid_mask = blocker_mask & action_mask
+
         achiever_correct_actions += (
-            (action_preds[achiever_mask] == actions[achiever_mask, 1]).sum().item()
+            (action_preds[achiever_valid_mask] == actions[achiever_valid_mask, 0]).sum().item()
         )
         achiever_correct_goals += (
             (goal_preds[achiever_mask] == goals_indices[achiever_mask]).sum().item()
         )
-        achiever_total_samples += achiever_mask.sum().item()
+        achiever_total_samples += achiever_valid_mask.sum().item()
 
         blocker_correct_actions += (
-            (action_preds[blocker_mask] == actions[blocker_mask, 1]).sum().item()
+            (action_preds[blocker_valid_mask] == actions[blocker_valid_mask, 0]).sum().item()
         )
         blocker_correct_goals += (
             (goal_preds[blocker_mask] == goals_indices[blocker_mask]).sum().item()
         )
-        blocker_total_samples += blocker_mask.sum().item()
+        blocker_total_samples += blocker_valid_mask.sum().item()
 
         # Agent-specific loss accumulation
         if achiever_mask.sum() > 0:
@@ -485,8 +494,8 @@ def validate_epoch(
                 rank_threshold=data_config.get("rank_threshold", 1),
             )
 
-            # Get the timesteps for each sample (trajectory slicing)
-            time_steps = actions[:, 0]
+            # With trajectory slicing, we use dynamic timesteps
+            # Each sample has a different effective length
 
             # Concatenate current and past episodes
             combined_episodes = torch.cat(
@@ -517,7 +526,7 @@ def validate_epoch(
                         outputs["type_logits"],
                         outputs["consumption_logits"],
                         outputs["sr_pred"],
-                        actions[:, 1],  # Remove timestep, just get action
+                        actions[:, 0],  # Get action target (first element)
                         torch.argmax(goals, dim=1),  # Convert one-hot to class indices
                         agents,
                         types,
@@ -533,7 +542,7 @@ def validate_epoch(
                     outputs["type_logits"],
                     outputs["consumption_logits"],
                     outputs["sr_pred"],
-                    actions[:, 1],  # Remove timestep, just get action
+                    actions[:, 0],  # Get action target (first element)
                     torch.argmax(goals, dim=1),  # Convert one-hot to class indices
                     agents,
                     types,
@@ -559,31 +568,43 @@ def validate_epoch(
             # Convert goals to class indices (they are one-hot encoded)
             goals_indices = torch.argmax(goals, dim=1)
 
-            correct_actions += (action_preds == actions[:, 1]).sum().item()
+            # Mask padded actions (-1) for accuracy calculation
+            action_mask = actions[:, 0] != -1
+            valid_action_samples = action_mask.sum().item()
+            
+            if valid_action_samples > 0:
+                correct_actions += (action_preds[action_mask] == actions[action_mask, 0]).sum().item()
+                total_samples += valid_action_samples
+            else:
+                total_samples += batch_size
+
             correct_goals += (goal_preds == goals_indices).sum().item()
             correct_agents += (agent_preds == agents).sum().item()
             correct_types += (type_preds == types).sum().item()
-            total_samples += batch_size
 
             # Agent-specific metrics
             achiever_mask = agents == 0
             blocker_mask = agents == 1
 
+            # Apply action mask for agent-specific metrics
+            achiever_valid_mask = achiever_mask & action_mask
+            blocker_valid_mask = blocker_mask & action_mask
+
             achiever_correct_actions += (
-                (action_preds[achiever_mask] == actions[achiever_mask, 1]).sum().item()
+                (action_preds[achiever_valid_mask] == actions[achiever_valid_mask, 0]).sum().item()
             )
             achiever_correct_goals += (
                 (goal_preds[achiever_mask] == goals_indices[achiever_mask]).sum().item()
             )
-            achiever_total_samples += achiever_mask.sum().item()
+            achiever_total_samples += achiever_valid_mask.sum().item()
 
             blocker_correct_actions += (
-                (action_preds[blocker_mask] == actions[blocker_mask, 1]).sum().item()
+                (action_preds[blocker_valid_mask] == actions[blocker_valid_mask, 0]).sum().item()
             )
             blocker_correct_goals += (
                 (goal_preds[blocker_mask] == goals_indices[blocker_mask]).sum().item()
             )
-            blocker_total_samples += blocker_mask.sum().item()
+            blocker_total_samples += blocker_valid_mask.sum().item()
 
             # Agent-specific loss accumulation
             if achiever_mask.sum() > 0:

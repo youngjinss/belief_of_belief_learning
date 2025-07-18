@@ -929,7 +929,7 @@ class ToMnetLoss(nn.Module):
         self.type_weight = type_weight
         self.consumption_weight = consumption_weight
         self.sr_weight = sr_weight
-        self.action_loss = nn.CrossEntropyLoss()
+        self.action_loss = nn.CrossEntropyLoss(ignore_index=-1)  # Ignore padded actions
         self.goal_loss = nn.CrossEntropyLoss()
         self.agent_loss = nn.CrossEntropyLoss()
         self.type_loss = nn.CrossEntropyLoss()

@@ -379,8 +379,8 @@ def process_single_sample(sample, grid_size, min_timestep, max_trajectory_length
         # Add this training sample
         sample_trajectories.append(trajectory_padded)
         sample_actions.append(
-            [action_target] + [0] * (max_trajectory_length - 1)
-        )  # Pad actions
+            [action_target] + [-1] * (max_trajectory_length - 1)
+        )  # Pad actions with -1 to distinguish from real action 0
         sample_goals.append(goal_tensor)
         sample_goal_ranks.append(goal_rank)
         sample_agents.append(agent_label)

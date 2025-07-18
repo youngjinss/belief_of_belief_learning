@@ -348,11 +348,11 @@ class Config:
             return os.path.join(base_path, "test")
         else:
             return base_path
-    
+
     def get_training_data_path(self, achiever_type, blocker_type, is_test=False):
         """
         Get training data path that always uses 'data' as base directory, regardless of save_dir modifications
-        
+
         Args:
             achiever_type (str): Type of achiever agent
             blocker_type (str): Type of blocker agent

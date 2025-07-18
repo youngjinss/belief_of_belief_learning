@@ -253,7 +253,7 @@ class DataGenerator:
             if line.startswith("Type:") and current_section == "achiever":
                 achiever_data["type"] = int(line.split(":")[1].strip())
                 continue
-            
+
             goal_rank_match = self.goal_rank_pattern.match(line)
             if goal_rank_match:
                 rank_str = goal_rank_match.group(1)
@@ -292,7 +292,7 @@ class DataGenerator:
                     # Multi-hot vector format: [key_red, key_green, key_blue, key_yellow, door_red, door_green, door_blue, door_yellow]
                     infer_goal_vector = [int(x) for x in infer_goal_str.split(",")]
                     blocker_data["inferred_goal_vector"] = infer_goal_vector
-                    
+
                     # For backward compatibility, also store the first door that was inferred
                     door_colors = ["red", "green", "blue", "yellow"]
                     door_indices = [4, 5, 6, 7]  # door positions in the vector
@@ -301,14 +301,21 @@ class DataGenerator:
                         if infer_goal_vector[door_idx] == 1:
                             inferred_door = door_colors[i]
                             break
-                    blocker_data["inferred_goal"] = inferred_door if inferred_door else "X"
+                    blocker_data["inferred_goal"] = (
+                        inferred_door if inferred_door else "X"
+                    )
                 else:
                     # Legacy format (single color or X)
                     blocker_data["inferred_goal"] = infer_goal_str
                     # Convert to multi-hot vector for consistency
                     infer_goal_vector = [0, 0, 0, 0, 0, 0, 0, 0]
                     if infer_goal_str in ["red", "green", "blue", "yellow"]:
-                        color_to_door_idx = {"red": 4, "green": 5, "blue": 6, "yellow": 7}
+                        color_to_door_idx = {
+                            "red": 4,
+                            "green": 5,
+                            "blue": 6,
+                            "yellow": 7,
+                        }
                         infer_goal_vector[color_to_door_idx[infer_goal_str]] = 1
                     blocker_data["inferred_goal_vector"] = infer_goal_vector
                 continue
@@ -341,18 +348,44 @@ class DataGenerator:
             except ValueError:
                 intended_goal = "A"  # Default fallback
 
-        # Determine consumed goal from consumption labels
-        consumption_labels = parsed_data["achiever_data"]["consumption_labels"]
-        consumed_goal = None
-        if consumption_labels is not None:
-            # Check which doors were opened (indices 4-7)
-            door_indices = [4, 5, 6, 7]
-            goal_symbols = ["A", "B", "C", "D"]
-            for i, door_idx in enumerate(door_indices):
-                if consumption_labels[door_idx] > 0:
-                    consumed_goal = goal_symbols[i]
-                    break
+        # Create consumption labels using slicing approach - track all interactions during trajectory
+        # The slicing will be applied later in prepare_data_for_training to create multiple samples per trajectory
+        trajectory_length = parsed_data["trajectory_length"]
+        max_length = min(trajectory_length, self.MAX_TRAJECTORY_SIZE)
+        consumption_labels = np.zeros(
+            8, dtype=np.float32
+        )  # [key_A, key_B, key_C, key_D, door_A, door_B, door_C, door_D]
 
+        # Extract all achiever interactions at once
+        achiever_interactions = [
+            step["achiever_interaction"]
+            for step in parsed_data["trajectory_steps"][:max_length]
+        ]
+
+        # Vectorized consumption tracking - accumulate all interactions throughout the trajectory
+        door_color_to_idx = {"a": 4, "b": 5, "c": 6, "d": 7}  # door indices
+        key_color_to_idx = {"A": 0, "B": 1, "C": 2, "D": 3}  # key indices
+
+        # Create boolean masks for different interaction types
+        interaction_array = np.array(achiever_interactions)
+
+        # Track key pickups (vectorized) - any key pickup throughout trajectory
+        for key_letter, key_idx in key_color_to_idx.items():
+            key_mask = interaction_array == key_letter
+            if np.any(key_mask):
+                consumption_labels[key_idx] = 1.0
+
+        # Track door interactions (vectorized) - any door interaction throughout trajectory
+        consumed_goal = None
+        door_to_goal_map = {"a": "A", "b": "B", "c": "C", "d": "D"}
+        for door_letter, door_idx in door_color_to_idx.items():
+            door_mask = interaction_array == door_letter
+            if np.any(door_mask):
+                consumption_labels[door_idx] = 1.0
+                # Find the last door interaction for consumed goal
+                consumed_goal = door_to_goal_map[door_letter]
+
+        # If no door interaction occurred, use intended goal
         if consumed_goal is None:
             consumed_goal = intended_goal
 
@@ -395,7 +428,9 @@ class DataGenerator:
         """Create blocker sample with adapted structure"""
 
         # Get blocker's inferred goal (use multi-hot vector if available)
-        inferred_goal_vector = parsed_data["blocker_data"].get("inferred_goal_vector", None)
+        inferred_goal_vector = parsed_data["blocker_data"].get(
+            "inferred_goal_vector", None
+        )
         inferred_goal_color = parsed_data["blocker_data"]["inferred_goal"]
         inferred_goal_letter = self.COLOR_TO_LETTER.get(inferred_goal_color, "A")
 
@@ -405,38 +440,38 @@ class DataGenerator:
         # Get interaction result
         interaction_result = parsed_data["blocker_data"]["interaction"]
 
-        # Create consumption labels for blocker based on actual door interactions
-        # Extract door interactions from trajectory steps
+        # Create consumption labels for blocker using slicing approach - track all interactions during trajectory
+        # The slicing will be applied later in prepare_data_for_training to create multiple samples per trajectory
+        trajectory_length = parsed_data["trajectory_length"]
+        max_length = min(trajectory_length, self.MAX_TRAJECTORY_SIZE)
         consumption_labels = np.zeros(
             8, dtype=np.float32
         )  # [key_A, key_B, key_C, key_D, door_A, door_B, door_C, door_D]
 
-        # Extract door interactions from trajectory steps
-        door_interactions = []
-        for step in parsed_data["trajectory_steps"]:
-            blocker_interaction = step["blocker_interaction"]
-            if blocker_interaction in ["a", "b", "c", "d"]:
-                door_interactions.append(blocker_interaction)
+        # Extract all blocker interactions at once
+        blocker_interactions = [
+            step["blocker_interaction"]
+            for step in parsed_data["trajectory_steps"][:max_length]
+        ]
 
-        # Set consumption labels based on door interactions
-        # Only care about doors (indices 4-7), not keys (indices 0-3)
+        # Vectorized consumption tracking - accumulate all interactions throughout the trajectory
         door_color_to_idx = {"a": 4, "b": 5, "c": 6, "d": 7}  # door indices
-        
-        for door_interaction in door_interactions:
-            if door_interaction in door_color_to_idx:
-                door_idx = door_color_to_idx[door_interaction]
-                consumption_labels[door_idx] = 1.0
 
-        # Determine consumed goal based on door interactions
+        # Create boolean masks for door interactions
+        interaction_array = np.array(blocker_interactions)
+
+        # Track door interactions (vectorized) - any door interaction throughout trajectory
         consumed_goal = None
-        if door_interactions:
-            # Use the last door interaction as the consumed goal
-            last_door_interaction = door_interactions[-1]
-            # Convert door color to goal letter
-            door_to_goal_map = {"a": "A", "b": "B", "c": "C", "d": "D"}
-            consumed_goal = door_to_goal_map.get(last_door_interaction, None)
-        else:
-            consumed_goal = None
+        door_to_goal_map = {"a": "A", "b": "B", "c": "C", "d": "D"}
+        for door_letter, door_idx in door_color_to_idx.items():
+            door_mask = interaction_array == door_letter
+            if np.any(door_mask):
+                consumption_labels[door_idx] = 1.0
+                # Find the last door interaction for consumed goal
+                consumed_goal = door_to_goal_map[door_letter]
+
+        # If no door interaction occurred, consumed_goal remains None
+        # Note: Blocker may not have a consumed goal if no door interactions occurred
 
         # Create trajectory tensor
         trajectory_tensor = self._create_trajectory_tensor(

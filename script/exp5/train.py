@@ -3,7 +3,11 @@ import json
 import sys
 
 import torch
-from torch.cuda.amp import autocast
+
+try:
+    from torch.amp import autocast
+except ImportError:
+    from torch.cuda.amp import autocast
 
 # Add current directory to path
 sys.path.append(os.path.dirname(__file__))
@@ -150,7 +154,8 @@ def train_epoch(
         current_state = recent_trajectory[:, -1]  # Last timestep of recent trajectory
 
         if scaler is not None:
-            with autocast():
+            device_type = "cuda" if torch.cuda.is_available() else "cpu"
+            with autocast(device_type):
                 # Forward pass
                 outputs = model(past_trajectories, recent_trajectory, current_state)
 
@@ -502,7 +507,8 @@ def validate_epoch(
 
             # Forward pass
             if scaler is not None:
-                with autocast():
+                device_type = "cuda" if torch.cuda.is_available() else "cpu"
+                with autocast(device_type):
                     outputs = model(past_trajectories, recent_trajectory, current_state)
                     loss_dict = loss_fn(
                         outputs["action_logits"],
@@ -1153,9 +1159,9 @@ if __name__ == "__main__":
     import argparse
     import os
     import torch.multiprocessing as mp
-    
+
     # Set multiprocessing start method to prevent file descriptor issues
-    mp.set_start_method('spawn', force=True)
+    mp.set_start_method("spawn", force=True)
 
     parser = argparse.ArgumentParser(description="Train KeyDoor ToMnet")
 

@@ -1072,7 +1072,8 @@ def setup_training_environment(
     device_ids = training_config.get("device_ids", [2, 3])
     use_amp = training_config.get("use_amp", True)
     gradient_accumulation_steps = training_config.get("gradient_accumulation_steps", 1)
-    pin_memory = training_config.get("pin_memory", True)
+    # Disable pin_memory for MPS and CPU to avoid warnings
+    pin_memory = training_config.get("pin_memory", True) and torch.cuda.is_available()
     num_workers = training_config.get("num_workers", 4)
 
     # Auto-detect CPU count if num_workers is 0
@@ -1322,7 +1323,11 @@ def setup_model_and_data(
         tuple: (model, train_loader, val_loader, optimizer, loss_fn, scaler, early_stopping)
     """
     from torch.utils.data import DataLoader
-    from torch.cuda.amp import GradScaler
+
+    try:
+        from torch.amp import GradScaler
+    except ImportError:
+        from torch.cuda.amp import GradScaler
     import torch.utils.data
 
     # Import these here to avoid circular imports
@@ -1424,7 +1429,7 @@ def setup_model_and_data(
 
     # Create scaler for AMP
     use_amp = training_process_config.get("use_amp", True)
-    scaler = GradScaler() if use_amp else None
+    scaler = GradScaler("cuda") if use_amp and torch.cuda.is_available() else None
 
     # Create early stopping
     early_stopping = EarlyStopping(

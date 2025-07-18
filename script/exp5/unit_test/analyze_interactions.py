@@ -21,16 +21,21 @@ class InteractionAnalyzer:
             base_dir, "data", "MiniGrid-AchieverBlocker-9x9-v1"
         )
 
-        # Define interaction types
+        # Define interaction types (updated for new door color format)
         self.achiever_interactions = {"A", "B", "C", "D", "a", "b", "c", "d", "X"}
-        self.blocker_interactions = {"0", "1", "X"}
+        self.blocker_interactions = {"a", "b", "c", "d", "X"}
 
         # Define win conditions
         self.achiever_win_interactions = {"a", "b", "c", "d"}  # Door opening
-        self.blocker_win_interactions = {"1"}  # Successful block
+        self.blocker_win_interactions = {
+            "a",
+            "b",
+            "c",
+            "d",
+        }  # Door blocking (blocker at door)
 
-        # Define draw interactions (achiever opens door AND blocker succeeds)
-        self.draw_patterns = {("a", "1"), ("b", "1"), ("c", "1"), ("d", "1")}
+        # Define draw interactions (achiever opens door AND blocker blocks same door)
+        self.draw_patterns = {("a", "a"), ("b", "b"), ("c", "c"), ("d", "d")}
 
     def parse_trajectory_file(self, file_path):
         """
@@ -127,9 +132,17 @@ class InteractionAnalyzer:
 
         # Check individual wins
         if last_achiever_interaction in self.achiever_win_interactions:
-            return "achiever"
+            # Achiever wins if they opened a door and blocker didn't block the same door
+            if last_blocker_interaction != last_achiever_interaction:
+                return "achiever"
+            else:
+                return "draw"  # Both at same door
         elif last_blocker_interaction in self.blocker_win_interactions:
-            return "blocker"
+            # Blocker wins if they blocked a door and achiever didn't open it
+            if last_achiever_interaction != last_blocker_interaction:
+                return "blocker"
+            else:
+                return "draw"  # Both at same door
         else:
             return "need_to_examine"
 

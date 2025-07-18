@@ -452,7 +452,7 @@ def save_game_with_labels(
                 target_door_color = successful_attempts[0]["door_color"]
                 color_map = {
                     "red": "a",
-                    "green": "b", 
+                    "green": "b",
                     "blue": "c",
                     "yellow": "d",
                 }
@@ -463,7 +463,7 @@ def save_game_with_labels(
                 last_door_color = last_attempt["door_color"]
                 color_map = {
                     "red": "a",
-                    "green": "b", 
+                    "green": "b",
                     "blue": "c",
                     "yellow": "d",
                 }
@@ -516,7 +516,7 @@ def save_game_with_labels(
                     door_color = attempt["door_color"]
                     color_map = {
                         "red": "a",
-                        "green": "b", 
+                        "green": "b",
                         "blue": "c",
                         "yellow": "d",
                     }
@@ -531,7 +531,7 @@ def save_game_with_labels(
 
         # Section 2: Achiever
         f.write("Achiever:\n")
-        
+
         # Write achiever type
         if achiever_type:
             # Get achiever type map from config_dict if available
@@ -540,7 +540,7 @@ def save_game_with_labels(
             f.write(f"Type: {achiever_type_id}\n")
         else:
             f.write("Type: -1\n")  # Unknown type
-        
+
         f.write("Goal Consumed Rank : " + str(key_door_rank) + "\n")
 
         if goal_rewards is not None:
@@ -598,18 +598,18 @@ def save_game_with_labels(
         # Write inferred goal as multi-hot vector based on break attempts and blocker's inferred goal
         # Format: [key_red, key_green, key_blue, key_yellow, door_red, door_green, door_blue, door_yellow]
         infer_goal_vector = [0, 0, 0, 0, 0, 0, 0, 0]
-        
+
         # Mark doors that were attempted to be broken
         color_to_door_idx = {"red": 4, "green": 5, "blue": 6, "yellow": 7}
         for attempt in blocker_break_attempts:
             door_color = attempt["door_color"]
             if door_color in color_to_door_idx:
                 infer_goal_vector[color_to_door_idx[door_color]] = 1
-        
+
         # Also mark the blocker's inferred goal if available
         if blocker_inferred_goal and blocker_inferred_goal in color_to_door_idx:
             infer_goal_vector[color_to_door_idx[blocker_inferred_goal]] = 1
-        
+
         f.write("Infer Goal: " + ",".join(map(str, infer_goal_vector)) + "\n")
 
         # Use the pre-calculated blocker interaction result

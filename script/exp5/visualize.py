@@ -922,6 +922,15 @@ def plot_character_embeddings(
         output_dir,
         experiment_no,
     )
+    _plot_type_based_embeddings_for_achiever(
+        embeddings,
+        agent_labels,
+        goal_labels,
+        type_labels,
+        config,
+        output_dir,
+        experiment_no,
+    )
 
 
 def _plot_agent_based_embeddings(
@@ -1350,328 +1359,113 @@ def _plot_type_based_embeddings_for_blockers(
     plt.close()
 
 
-# Keep the rest of the old function for backward compatibility if needed
-def plot_character_embeddings_old(
-    model,
-    test_loader,
-    device,
+def _plot_type_based_embeddings_for_achiever(
+    embeddings,
+    agent_labels,
+    goal_labels,
+    type_labels,
+    config,
     output_dir,
-    config=None,
-    experiment_no=None,
-    n_samples=None,
+    experiment_no,
 ):
-    """
-    Original plot_character_embeddings function (kept for backward compatibility)
-    """
-    if config is None:
-        config = Config()
+    """Plot embeddings colored by Type, constrained to Achiever agents only"""
+    vis_config = config.get_visualization_config()
+    embedding_plots = vis_config["embedding_plots"]
 
-    if experiment_no is None:
-        experiment_no = config.experiment_no
-    plt.style.use("seaborn-v0_8")
+    print("\nCreating Type-based embedding plots for Achiever agents...")
 
-    model.eval()
-    embeddings = []
-    goal_labels = []
+    # Filter for achiever agents only
+    achiever_mask = agent_labels == "achiever"
+    achiever_embeddings = embeddings[achiever_mask]
+    achiever_types = type_labels[achiever_mask]
 
-    sample_count = 0
-    batch_count = 0
-    successful_batches = 0
-    failed_batches = 0
-
-    if n_samples is None:
-        print("Starting character embedding extraction for all test samples...")
-    else:
-        print(f"Starting character embedding extraction for {n_samples} samples...")
-
-    with torch.no_grad():
-        for batch_idx, batch in enumerate(test_loader):
-            batch_count += 1
-            if batch_idx % 50 == 0:  # Print every 50 batches instead of every batch
-                print(
-                    f"Processing batch {batch_idx + 1}/{len(test_loader)}, current sample count: {sample_count}"
-                )
-
-            if n_samples is not None and sample_count >= n_samples:
-                print(f"Reached target sample count of {n_samples}, stopping...")
-                break
-
-            # Handle exp5 batch format (8 elements) - use native exp5 logic
-            if len(batch) >= 8:
-                (
-                    trajectories,
-                    actions,
-                    goals,
-                    goal_ranks,
-                    agents,
-                    types,
-                    consumption_labels,
-                    sr_labels,
-                ) = batch
-                trajectories = trajectories.to(device)
-                goals = goals.to(device)
-                goal_ranks = goal_ranks.to(device)
-                agents = agents.to(device)
-
-                batch_size = trajectories.size(0)
-
-                # Use exp5 native logic with goal_ranks (don't force exp5 compatibility)
-                n_past_config = config.get_n_past_evaluation_config()
-
-                past_episodes = generate_past_episodes_from_batch(
-                    trajectories=trajectories,
-                    goal_ranks=goal_ranks,  # Use goal_ranks as intended in exp5
-                    agents=agents,
-                    batch_size=batch_size,
-                    n_past_min=n_past_config["n_past_min"],
-                    n_past_max=n_past_config["n_past_max"],
-                    max_n_past=n_past_config["n_past_max"],
-                    rank_threshold=config.get_data_config().get(
-                        "rank_threshold", 4
-                    ),  # exp5 parameter
-                )
-
-                # Use KeyDoor exp5 native character embedding method
-                try:
-                    char_embeddings = model.get_character_embedding(
-                        past_episodes
-                    )  # Native exp5 method
-
-                    embeddings.extend(char_embeddings.cpu().numpy())
-                    goal_labels.extend(goals.cpu().numpy())
-
-                    sample_count += len(goals)
-                    successful_batches += 1
-                except Exception as e:
-                    print(f"  Error getting character embeddings: {e}")
-                    failed_batches += 1
-                    continue
-            else:
-                failed_batches += 1
-                continue
-
-    print(
-        f"Character embedding extraction completed. Total embeddings: {len(embeddings)}"
-    )
-    print(f"Batch processing summary:")
-    print(f"  Total batches processed: {batch_count}")
-    print(f"  Successful batches: {successful_batches}")
-    print(f"  Failed batches: {failed_batches}")
-    print(f"  Final sample count: {sample_count}")
-
-    if len(embeddings) == 0:
-        print("No embeddings to visualize - no valid samples found!")
+    if len(achiever_embeddings) == 0:
+        print("No achiever samples found for Type visualization")
         return
 
-    embeddings = np.array(embeddings)
-    goal_labels = np.array(goal_labels)
+    print(f"Found {len(achiever_embeddings)} achiever samples for Type visualization")
+    print(f"Type distribution: {np.unique(achiever_types, return_counts=True)}")
 
-    print(f"\nData for visualization:")
-    print(f"  Embeddings array shape: {embeddings.shape}")
-    print(f"  Goal labels array shape: {goal_labels.shape}")
-    print(f"  Unique goals in data: {np.unique(goal_labels)}")
-    print(
-        f"  Goal distribution: {np.bincount(goal_labels) if len(goal_labels) > 0 else 'N/A'}"
-    )
-
-    # Create subplots
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+    # Create figure with PCA and t-SNE subplots
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=embedding_plots["pca_figsize"])
     fig.suptitle(
-        f"AchieverBlocker: Character Embeddings (Experiment {experiment_no})",
+        f"Character Embeddings by Achiever Type (Experiment {experiment_no})",
         fontsize=16,
     )
 
-    # Get goal information from config
-    goal_config = config.get_goal_config()
-    num_goals = goal_config.get("num_goals", 4)
-    goal_colors = goal_config.get(
-        "goal_colors", ["red", "green", "blue", "yellow"][:num_goals]
-    )
-    goal_names = goal_config.get(
-        "goal_names", [f"Goal {chr(65+i)}" for i in range(num_goals)]
-    )
+    # Type colors and names for achievers
+    type_colors = ["lightblue", "darkblue"]  # 0=random/lv0va, 1=strategic/lv1va
+    type_names = ["Random Achiever", "Strategic Achiever"]
 
     # PCA visualization
-    if embeddings.shape[1] > 2:
-        try:
-            print(f"\nPCA Analysis:")
-            print(f"  Input embeddings shape: {embeddings.shape}")
+    if achiever_embeddings.shape[1] > 2:
+        print("Computing PCA for achiever types...")
+        pca = PCA(n_components=2)
+        embeddings_pca = pca.fit_transform(achiever_embeddings)
 
-            pca = PCA(n_components=2)
-            embeddings_pca = pca.fit_transform(embeddings)
-            print(f"  PCA output shape: {embeddings_pca.shape}")
-            print(
-                f"  Explained variance ratio: PC1={pca.explained_variance_ratio_[0]:.4f}, PC2={pca.explained_variance_ratio_[1]:.4f}"
-            )
-
-            # Check for problematic variance (all embeddings are identical)
-            if (
-                pca.explained_variance_ratio_[0] > 0.99
-                and pca.explained_variance_ratio_[1] < 0.01
-            ):
-                print(f"  WARNING: Character embeddings show no meaningful variance!")
-                print(
-                    f"  This suggests all embeddings are identical or nearly identical."
-                )
-                print(
-                    f"  The character network may not be learning goal-specific representations."
-                )
-
-            # Get unique goals present in the data (aligned with exp5 logic)
-            unique_goals = np.unique(goal_labels)
-            print(f"  Unique goals for PCA: {unique_goals}")
-
-            pca_sample_counts = {}
-            for goal in unique_goals:
-                mask = goal_labels == goal
-                goal_count = np.sum(mask)
-                pca_sample_counts[goal] = goal_count
-                print(f"    Goal {goal}: {goal_count} samples")
-
-                if goal_count > 0:
-                    # Use 1-based indexing for colors and names (aligned with exp5)
-                    color_idx = (
-                        int(goal) - 1
-                        if goal <= len(goal_colors)
-                        else goal % len(goal_colors)
-                    )
-                    goal_name = (
-                        goal_names[int(goal) - 1]
-                        if goal <= len(goal_names)
-                        else f"Goal {goal}"
-                    )
-                    ax1.scatter(
-                        embeddings_pca[mask, 0],
-                        embeddings_pca[mask, 1],
-                        c=goal_colors[color_idx],
-                        label=f"{goal_name} (n={goal_count})",
-                        alpha=0.6,
-                    )
-
-            ax1.set_title(f"PCA Visualization (n={len(embeddings)} total)")
-            ax1.set_xlabel(f"PC1 ({pca.explained_variance_ratio_[0]:.2%} variance)")
-            ax1.set_ylabel(f"PC2 ({pca.explained_variance_ratio_[1]:.2%} variance)")
-            ax1.legend()
-            ax1.grid(True, alpha=0.3)
-        except Exception as e:
-            print(f"Error in PCA visualization: {e}")
-            ax1.text(
-                0.5,
-                0.5,
-                f"PCA Error: {str(e)}",
-                ha="center",
-                va="center",
-                transform=ax1.transAxes,
-            )
-    else:
-        # For 2D embeddings, plot directly
-        unique_goals = np.unique(goal_labels)
-        for goal in unique_goals:
-            mask = goal_labels == goal
-            if np.sum(mask) > 0:
-                # Use 1-based indexing for colors and names (aligned with exp5)
-                color_idx = (
-                    int(goal) - 1
-                    if goal <= len(goal_colors)
-                    else goal % len(goal_colors)
-                )
-                goal_name = (
-                    goal_names[int(goal) - 1]
-                    if goal <= len(goal_names)
-                    else f"Goal {goal}"
-                )
+        unique_types = np.unique(achiever_types)
+        for i, achiever_type in enumerate(unique_types):
+            mask = achiever_types == achiever_type
+            type_count = np.sum(mask)
+            if type_count > 0:
+                color = type_colors[i] if i < len(type_colors) else f"C{i}"
+                name = type_names[i] if i < len(type_names) else f"Type {achiever_type}"
                 ax1.scatter(
-                    embeddings[mask, 0],
-                    embeddings[mask, 1],
-                    c=goal_colors[color_idx],
-                    label=goal_name,
-                    alpha=0.6,
+                    embeddings_pca[mask, 0],
+                    embeddings_pca[mask, 1],
+                    c=color,
+                    label=f"{name} (n={type_count})",
+                    alpha=embedding_plots["alpha"],
+                    s=embedding_plots["marker_size"],
                 )
-        ax1.set_title("Character Embeddings (2D)")
-        ax1.set_xlabel("Dimension 1")
-        ax1.set_ylabel("Dimension 2")
+
+        ax1.set_title(f"PCA by Achiever Type")
+        ax1.set_xlabel(f"PC1 ({pca.explained_variance_ratio_[0]:.2%} variance)")
+        ax1.set_ylabel(f"PC2 ({pca.explained_variance_ratio_[1]:.2%} variance)")
         ax1.legend()
         ax1.grid(True, alpha=0.3)
 
     # t-SNE visualization
-    if len(embeddings) > 50:  # t-SNE needs sufficient samples
-        try:
-            print(f"\nt-SNE Analysis:")
-            print(f"  Total available embeddings: {len(embeddings)}")
+    if len(achiever_embeddings) > 30:  # Minimum samples for t-SNE
+        print("Computing t-SNE for achiever types...")
+        tsne = TSNE(
+            n_components=2,
+            random_state=42,
+            perplexity=min(30, len(achiever_embeddings) // 4),
+        )
+        embeddings_tsne = tsne.fit_transform(achiever_embeddings)
 
-            # Use all available samples for t-SNE (no limit)
-            embeddings_for_tsne = embeddings
-            goals_tsne = goal_labels
+        unique_types = np.unique(achiever_types)
+        for i, achiever_type in enumerate(unique_types):
+            mask = achiever_types == achiever_type
+            type_count = np.sum(mask)
+            if type_count > 0:
+                color = type_colors[i] if i < len(type_colors) else f"C{i}"
+                name = type_names[i] if i < len(type_names) else f"Type {achiever_type}"
+                ax2.scatter(
+                    embeddings_tsne[mask, 0],
+                    embeddings_tsne[mask, 1],
+                    c=color,
+                    label=f"{name} (n={type_count})",
+                    alpha=embedding_plots["alpha"],
+                    s=embedding_plots["marker_size"],
+                )
 
-            print(f"  Using all {len(embeddings)} samples for t-SNE")
-            print(f"  t-SNE input shape: {embeddings_for_tsne.shape}")
-            print(
-                f"  WARNING: t-SNE with {len(embeddings)} samples may take several minutes to compute..."
-            )
-
-            tsne = TSNE(n_components=2, random_state=42)
-            embeddings_tsne = tsne.fit_transform(embeddings_for_tsne)
-            print(f"  t-SNE output shape: {embeddings_tsne.shape}")
-
-            # Get unique goals present in the data (aligned with exp5 logic)
-            unique_goals_tsne = np.unique(goals_tsne)
-            print(f"  Unique goals for t-SNE: {unique_goals_tsne}")
-
-            tsne_sample_counts = {}
-            for goal in unique_goals_tsne:
-                mask = goals_tsne == goal
-                goal_count = np.sum(mask)
-                tsne_sample_counts[goal] = goal_count
-                print(f"    Goal {goal}: {goal_count} samples")
-
-                if goal_count > 0:
-                    # Use 1-based indexing for colors and names (aligned with exp5)
-                    color_idx = (
-                        int(goal) - 1
-                        if goal <= len(goal_colors)
-                        else goal % len(goal_colors)
-                    )
-                    goal_name = (
-                        goal_names[int(goal) - 1]
-                        if goal <= len(goal_names)
-                        else f"Goal {goal}"
-                    )
-                    ax2.scatter(
-                        embeddings_tsne[mask, 0],
-                        embeddings_tsne[mask, 1],
-                        c=goal_colors[color_idx],
-                        label=f"{goal_name} (n={goal_count})",
-                        alpha=0.6,
-                    )
-
-            ax2.set_title(f"t-SNE Visualization (n={len(embeddings)})")
-            ax2.set_xlabel("t-SNE 1")
-            ax2.set_ylabel("t-SNE 2")
-            ax2.legend()
-            ax2.grid(True, alpha=0.3)
-        except Exception as e:
-            print(f"Error in t-SNE visualization: {e}")
-            ax2.text(
-                0.5,
-                0.5,
-                f"t-SNE Error: {str(e)}",
-                ha="center",
-                va="center",
-                transform=ax2.transAxes,
-            )
+        ax2.set_title("t-SNE by Achiever Type")
+        ax2.set_xlabel("t-SNE 1")
+        ax2.set_ylabel("t-SNE 2")
+        ax2.legend()
+        ax2.grid(True, alpha=0.3)
     else:
-        print(f"\nt-SNE Analysis:")
-        print(f"  Insufficient samples for t-SNE: {len(embeddings)} < 50 required")
         ax2.text(
             0.5,
             0.5,
-            f"Not enough samples for t-SNE\n({len(embeddings)} < 50 required)",
+            f"Insufficient samples\nfor t-SNE ({len(achiever_embeddings)})",
             ha="center",
             va="center",
             transform=ax2.transAxes,
-            fontsize=12,
         )
-        ax2.set_title(f"t-SNE Visualization (n={len(embeddings)} insufficient)")
+        ax2.set_title("t-SNE by Achiever Type")
 
     plt.tight_layout()
 
@@ -1680,417 +1474,13 @@ def plot_character_embeddings_old(
         os.makedirs(output_dir, exist_ok=True)
         plt.savefig(
             os.path.join(
-                output_dir,
-                f"achieverblocker_character_embeddings_exp{experiment_no}.png",
+                output_dir, f"character_embeddings_achiever_type_exp{experiment_no}.png"
             ),
             dpi=300,
             bbox_inches="tight",
         )
+        print(f"Achiever Type embedding plot saved to {output_dir}")
 
-    plt.show()
-
-    print(
-        f"\nAchieverBlocker Character Embeddings Analysis (Experiment {experiment_no}):"
-    )
-    print("-" * 60)
-    print(f"Total samples collected: {len(embeddings)}")
-    print(
-        f"Embedding dimension: {embeddings.shape[1] if len(embeddings) > 0 else 'N/A'}"
-    )
-    print(f"Data loader had {len(test_loader)} batches")
-    print(f"Batch processing: {successful_batches} successful, {failed_batches} failed")
-
-    # Per-goal statistics
-    if len(embeddings) > 0:
-        unique_goals = np.unique(goal_labels)
-        print(f"\nPer-goal distribution:")
-        for goal in unique_goals:
-            mask = goal_labels == goal
-            count = np.sum(mask)
-            percentage = (count / len(goal_labels)) * 100
-            # Use 1-based indexing for goal names (aligned with exp5 logic)
-            goal_name = (
-                goal_names[int(goal) - 1] if goal <= len(goal_names) else f"Goal {goal}"
-            )
-            print(f"  {goal_name}: {count} samples ({percentage:.1f}%)")
-
-        print(f"\nVisualization summary:")
-        print(f"  PCA: Used {len(embeddings)} samples")
-        print(
-            f"  t-SNE: {'Used ' + str(len(embeddings)) + ' samples' if len(embeddings) > 50 else 'Insufficient samples (' + str(len(embeddings)) + ' < 50)'}"
-        )
-    else:
-        print("\nNo samples available for analysis!")
+    plt.close()
 
 
-def create_additional_visualizations(
-    model,
-    test_loader,
-    output_dir,
-    device,
-    config=None,
-    experiment_no=None,
-    save_plots=True,
-):
-    """
-    Create additional visualizations for KeyDoor experiment
-
-    Args:
-        model: Trained ToMnet model
-        test_loader: Test data loader
-        output_dir: Directory to save plots
-        device: Computing device
-        config: Configuration object
-        experiment_no: Experiment number (defaults to config.experiment_no)
-        save_plots: Whether to save plots
-    """
-    if config is None:
-        config = Config()
-
-    if experiment_no is None:
-        experiment_no = config.experiment_no
-
-    print("Creating additional AchieverBlocker visualizations...")
-
-    # Create output directory
-    os.makedirs(output_dir, exist_ok=True)
-
-    # Plot character embeddings
-    plot_character_embeddings(
-        model,
-        test_loader,
-        device,
-        output_dir,
-        config,
-        experiment_no,
-        n_samples=None,
-    )
-
-    print("Additional visualizations completed!")
-
-
-if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser(
-        description="Visualize AchieverBlocker ToMnet results"
-    )
-    parser.add_argument(
-        "--config_override",
-        action="store_true",
-        help="Override config with command line arguments",
-    )
-    parser.add_argument("--result_dir", type=str, help="Directory containing results")
-    parser.add_argument("--plot_dir", type=str, help="Directory to save plots")
-    parser.add_argument(
-        "--experiment_no", type=int, default=5, help="Experiment number"
-    )
-    parser.add_argument(
-        "--plot_type",
-        type=str,
-        choices=["training", "confusion", "likelihood", "embeddings", "n_past", "all"],
-        default="all",
-        help="Type of plot to create",
-    )
-
-    args = parser.parse_args()
-
-    config = Config()
-
-    # Override config with command line arguments if specified
-    if args.config_override:
-        config.update_from_args(args)
-
-    results_dir = args.result_dir or getattr(config, "result_dir", "results/exp5")
-    plot_dir = args.plot_dir or getattr(config, "plot_dir", "results/exp5/plots")
-    experiment_no = args.experiment_no or getattr(config, "experiment_no", 5)
-
-    # Create plot directory
-    os.makedirs(plot_dir, exist_ok=True)
-
-    print(f"Creating AchieverBlocker visualizations for experiment {experiment_no}")
-    print(f"Results directory: {results_dir}")
-    print(f"Plot directory: {plot_dir}")
-
-    # Plot training curves
-    if args.plot_type in ["training", "all"]:
-        # Get history file paths from config
-        history_config = config.get_history_config()
-        history_files = history_config.get(
-            "history_files",
-            [
-                os.path.join(results_dir, "training_history.json"),
-                os.path.join(
-                    results_dir, f"exp{experiment_no}_*/training_history.json"
-                ),
-            ],
-        )
-
-        import glob
-
-        for pattern in history_files:
-            matching_files = glob.glob(pattern)
-            for history_file in matching_files:
-                if os.path.exists(history_file):
-                    plot_training_curves(history_file, plot_dir, config, experiment_no)
-                    break
-
-    # Plot confusion matrix
-    if args.plot_type in ["confusion", "all"]:
-        # Get prediction file paths from config
-        pred_config = config.get_prediction_config()
-        pred_files = pred_config.get(
-            "prediction_files",
-            [
-                os.path.join(results_dir, "predictions.pkl"),
-                os.path.join(results_dir, f"exp{experiment_no}_*/predictions.pkl"),
-            ],
-        )
-
-        import glob
-
-        for pattern in pred_files:
-            matching_files = glob.glob(pattern)
-            for pred_file in matching_files:
-                if os.path.exists(pred_file):
-                    plot_confusion_matrix(pred_file, plot_dir, config, experiment_no)
-                    break
-
-    # Plot action likelihood
-    if args.plot_type in ["likelihood", "all"]:
-        # Get prediction file paths from config
-        pred_config = config.get_prediction_config()
-        pred_files = pred_config.get(
-            "prediction_files",
-            [
-                os.path.join(results_dir, "predictions.pkl"),
-                os.path.join(results_dir, f"exp{experiment_no}_*/predictions.pkl"),
-            ],
-        )
-
-        import glob
-
-        for pattern in pred_files:
-            matching_files = glob.glob(pattern)
-            for pred_file in matching_files:
-                if os.path.exists(pred_file):
-                    plot_action_likelihood(pred_file, plot_dir, config, experiment_no)
-                    break
-
-    # Plot N_past results
-    if args.plot_type in ["n_past", "all"]:
-        n_past_config = config.get_n_past_config()
-        n_past_file = n_past_config.get(
-            "n_past_results_file",
-            os.path.join(results_dir, "n_past_evaluation_results.json"),
-        )
-        
-        if os.path.exists(n_past_file):
-            with open(n_past_file, "r") as f:
-                n_past_results = json.load(f)
-
-            # Convert string keys back to integers
-            results_by_n_past = {}
-            for key, value in n_past_results.items():
-                results_by_n_past[int(key)] = value
-
-            plot_accuracy_by_n_past(results_by_n_past, plot_dir)
-
-            # Only create heatmap if detailed predictions are available
-            has_predictions = False
-            for n_past, metrics in results_by_n_past.items():
-                if "predictions" in metrics and "targets" in metrics:
-                    has_predictions = True
-                    break
-
-            if has_predictions:
-                plot_accuracy_heatmap_by_n_past(results_by_n_past, plot_dir)
-            else:
-                print(
-                    "Skipping accuracy heatmap - detailed predictions not available in N_past results"
-                )
-
-    # Plot character embeddings
-    if args.plot_type in ["embeddings", "all"]:
-        print("Creating character embedding visualizations...")
-
-        # Load model and test data for character embedding visualization
-        # Import load_model locally to avoid circular import
-        from evaluate import load_model
-        from data_generation import DataGenerator as DataReader
-        from utils import prepare_data_for_training
-        from torch.utils.data import DataLoader, TensorDataset
-        import torch
-
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        # Get model paths from config
-        model_config = config.get_model_config()
-
-        # Also check parent directory in case results_dir is timestamped
-        parent_results_dir = (
-            os.path.dirname(results_dir)
-            if os.path.basename(results_dir).replace("_", "").replace("-", "").isdigit()
-            else results_dir
-        )
-
-        # Also search for models in other timestamped directories within parent
-        import glob
-
-        parent_timestamped_dirs = []
-        if parent_results_dir != results_dir:
-            pattern = os.path.join(parent_results_dir, "20*")
-            parent_timestamped_dirs = glob.glob(pattern)
-
-        possible_model_paths = model_config.get(
-            "possible_model_paths",
-            [
-                os.path.join(results_dir, "best_model.pth"),
-                os.path.join(
-                    parent_results_dir, "best_model.pth"
-                ),  # Check parent for timestamped dirs
-                os.path.join(results_dir, "model.pth"),
-                os.path.join(parent_results_dir, "model.pth"),
-                os.path.join(results_dir, "figure5_goal_directed_alpha0.01_model.pth"),
-            ],
-        )
-
-        # Add paths from other timestamped directories
-        for timestamped_dir in parent_timestamped_dirs:
-            possible_model_paths.extend(
-                [
-                    os.path.join(timestamped_dir, "best_model.pth"),
-                    os.path.join(timestamped_dir, "model.pth"),
-                ]
-            )
-
-        # Add any additional model paths from config
-        if "additional_model_paths" in model_config:
-            possible_model_paths.extend(model_config["additional_model_paths"])
-
-        model_path = None
-        for path_pattern in possible_model_paths:
-            # Handle glob patterns
-            if '*' in path_pattern:
-                matching_paths = glob.glob(path_pattern)
-                for path in matching_paths:
-                    if os.path.exists(path):
-                        model_path = path
-                        break
-            else:
-                if os.path.exists(path_pattern):
-                    model_path = path_pattern
-                    break
-            
-            if model_path:
-                break
-
-        if model_path and os.path.exists(model_path):
-            model_kwargs = config.get_model_kwargs()
-            model = load_model(model_path, device, model_kwargs)
-
-            # Load test data
-            data_config = config.get_data_config()
-            data_reader = DataReader(
-                time_step=data_config.get("time_step", 500),
-                w=config.width,
-                h=config.height,
-                d=data_config.get("maze_depth", 9),
-                config=config,
-            )
-
-            # First check if processed test data already exists from evaluation
-            processed_test_data_path = None
-
-            # Load test data using the same multi-combination approach as evaluate.py
-            from utils import load_test_data_all_combinations, combine_all_combinations_data
-            
-            env_name = config.get_env_name()
-            test_data_dir_base = f"./data/{env_name}"
-            
-            # Load test data for all combinations efficiently (same as evaluate.py)
-            try:
-                all_test_data = load_test_data_all_combinations(config, test_data_dir_base=test_data_dir_base)
-                # Combine data from all combinations
-                test_data = combine_all_combinations_data(all_test_data)
-                print(f"Successfully loaded test data from all combinations: {test_data['trajectories'].shape[0]} samples")
-            except Exception as e:
-                print(f"Failed to load test data from combinations: {e}")
-                test_data = None
-            
-            test_data_dir = None  # Not needed with multi-combination approach
-
-            if test_data:
-                # Convert numpy arrays to tensors for TensorDataset (same as evaluate.py fix)
-                test_tensors = {
-                    key: torch.from_numpy(data) if isinstance(data, np.ndarray) else torch.tensor(data)
-                    for key, data in test_data.items()
-                }
-                
-                # Create test dataset
-                test_dataset = TensorDataset(
-                    test_tensors["trajectories"],
-                    test_tensors["actions"],
-                    test_tensors["goals"],
-                    test_tensors["goal_ranks"],
-                    test_tensors["agents"],
-                    test_tensors["types"],
-                    test_tensors["consumption_labels"],
-                    test_tensors["sr_labels"],
-                )
-                test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
-
-                # Create character embeddings plot
-                plot_character_embeddings(
-                    model,
-                    test_loader,
-                    device,
-                    plot_dir,
-                    config,
-                    experiment_no,
-                    n_samples=None,
-                )
-                print("Character embedding visualization completed!")
-            elif test_data_dir:
-                # Process raw test data
-                test_games = data_reader.ReadAllGames(test_data_dir)
-                if test_games:
-                    data_config = config.get_data_config()
-                    chunk_metadata = prepare_data_for_training(
-                        test_games,
-                        min_timestep=6,
-                        max_trajectory_length=data_config["time_step"],
-                    )
-                    # Load chunked data for visualization
-                    test_data = load_chunked_data_for_training(chunk_metadata)
-                    test_dataset = TensorDataset(
-                        torch.from_numpy(test_data["trajectories"]).float(),
-                        torch.from_numpy(test_data["actions"]).long(),
-                        torch.from_numpy(test_data["goals"]).float(),
-                        torch.from_numpy(test_data["goal_ranks"]).long(),
-                        torch.from_numpy(test_data["agents"]).long(),
-                        torch.from_numpy(test_data["consumption_labels"]).float(),
-                        torch.from_numpy(test_data["sr_labels"]).float(),
-                    )
-                    test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
-
-                    # Create character embeddings plot
-                    plot_character_embeddings(
-                        model,
-                        test_loader,
-                        device,
-                        plot_dir,
-                        config,
-                        experiment_no,
-                        n_samples=None,
-                    )
-                    print("Character embedding visualization completed!")
-                else:
-                    print("No test games found for character embedding visualization")
-            else:
-                print(
-                    f"Test data directory not found. Tried: {test_data_dirs if 'test_data_dirs' in locals() else 'None'}"
-                )
-        else:
-            print(f"Model file not found: {model_path}")
-
-    print("Visualization completed!")

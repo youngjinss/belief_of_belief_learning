@@ -1004,20 +1004,17 @@ def run_training_loop(
 
 def train_tomnet(
     data_dir=None,
-    save_dir="./results/exp5",
+    save_dir="./results/exp5/combined",
     config=None,
-    achiever_type=None,
-    blocker_type=None,
 ):
     """
     Main training function for KeyDoor ToMnet
+    Trains on data from all achiever-blocker combinations in a single training process
 
     Args:
         data_dir: Directory containing training data
         save_dir: Directory to save results
         config: Configuration object
-        achiever_type: Type of achiever agent
-        blocker_type: Type of blocker agent
 
     Returns:
         Training history dictionary
@@ -1027,7 +1024,8 @@ def train_tomnet(
 
     # Use default data directory if not provided
     if data_dir is None:
-        data_dir = config.get_training_data_path(achiever_type, blocker_type)
+        env_name = config.get_env_name()
+        data_dir = f"./data/{env_name}/combined"  # Placeholder path
 
     # Agent type (we'll focus on one agent type for now)
     agent_type = "achiever"  # or "blocker"
@@ -1069,10 +1067,10 @@ def train_tomnet(
     pin_memory = other_configs["pin_memory"]
     num_workers = other_configs["num_workers"]
 
-    print(f"Training {achiever_type} achiever with {blocker_type} blocker")
+    print(f"Training on combined data from all achiever-blocker combinations")
     print(f"Results will be saved to: {experiment_save_dir}")
 
-    # Setup model, data, and training components
+    # Setup model, data, and training components using combined data
     (
         model,
         train_data,
@@ -1090,8 +1088,6 @@ def train_tomnet(
         model_kwargs,
         data_dir,
         agent_type,
-        achiever_type,
-        blocker_type,
         training_proportion,
         device,
         use_parallel,
@@ -1147,6 +1143,9 @@ def train_tomnet(
         "model_config": config.get_model_config(),
         "data_config": config.get_data_config(),
         "training_process_config": config.get_training_process_config(),
+        "combined_training": True,  # Flag to indicate this was combined training
+        "achiever_types": list(config.achiever_types.keys()),
+        "blocker_types": list(config.blocker_types.keys()),
     }
     with open(os.path.join(experiment_save_dir, "full_config.json"), "w") as f:
         json.dump(config_dict, f, indent=2)
@@ -1174,6 +1173,8 @@ def train_tomnet(
         history["best_val_loss"] = float("inf")
 
     return history
+
+
 
 
 if __name__ == "__main__":
@@ -1290,41 +1291,22 @@ if __name__ == "__main__":
     set_seed(seed)
     print(f"Set random seed to {seed} for reproducibility")
 
-    # Run training for all achiever-blocker combinations
-    all_results = []
-
-    for achiever_type in config.achiever_types:
-        for blocker_type in config.blocker_types:
-            print(f"\n{'='*60}")
-            print(f"Training for {achiever_type} achiever with {blocker_type} blocker")
-            print(f"{'='*60}")
-
-            # Run training for this combination
-            results = train_tomnet(
-                data_dir=args.data_dir,
-                save_dir=args.save_dir,
-                config=config,
-                achiever_type=achiever_type,
-                blocker_type=blocker_type,
-            )
-
-            all_results.append(
-                {
-                    "achiever_type": achiever_type,
-                    "blocker_type": blocker_type,
-                    "results": results,
-                }
-            )
-
+    # Run combined training on all achiever-blocker combinations
     print(f"\n{'='*60}")
-    print(
-        f"Training completed for all {len(config.achiever_types)} x {len(config.blocker_types)} combinations"
-    )
+    print(f"Training on combined data from all achiever-blocker combinations")
+    print(f"Achiever types: {list(config.achiever_types.keys())}")
+    print(f"Blocker types: {list(config.blocker_types.keys())}")
+    print(f"Total combinations: {len(config.achiever_types)} x {len(config.blocker_types)} = {len(config.achiever_types) * len(config.blocker_types)}")
     print(f"{'='*60}")
 
-    # Print summary
-    for result in all_results:
-        achiever = result["achiever_type"]
-        blocker = result["blocker_type"]
-        best_loss = result["results"]["best_val_loss"]
-        print(f"{achiever}_{blocker}: Best validation loss = {best_loss:.4f}")
+    # Run combined training
+    results = train_tomnet(
+        data_dir=args.data_dir,
+        save_dir=args.save_dir,
+        config=config,
+    )
+
+    print(f"\n{'='*60}")
+    print(f"Training completed on combined dataset")
+    print(f"Best validation loss: {results['best_val_loss']:.4f}")
+    print(f"{'='*60}")

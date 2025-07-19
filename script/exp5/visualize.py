@@ -25,7 +25,7 @@ warnings.filterwarnings("ignore", category=RuntimeWarning)
 from config import Config
 from utils import prepare_data_for_training, generate_past_episodes_from_batch
 from data_generation import DataGenerator as DataReader, DataGenerator
-from utils import set_seed, load_chunked_data_for_training
+from utils import set_seed, load_chunked_data_for_training, load_test_data_all_combinations, combine_all_combinations_data
 
 # Set seed using Config default value
 config = Config()
@@ -779,78 +779,36 @@ def plot_character_embeddings(
 
     plt.style.use("seaborn-v0_8")
 
-    # Load processed test data to get agent information
-    print("Loading processed test data to extract agent and goal information...")
+    # Load processed test data from all combinations to get agent information
+    print("Loading processed test data from all combinations to extract agent and goal information...")
 
     env_name = config.get_env_name()
-    # Use first combination as default
-    achiever_type = config.achiever_types[0]
-    blocker_type = config.blocker_types[0]
-    agent_pair = config.get_agent_pair_name(achiever_type, blocker_type)
-    test_data_dir = f"./data/{env_name}/{agent_pair}/test"
+    test_data_dir = f"./data/{env_name}"
 
-    processed_test_data_path = os.path.join(
-        test_data_dir, f"processed_test_data_exp{experiment_no}.pkl"
+    # Load test data for all combinations efficiently
+    all_test_data = load_test_data_all_combinations(config, test_data_dir_base=test_data_dir)
+    
+    # Combine data from all combinations
+    processed_data = combine_all_combinations_data(all_test_data)
+    
+    print(f"Loaded combined test data from all combinations with {processed_data['trajectories'].shape[0]} samples")
+    print(f"Achiever types: {list(config.achiever_types.keys())}")
+    print(f"Blocker types: {list(config.blocker_types.keys())}")
+    
+    # Extract agent labels, goal labels, and types from processed tensors
+    # agents tensor: 0=achiever, 1=blocker
+    agent_indices = processed_data["agents"]
+    agent_labels = np.array(
+        ["achiever" if idx == 0 else "blocker" for idx in agent_indices]
     )
 
-    if not os.path.exists(processed_test_data_path):
-        print(f"Error: Processed test data not found at {processed_test_data_path}")
-        print("Please run the evaluation script first to generate processed data.")
-        return
+    # goals tensor: one-hot encoded [A, B, C, D]
+    goals_tensor = processed_data["goals"]
+    goal_labels = np.argmax(goals_tensor, axis=1)  # Convert one-hot to indices
 
-    # Load agent and goal information from original processed data
-    data_reader = DataGenerator(
-        time_step=config.get_data_config().get("time_step", 500),
-        w=config.width,
-        h=config.height,
-        d=config.get_data_config().get("maze_depth", 9),
-        config=config,
-    )
-
-    processed_data = data_reader.load_processed_data(processed_test_data_path)
-
-    # Check if processed_data is in chunked format and load accordingly
-    if isinstance(processed_data, dict) and "chunk_metadata" in processed_data:
-        # Load chunked data
-        processed_data = load_chunked_data_for_training(processed_data)
-        print(
-            f"Loaded chunked processed data with {processed_data['trajectories'].shape[0]} samples"
-        )
-
-        # Extract agent labels, goal labels, and types from processed tensors
-        # agents tensor: 0=achiever, 1=blocker
-        agent_indices = processed_data["agents"]
-        agent_labels = np.array(
-            ["achiever" if idx == 0 else "blocker" for idx in agent_indices]
-        )
-
-        # goals tensor: one-hot encoded [A, B, C, D]
-        goals_tensor = processed_data["goals"]
-        goal_labels = np.argmax(goals_tensor, axis=1)  # Convert one-hot to indices
-
-        # types tensor: 0 for achievers (always), 0 or 1 for blockers (0=randomly select, 1=rule-based)
-        types_tensor = processed_data["types"]
-        type_labels = types_tensor.astype(int)
-    else:
-        # Original tensor format
-        print(
-            f"Loaded processed data with {processed_data['trajectories'].shape[0]} samples"
-        )
-
-        # Extract agent labels, goal labels, and types from processed tensors
-        # agents tensor: 0=achiever, 1=blocker
-        agent_indices = processed_data["agents"].numpy()
-        agent_labels = np.array(
-            ["achiever" if idx == 0 else "blocker" for idx in agent_indices]
-        )
-
-        # goals tensor: one-hot encoded [A, B, C, D]
-        goals_tensor = processed_data["goals"].numpy()
-        goal_labels = np.argmax(goals_tensor, axis=1)  # Convert one-hot to indices
-
-        # types tensor: 0 for achievers (always), 0 or 1 for blockers (0=randomly select, 1=rule-based)
-        types_tensor = processed_data["types"].numpy()
-        type_labels = types_tensor.astype(int)
+    # types tensor: 0 for achievers (always), 0 or 1 for blockers (0=randomly select, 1=rule-based)
+    types_tensor = processed_data["types"]
+    type_labels = types_tensor.astype(int)
 
     print(f"Agent distribution: {np.unique(agent_labels, return_counts=True)}")
     print(f"Goal distribution: {np.unique(goal_labels, return_counts=True)}")
@@ -2043,103 +2001,42 @@ if __name__ == "__main__":
             # First check if processed test data already exists from evaluation
             processed_test_data_path = None
 
-            # Get test data path from config - use first combination as default
+            # Load test data using the same multi-combination approach as evaluate.py
+            from utils import load_test_data_all_combinations, combine_all_combinations_data
+            
             env_name = config.get_env_name()
-            achiever_type = config.achiever_types[0]
-            blocker_type = config.blocker_types[0]
-            agent_pair = config.get_agent_pair_name(achiever_type, blocker_type)
-            test_data_dir_from_config = f"./data/{env_name}/{agent_pair}/test"
-
-            possible_processed_paths = [
-                os.path.join(
-                    results_dir, f"processed_test_data_exp{experiment_no}.pkl"
-                ),
-                os.path.join(
-                    parent_results_dir, f"processed_test_data_exp{experiment_no}.pkl"
-                ),
-                os.path.join(
-                    test_data_dir_from_config,
-                    f"processed_test_data_exp{experiment_no}.pkl",
-                ),  # From config
-                os.path.join(results_dir, "predictions.pkl"),  # Contains processed data
-                os.path.join(parent_results_dir, "predictions.pkl"),
-                os.path.join(parent_results_dir, "test_evaluation", "predictions.pkl"),
-            ]
-
-            for path in possible_processed_paths:
-                if os.path.exists(path):
-                    processed_test_data_path = path
-                    break
-
-            test_data = None
-
-            if processed_test_data_path and processed_test_data_path.endswith(
-                "predictions.pkl"
-            ):
-                # Load from predictions.pkl which contains the processed data
-                print(
-                    f"Loading processed test data from predictions: {processed_test_data_path}"
-                )
-                with open(processed_test_data_path, "rb") as f:
-                    pred_data = pickle.load(f)
-                # predictions.pkl doesn't contain the full tensor data needed for embeddings
-                # Fall back to raw test data loading
-                processed_test_data_path = None
-            elif processed_test_data_path:
-                print(f"Loading processed test data: {processed_test_data_path}")
-                test_data = data_reader.load_processed_data(processed_test_data_path)
-
-            if test_data is None:
-                # Try to find test data directory for raw data processing
-                data_config = config.get_data_config()
-                test_data_dirs = data_config.get(
-                    "test_data_dirs",
-                    [
-                        test_data_dir_from_config,  # Primary path from config
-                        os.path.join(os.path.dirname(results_dir), "test"),
-                        (
-                            config.test_data_dir
-                            if hasattr(config, "test_data_dir")
-                            else None
-                        ),
-                        os.path.join(results_dir, "test"),
-                    ],
-                )
-                # Filter out None values
-                test_data_dirs = [d for d in test_data_dirs if d is not None]
-
-                test_data_dir = None
-                for tdd in test_data_dirs:
-                    if os.path.exists(tdd):
-                        test_data_dir = tdd
-                        break
+            test_data_dir_base = f"./data/{env_name}"
+            
+            # Load test data for all combinations efficiently (same as evaluate.py)
+            try:
+                all_test_data = load_test_data_all_combinations(config, test_data_dir_base=test_data_dir_base)
+                # Combine data from all combinations
+                test_data = combine_all_combinations_data(all_test_data)
+                print(f"Successfully loaded test data from all combinations: {test_data['trajectories'].shape[0]} samples")
+            except Exception as e:
+                print(f"Failed to load test data from combinations: {e}")
+                test_data = None
+            
+            test_data_dir = None  # Not needed with multi-combination approach
 
             if test_data:
-                # Use existing processed test data
-                # Check if test_data is in chunked format and load accordingly
-                if isinstance(test_data, dict) and "chunk_metadata" in test_data:
-                    # Load chunked data
-                    test_data = load_chunked_data_for_training(test_data)
-                    test_dataset = TensorDataset(
-                        torch.from_numpy(test_data["trajectories"]).float(),
-                        torch.from_numpy(test_data["actions"]).long(),
-                        torch.from_numpy(test_data["goals"]).float(),
-                        torch.from_numpy(test_data["goal_ranks"]).long(),
-                        torch.from_numpy(test_data["agents"]).long(),
-                        torch.from_numpy(test_data["consumption_labels"]).float(),
-                        torch.from_numpy(test_data["sr_labels"]).float(),
-                    )
-                else:
-                    # Use tensor data directly
-                    test_dataset = TensorDataset(
-                        test_data["trajectories"],
-                        test_data["actions"],
-                        test_data["goals"],
-                        test_data["goal_ranks"],
-                        test_data["agents"],
-                        test_data["consumption_labels"],
-                        test_data["sr_labels"],
-                    )
+                # Convert numpy arrays to tensors for TensorDataset (same as evaluate.py fix)
+                test_tensors = {
+                    key: torch.from_numpy(data) if isinstance(data, np.ndarray) else torch.tensor(data)
+                    for key, data in test_data.items()
+                }
+                
+                # Create test dataset
+                test_dataset = TensorDataset(
+                    test_tensors["trajectories"],
+                    test_tensors["actions"],
+                    test_tensors["goals"],
+                    test_tensors["goal_ranks"],
+                    test_tensors["agents"],
+                    test_tensors["types"],
+                    test_tensors["consumption_labels"],
+                    test_tensors["sr_labels"],
+                )
                 test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
 
                 # Create character embeddings plot

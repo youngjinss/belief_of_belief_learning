@@ -25,8 +25,8 @@ from utils import generate_past_episodes_from_batch
 from utils import (
     set_seed,
     load_test_data_all_combinations,
-    get_data_for_combination,
     load_chunked_data_for_training,
+    combine_all_combinations_data,
 )
 
 # Set seed using Config default value
@@ -249,10 +249,9 @@ def evaluate_model_with_n_past(
                     :, 0
                 ]  # Target action for each sliced trajectory
 
-                # Model forward pass (model returns 7 outputs)
-                action_logits, _, _, _, _, _, _, _ = model(
-                    past_episodes, recent_trajectory, current_state
-                )
+                # Model forward pass (model returns dictionary)
+                outputs = model(past_episodes, recent_trajectory, current_state)
+                action_logits = outputs["action_logits"]
 
                 # Get predictions
                 _, predicted = torch.max(action_logits, 1)
@@ -400,17 +399,9 @@ def evaluate_model(
                     batch_indices, last_timesteps, :current_state_channels
                 ]
 
-                # Model forward pass (model returns 7 outputs)
-                (
-                    action_logits,
-                    _,
-                    _,
-                    _,
-                    _,
-                    _,
-                    _,
-                    _,
-                ) = model(past_episodes, recent_trajectory, current_state)
+                # Model forward pass (model returns dictionary)
+                outputs = model(past_episodes, recent_trajectory, current_state)
+                action_logits = outputs["action_logits"]
                 # Get predictions
                 probabilities = F.softmax(action_logits, dim=1)
                 _, predicted = torch.max(action_logits, 1)
@@ -517,12 +508,9 @@ def evaluate_achieverblocker_model(
             raise FileNotFoundError(f"No trained model found at {model_path}")
 
     if test_data_dir is None:
-        # Generate path from config - use first combination as default
+        # Generate base path from config - will load all combinations
         env_name = config.get_env_name()
-        achiever_type = list(config.achiever_types.keys())[0]
-        blocker_type = list(config.blocker_types.keys())[0]
-        agent_pair = config.get_agent_pair_name(achiever_type, blocker_type)
-        test_data_dir = f"./data/{env_name}/{agent_pair}/test"
+        test_data_dir = f"./data/{env_name}"
 
     if results_dir is None:
         results_dir = config.result_dir
@@ -539,10 +527,14 @@ def evaluate_achieverblocker_model(
 
     os.makedirs(results_dir, exist_ok=True)
 
-    print(f"Evaluating AchieverBlocker ToMnet model")
+    print(f"Evaluating AchieverBlocker ToMnet model on all combinations")
     print(f"Model: {model_path}")
     print(f"Test data: {test_data_dir}")
+    print(f"Results directory: {results_dir}")
     print(f"Device: {device}")
+    print(f"Achiever types: {list(config.achiever_types.keys())}")
+    print(f"Blocker types: {list(config.blocker_types.keys())}")
+    print(f"Total combinations: {len(config.achiever_types)} x {len(config.blocker_types)} = {len(config.achiever_types) * len(config.blocker_types)}")
     print("-" * 60)
 
     # Load model ONCE
@@ -551,18 +543,11 @@ def evaluate_achieverblocker_model(
     print(f"Model loaded successfully")
 
     # Load test data for all combinations efficiently
-    all_test_data = load_test_data_all_combinations(
-        config, test_data_dir_base=test_data_dir.replace(f"/{agent_pair}/test", "")
-    )
+    all_test_data = load_test_data_all_combinations(config, test_data_dir_base=test_data_dir)
 
-    # Use test data for the specified combination
-    chunk_metadata = get_data_for_combination(
-        all_test_data, achiever_type, blocker_type, "test"
-    )
-
-    # Load chunked data and combine for evaluation
-    test_data = load_chunked_data_for_training(chunk_metadata)
-
+    # Combine data from all combinations
+    test_data = combine_all_combinations_data(all_test_data)
+    
     # Use all available test data (no sampling)
     total_test_samples = test_data["trajectories"].shape[0]
 
@@ -583,16 +568,22 @@ def evaluate_achieverblocker_model(
     print(f"Consumption labels: {test_data['consumption_labels'].shape}")
     print(f"SR labels: {test_data['sr_labels'].shape}")
 
+    # Convert numpy arrays to tensors for TensorDataset
+    test_tensors = {
+        key: torch.from_numpy(data) if isinstance(data, np.ndarray) else torch.tensor(data)
+        for key, data in test_data.items()
+    }
+    
     # Create test dataset and loader with all required data including goal_ranks
     test_dataset = TensorDataset(
-        test_data["trajectories"],
-        test_data["actions"],
-        test_data["goals"],
-        test_data["goal_ranks"],
-        test_data["agents"],
-        test_data["types"],
-        test_data["consumption_labels"],
-        test_data["sr_labels"],
+        test_tensors["trajectories"],
+        test_tensors["actions"],
+        test_tensors["goals"],
+        test_tensors["goal_ranks"],
+        test_tensors["agents"],
+        test_tensors["types"],
+        test_tensors["consumption_labels"],
+        test_tensors["sr_labels"],
     )
     test_loader = DataLoader(
         test_dataset, batch_size=eval_config["batch_size"], shuffle=False
@@ -760,25 +751,15 @@ def analyze_action_likelihood(
         model = load_model(model_path, device, model_kwargs)
 
     if test_loader is None:
-        # Load test data - use first combination as default
+        # Load test data - combine all combinations
         env_name = config.get_env_name().replace("MiniGrid-", "").replace("-v1", "")
-        achiever_type = list(config.achiever_types.keys())[0]
-        blocker_type = list(config.blocker_types.keys())[0]
-        agent_pair = config.get_agent_pair_name(achiever_type, blocker_type)
-        test_data_dir_default = f"./data/{env_name}/{agent_pair}/test"
+        test_data_dir_default = f"./data/{env_name}"
 
         # Load test data for all combinations efficiently
-        all_test_data = load_test_data_all_combinations(
-            config, test_data_dir_default.replace(f"/{agent_pair}/test", "")
-        )
+        all_test_data = load_test_data_all_combinations(config, test_data_dir_base=test_data_dir_default)
 
-        # Use test data for the specified combination
-        chunk_metadata = get_data_for_combination(
-            all_test_data, achiever_type, blocker_type, "test"
-        )
-
-        # Load chunked data and combine for evaluation
-        test_data = load_chunked_data_for_training(chunk_metadata)
+        # Combine data from all combinations
+        test_data = combine_all_combinations_data(all_test_data)
 
         # Use all available test data (no sampling)
         total_test_samples = test_data["trajectories"].shape[0]

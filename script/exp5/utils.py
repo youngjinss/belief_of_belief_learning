@@ -1307,13 +1307,13 @@ def _standard_chunk_loading(chunk_metadata):
     return combined_data
 
 
+
+
 def setup_model_and_data(
     config,
     model_kwargs,
     data_dir,
     agent_type,
-    achiever_type,
-    blocker_type,
     training_proportion,
     device,
     use_parallel,
@@ -1330,6 +1330,7 @@ def setup_model_and_data(
 ):
     """
     Setup model, data loaders, optimizer, and other training components
+    Combines data from all achiever-blocker combinations
 
     Returns:
         tuple: (model, train_loader, val_loader, optimizer, loss_fn, scaler, early_stopping)
@@ -1345,17 +1346,12 @@ def setup_model_and_data(
     # Import these here to avoid circular imports
     from tomnet import ToMnetLoss, create_model
 
-    # Load training data
-    # Extract base directory from full data path
-    data_dir_base = os.path.dirname(data_dir)
+    # Load training data from all combinations
+    data_dir_base = os.path.dirname(data_dir) if data_dir else None
     all_training_data = load_training_data_all_combinations(config, data_dir_base)
 
-    chunk_metadata = get_data_for_combination(
-        all_training_data, achiever_type, blocker_type, "training"
-    )
-
-    # Load chunked data and combine for training
-    data = _load_chunks_memory_efficient(chunk_metadata)
+    # Combine data from all combinations using memory-efficient loading
+    data = combine_all_combinations_data(all_training_data)
 
     # Convert numpy arrays to torch tensors
     trajectories = torch.from_numpy(data["trajectories"]).float()
@@ -1381,24 +1377,27 @@ def setup_model_and_data(
 
     # Split data
     total_samples = len(dataset)
-    val_size = int(config.n_games_per_type * (1 - training_proportion))
+    # For combined data, calculate val_size based on total combinations
+    total_combinations = len(config.achiever_types) * len(config.blocker_types)
+    val_size = int(config.n_games_per_type * total_combinations * (1 - training_proportion))
     split_idx = total_samples - val_size
 
     train_data = torch.utils.data.Subset(dataset, range(split_idx))
     val_data = torch.utils.data.Subset(dataset, range(split_idx, total_samples))
 
-    # Calculate samples per epoch based on agent types
-    total_achiever_samples = sum(config.achiever_types.values())
-    total_blocker_samples = sum(config.blocker_types.values())
-    samples_per_epoch = total_achiever_samples + total_blocker_samples
+    # Calculate samples per epoch based on all combinations
+    total_achiever_samples = sum(config.achiever_types.values()) * len(config.blocker_types)
+    total_blocker_samples = sum(config.blocker_types.values()) * len(config.achiever_types)
+    samples_per_epoch = total_samples  # Use all combined samples
 
     print(f"Training samples: {len(train_data)}")
     print(
-        f"Validation samples: {len(val_data)} (using n_games_per_type * (1 - training_proportion) = {val_size})"
+        f"Validation samples: {len(val_data)} (using {val_size} samples for validation)"
     )
     print(f"Total samples: {total_samples}")
+    print(f"Total combinations: {total_combinations}")
     print(
-        f"Samples per epoch: {samples_per_epoch} (achiever: {total_achiever_samples}, blocker: {total_blocker_samples})"
+        f"Samples per epoch: {samples_per_epoch} (all combined data)"
     )
 
     # Training loader will be created dynamically each epoch
@@ -1770,29 +1769,81 @@ def load_test_data_all_combinations(config, test_data_dir_base=None):
     return existing_data
 
 
-def get_data_for_combination(
-    all_data, achiever_type, blocker_type, data_type="training"
-):
-    """
-    Get data for a specific combination from loaded data dictionary
 
+
+def combine_all_combinations_data(all_data_dict):
+    """
+    Combine data from all achiever-blocker combinations into a single dataset
+    
     Args:
-        all_data: Dictionary with (achiever_type, blocker_type) -> data mapping
-        achiever_type: Type of achiever agent
-        blocker_type: Type of blocker agent
-        data_type: Type of data (for error messages)
-
+        all_data_dict: Dictionary with (achiever_type, blocker_type) -> chunk_metadata mapping
+        
     Returns:
-        data: Data for the specified combination
+        dict: Combined chunk metadata from all combinations
     """
-    if (achiever_type, blocker_type) in all_data:
-        data = all_data[(achiever_type, blocker_type)]
-        print(f"Using {data_type} data for {achiever_type}_{blocker_type}")
-        return data
-    else:
-        raise ValueError(
-            f"No {data_type} data found for combination {achiever_type}_{blocker_type}. Please generate {data_type} data first."
-        )
+    import numpy as np
+    
+    combined_trajectories = []
+    combined_actions = []
+    combined_goals = []
+    combined_goal_ranks = []
+    combined_agents = []
+    combined_types = []
+    combined_consumption_labels = []
+    combined_sr_labels = []
+    
+    print("Combining data from all achiever-blocker combinations...")
+    
+    for (achiever_type, blocker_type), chunk_metadata in all_data_dict.items():
+        print(f"  Loading data for {achiever_type}_{blocker_type}...")
+        
+        # Load chunked data for this combination
+        data = _load_chunks_memory_efficient(chunk_metadata)
+        
+        # Append to combined lists
+        combined_trajectories.append(data["trajectories"])
+        combined_actions.append(data["actions"])
+        combined_goals.append(data["goals"])
+        combined_goal_ranks.append(data["goal_ranks"])
+        combined_agents.append(data["agents"])
+        combined_types.append(data["types"])
+        combined_consumption_labels.append(data["consumption_labels"])
+        combined_sr_labels.append(data["sr_labels"])
+        
+        print(f"    Added {data['trajectories'].shape[0]} samples")
+    
+    # Check if we have any data to concatenate
+    if not combined_trajectories:
+        raise ValueError("No test data found for any combinations. Please generate test data first using --test_data flag.")
+    
+    # Concatenate all data
+    combined_data = {
+        "trajectories": np.concatenate(combined_trajectories, axis=0),
+        "actions": np.concatenate(combined_actions, axis=0),
+        "goals": np.concatenate(combined_goals, axis=0),
+        "goal_ranks": np.concatenate(combined_goal_ranks, axis=0),
+        "agents": np.concatenate(combined_agents, axis=0),
+        "types": np.concatenate(combined_types, axis=0),
+        "consumption_labels": np.concatenate(combined_consumption_labels, axis=0),
+        "sr_labels": np.concatenate(combined_sr_labels, axis=0),
+    }
+    
+    total_samples = combined_data["trajectories"].shape[0]
+    print(f"Combined dataset contains {total_samples} total samples")
+    
+    # Print distribution statistics
+    achiever_count = np.sum(combined_data["agents"] == 0)
+    blocker_count = np.sum(combined_data["agents"] == 1)
+    print(f"  Achiever samples: {achiever_count}")
+    print(f"  Blocker samples: {blocker_count}")
+    
+    # Print type distribution
+    unique_types = np.unique(combined_data["types"])
+    for type_id in unique_types:
+        type_count = np.sum(combined_data["types"] == type_id)
+        print(f"  Type {type_id} samples: {type_count}")
+    
+    return combined_data
 
 
 def load_chunked_data_for_training(

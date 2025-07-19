@@ -630,3 +630,47 @@ The slicing implementation has been thoroughly tested and verified to work corre
 
 The verification confirms that the slicing approach successfully shifts from "final consumed" (binary success/failure) to comprehensive interaction tracking, providing much richer training signals for the ToMnet model to learn theory of mind capabilities.
 
+## 🔧 Recent Code Refactoring and Fixes
+
+### **Code Unification and Legacy Cleanup (Latest)**
+
+#### **✅ Memory Efficiency Enhancement**
+- **Enhanced Memory Management**: Updated `setup_model_and_data_combined` to use `_load_chunks_memory_efficient` function for better memory allocation on different servers
+- **Chunked Data Loading**: All data loading now uses memory-efficient chunked processing to prevent memory allocation errors
+
+#### **✅ Legacy Code Removal**
+- **Removed Legacy Functions**: 
+  - Deleted `train_tomnet` function (old single-combination version) from `train.py`
+  - Deleted `setup_model_and_data` function (old single-combination version) from `utils.py`
+  - Deleted `get_data_for_combination` function from `utils.py` (no longer needed)
+- **Function Renaming**:
+  - Renamed `train_tomnet_combined` → `train_tomnet` in `train.py`
+  - Renamed `setup_model_and_data_combined` → `setup_model_and_data` in `utils.py`
+- **Import Cleanup**: Updated all import statements to remove references to deleted functions
+
+#### **✅ Unified Data Integration Approach**
+- **Training**: `train.py` now always uses combined data from all achiever-blocker combinations
+- **Evaluation**: `evaluate.py` updated to integrate all data combinations instead of single agent pairs
+- **Visualization**: `visualize.py` updated to work with combined data from all combinations
+
+#### **✅ Consistent Directory Structure**
+- **Results Path**: All scripts now save to `results/exp5/{timestamp}/` (no agent-specific subdirectories)
+- **Data Loading**: All scripts load from base environment directory and combine all agent combinations
+- **Unified API**: Single training/evaluation/visualization interface that handles all combinations automatically
+
+#### **✅ Benefits of Unification**
+1. **Simplified Codebase**: Eliminated redundant functions and maintained single source of truth
+2. **Memory Efficiency**: Enhanced memory management for large-scale training on different servers
+3. **Consistent Behavior**: All scripts (train/evaluate/visualize) follow the same data integration pattern
+4. **Backward Compatibility**: Configuration with single agent types still works (e.g., `{"lv0va": n_games}` produces same result)
+5. **Easier Maintenance**: Fewer functions to maintain and debug
+6. **Unified Results**: Training and evaluation use identical data distributions
+
+#### **✅ Architecture Changes**
+- **Before**: Separate functions for single vs. combined data loading
+- **After**: Single unified approach that automatically handles any number of combinations
+- **Configuration Flexibility**: Works with any combination of achiever and blocker types in config
+- **Memory Safety**: Enhanced memory management prevents allocation issues on resource-constrained servers
+
+This refactoring maintains all existing functionality while providing a cleaner, more efficient, and unified codebase for multi-agent ToMnet training and evaluation.
+

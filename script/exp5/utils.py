@@ -1529,16 +1529,17 @@ def load_data_efficient(filepath):
     return None
 
 
-def load_training_data_all_combinations(config, data_dir_base=None):
+def load_data_all_combinations(config, data_dir_base=None, data_type="train"):
     """
-    Load training data for all combinations following train.py pattern
+    Load data for all combinations with chunked format support
 
     Args:
         config: Config object
-        data_dir_base: Base directory for training data
+        data_dir_base: Base directory for data
+        data_type: Type of data - "train" or "test"
 
     Returns:
-        dict: Dictionary with (achiever_type, blocker_type) -> training_data mapping
+        dict: Dictionary with (achiever_type, blocker_type) -> data mapping
     """
     if data_dir_base is None:
         env_name = config.get_env_name()
@@ -1554,20 +1555,26 @@ def load_training_data_all_combinations(config, data_dir_base=None):
     missing_combinations = []
 
     for combo_achiever, combo_blocker in all_combinations:
-        # Construct training data directory path
+        # Construct data directory path
         agent_pair = config.get_agent_pair_name(combo_achiever, combo_blocker)
-        train_data_dir = os.path.join(data_dir_base, agent_pair)
-
-        processed_data_path = os.path.join(
-            train_data_dir,
-            f"processed_data_exp{config.experiment_no}_{combo_achiever}_{combo_blocker}.pkl",
-        )
+        if data_type == "test":
+            data_dir = os.path.join(data_dir_base, agent_pair, "test")
+            processed_data_path = os.path.join(
+                data_dir,
+                f"processed_test_data_exp{config.experiment_no}_{combo_achiever}_{combo_blocker}.pkl",
+            )
+        else:  # train
+            data_dir = os.path.join(data_dir_base, agent_pair)
+            processed_data_path = os.path.join(
+                data_dir,
+                f"processed_data_exp{config.experiment_no}_{combo_achiever}_{combo_blocker}.pkl",
+            )
 
         # Try efficient data loading
         data = load_data_efficient(processed_data_path)
         if data is not None:
             print(
-                f"Loading existing processed training data for {combo_achiever}_{combo_blocker}..."
+                f"Loading existing processed {data_type} data for {combo_achiever}_{combo_blocker}..."
             )
             existing_data[(combo_achiever, combo_blocker)] = data
             print(f"  Successfully loaded from {processed_data_path}")
@@ -1577,48 +1584,54 @@ def load_training_data_all_combinations(config, data_dir_base=None):
     # Generate missing data if needed
     if missing_combinations:
         print(
-            f"Processed training data not found for combinations: {missing_combinations}"
+            f"Processed {data_type} data not found for combinations: {missing_combinations}"
         )
-        print("Generating training data for missing combinations...")
+        print(f"Generating {data_type} data for missing combinations...")
 
         for combo_achiever, combo_blocker in missing_combinations:
-            # Construct training data directory path
+            # Construct data directory path
             agent_pair = config.get_agent_pair_name(combo_achiever, combo_blocker)
-            train_data_dir = os.path.join(data_dir_base, agent_pair)
+            if data_type == "test":
+                data_dir = os.path.join(data_dir_base, agent_pair, "test")
+                processed_data_path = os.path.join(
+                    data_dir,
+                    f"processed_test_data_exp{config.experiment_no}_{combo_achiever}_{combo_blocker}.pkl",
+                )
+            else:  # train
+                data_dir = os.path.join(data_dir_base, agent_pair)
+                processed_data_path = os.path.join(
+                    data_dir,
+                    f"processed_data_exp{config.experiment_no}_{combo_achiever}_{combo_blocker}.pkl",
+                )
 
-            processed_data_path = os.path.join(
-                train_data_dir,
-                f"processed_data_exp{config.experiment_no}_{combo_achiever}_{combo_blocker}.pkl",
-            )
-
-            if not os.path.exists(train_data_dir):
-                print(f"Training data directory not found: {train_data_dir}")
+            if not os.path.exists(data_dir):
+                print(f"{data_type.capitalize()} data directory not found: {data_dir}")
                 print(f"Skipping combination {combo_achiever}_{combo_blocker}")
                 continue
 
             # Create chunk directory for this combination
             chunk_dir = os.path.join(
-                train_data_dir, f"chunks_{combo_achiever}_{combo_blocker}"
+                data_dir, f"chunks_{combo_achiever}_{combo_blocker}"
             )
 
             # Check if processed data already exists
             if os.path.exists(processed_data_path):
                 print(f"Loading existing processed data from: {processed_data_path}")
-                train_data = load_data_efficient(processed_data_path)
-                if train_data is not None:
+                data = load_data_efficient(processed_data_path)
+                if data is not None:
                     # Check if this is chunk metadata (new format) or old format
-                    if isinstance(train_data, dict) and "chunk_metadata" in train_data:
+                    if isinstance(data, dict) and "chunk_metadata" in data:
                         print(
-                            f"  Found chunk metadata with {train_data['num_chunks']} chunks"
+                            f"  Found chunk metadata with {data['num_chunks']} chunks"
                         )
                         # Verify chunks still exist
                         chunks_exist = all(
                             os.path.exists(chunk["file_path"])
-                            for chunk in train_data["chunk_metadata"]
+                            for chunk in data["chunk_metadata"]
                         )
                         if chunks_exist:
                             print(f"  All chunks verified in {chunk_dir}")
-                            existing_data[(combo_achiever, combo_blocker)] = train_data
+                            existing_data[(combo_achiever, combo_blocker)] = data
                             continue
                         else:
                             print(f"  Some chunks are missing, regenerating...")
@@ -1629,7 +1642,7 @@ def load_training_data_all_combinations(config, data_dir_base=None):
                         # Remove old pkl file to force regeneration
                         os.remove(processed_data_path)
 
-            # Load and process raw training data
+            # Load and process raw data
             from data_generation import DataGenerator as DataReader
 
             data_config = config.get_data_config()
@@ -1641,14 +1654,14 @@ def load_training_data_all_combinations(config, data_dir_base=None):
                 config=config,
             )
 
-            train_games = data_reader.ReadAllGames(train_data_dir)
-            if len(train_games) == 0:
-                print(f"No training games found in {train_data_dir}")
+            games = data_reader.ReadAllGames(data_dir)
+            if len(games) == 0:
+                print(f"No {data_type} games found in {data_dir}")
                 continue
 
-            # Process training data using chunked approach
-            train_data = prepare_data_for_training(
-                train_games,
+            # Process data using chunked approach
+            processed_data = prepare_data_for_training(
+                games,
                 min_timestep=data_config.get("min_time_steps", 6),
                 max_trajectory_length=data_config.get("time_step", 500),
                 chunk_size=data_config.get(
@@ -1660,113 +1673,29 @@ def load_training_data_all_combinations(config, data_dir_base=None):
             # Save chunk metadata instead of full data
             print(f"Saving chunk metadata to: {processed_data_path}")
             with open(processed_data_path, "wb") as f:
-                pickle.dump(train_data, f)
+                pickle.dump(processed_data, f)
             print(f"  Successfully saved metadata to {processed_data_path}")
             print(f"  Data chunks saved in {chunk_dir}")
 
-            existing_data[(combo_achiever, combo_blocker)] = train_data
+            existing_data[(combo_achiever, combo_blocker)] = processed_data
 
     return existing_data
+
+
+def load_training_data_all_combinations(config, data_dir_base=None):
+    """
+    Load training data for all combinations following train.py pattern
+    (Wrapper for backward compatibility)
+    """
+    return load_data_all_combinations(config, data_dir_base, data_type="train")
 
 
 def load_test_data_all_combinations(config, test_data_dir_base=None):
     """
     Load test data for all combinations following train.py pattern
-
-    Args:
-        config: Config object
-        test_data_dir_base: Base directory for test data
-
-    Returns:
-        dict: Dictionary with (achiever_type, blocker_type) -> test_data mapping
+    (Wrapper for backward compatibility)
     """
-    if test_data_dir_base is None:
-        env_name = config.get_env_name()
-        test_data_dir_base = f"./data/{env_name}"
-
-    # Get all combinations
-    all_combinations = []
-    for achiever_type in config.achiever_types.keys():
-        for blocker_type in config.blocker_types.keys():
-            all_combinations.append((achiever_type, blocker_type))
-
-    existing_data = {}
-    missing_combinations = []
-
-    for combo_achiever, combo_blocker in all_combinations:
-        # Construct test data directory path
-        agent_pair = config.get_agent_pair_name(combo_achiever, combo_blocker)
-        test_data_dir = os.path.join(test_data_dir_base, agent_pair, "test")
-
-        processed_test_data_path = os.path.join(
-            test_data_dir,
-            f"processed_test_data_exp{config.experiment_no}_{combo_achiever}_{combo_blocker}.pkl",
-        )
-
-        # Try efficient data loading
-        data = load_data_efficient(processed_test_data_path)
-        if data is not None:
-            print(
-                f"Loading existing processed test data for {combo_achiever}_{combo_blocker}..."
-            )
-            existing_data[(combo_achiever, combo_blocker)] = data
-            print(f"  Successfully loaded from {processed_test_data_path}")
-        else:
-            missing_combinations.append((combo_achiever, combo_blocker))
-
-    # Generate missing data if needed
-    if missing_combinations:
-        print(f"Processed test data not found for combinations: {missing_combinations}")
-        print("Generating test data for missing combinations...")
-
-        for combo_achiever, combo_blocker in missing_combinations:
-            # Construct test data directory path
-            agent_pair = config.get_agent_pair_name(combo_achiever, combo_blocker)
-            test_data_dir = os.path.join(test_data_dir_base, agent_pair, "test")
-
-            processed_test_data_path = os.path.join(
-                test_data_dir,
-                f"processed_test_data_exp{config.experiment_no}_{combo_achiever}_{combo_blocker}.pkl",
-            )
-
-            if not os.path.exists(test_data_dir):
-                print(f"Test data directory not found: {test_data_dir}")
-                print(f"Skipping combination {combo_achiever}_{combo_blocker}")
-                continue
-
-            # Load and process raw test data
-            from data_generation import DataGenerator as DataReader
-
-            data_config = config.get_data_config()
-            data_reader = DataReader(
-                time_step=data_config.get("time_step", 500),
-                w=config.width,
-                h=config.height,
-                d=data_config.get("maze_depth", 9),
-                config=config,
-            )
-
-            test_games = data_reader.ReadAllGames(test_data_dir)
-            if len(test_games) == 0:
-                print(f"No test games found in {test_data_dir}")
-                continue
-
-            # Process test data
-            test_data = prepare_data_for_training(
-                test_games,
-                min_timestep=data_config.get("min_time_steps", 6),
-                max_trajectory_length=data_config.get("time_step", 500),
-            )
-
-            # Save processed test data
-            print(f"Saving processed test data to: {processed_test_data_path}")
-            with open(processed_test_data_path, "wb") as f:
-                pickle.dump(test_data, f)
-            print(f"  Successfully saved to {processed_test_data_path}")
-
-            existing_data[(combo_achiever, combo_blocker)] = test_data
-
-    return existing_data
+    return load_data_all_combinations(config, test_data_dir_base, data_type="test")
 
 
 

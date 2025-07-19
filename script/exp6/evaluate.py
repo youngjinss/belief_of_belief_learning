@@ -508,9 +508,15 @@ def evaluate_achieverblocker_model(
             raise FileNotFoundError(f"No trained model found at {model_path}")
 
     if test_data_dir is None:
-        # Generate base path from config - will load all combinations
-        env_name = config.get_env_name()
-        test_data_dir = f"./data/{env_name}"
+        # Generate base path from config based on single-agent vs multi-agent mode
+        if config.is_single_agent_mode():
+            # For single-agent mode, use the first achiever type's test directory
+            achiever_type = list(config.achiever_types.keys())[0]
+            test_data_dir = os.path.dirname(config.get_training_data_path(achiever_type, None, is_test=True))
+        else:
+            # For multi-agent mode, use environment base path
+            env_name = config.get_env_name()
+            test_data_dir = f"./data/{env_name}"
 
     if results_dir is None:
         results_dir = config.result_dir
@@ -533,8 +539,12 @@ def evaluate_achieverblocker_model(
     print(f"Results directory: {results_dir}")
     print(f"Device: {device}")
     print(f"Achiever types: {list(config.achiever_types.keys())}")
-    print(f"Blocker types: {list(config.blocker_types.keys())}")
-    print(f"Total combinations: {len(config.achiever_types)} x {len(config.blocker_types)} = {len(config.achiever_types) * len(config.blocker_types)}")
+    if config.is_single_agent_mode():
+        print(f"Single-agent mode: No blockers")
+        print(f"Total achiever types: {len(config.achiever_types)}")
+    else:
+        print(f"Blocker types: {list(config.blocker_types.keys())}")
+        print(f"Total combinations: {len(config.achiever_types)} x {len(config.blocker_types)} = {len(config.achiever_types) * len(config.blocker_types)}")
     print("-" * 60)
 
     # Load model ONCE
@@ -750,9 +760,15 @@ def analyze_action_likelihood(
         model = load_model(model_path, device, model_kwargs)
 
     if test_loader is None:
-        # Load test data - combine all combinations
-        env_name = config.get_env_name().replace("MiniGrid-", "").replace("-v1", "")
-        test_data_dir_default = f"./data/{env_name}"
+        # Load test data - combine all combinations based on single-agent vs multi-agent mode
+        if config.is_single_agent_mode():
+            # For single-agent mode, use the first achiever type's test directory  
+            achiever_type = list(config.achiever_types.keys())[0]
+            test_data_dir_default = os.path.dirname(config.get_training_data_path(achiever_type, None, is_test=True))
+        else:
+            # For multi-agent mode, use environment base path
+            env_name = config.get_env_name()
+            test_data_dir_default = f"./data/{env_name}"
 
         # Load test data for all combinations efficiently
         all_test_data = load_test_data_all_combinations(config, test_data_dir_base=test_data_dir_default)
@@ -788,8 +804,11 @@ def analyze_action_likelihood(
         )
 
     model.eval()
-    # Determine max action space from data for AchieverBlocker
-    max_action = 8  # Default for AchieverBlocker (7 achiever + 6 blocker actions max)
+    # Determine max action space based on mode
+    if config.is_single_agent_mode():
+        max_action = 7  # KeyDoor single-agent actions (0-6)
+    else:
+        max_action = 8  # AchieverBlocker multi-agent (7 achiever + 6 blocker actions max)
     action_likelihoods = {i: [] for i in range(max_action)}
 
     sample_count = 0

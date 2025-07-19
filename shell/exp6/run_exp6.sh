@@ -149,7 +149,17 @@ run_training() {
     eval $(get_data_paths)
     
     # Run train.py from base directory to maintain correct relative paths
-    python script/exp6/train.py --config_override --save_dir "$RESULTS_DIR" > "$RUN_LOG_DIR/training.log" 2>&1
+    # Check if debug mode and auto-detect device
+    if [ -n "$DEBUG_MODE" ] && [ "$DEBUG_MODE" = "true" ]; then
+        # Auto-detect device for debug mode
+        DEVICE="cpu"
+        if command -v nvidia-smi &> /dev/null && nvidia-smi &> /dev/null; then
+            DEVICE="cuda"
+        fi
+        python script/exp6/train.py --config_override --save_dir "$RESULTS_DIR" --device "$DEVICE" --epochs 2 > "$RUN_LOG_DIR/training.log" 2>&1
+    else
+        python script/exp6/train.py --config_override --save_dir "$RESULTS_DIR" > "$RUN_LOG_DIR/training.log" 2>&1
+    fi
     
     log_step "Training completed"
     
@@ -181,11 +191,26 @@ run_evaluation() {
     eval $(get_data_paths)
     
     # Run evaluate.py from base directory to maintain correct relative paths
-    python script/exp6/evaluate.py --config_override \
-        --model_dir "$RESULTS_DIR" \
-        --result_dir "$RESULTS_DIR" \
-        --plot_type "all" \
-        > "$RUN_LOG_DIR/evaluation.log" 2>&1
+    # Check if debug mode and auto-detect device
+    if [ -n "$DEBUG_MODE" ] && [ "$DEBUG_MODE" = "true" ]; then
+        # Auto-detect device for debug mode
+        DEVICE="cpu"
+        if command -v nvidia-smi &> /dev/null && nvidia-smi &> /dev/null; then
+            DEVICE="cuda"
+        fi
+        python script/exp6/evaluate.py --config_override \
+            --model_dir "$RESULTS_DIR" \
+            --result_dir "$RESULTS_DIR" \
+            --plot_type "all" \
+            --device "$DEVICE" \
+            > "$RUN_LOG_DIR/evaluation.log" 2>&1
+    else
+        python script/exp6/evaluate.py --config_override \
+            --model_dir "$RESULTS_DIR" \
+            --result_dir "$RESULTS_DIR" \
+            --plot_type "all" \
+            > "$RUN_LOG_DIR/evaluation.log" 2>&1
+    fi
 
     # python script/exp6/evaluate.py --config_override --model_path "results/exp6/20250715_155007/best_model.pth" --test_data_dir "data/MiniGrid-AchieverBlocker-9x9-v1/value_randomly_selected_rule_based/test" --result_dir "results/exp6/20250715_155007/" --plot_type "all" --device "cuda:1"
 
@@ -207,8 +232,8 @@ run_visualization() {
     fi
     
     # Check if visualization already completed (check for plot directory)
-    if [ -d "$$RESULTS_DIR/plots" ] && [ "$(ls -A $$RESULTS_DIR/plots/*.png 2>/dev/null | wc -l)" -gt 0 ]; then
-        log_step "Visualization skipped - plots already exist in $$RESULTS_DIR/plots"
+    if [ -d "$RESULTS_DIR/plots" ] && [ "$(ls -A $RESULTS_DIR/plots/*.png 2>/dev/null | wc -l)" -gt 0 ]; then
+        log_step "Visualization skipped - plots already exist in $RESULTS_DIR/plots"
         return 0
     fi
     
@@ -394,6 +419,7 @@ case $COMMAND in
     debug)
         log_step "Running complete AchieverBlocker pipeline in DEBUG MODE for experiment $EXPERIMENT_NO"
         log_step "All logs will be saved to: $RUN_LOG_DIR/"
+        export DEBUG_MODE="true"
         enable_debug_mode
         check_exp6_implementation
         run_data_generation

@@ -96,7 +96,14 @@ class AStarAgent:
             self.height = obs["grid_info"]["height"]
 
         # Get current achiever position from observations
-        new_pos = tuple(obs["achiever_pos"])
+        # Handle both single-agent and multi-agent environments
+        if "achiever_pos" in obs:
+            new_pos = tuple(obs["achiever_pos"])
+        elif "agent_pos" in obs:
+            new_pos = tuple(obs["agent_pos"])
+        else:
+            # Fallback - no position update
+            return
 
         if new_pos != self.agent_pos:
             # If we have a path and we moved to the expected next position, advance the path
@@ -437,7 +444,15 @@ class Level0ValueAchiever(BaseValueAgent):
 
     def _update_agent_position(self, obs):
         """Update achiever position from observations"""
-        new_pos = tuple(obs["achiever_pos"])
+        # Handle both single-agent and multi-agent environments
+        if "achiever_pos" in obs:
+            new_pos = tuple(obs["achiever_pos"])
+        elif "agent_pos" in obs:
+            new_pos = tuple(obs["agent_pos"])
+        else:
+            # Fallback - no position update
+            return
+        
         if new_pos != self.agent_pos:
             self.agent_pos = new_pos
 
@@ -447,7 +462,7 @@ class Level0ValueAchiever(BaseValueAgent):
 
     def _get_opponent_position(self, obs):
         """Get blocker position for conflict penalty"""
-        if obs and "blocker_pos" in obs:
+        if obs and "blocker_pos" in obs and obs["blocker_pos"] is not None:
             return tuple(obs["blocker_pos"])
         return None
 
@@ -630,7 +645,15 @@ class Level1ValueAchiever(BaseValueAgent):
 
     def _update_agent_position(self, obs):
         """Update achiever position from observations"""
-        new_pos = tuple(obs["achiever_pos"])
+        # Handle both single-agent and multi-agent environments
+        if "achiever_pos" in obs:
+            new_pos = tuple(obs["achiever_pos"])
+        elif "agent_pos" in obs:
+            new_pos = tuple(obs["agent_pos"])
+        else:
+            # Fallback - no position update
+            return
+        
         if new_pos != self.agent_pos:
             self.agent_pos = new_pos
 
@@ -640,7 +663,7 @@ class Level1ValueAchiever(BaseValueAgent):
 
     def _get_opponent_position(self, obs):
         """Get blocker position for conflict penalty"""
-        if obs and "blocker_pos" in obs:
+        if obs and "blocker_pos" in obs and obs["blocker_pos"] is not None:
             return tuple(obs["blocker_pos"])
         return None
 
@@ -661,7 +684,7 @@ class Level1ValueAchiever(BaseValueAgent):
                 self.collected_keys.add(color_map[i])
 
         # Observe blocker position and check if it goes to any door
-        if obs and "blocker_pos" in obs:
+        if obs and "blocker_pos" in obs and obs["blocker_pos"] is not None:
             current_blocker_pos = tuple(obs["blocker_pos"])
 
             # Check if blocker moved to a door position

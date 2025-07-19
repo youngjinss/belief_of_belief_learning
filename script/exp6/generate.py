@@ -846,7 +846,12 @@ def run_single_game(game_id, config_dict, save_dir, blocker_type=None):
     env.seed(config_dict["base_random_seed"] + game_id)
 
     # Reset environment
-    obs, info = env.reset()
+    reset_result = env.reset()
+    if isinstance(reset_result, tuple) and len(reset_result) >= 2:
+        obs, info = reset_result[0], reset_result[1]
+    else:
+        obs = reset_result
+        info = {}
 
     # Create achiever agent
     achiever_type = config_dict["achiever_type"]
@@ -1033,7 +1038,9 @@ def run_single_game(game_id, config_dict, save_dir, blocker_type=None):
                 keys_collected_steps.append((step_count, new_key))
 
         # Check for door opening by reward
-        if rewards["achiever"] >= 1.0:  # Door opening reward
+        # Handle both single-agent (scalar) and multi-agent (dict) reward formats
+        achiever_reward = rewards["achiever"] if isinstance(rewards, dict) else rewards
+        if achiever_reward >= 1.0:  # Door opening reward
             # Get the door that was just opened using environment tracking
             if env.last_door_opened and env.last_door_opened not in doors_opened:
                 doors_opened.append(env.last_door_opened)

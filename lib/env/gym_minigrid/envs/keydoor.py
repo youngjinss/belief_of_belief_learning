@@ -28,6 +28,10 @@ class KeyDoorEnv(MiniGridEnv):
         # Track agent's inventory
         self.agent_keys = []
         self.target_door_color = None
+        
+        # Track state changes for compatibility with AchieverBlocker
+        self.last_door_opened = None  # color of last door opened
+        self.last_key_consumed = None  # color of last key consumed
 
         # Allow custom max_steps
         if max_steps is None:
@@ -51,8 +55,10 @@ class KeyDoorEnv(MiniGridEnv):
         # Generate surrounding walls
         self.grid.wall_rect(0, 0, width, height)
 
-        # Clear agent keys
+        # Clear agent keys and tracking
         self.agent_keys = []
+        self.last_door_opened = None
+        self.last_key_consumed = None
 
         # Generate 4 keys and 4 doors with matching colors
         key_positions = []
@@ -117,6 +123,19 @@ class KeyDoorEnv(MiniGridEnv):
 
         return door_pos
 
+    def reset(self, **kwargs):
+        """Reset environment and return unified observation structure"""
+        obs = super().reset(**kwargs)
+        
+        # Generate unified observation dictionary
+        obs_dict = self._get_unified_observations()
+        
+        info = {
+            'target_door_color': self.target_door_color,
+            'agent_keys': self.agent_keys.copy()
+        }
+        return obs_dict, info
+
     def step(self, action):
         # Handle regular movement actions first using parent class
         obs, reward, done, stuck, info = super().step(action)
@@ -145,7 +164,86 @@ class KeyDoorEnv(MiniGridEnv):
             ):
                 terminated = True
 
-        return obs, reward, terminated, truncated, info
+        # Generate unified observation dictionary
+        obs_dict = self._get_unified_observations()
+        
+        info = {
+            'agent_keys': self.agent_keys.copy(),
+            'target_door_color': self.target_door_color,
+            'step_count': self.step_count
+        }
+
+        return obs_dict, reward, terminated, truncated, info
+
+    def _get_unified_observations(self):
+        """Generate unified observation structure compatible with AchieverBlocker"""
+        # Get standard MiniGrid observation (this is an image array)
+        achiever_obs_image = super().gen_obs()
+        
+        # Create agent keys array (using agent_keys instead of achiever_keys for consistency)
+        agent_keys_array = np.zeros(len(self.door_colors), dtype=np.int32)
+        for i, color in enumerate(self.door_colors):
+            if color in self.agent_keys:
+                agent_keys_array[i] = 1
+        
+        # Get key positions
+        key_positions = self._get_key_positions()
+        
+        # Get door positions with colors
+        door_positions = self._get_door_positions_with_colors()
+        
+        # Get wall positions
+        wall_positions = self._get_wall_positions()
+        
+        # Get grid size info
+        grid_info = {
+            'width': self.grid.width,
+            'height': self.grid.height
+        }
+        
+        return {
+            'achiever': achiever_obs_image,
+            'blocker': None,  # No blocker in single-agent mode
+            'achiever_keys': agent_keys_array,
+            'achiever_pos': self.agent_pos.astype(np.int32),
+            'agent_pos': self.agent_pos.astype(np.int32),  # Add both for compatibility
+            'blocker_pos': None,  # No blocker in single-agent mode
+            'target_door_color': self.target_door_color,
+            'key_positions': key_positions,
+            'door_positions': door_positions,
+            'wall_positions': wall_positions,
+            'grid_info': grid_info
+        }
+
+    def _get_key_positions(self):
+        """Get key positions with their colors (compatible with AchieverBlocker)"""
+        key_positions = {}
+        for x in range(self.grid.width):
+            for y in range(self.grid.height):
+                obj = self.grid.get(x, y)
+                if isinstance(obj, Key):
+                    key_positions[obj.color] = (x, y)
+        return key_positions
+
+    def _get_door_positions_with_colors(self):
+        """Get all door positions with their colors"""
+        door_positions = {}
+        for x in range(self.grid.width):
+            for y in range(self.grid.height):
+                obj = self.grid.get(x, y)
+                if isinstance(obj, Door):
+                    door_positions[obj.color] = (x, y)
+        return door_positions
+
+    def _get_wall_positions(self):
+        """Get all wall positions"""
+        wall_positions = []
+        for x in range(self.grid.width):
+            for y in range(self.grid.height):
+                obj = self.grid.get(x, y)
+                if obj is not None and obj.type == "wall":
+                    wall_positions.append((x, y))
+        return wall_positions
 
     def _auto_pickup_key(self):
         """Automatically pick up key when agent steps on it"""
@@ -159,6 +257,9 @@ class KeyDoorEnv(MiniGridEnv):
                 # Pick up key automatically
                 self.agent_keys.append(key_color)
                 self.grid.set(*self.agent_pos, None)
+                
+                # Track last key consumed
+                self.last_key_consumed = key_color
 
                 # Give reward if it's target color key
                 if key_color == self.target_door_color:
@@ -180,6 +281,9 @@ class KeyDoorEnv(MiniGridEnv):
                 # Open the door automatically
                 obj.is_open = True
                 obj.is_locked = False
+                
+                # Track last door opened
+                self.last_door_opened = door_color
                 
                 # Give reward based on preference
                 return self.preference[door_color]

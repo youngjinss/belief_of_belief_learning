@@ -1547,9 +1547,15 @@ def load_data_all_combinations(config, data_dir_base=None, data_type="train"):
 
     # Get all combinations
     all_combinations = []
-    for achiever_type in config.achiever_types.keys():
-        for blocker_type in config.blocker_types.keys():
-            all_combinations.append((achiever_type, blocker_type))
+    if config.is_single_agent_mode():
+        # In single-agent mode, use None for blocker_type
+        for achiever_type in config.achiever_types.keys():
+            all_combinations.append((achiever_type, None))
+    else:
+        # In multi-agent mode, create all achiever-blocker combinations
+        for achiever_type in config.achiever_types.keys():
+            for blocker_type in config.blocker_types.keys():
+                all_combinations.append((achiever_type, blocker_type))
 
     existing_data = {}
     missing_combinations = []

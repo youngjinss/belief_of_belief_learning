@@ -10,8 +10,10 @@ import multiprocessing as mp
 from tqdm import tqdm
 
 
-def process_file_batch_worker(file_batch: List[str]) -> List[Dict[str, Any]]:
+def process_file_batch_worker(file_batch_and_config: tuple) -> List[Dict[str, Any]]:
     """Standalone worker function for multiprocessing"""
+    file_batch, is_single_agent = file_batch_and_config
+    
     # Create a DataGenerator instance for this worker
     generator = DataGenerator()
     batch_samples = []
@@ -24,12 +26,16 @@ def process_file_batch_worker(file_batch: List[str]) -> List[Dict[str, Any]]:
         achiever_sample = generator.create_achiever_sample(parsed_data)
         batch_samples.append(achiever_sample)
 
-        # Create blocker sample
-        blocker_sample = generator.create_blocker_sample(parsed_data)
-        batch_samples.append(blocker_sample)
+        # Create blocker sample only in multi-agent mode
+        if not is_single_agent and not parsed_data.get("is_single_agent", False):
+            blocker_sample = generator.create_blocker_sample(parsed_data)
+            batch_samples.append(blocker_sample)
 
         # Clean up after each file processing
-        del parsed_data, achiever_sample, blocker_sample
+        if not is_single_agent and not parsed_data.get("is_single_agent", False):
+            del parsed_data, achiever_sample, blocker_sample
+        else:
+            del parsed_data, achiever_sample
 
     # Collect garbage once per batch instead of per file
     gc.collect()
@@ -39,6 +45,7 @@ def process_file_batch_worker(file_batch: List[str]) -> List[Dict[str, Any]]:
 # Add lib to path for imports
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from utils import set_seed
+from config import Config
 
 """
 Data processing for exp6 (AchieverBlocker) ToMnet training
@@ -65,8 +72,13 @@ class DataGenerator:
         self.MAZE_DEPTH = d
 
         # Pre-compile regex patterns for better performance
+        # Multi-agent pattern: [x1, y1][x2, y2] : action1,action2 : interaction1,interaction2
         self.trajectory_pattern = re.compile(
             r"\[(\d+),\s*(\d+)\]\[(\d+),\s*(\d+)\]\s*:\s*(\d+),(\d+)\s*:\s*(\w+),(\w+)"
+        )
+        # Single-agent pattern: [x, y] : action : interaction
+        self.single_agent_pattern = re.compile(
+            r"\[(\d+),\s*(\d+)\]\s*:\s*(\d+)\s*:\s*(\w+)"
         )
         self.timestep_pattern = re.compile(r"Timestep_(\d+):")
         self.sr_gamma_pattern = re.compile(r"SR_gamma_([0-9.]+):\s*(.*)")
@@ -74,21 +86,25 @@ class DataGenerator:
         self.goal_rewards_pattern = re.compile(r"Goal Rewards:\s*(.*)")
         self.consumption_pattern = re.compile(r"Consumption Labels:\s*(.*)")
 
+        # Store config for single-agent mode detection
+        self.config = config
+        
         # Action spaces from config
         if config is not None:
             self.ACHIEVER_ACTION_SPACE = config.model_config["achiever_action_space"]
+            self.is_single_agent_mode = config.is_single_agent_mode()
             self.BLOCKER_ACTION_SPACE = config.model_config["blocker_action_space"]
             set_seed(config.seed)  # Set seed when config is provided
         else:
             # Fallback defaults if no config provided
-            from config import Config
-
             config_obj = Config()
+            self.config = config_obj
             set_seed(config_obj.seed)  # Set seed when Config is created
             self.ACHIEVER_ACTION_SPACE = config_obj.model_config[
                 "achiever_action_space"
             ]
             self.BLOCKER_ACTION_SPACE = config_obj.model_config["blocker_action_space"]
+            self.is_single_agent_mode = config_obj.is_single_agent_mode()
 
         # Goal mappings for blocker inference
         self.COLOR_TO_LETTER = {"red": "A", "green": "B", "blue": "C", "yellow": "D"}
@@ -126,6 +142,7 @@ class DataGenerator:
         blocker_data = {}
         trajectory_steps = []
         current_section = None  # Track which section we're parsing
+        is_single_agent = False  # Track if this is a single-agent trajectory
 
         for line in lines:
             line = line.strip()
@@ -151,6 +168,7 @@ class DataGenerator:
 
             # Parse trajectory steps using pre-compiled regex
             if line.startswith("["):
+                # Try multi-agent pattern first
                 match = self.trajectory_pattern.match(line)
                 if match:
                     achiever_x = int(match.group(1))
@@ -172,6 +190,26 @@ class DataGenerator:
                             "blocker_interaction": blocker_interaction,
                         }
                     )
+                else:
+                    # Try single-agent pattern
+                    single_match = self.single_agent_pattern.match(line)
+                    if single_match:
+                        is_single_agent = True  # Mark as single-agent trajectory
+                        achiever_x = int(single_match.group(1))
+                        achiever_y = int(single_match.group(2))
+                        achiever_action = int(single_match.group(3))
+                        achiever_interaction = single_match.group(4)
+
+                        trajectory_steps.append(
+                            {
+                                "achiever_pos": (achiever_x, achiever_y),
+                                "blocker_pos": None,
+                                "achiever_action": achiever_action,
+                                "blocker_action": None,
+                                "achiever_interaction": achiever_interaction,
+                                "blocker_interaction": None,
+                            }
+                        )
                 continue
 
             # Section markers
@@ -332,6 +370,7 @@ class DataGenerator:
             "achiever_data": achiever_data,
             "blocker_data": blocker_data,
             "filename": filename,
+            "is_single_agent": is_single_agent,
         }
 
     def create_achiever_sample(self, parsed_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -646,12 +685,16 @@ class DataGenerator:
                 achiever_sample = self.create_achiever_sample(parsed_data)
                 all_samples.append(achiever_sample)
 
-                # Create blocker sample
-                blocker_sample = self.create_blocker_sample(parsed_data)
-                all_samples.append(blocker_sample)
+                # Create blocker sample only in multi-agent mode
+                if not (hasattr(self, 'is_single_agent_mode') and self.is_single_agent_mode) and not parsed_data.get("is_single_agent", False):
+                    blocker_sample = self.create_blocker_sample(parsed_data)
+                    all_samples.append(blocker_sample)
 
                 # Clean up after each file processing
-                del parsed_data, achiever_sample, blocker_sample
+                if not (hasattr(self, 'is_single_agent_mode') and self.is_single_agent_mode) and not parsed_data.get("is_single_agent", False):
+                    del parsed_data, achiever_sample, blocker_sample
+                else:
+                    del parsed_data, achiever_sample
                 if len(all_samples) % 200 == 0:  # Less frequent GC
                     gc.collect()
 
@@ -668,13 +711,19 @@ class DataGenerator:
                 test_files[i : i + batch_size]
                 for i in range(0, len(test_files), batch_size)
             ]
+            
+            # Add single-agent flag to each batch
+            file_batches_with_config = [
+                (batch, self.is_single_agent_mode if hasattr(self, 'is_single_agent_mode') else False)
+                for batch in file_batches
+            ]
 
             # Process batches in parallel
             with mp.Pool(processes=n_processes, maxtasksperchild=100) as pool:
                 batch_results = list(
                     tqdm(
-                        pool.imap(process_file_batch_worker, file_batches),
-                        total=len(file_batches),
+                        pool.imap(process_file_batch_worker, file_batches_with_config),
+                        total=len(file_batches_with_config),
                         desc="Processing trajectory files",
                     )
                 )
@@ -689,9 +738,14 @@ class DataGenerator:
         # Shuffle samples
         random.shuffle(all_samples)
 
-        print(
-            f"Generated {len(all_samples)} samples ({len(all_samples)//2} achiever + {len(all_samples)//2} blocker)"
-        )
+        # Count achiever and blocker samples
+        achiever_count = sum(1 for s in all_samples if s.get("agent") == "achiever")
+        blocker_count = sum(1 for s in all_samples if s.get("agent") == "blocker")
+        
+        if hasattr(self, 'is_single_agent_mode') and self.is_single_agent_mode:
+            print(f"Generated {len(all_samples)} samples ({achiever_count} achiever samples in single-agent mode)")
+        else:
+            print(f"Generated {len(all_samples)} samples ({achiever_count} achiever + {blocker_count} blocker)")
         return all_samples
 
     def save_processed_data(self, samples: List[Dict[str, Any]], output_path: str):

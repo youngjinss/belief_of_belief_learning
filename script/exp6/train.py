@@ -1024,8 +1024,15 @@ def train_tomnet(
 
     # Use default data directory if not provided
     if data_dir is None:
-        env_name = config.get_env_name()
-        data_dir = f"./data/{env_name}/combined"  # Placeholder path
+        # Get the appropriate data directory based on single-agent vs multi-agent mode
+        if config.is_single_agent_mode():
+            # For single-agent mode, use the first achiever type
+            achiever_type = list(config.achiever_types.keys())[0]
+            data_dir = config.get_training_data_path(achiever_type, None, is_test=False)
+        else:
+            # For multi-agent mode, use combined data
+            env_name = config.get_env_name()
+            data_dir = f"./data/{env_name}/combined"
 
     # Agent type (we'll focus on one agent type for now)
     agent_type = "achiever"  # or "blocker"
@@ -1067,7 +1074,10 @@ def train_tomnet(
     pin_memory = other_configs["pin_memory"]
     num_workers = other_configs["num_workers"]
 
-    print(f"Training on combined data from all achiever-blocker combinations")
+    if config.is_single_agent_mode():
+        print(f"Training on single-agent data from: {data_dir}")
+    else:
+        print(f"Training on combined data from all achiever-blocker combinations")
     print(f"Results will be saved to: {experiment_save_dir}")
 
     # Setup model, data, and training components using combined data

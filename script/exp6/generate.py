@@ -32,6 +32,7 @@ from lib.env.gym_minigrid.envs.achiever_blocker import (
     AchieverBlocker9x9Env,
     AchieverBlocker11x11Env,
 )
+from lib.env.gym_minigrid.envs.keydoor import KeyDoorEnv
 from script.exp6.achievers import (
     AStarAgent,
     RandomAgent as AchieverRandomAgent,
@@ -346,6 +347,48 @@ def env_to_maze_format(env, achiever_pos, blocker_pos):
     return maze_lines
 
 
+def env_to_maze_format_single_agent(env, agent_pos):
+    """
+    Convert KeyDoor environment to maze format with single agent
+
+    Args:
+        env: KeyDoor environment
+        agent_pos: Current agent position
+
+    Returns:
+        maze_str: String representation of the maze with O (agent)
+    """
+    maze_lines = []
+    width, height = env.grid.width, env.grid.height
+
+    # Process each row
+    for j in range(height):
+        row = ""
+        for i in range(width):
+            cell = env.grid.get(i, j)
+
+            if agent_pos == (i, j):
+                row += "O"  # Agent
+            elif cell is None:
+                row += "-"  # Empty space
+            elif cell.type == "wall":
+                row += "#"  # Wall
+            elif cell.type == "key":
+                # Map key colors to letters A, B, C, D
+                color_map = {"red": "A", "green": "B", "blue": "C", "yellow": "D"}
+                row += color_map.get(cell.color, "?")
+            elif cell.type == "door":
+                # Use lowercase for doors
+                color_map = {"red": "a", "green": "b", "blue": "c", "yellow": "d"}
+                row += color_map.get(cell.color, "?")
+            else:
+                row += "?"  # Unknown
+
+        maze_lines.append(row)
+
+    return maze_lines
+
+
 def save_game_with_labels(
     achiever_agent,
     blocker_agent,
@@ -415,29 +458,34 @@ def save_game_with_labels(
         blocker_break_attempts = []
 
         # Get all door positions from environment using direct storage access
-        door_positions = env.door_positions
+        door_positions = getattr(env, "door_positions", [])
 
-        for i in range(len(trajectory_data["blocker_actions"])):
-            blocker_action = trajectory_data["blocker_actions"][i]
-            blocker_pos = trajectory_data["blocker_positions"][i]
+        # Only process blocker actions if blocker exists
+        if blocker_agent is not None and "blocker_actions" in trajectory_data:
+            for i in range(len(trajectory_data["blocker_actions"])):
+                blocker_action = trajectory_data["blocker_actions"][i]
+                blocker_pos = trajectory_data["blocker_positions"][i]
 
-            # Check if blocker used break action (5) at a door position
-            if blocker_action == 5:
-                # Check which door (if any) the blocker is breaking
-                blocker_pos_tuple = tuple(blocker_pos)
-                for door_color, door_pos in door_positions.items():
-                    if door_pos and blocker_pos_tuple == tuple(door_pos):
-                        blocker_break_attempts.append(
-                            {
-                                "step": i,
-                                "door_color": door_color,
-                                "is_target_door": door_color == actual_target_door,
-                            }
-                        )
-                        break
+                # Check if blocker used break action (5) at a door position
+                if blocker_action == 5:
+                    # Check which door (if any) the blocker is breaking
+                    blocker_pos_tuple = tuple(blocker_pos)
+                    for door_color, door_pos in door_positions.items():
+                        if door_pos and blocker_pos_tuple == tuple(door_pos):
+                            blocker_break_attempts.append(
+                                {
+                                    "step": i,
+                                    "door_color": door_color,
+                                    "is_target_door": door_color == actual_target_door,
+                                }
+                            )
+                            break
 
         # Determine overall blocker interaction result based on attempts
-        if not blocker_break_attempts:
+        if blocker_agent is None:
+            # Single-agent mode - no blocker
+            blocker_interaction_result = "N/A"
+        elif not blocker_break_attempts:
             # No break attempts made
             blocker_interaction_result = "X"
         else:
@@ -469,12 +517,17 @@ def save_game_with_labels(
                 }
                 blocker_interaction_result = color_map.get(last_door_color, "X")
 
-        # Write trajectory with 2-agent actions and interactions
+        # Write trajectory with agent actions and interactions
         for i in range(len(trajectory_data["achiever_actions"])):
             achiever_pos = trajectory_data["achiever_positions"][i]
-            blocker_pos = trajectory_data["blocker_positions"][i]
             achiever_action = trajectory_data["achiever_actions"][i]
-            blocker_action = trajectory_data["blocker_actions"][i]
+            
+            if blocker_agent is not None:
+                blocker_pos = trajectory_data["blocker_positions"][i]
+                blocker_action = trajectory_data["blocker_actions"][i]
+            else:
+                blocker_pos = None
+                blocker_action = None
 
             # Determine interactions
             achiever_interaction = "X"  # Default no interaction
@@ -523,9 +576,15 @@ def save_game_with_labels(
                     blocker_interaction = color_map.get(door_color, "X")
                     break
 
-            f.write(
-                f"[{achiever_pos[0]}, {achiever_pos[1]}][{blocker_pos[0]}, {blocker_pos[1]}] : {achiever_action},{blocker_action} : {achiever_interaction},{blocker_interaction}\n"
-            )
+            if blocker_agent is not None:
+                f.write(
+                    f"[{achiever_pos[0]}, {achiever_pos[1]}][{blocker_pos[0]}, {blocker_pos[1]}] : {achiever_action},{blocker_action} : {achiever_interaction},{blocker_interaction}\n"
+                )
+            else:
+                # Single-agent format
+                f.write(
+                    f"[{achiever_pos[0]}, {achiever_pos[1]}] : {achiever_action} : {achiever_interaction}\n"
+                )
 
         f.write("\n")
 
@@ -579,54 +638,55 @@ def save_game_with_labels(
 
         f.write("\n")
 
-        # Section 3: Blocker
-        f.write("Blocker:\n")
+        # Section 3: Blocker (only for multi-agent mode)
+        if blocker_agent is not None:
+            f.write("Blocker:\n")
 
-        # Write blocker type
-        if blocker_type:
-            # Get blocker type map from config_dict if available
-            blocker_type_map = config_dict.get("blocker_type_map", {})
-            blocker_type_id = blocker_type_map.get(blocker_type, -1)
-            f.write(f"Type: {blocker_type_id}\n")
-        else:
-            f.write("Type: -1\n")  # Unknown type
+            # Write blocker type
+            if blocker_type:
+                # Get blocker type map from config_dict if available
+                blocker_type_map = config_dict.get("blocker_type_map", {})
+                blocker_type_id = blocker_type_map.get(blocker_type, -1)
+                f.write(f"Type: {blocker_type_id}\n")
+            else:
+                f.write("Type: -1\n")  # Unknown type
 
-        # Get blocker's inferred goal and actual target door
-        blocker_inferred_goal = getattr(blocker_agent, "target_door_color", None)
-        actual_target_door = getattr(env, "target_door_color", None)
+            # Get blocker's inferred goal and actual target door
+            blocker_inferred_goal = getattr(blocker_agent, "target_door_color", None)
+            actual_target_door = getattr(env, "target_door_color", None)
 
-        # Write inferred goal as multi-hot vector based on break attempts and blocker's inferred goal
-        # Format: [key_red, key_green, key_blue, key_yellow, door_red, door_green, door_blue, door_yellow]
-        infer_goal_vector = [0, 0, 0, 0, 0, 0, 0, 0]
+            # Write inferred goal as multi-hot vector based on break attempts and blocker's inferred goal
+            # Format: [key_red, key_green, key_blue, key_yellow, door_red, door_green, door_blue, door_yellow]
+            infer_goal_vector = [0, 0, 0, 0, 0, 0, 0, 0]
 
-        # Mark doors that were attempted to be broken
-        color_to_door_idx = {"red": 4, "green": 5, "blue": 6, "yellow": 7}
-        for attempt in blocker_break_attempts:
-            door_color = attempt["door_color"]
-            if door_color in color_to_door_idx:
-                infer_goal_vector[color_to_door_idx[door_color]] = 1
+            # Mark doors that were attempted to be broken
+            color_to_door_idx = {"red": 4, "green": 5, "blue": 6, "yellow": 7}
+            for attempt in blocker_break_attempts:
+                door_color = attempt["door_color"]
+                if door_color in color_to_door_idx:
+                    infer_goal_vector[color_to_door_idx[door_color]] = 1
 
-        # Also mark the blocker's inferred goal if available
-        if blocker_inferred_goal and blocker_inferred_goal in color_to_door_idx:
-            infer_goal_vector[color_to_door_idx[blocker_inferred_goal]] = 1
+            # Also mark the blocker's inferred goal if available
+            if blocker_inferred_goal and blocker_inferred_goal in color_to_door_idx:
+                infer_goal_vector[color_to_door_idx[blocker_inferred_goal]] = 1
 
-        f.write("Infer Goal: " + ",".join(map(str, infer_goal_vector)) + "\n")
+            f.write("Infer Goal: " + ",".join(map(str, infer_goal_vector)) + "\n")
 
-        # Use the pre-calculated blocker interaction result
-        f.write("Interaction: " + blocker_interaction_result + "\n")
+            # Use the pre-calculated blocker interaction result
+            f.write("Interaction: " + blocker_interaction_result + "\n")
 
-        # Save blocker SR data per timestep
-        f.write("SR_Data_Per_Timestep:\n")
-        for t, sr_data_at_t in enumerate(blocker_sr_labels_per_timestep):
-            f.write(f"Timestep_{t}:\n")
-            for gamma_idx, gamma in enumerate(gammas):
-                sparse_sr = (
-                    sr_data_at_t[gamma_idx] if gamma_idx < len(sr_data_at_t) else []
-                )
-                sparse_str = ";".join(
-                    [f"{pos[0]},{pos[1]}:{val}" for pos, val in sparse_sr]
-                )
-                f.write(f"SR_gamma_{gamma}: {sparse_str}\n")
+            # Save blocker SR data per timestep
+            f.write("SR_Data_Per_Timestep:\n")
+            for t, sr_data_at_t in enumerate(blocker_sr_labels_per_timestep):
+                f.write(f"Timestep_{t}:\n")
+                for gamma_idx, gamma in enumerate(gammas):
+                    sparse_sr = (
+                        sr_data_at_t[gamma_idx] if gamma_idx < len(sr_data_at_t) else []
+                    )
+                    sparse_str = ";".join(
+                        [f"{pos[0]},{pos[1]}:{val}" for pos, val in sparse_sr]
+                    )
+                    f.write(f"SR_gamma_{gamma}: {sparse_str}\n")
 
 
 def generate_game_rewards(config_dict, game_id):
@@ -747,22 +807,40 @@ def run_single_game(game_id, config_dict, save_dir, blocker_type=None):
     # Generate random costs for this game
     game_costs = generate_game_costs(config_dict, game_id)
 
-    # Create AchieverBlocker environment with custom preferences and costs
+    # Create environment based on single-agent or multi-agent mode
     env_size = config_dict["env_size"]
-    if env_size == "5x5":
-        env = AchieverBlocker5x5Env(
-            preference=goal_rewards, cost=game_costs, max_steps=config_dict["max_steps"]
-        )
-    elif env_size == "9x9":
-        env = AchieverBlocker9x9Env(
-            preference=goal_rewards, cost=game_costs, max_steps=config_dict["max_steps"]
-        )
-    elif env_size == "11x11":
-        env = AchieverBlocker11x11Env(
-            preference=goal_rewards, cost=game_costs, max_steps=config_dict["max_steps"]
+    
+    # Check if this is single-agent mode (no blocker or blocker_type is None)
+    is_single_agent = blocker_type is None or len(config_dict.get("blocker_types", {})) == 0
+    
+    if is_single_agent:
+        # Create KeyDoor environment for single-agent mode
+        size_map = {"5x5": 5, "9x9": 9, "11x11": 11}
+        if env_size not in size_map:
+            raise ValueError(f"Unknown environment size: {env_size}")
+        
+        env = KeyDoorEnv(
+            size=size_map[env_size],
+            preference=goal_rewards, 
+            cost=game_costs, 
+            max_steps=config_dict["max_steps"]
         )
     else:
-        raise ValueError(f"Unknown environment size: {env_size}")
+        # Create AchieverBlocker environment for multi-agent mode
+        if env_size == "5x5":
+            env = AchieverBlocker5x5Env(
+                preference=goal_rewards, cost=game_costs, max_steps=config_dict["max_steps"]
+            )
+        elif env_size == "9x9":
+            env = AchieverBlocker9x9Env(
+                preference=goal_rewards, cost=game_costs, max_steps=config_dict["max_steps"]
+            )
+        elif env_size == "11x11":
+            env = AchieverBlocker11x11Env(
+                preference=goal_rewards, cost=game_costs, max_steps=config_dict["max_steps"]
+            )
+        else:
+            raise ValueError(f"Unknown environment size: {env_size}")
 
     # Seed environment before reset (following exp3 pattern)
     env.seed(config_dict["base_random_seed"] + game_id)
@@ -817,54 +895,56 @@ def run_single_game(game_id, config_dict, save_dir, blocker_type=None):
     else:
         raise ValueError(f"Unknown achiever type: {achiever_type}")
 
-    # Create blocker agent
-    # Use passed blocker_type if provided, otherwise use config default
-    current_blocker_type = (
-        blocker_type if blocker_type else config_dict["blocker_types"][0]
-    )
-    if current_blocker_type == "random":
-        blocker_agent = BlockerRandomAgent()
-    elif current_blocker_type == "goal_direct":
-        blocker_agent = BlockerGoalDirectAgent()
-    elif current_blocker_type == "lv0vb":
-        blocker_config = config_dict.get("blocker_configs", {}).get("lv0vb", {})
-        blocker_agent = Level0ValueBlocker(
-            movement_cost=blocker_config.get("movement_cost", 0.01),
-            wall_penalty=blocker_config.get("wall_penalty", 2.0),
-            conflict_penalty=blocker_config.get("conflict_penalty", 2.0),
-            gamma=blocker_config.get("gamma", 0.99),
-            temperature=blocker_config.get("temperature", 0.1),
-            q_value_clip=blocker_config.get("q_value_clip", 100),
+    # Create blocker agent (only for multi-agent mode)
+    blocker_agent = None
+    if not is_single_agent:
+        # Use passed blocker_type if provided, otherwise use config default
+        current_blocker_type = (
+            blocker_type if blocker_type else list(config_dict["blocker_types"].keys())[0]
         )
-    elif current_blocker_type == "lv1vb":
-        blocker_config = config_dict.get("blocker_configs", {}).get("lv1vb", {})
-        blocker_agent = Level1ValueBlocker(
-            movement_cost=blocker_config.get("movement_cost", 0.01),
-            wall_penalty=blocker_config.get("wall_penalty", 2.0),
-            conflict_penalty=blocker_config.get("conflict_penalty", 2.0),
-            gamma=blocker_config.get("gamma", 0.99),
-            temperature=blocker_config.get("temperature", 0.1),
-            q_value_clip=blocker_config.get("q_value_clip", 100),
-        )
-    elif current_blocker_type == "randomly_selected":
-        blocker_config = config_dict.get("blocker_configs", {}).get(
-            "randomly_selected", {}
-        )
-        stay_probability = blocker_config.get("stay_probability", 0.7)
-        blocker_agent = BlockerRandomlySelectedAgent(stay_probability=stay_probability)
-    elif current_blocker_type == "rule_based":
-        blocker_config = config_dict.get("blocker_configs", {}).get("rule_based", {})
-        stay_probability = blocker_config.get("stay_probability", 0.7)
-        blocker_agent = BlockerRuleBasedAgent(stay_probability=stay_probability)
-    else:
-        raise ValueError(f"Unknown blocker type: {current_blocker_type}")
+        if current_blocker_type == "random":
+            blocker_agent = BlockerRandomAgent()
+        elif current_blocker_type == "goal_direct":
+            blocker_agent = BlockerGoalDirectAgent()
+        elif current_blocker_type == "lv0vb":
+            blocker_config = config_dict.get("blocker_configs", {}).get("lv0vb", {})
+            blocker_agent = Level0ValueBlocker(
+                movement_cost=blocker_config.get("movement_cost", 0.01),
+                wall_penalty=blocker_config.get("wall_penalty", 2.0),
+                conflict_penalty=blocker_config.get("conflict_penalty", 2.0),
+                gamma=blocker_config.get("gamma", 0.99),
+                temperature=blocker_config.get("temperature", 0.1),
+                q_value_clip=blocker_config.get("q_value_clip", 100),
+            )
+        elif current_blocker_type == "lv1vb":
+            blocker_config = config_dict.get("blocker_configs", {}).get("lv1vb", {})
+            blocker_agent = Level1ValueBlocker(
+                movement_cost=blocker_config.get("movement_cost", 0.01),
+                wall_penalty=blocker_config.get("wall_penalty", 2.0),
+                conflict_penalty=blocker_config.get("conflict_penalty", 2.0),
+                gamma=blocker_config.get("gamma", 0.99),
+                temperature=blocker_config.get("temperature", 0.1),
+                q_value_clip=blocker_config.get("q_value_clip", 100),
+            )
+        elif current_blocker_type == "randomly_selected":
+            blocker_config = config_dict.get("blocker_configs", {}).get(
+                "randomly_selected", {}
+            )
+            stay_probability = blocker_config.get("stay_probability", 0.7)
+            blocker_agent = BlockerRandomlySelectedAgent(stay_probability=stay_probability)
+        elif current_blocker_type == "rule_based":
+            blocker_config = config_dict.get("blocker_configs", {}).get("rule_based", {})
+            stay_probability = blocker_config.get("stay_probability", 0.7)
+            blocker_agent = BlockerRuleBasedAgent(stay_probability=stay_probability)
+        else:
+            raise ValueError(f"Unknown blocker type: {current_blocker_type}")
 
     # Reset agents
     achiever_agent.reset()
-    blocker_agent.reset()
-
-    # Set environment reference for blocker agent
-    blocker_agent.set_env(env)
+    if blocker_agent is not None:
+        blocker_agent.reset()
+        # Set environment reference for blocker agent
+        blocker_agent.set_env(env)
 
     # Initialize tracking
     achiever_positions = []
@@ -877,15 +957,23 @@ def run_single_game(game_id, config_dict, save_dir, blocker_type=None):
     doors_opened_steps = []
 
     # Save initial maze state (before agents start moving)
-    initial_achiever_pos = tuple(env.achiever_pos)
-    initial_blocker_pos = tuple(env.blocker_pos)
-    initial_maze_lines = env_to_maze_format(
-        env, initial_achiever_pos, initial_blocker_pos
-    )
+    if is_single_agent:
+        # KeyDoor environment has only agent_pos
+        initial_achiever_pos = tuple(env.agent_pos)
+        initial_blocker_pos = None
+        initial_maze_lines = env_to_maze_format_single_agent(env, initial_achiever_pos)
+    else:
+        # AchieverBlocker environment has achiever_pos and blocker_pos
+        initial_achiever_pos = tuple(env.achiever_pos)
+        initial_blocker_pos = tuple(env.blocker_pos)
+        initial_maze_lines = env_to_maze_format(
+            env, initial_achiever_pos, initial_blocker_pos
+        )
 
     # Record initial positions before any actions
     achiever_positions.append(initial_achiever_pos)
-    blocker_positions.append(initial_blocker_pos)
+    if not is_single_agent:
+        blocker_positions.append(initial_blocker_pos)
 
     # Run game simulation
     step_count = 0
@@ -894,34 +982,51 @@ def run_single_game(game_id, config_dict, save_dir, blocker_type=None):
     total_blocker_reward = 0
 
     while step_count < max_steps:
-        # Get actions from both agents
+        # Get actions from agents
         achiever_action = achiever_agent.get_action(obs)
-        blocker_action = blocker_agent.get_action(obs)
-
-        action_pair = (achiever_action, blocker_action)
-
-        # Execute action
-        obs, rewards, terminated, truncated, info = env.step(action_pair)
+        
+        if is_single_agent:
+            # Single-agent mode: only achiever acts
+            obs, reward, terminated, truncated, info = env.step(achiever_action)
+            blocker_action = None
+            rewards = reward
+        else:
+            # Multi-agent mode: both agents act
+            blocker_action = blocker_agent.get_action(obs)
+            action_pair = (achiever_action, blocker_action)
+            obs, rewards, terminated, truncated, info = env.step(action_pair)
 
         done = terminated or truncated
 
         # Always record actions and positions - this ensures final actions are captured
         achiever_actions.append(achiever_action)
-        blocker_actions.append(blocker_action)
+        if not is_single_agent:
+            blocker_actions.append(blocker_action)
 
         # Record positions AFTER action execution
-        current_achiever_pos = tuple(env.achiever_pos)
-        current_blocker_pos = tuple(env.blocker_pos)
-        achiever_positions.append(current_achiever_pos)
-        blocker_positions.append(current_blocker_pos)
+        if is_single_agent:
+            current_achiever_pos = tuple(env.agent_pos)
+            current_blocker_pos = None
+            achiever_positions.append(current_achiever_pos)
+        else:
+            current_achiever_pos = tuple(env.achiever_pos)
+            current_blocker_pos = tuple(env.blocker_pos)
+            achiever_positions.append(current_achiever_pos)
+            blocker_positions.append(current_blocker_pos)
 
         # Update rewards
-        total_achiever_reward += rewards["achiever"]
-        total_blocker_reward += rewards["blocker"]
+        if is_single_agent:
+            total_achiever_reward += rewards
+            total_blocker_reward = 0
+        else:
+            total_achiever_reward += rewards["achiever"]
+            total_blocker_reward += rewards["blocker"]
 
         # Track key collection
-        if hasattr(env, "achiever_keys"):
-            current_keys = list(env.achiever_keys)
+        if is_single_agent:
+            current_keys = list(env.agent_keys) if hasattr(env, "agent_keys") else []
+        else:
+            current_keys = list(env.achiever_keys) if hasattr(env, "achiever_keys") else []
             if len(current_keys) > len(keys_collected):
                 new_key = [k for k in current_keys if k not in keys_collected][0]
                 keys_collected.append(new_key)
@@ -944,17 +1049,24 @@ def run_single_game(game_id, config_dict, save_dir, blocker_type=None):
     achiever_agent.keys_collected_steps = keys_collected_steps
     achiever_agent.doors_opened_steps = doors_opened_steps
 
-    # Calculate SR labels for both agents simultaneously (optimized)
+    # Calculate SR labels for agents
     sr_gammas = config_dict.get("sr_gammas", [0.5, 0.9, 0.99])
+    
+    # Get grid size from environment (handle different env types)
+    grid_size = env.grid.width if hasattr(env, 'grid') else env.width
 
-    # Batch SR calculation for both agents to reduce overhead
+    # Batch SR calculation for achiever
     achiever_sr_labels_per_timestep = calculate_sr_labels_for_trajectory(
-        achiever_positions, grid_size=env.width, gammas=sr_gammas
+        achiever_positions, grid_size=grid_size, gammas=sr_gammas
     )
 
-    blocker_sr_labels_per_timestep = calculate_sr_labels_for_trajectory(
-        blocker_positions, grid_size=env.width, gammas=sr_gammas
-    )
+    # Calculate for blocker only if it exists
+    if blocker_agent is not None:
+        blocker_sr_labels_per_timestep = calculate_sr_labels_for_trajectory(
+            blocker_positions, grid_size=grid_size, gammas=sr_gammas
+        )
+    else:
+        blocker_sr_labels_per_timestep = None
 
     # Calculate consumption labels (keys and doors)
     consumption_labels = calculate_consumption_labels(keys_collected, doors_opened)
@@ -968,12 +1080,18 @@ def run_single_game(game_id, config_dict, save_dir, blocker_type=None):
     )
 
     # Prepare trajectory data
-    trajectory_data = {
-        "achiever_positions": achiever_positions,
-        "blocker_positions": blocker_positions,
-        "achiever_actions": achiever_actions,
-        "blocker_actions": blocker_actions,
-    }
+    if is_single_agent:
+        trajectory_data = {
+            "achiever_positions": achiever_positions,
+            "achiever_actions": achiever_actions,
+        }
+    else:
+        trajectory_data = {
+            "achiever_positions": achiever_positions,
+            "blocker_positions": blocker_positions,
+            "achiever_actions": achiever_actions,
+            "blocker_actions": blocker_actions,
+        }
 
     # Save game with labels
     save_game_with_labels(
@@ -981,7 +1099,7 @@ def run_single_game(game_id, config_dict, save_dir, blocker_type=None):
         blocker_agent=blocker_agent,
         env=env,
         achiever_sr_labels_per_timestep=achiever_sr_labels_per_timestep,
-        blocker_sr_labels_per_timestep=blocker_sr_labels_per_timestep,
+        blocker_sr_labels_per_timestep=blocker_sr_labels_per_timestep if not is_single_agent else None,
         consumption_labels=consumption_labels,
         key_door_rank=key_door_rank,
         name="",
@@ -993,14 +1111,15 @@ def run_single_game(game_id, config_dict, save_dir, blocker_type=None):
         game_costs=game_costs,
         trajectory_data=trajectory_data,
         achiever_type=achiever_type,
-        blocker_type=current_blocker_type,
+        blocker_type=blocker_type if not is_single_agent else None,
         config_dict=config_dict,
     )
 
     # Memory cleanup after each game
-    del env, achiever_agent, blocker_agent, trajectory_data
-    del achiever_positions, blocker_positions, achiever_actions, blocker_actions
-    del achiever_sr_labels_per_timestep, blocker_sr_labels_per_timestep
+    del env, achiever_agent, trajectory_data
+    del achiever_positions, achiever_actions, achiever_sr_labels_per_timestep
+    if blocker_agent is not None:
+        del blocker_agent, blocker_positions, blocker_actions, blocker_sr_labels_per_timestep
     gc.collect()
 
     return game_id
@@ -1037,73 +1156,107 @@ def generate_trajectories(
     if config is None:
         config = Config()
 
-    print(f"Generating AchieverBlocker trajectories with random seed: {random_seed}")
-    print(f"Achiever types: {', '.join(config.achiever_types.keys())}")
-    print(f"Blocker types: {', '.join(config.blocker_types.keys())}")
-    print(f"Environment size: {config.env_size}")
-
-    # Generate data for each achiever-blocker combination
-    for achiever_type in config.achiever_types.keys():
-        for blocker_type in config.blocker_types.keys():
-            print(
-                f"\nGenerating data for {achiever_type} achiever with {blocker_type} blocker..."
-            )
-
-            # Create save directory for this combination
+    # Check if single-agent mode
+    is_single_agent = config.is_single_agent_mode()
+    
+    if is_single_agent:
+        print(f"Generating KeyDoor (single-agent) trajectories with random seed: {random_seed}")
+        print(f"Achiever types: {', '.join(config.achiever_types.keys())}")
+        print(f"Environment size: {config.env_size}")
+        
+        # Generate data for each achiever type (no blockers)
+        for achiever_type in config.achiever_types.keys():
+            print(f"\nGenerating data for {achiever_type} achiever (single-agent mode)...")
+            
+            # Create save directory for this achiever type
             save_dir = config.get_data_path(
-                achiever_type, blocker_type, is_test=test_data
+                achiever_type, None, is_test=test_data
             )
-
-            # Check if data already exists in the save directory
-            if os.path.exists(save_dir):
-                existing_files = [
-                    f
-                    for f in os.listdir(save_dir)
-                    if f.startswith("test") and f.endswith(".txt")
-                ]
-                if existing_files:
-                    print(f"Data already exists in {save_dir}")
-                    print(f"Found {len(existing_files)} existing trajectory files")
-                    print(
-                        "Skipping this combination to avoid overwriting existing data"
-                    )
-                    continue
-
-            # Create output directory
             os.makedirs(save_dir, exist_ok=True)
-
-            # Generate trajectories for this combination
-            # Get games count for this specific combination
-            achiever_games = config.achiever_types[achiever_type]
-            blocker_games = config.blocker_types[blocker_type]
-            combination_games = min(achiever_games, blocker_games)
-
-            # If generating test data, use 10% of n_games_per_type
+            
+            # Generate trajectories for single-agent mode
+            num_games = config.achiever_types[achiever_type]
+            
+            # If generating test data, use test proportion of games
             if test_data:
-                combination_games = int(config.n_games_per_type * 0.1)
-
+                num_games = int(num_games * config.get_test_data_proportion())
+            
             generate_trajectories_for_combination(
-                config,
-                achiever_type,
-                blocker_type,
-                save_dir,
-                random_seed,
-                n_processes,
-                combination_games,
+                config=config,
+                achiever_type=achiever_type,
+                blocker_type=None,  # No blocker in single-agent mode
+                num_games=num_games,
+                save_dir=save_dir,
+                random_seed=random_seed,
+                n_processes=n_processes,
             )
+    else:
+        print(f"Generating AchieverBlocker (multi-agent) trajectories with random seed: {random_seed}")
+        print(f"Achiever types: {', '.join(config.achiever_types.keys())}")
+        print(f"Blocker types: {', '.join(config.blocker_types.keys())}")
+        print(f"Environment size: {config.env_size}")
 
-    # Set number of processes (default to CPU count - 1, min 1)
-    if n_processes is None:
-        n_processes = max(1, mp.cpu_count() - 1)
+        # Generate data for each achiever-blocker combination
+        for achiever_type in config.achiever_types.keys():
+            for blocker_type in config.blocker_types.keys():
+                print(
+                    f"\nGenerating data for {achiever_type} achiever with {blocker_type} blocker..."
+                )
 
-    print(f"Using {n_processes} processes for parallel game generation")
+                # Create save directory for this combination
+                save_dir = config.get_data_path(
+                    achiever_type, blocker_type, is_test=test_data
+                )
 
-    print(
-        f"Generated data for all {len(config.achiever_types)} achiever types and {len(config.blocker_types)} blocker types"
-    )
-    print(
-        f"Total combinations: {len(config.achiever_types) * len(config.blocker_types)}"
-    )
+                # Check if data already exists in the save directory
+                if os.path.exists(save_dir):
+                    existing_files = [
+                        f
+                        for f in os.listdir(save_dir)
+                        if f.startswith("test") and f.endswith(".txt")
+                    ]
+                    if existing_files:
+                        print(f"Data already exists in {save_dir}")
+                        print(f"Found {len(existing_files)} existing trajectory files")
+                        print(
+                            "Skipping this combination to avoid overwriting existing data"
+                        )
+                        continue
+
+                # Create output directory
+                os.makedirs(save_dir, exist_ok=True)
+
+                # Generate trajectories for this combination
+                # Get games count for this specific combination
+                achiever_games = config.achiever_types[achiever_type]
+                blocker_games = config.blocker_types[blocker_type]
+                combination_games = min(achiever_games, blocker_games)
+
+                # If generating test data, use test proportion of games
+                if test_data:
+                    combination_games = int(combination_games * config.get_test_data_proportion())
+
+                generate_trajectories_for_combination(
+                    config=config,
+                    achiever_type=achiever_type,
+                    blocker_type=blocker_type,
+                    num_games=combination_games,
+                    save_dir=save_dir,
+                    random_seed=random_seed,
+                    n_processes=n_processes,
+                )
+
+    # Final summary
+    if is_single_agent:
+        print(f"Generated data for all {len(config.achiever_types)} achiever types (single-agent mode)")
+        print(f"Total combinations: {len(config.achiever_types)}")
+    else:
+        print(
+            f"Generated data for all {len(config.achiever_types)} achiever types and {len(config.blocker_types)} blocker types"
+        )
+        print(
+            f"Total combinations: {len(config.achiever_types) * len(config.blocker_types)}"
+        )
 
 
 def generate_trajectories_for_combination(
@@ -1217,9 +1370,10 @@ if __name__ == "__main__":
             "goal_direct",
             "randomly_selected",
             "rule_based",
+            "none",  # For single-agent mode
         ],
         default=None,
-        help="Type of blocker agent to use",
+        help="Type of blocker agent to use (use 'none' for single-agent mode)",
     )
     parser.add_argument(
         "--env_size",

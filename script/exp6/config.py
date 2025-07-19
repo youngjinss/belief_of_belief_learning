@@ -318,25 +318,44 @@ class Config:
             "n_past_infer": 1,
         }
 
+    def is_single_agent_mode(self):
+        """Check if running in single-agent mode (no blockers)"""
+        return not self.blocker_types or len(self.blocker_types) == 0
+    
+    def get_test_data_proportion(self):
+        """Get test data proportion (1 - training_proportion)"""
+        return 1.0 - self.training_config["training_proportion"]
+
     def get_env_name(self):
-        """Get full environment name"""
-        return self.env_name.format(size=self.env_size)
+        """Get full environment name based on agent configuration"""
+        if self.is_single_agent_mode():
+            # Use KeyDoor environment for single-agent mode
+            return f"MiniGrid-KeyDoor-{self.env_size}-v1"
+        else:
+            # Use AchieverBlocker environment for multi-agent mode
+            return self.env_name.format(size=self.env_size)
 
-    def get_agent_pair_name(self, achiever_type, blocker_type):
+    def get_agent_pair_name(self, achiever_type, blocker_type=None):
         """Get agent pair name for directory structure"""
-        return f"{achiever_type}_{blocker_type}"
+        if self.is_single_agent_mode() or blocker_type is None:
+            # For single-agent mode, use only achiever type
+            return achiever_type
+        else:
+            # For multi-agent mode, use both types
+            return f"{achiever_type}_{blocker_type}"
 
-    def get_data_path(self, achiever_type, blocker_type, is_test=False):
+    def get_data_path(self, achiever_type, blocker_type=None, is_test=False):
         """
         Get data path based on environment name and agent types
 
         Args:
             achiever_type (str): Type of achiever agent
-            blocker_type (str): Type of blocker agent
+            blocker_type (str): Type of blocker agent (None for single-agent mode)
             is_test (bool): If True, returns path for test data with /test suffix
 
         Returns:
-            str: Data path in format ./data/{env_name}/{achiever_type}_{blocker_type}/ or ./data/{env_name}/{achiever_type}_{blocker_type}/test/
+            str: Data path in format ./data/{env_name}/{achiever_type}/ for single-agent or 
+                 ./data/{env_name}/{achiever_type}_{blocker_type}/ for multi-agent
         """
         import os
 
@@ -349,17 +368,18 @@ class Config:
         else:
             return base_path
 
-    def get_training_data_path(self, achiever_type, blocker_type, is_test=False):
+    def get_training_data_path(self, achiever_type, blocker_type=None, is_test=False):
         """
         Get training data path that always uses 'data' as base directory, regardless of save_dir modifications
 
         Args:
             achiever_type (str): Type of achiever agent
-            blocker_type (str): Type of blocker agent
+            blocker_type (str): Type of blocker agent (None for single-agent mode)
             is_test (bool): If True, returns path for test data with /test suffix
 
         Returns:
-            str: Training data path in format ./data/{env_name}/{achiever_type}_{blocker_type}/
+            str: Training data path in format ./data/{env_name}/{achiever_type}/ for single-agent or
+                 ./data/{env_name}/{achiever_type}_{blocker_type}/ for multi-agent
         """
         import os
 
@@ -372,7 +392,7 @@ class Config:
         else:
             return base_path
 
-    def get_test_data_dir(self, achiever_type, blocker_type):
+    def get_test_data_dir(self, achiever_type, blocker_type=None):
         """Get test data directory path"""
         return self.get_data_path(achiever_type, blocker_type, is_test=True)
 
@@ -644,9 +664,13 @@ class Config:
                 args.achiever_type: self.n_games_per_type
             }  # Convert single type to dict for backward compatibility
         if hasattr(args, "blocker_type") and args.blocker_type is not None:
-            self.blocker_types = {
-                args.blocker_type: self.n_games_per_type
-            }  # Convert single type to dict for backward compatibility
+            if args.blocker_type == "none":
+                # Single-agent mode
+                self.blocker_types = {}
+            else:
+                self.blocker_types = {
+                    args.blocker_type: self.n_games_per_type
+                }  # Convert single type to dict for backward compatibility
         # Backward compatibility
         if hasattr(args, "agent_type") and args.agent_type is not None:
             self.achiever_types = {args.agent_type: self.n_games_per_type}

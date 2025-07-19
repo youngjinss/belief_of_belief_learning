@@ -548,11 +548,30 @@ def evaluate_achieverblocker_model(
     # Combine data from all combinations
     test_data = combine_all_combinations_data(all_test_data)
     
-    # Use all available test data (no sampling)
+    # Sample data based on training_proportion (use the complement for evaluation)
+    total_available_samples = test_data["trajectories"].shape[0]
+    training_proportion = config.training_config.get("training_proportion", 0.9)
+    eval_proportion = 1.0 - training_proportion  # Use the remaining portion for evaluation
+    n_samples_to_use = int(total_available_samples * eval_proportion)
+    
+    # Use numpy random sampling to get the evaluation portion of the data
+    np.random.seed(config.seed)  # For reproducible sampling
+    sample_indices = np.random.choice(total_available_samples, size=n_samples_to_use, replace=False)
+    sample_indices = np.sort(sample_indices)  # Keep indices sorted for consistency
+    
+    # Sample the test data
+    sampled_test_data = {}
+    for key, data in test_data.items():
+        sampled_test_data[key] = data[sample_indices]
+    
+    test_data = sampled_test_data
     total_test_samples = test_data["trajectories"].shape[0]
 
     print(f"Test data usage:")
-    print(f"  Using all available test samples: {total_test_samples}")
+    print(f"  Total available test samples: {total_available_samples}")
+    print(f"  Training proportion: {training_proportion:.1%}")
+    print(f"  Evaluation proportion: {eval_proportion:.1%}")
+    print(f"  Using sampled test samples: {total_test_samples}")
 
     if total_test_samples == 0:
         raise ValueError(

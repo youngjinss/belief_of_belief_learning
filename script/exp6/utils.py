@@ -1377,28 +1377,41 @@ def setup_model_and_data(
 
     # Split data
     total_samples = len(dataset)
-    # For combined data, calculate val_size based on total combinations
-    total_combinations = len(config.achiever_types) * len(config.blocker_types)
-    val_size = int(config.n_games_per_type * total_combinations * (1 - training_proportion))
+    # Calculate val_size based on training_proportion, accounting for single-agent vs multi-agent mode
+    if config.is_single_agent_mode():
+        # Single-agent mode: use training_proportion directly
+        val_size = int(total_samples * (1 - training_proportion))
+    else:
+        # Multi-agent mode: calculate based on combinations
+        total_combinations = len(config.achiever_types) * len(config.blocker_types)
+        val_size = int(config.n_games_per_type * total_combinations * (1 - training_proportion))
+    
     split_idx = total_samples - val_size
 
     train_data = torch.utils.data.Subset(dataset, range(split_idx))
     val_data = torch.utils.data.Subset(dataset, range(split_idx, total_samples))
 
-    # Calculate samples per epoch based on all combinations
-    total_achiever_samples = sum(config.achiever_types.values()) * len(config.blocker_types)
-    total_blocker_samples = sum(config.blocker_types.values()) * len(config.achiever_types)
-    samples_per_epoch = total_samples  # Use all combined samples
+    # Calculate samples per epoch: use n_games_per_type per epoch instead of all samples
+    if config.is_single_agent_mode():
+        # Single-agent mode: sample n_games_per_type samples per epoch
+        samples_per_epoch = config.n_games_per_type
+    else:
+        # Multi-agent mode: sample n_games_per_type per combination per epoch
+        total_combinations = len(config.achiever_types) * len(config.blocker_types)
+        samples_per_epoch = config.n_games_per_type * total_combinations
 
     print(f"Training samples: {len(train_data)}")
     print(
         f"Validation samples: {len(val_data)} (using {val_size} samples for validation)"
     )
     print(f"Total samples: {total_samples}")
-    print(f"Total combinations: {total_combinations}")
-    print(
-        f"Samples per epoch: {samples_per_epoch} (all combined data)"
-    )
+    if config.is_single_agent_mode():
+        print(f"Single-agent mode: 1 agent type")
+        print(f"Samples per epoch: {samples_per_epoch} (n_games_per_type={config.n_games_per_type})")
+    else:
+        total_combinations = len(config.achiever_types) * len(config.blocker_types)
+        print(f"Total combinations: {total_combinations}")
+        print(f"Samples per epoch: {samples_per_epoch} (n_games_per_type * combinations)")
 
     # Training loader will be created dynamically each epoch
     train_loader = None  # Will be created in training loop

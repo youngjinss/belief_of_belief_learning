@@ -1299,15 +1299,10 @@ if __name__ == "__main__":
             print(f"Training for {achiever_type} achiever with {blocker_type} blocker")
             print(f"{'='*60}")
 
-            # Create specific save directory for this combination
-            combination_save_dir = os.path.join(
-                args.save_dir, f"{achiever_type}_{blocker_type}"
-            )
-
             # Run training for this combination
             results = train_tomnet(
                 data_dir=args.data_dir,
-                save_dir=combination_save_dir,
+                save_dir=args.save_dir,
                 config=config,
                 achiever_type=achiever_type,
                 blocker_type=blocker_type,

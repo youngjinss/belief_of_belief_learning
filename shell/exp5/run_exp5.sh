@@ -205,8 +205,8 @@ run_visualization() {
     fi
     
     # Check if visualization already completed (check for plot directory)
-    if [ -d "$RESULTS_DIR" ] && [ "$(ls -A $RESULTS_DIR/*.png 2>/dev/null | wc -l)" -gt 0 ]; then
-        log_step "Visualization skipped - plots already exist in $RESULTS_DIR"
+    if [ -d "$$RESULTS_DIR/plots" ] && [ "$(ls -A $$RESULTS_DIR/plots/*.png 2>/dev/null | wc -l)" -gt 0 ]; then
+        log_step "Visualization skipped - plots already exist in $$RESULTS_DIR/plots"
         return 0
     fi
     

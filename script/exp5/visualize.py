@@ -1862,6 +1862,7 @@ if __name__ == "__main__":
             "history_files",
             [
                 os.path.join(results_dir, "training_history.json"),
+                os.path.join(results_dir, "*/training_history.json"),
                 os.path.join(
                     results_dir, f"exp{experiment_no}_*/training_history.json"
                 ),
@@ -1885,6 +1886,7 @@ if __name__ == "__main__":
             "prediction_files",
             [
                 os.path.join(results_dir, "predictions.pkl"),
+                os.path.join(results_dir, "*/predictions.pkl"),
                 os.path.join(results_dir, f"exp{experiment_no}_*/predictions.pkl"),
             ],
         )
@@ -1906,6 +1908,7 @@ if __name__ == "__main__":
             "prediction_files",
             [
                 os.path.join(results_dir, "predictions.pkl"),
+                os.path.join(results_dir, "*/predictions.pkl"),
                 os.path.join(results_dir, f"exp{experiment_no}_*/predictions.pkl"),
             ],
         )
@@ -1926,6 +1929,13 @@ if __name__ == "__main__":
             "n_past_results_file",
             os.path.join(results_dir, "n_past_evaluation_results.json"),
         )
+        
+        # If not found, check in subdirectories
+        if not os.path.exists(n_past_file):
+            pattern = os.path.join(results_dir, "*/n_past_evaluation_results.json")
+            matching_files = glob.glob(pattern)
+            if matching_files:
+                n_past_file = matching_files[0]
         if os.path.exists(n_past_file):
             with open(n_past_file, "r") as f:
                 n_past_results = json.load(f)
@@ -1986,10 +1996,12 @@ if __name__ == "__main__":
             "possible_model_paths",
             [
                 os.path.join(results_dir, "best_model.pth"),
+                os.path.join(results_dir, "*/best_model.pth"),
                 os.path.join(
                     parent_results_dir, "best_model.pth"
                 ),  # Check parent for timestamped dirs
                 os.path.join(results_dir, "model.pth"),
+                os.path.join(results_dir, "*/model.pth"),
                 os.path.join(parent_results_dir, "model.pth"),
                 os.path.join(results_dir, "figure5_goal_directed_alpha0.01_model.pth"),
             ],
@@ -2009,9 +2021,20 @@ if __name__ == "__main__":
             possible_model_paths.extend(model_config["additional_model_paths"])
 
         model_path = None
-        for path in possible_model_paths:
-            if os.path.exists(path):
-                model_path = path
+        for path_pattern in possible_model_paths:
+            # Handle glob patterns
+            if '*' in path_pattern:
+                matching_paths = glob.glob(path_pattern)
+                for path in matching_paths:
+                    if os.path.exists(path):
+                        model_path = path
+                        break
+            else:
+                if os.path.exists(path_pattern):
+                    model_path = path_pattern
+                    break
+            
+            if model_path:
                 break
 
         if model_path and os.path.exists(model_path):

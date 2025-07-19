@@ -179,9 +179,8 @@ run_evaluation() {
     eval $(get_data_paths)
     
     # Run evaluate.py from base directory to maintain correct relative paths
-    python script/exp5/evaluate.py \
-        --model_path "$RESULTS_DIR/best_model.pth" \
-        --test_data_dir "$TRAIN_DATA_DIR" \
+    python script/exp5/evaluate.py --config_override \
+        --model_dir "$RESULTS_DIR" \
         --result_dir "$RESULTS_DIR" \
         --plot_type "all" \
         > "$RUN_LOG_DIR/evaluation.log" 2>&1

@@ -979,40 +979,39 @@ def _plot_agent_based_embeddings(
         ax1.grid(True, alpha=0.3)
 
     # t-SNE visualization with optimized parameters
-    if len(embeddings) > 50:
-        print("Computing t-SNE (this may take a while)...")
-        # Use faster t-SNE parameters for better performance
-        tsne = TSNE(
-            n_components=2,
-            random_state=42,
-            perplexity=min(30, len(embeddings) // 4),  # Adaptive perplexity
-            n_iter=300,  # Reduced iterations for speed
-            early_exaggeration=12,
-            learning_rate="auto",
-        )
-        embeddings_tsne = tsne.fit_transform(embeddings)
+    print("Computing t-SNE (this may take a while)...")
+    # Use faster t-SNE parameters for better performance
+    tsne = TSNE(
+        n_components=2,
+        random_state=42,
+        perplexity=min(30, len(embeddings) // 4),  # Adaptive perplexity
+        n_iter=300,  # Reduced iterations for speed
+        early_exaggeration=12,
+        learning_rate="auto",
+    )
+    embeddings_tsne = tsne.fit_transform(embeddings)
 
-        unique_agents = np.unique(agent_labels)
-        for i, agent in enumerate(unique_agents):
-            mask = agent_labels == agent
-            agent_count = np.sum(mask)
-            if agent_count > 0:
-                color = agent_colors[i] if i < len(agent_colors) else f"C{i}"
-                name = agent_names[i] if i < len(agent_names) else agent
-                ax2.scatter(
-                    embeddings_tsne[mask, 0],
-                    embeddings_tsne[mask, 1],
-                    c=color,
-                    label=f"{name} (n={agent_count})",
-                    alpha=embedding_plots["alpha"],
-                    s=embedding_plots["marker_size"],
-                )
+    unique_agents = np.unique(agent_labels)
+    for i, agent in enumerate(unique_agents):
+        mask = agent_labels == agent
+        agent_count = np.sum(mask)
+        if agent_count > 0:
+            color = agent_colors[i] if i < len(agent_colors) else f"C{i}"
+            name = agent_names[i] if i < len(agent_names) else agent
+            ax2.scatter(
+                embeddings_tsne[mask, 0],
+                embeddings_tsne[mask, 1],
+                c=color,
+                label=f"{name} (n={agent_count})",
+                alpha=embedding_plots["alpha"],
+                s=embedding_plots["marker_size"],
+            )
 
-        ax2.set_title(f"t-SNE by Agent Type")
-        ax2.set_xlabel("t-SNE 1")
-        ax2.set_ylabel("t-SNE 2")
-        ax2.legend()
-        ax2.grid(True, alpha=0.3)
+    ax2.set_title(f"t-SNE by Agent Type")
+    ax2.set_xlabel("t-SNE 1")
+    ax2.set_ylabel("t-SNE 2")
+    ax2.legend()
+    ax2.grid(True, alpha=0.3)
 
     plt.tight_layout()
     os.makedirs(output_dir, exist_ok=True)
@@ -1072,40 +1071,39 @@ def _plot_goal_based_embeddings(
         ax1.grid(True, alpha=0.3)
 
     # t-SNE visualization with optimized parameters
-    if len(embeddings) > 50:
-        print("Computing t-SNE (this may take a while)...")
-        # Use faster t-SNE parameters for better performance
-        tsne = TSNE(
-            n_components=2,
-            random_state=42,
-            perplexity=min(30, len(embeddings) // 4),  # Adaptive perplexity
-            n_iter=300,  # Reduced iterations for speed
-            early_exaggeration=12,
-            learning_rate="auto",
-        )
-        embeddings_tsne = tsne.fit_transform(embeddings)
+    print("Computing t-SNE (this may take a while)...")
+    # Use faster t-SNE parameters for better performance
+    tsne = TSNE(
+        n_components=2,
+        random_state=42,
+        perplexity=min(30, len(embeddings) // 4),  # Adaptive perplexity
+        n_iter=300,  # Reduced iterations for speed
+        early_exaggeration=12,
+        learning_rate="auto",
+    )
+    embeddings_tsne = tsne.fit_transform(embeddings)
 
-        unique_goals = np.unique(goal_labels)
-        for goal in unique_goals:
-            mask = goal_labels == goal
-            goal_count = np.sum(mask)
-            if goal_count > 0:
-                color = goal_colors[goal] if goal < len(goal_colors) else f"C{goal}"
-                name = goal_names[goal] if goal < len(goal_names) else f"Goal {goal}"
-                ax2.scatter(
-                    embeddings_tsne[mask, 0],
-                    embeddings_tsne[mask, 1],
-                    c=color,
-                    label=f"{name} (n={goal_count})",
-                    alpha=embedding_plots["alpha"],
-                    s=embedding_plots["marker_size"],
-                )
+    unique_goals = np.unique(goal_labels)
+    for goal in unique_goals:
+        mask = goal_labels == goal
+        goal_count = np.sum(mask)
+        if goal_count > 0:
+            color = goal_colors[goal] if goal < len(goal_colors) else f"C{goal}"
+            name = goal_names[goal] if goal < len(goal_names) else f"Goal {goal}"
+            ax2.scatter(
+                embeddings_tsne[mask, 0],
+                embeddings_tsne[mask, 1],
+                c=color,
+                label=f"{name} (n={goal_count})",
+                alpha=embedding_plots["alpha"],
+                s=embedding_plots["marker_size"],
+            )
 
-        ax2.set_title(f"t-SNE by Goal Type")
-        ax2.set_xlabel("t-SNE 1")
-        ax2.set_ylabel("t-SNE 2")
-        ax2.legend()
-        ax2.grid(True, alpha=0.3)
+    ax2.set_title(f"t-SNE by Goal Type")
+    ax2.set_xlabel("t-SNE 1")
+    ax2.set_ylabel("t-SNE 2")
+    ax2.legend()
+    ax2.grid(True, alpha=0.3)
 
     plt.tight_layout()
     os.makedirs(output_dir, exist_ok=True)
@@ -1182,43 +1180,32 @@ def _plot_separate_agent_goal_embeddings(
 
         # t-SNE for this agent
         ax_tsne = axes[agent_idx, 1]
-        if len(agent_embeddings) > 30:  # Minimum samples for t-SNE
-            tsne = TSNE(n_components=2, random_state=42)
-            agent_embeddings_tsne = tsne.fit_transform(agent_embeddings)
+        tsne = TSNE(n_components=2, random_state=42)
+        agent_embeddings_tsne = tsne.fit_transform(agent_embeddings)
 
-            unique_goals = np.unique(agent_goals)
-            for goal in unique_goals:
-                goal_mask = agent_goals == goal
-                goal_count = np.sum(goal_mask)
-                if goal_count > 0:
-                    color = goal_colors[goal] if goal < len(goal_colors) else f"C{goal}"
-                    name = (
-                        goal_names[goal] if goal < len(goal_names) else f"Goal {goal}"
-                    )
-                    ax_tsne.scatter(
-                        agent_embeddings_tsne[goal_mask, 0],
-                        agent_embeddings_tsne[goal_mask, 1],
-                        c=color,
-                        label=f"{name} (n={goal_count})",
-                        alpha=embedding_plots["alpha"],
-                        s=embedding_plots["marker_size"],
-                    )
+        unique_goals = np.unique(agent_goals)
+        for goal in unique_goals:
+            goal_mask = agent_goals == goal
+            goal_count = np.sum(goal_mask)
+            if goal_count > 0:
+                color = goal_colors[goal] if goal < len(goal_colors) else f"C{goal}"
+                name = (
+                    goal_names[goal] if goal < len(goal_names) else f"Goal {goal}"
+                )
+                ax_tsne.scatter(
+                    agent_embeddings_tsne[goal_mask, 0],
+                    agent_embeddings_tsne[goal_mask, 1],
+                    c=color,
+                    label=f"{name} (n={goal_count})",
+                    alpha=embedding_plots["alpha"],
+                    s=embedding_plots["marker_size"],
+                )
 
-            ax_tsne.set_title(f"t-SNE: {agent.capitalize()} Goals")
-            ax_tsne.set_xlabel("t-SNE 1")
-            ax_tsne.set_ylabel("t-SNE 2")
-            ax_tsne.legend(fontsize=8)
-            ax_tsne.grid(True, alpha=0.3)
-        else:
-            ax_tsne.text(
-                0.5,
-                0.5,
-                f"Insufficient samples\nfor t-SNE ({len(agent_embeddings)})",
-                ha="center",
-                va="center",
-                transform=ax_tsne.transAxes,
-            )
-            ax_tsne.set_title(f"t-SNE: {agent.capitalize()} Goals")
+        ax_tsne.set_title(f"t-SNE: {agent.capitalize()} Goals")
+        ax_tsne.set_xlabel("t-SNE 1")
+        ax_tsne.set_ylabel("t-SNE 2")
+        ax_tsne.legend(fontsize=8)
+        ax_tsne.grid(True, alpha=0.3)
 
     plt.tight_layout()
     os.makedirs(output_dir, exist_ok=True)
@@ -1301,46 +1288,35 @@ def _plot_type_based_embeddings_for_blockers(
         ax1.grid(True, alpha=0.3)
 
     # t-SNE visualization
-    if len(blocker_embeddings) > 30:  # Minimum samples for t-SNE
-        print("Computing t-SNE for blocker types...")
-        tsne = TSNE(
-            n_components=2,
-            random_state=42,
-            perplexity=min(30, len(blocker_embeddings) // 4),
-        )
-        embeddings_tsne = tsne.fit_transform(blocker_embeddings)
+    print("Computing t-SNE for blocker types...")
+    tsne = TSNE(
+        n_components=2,
+        random_state=42,
+        perplexity=min(30, len(blocker_embeddings) // 4),
+    )
+    embeddings_tsne = tsne.fit_transform(blocker_embeddings)
 
-        unique_types = np.unique(blocker_types)
-        for i, blocker_type in enumerate(unique_types):
-            mask = blocker_types == blocker_type
-            type_count = np.sum(mask)
-            if type_count > 0:
-                color = type_colors[i] if i < len(type_colors) else f"C{i}"
-                name = type_names[i] if i < len(type_names) else f"Type {blocker_type}"
-                ax2.scatter(
-                    embeddings_tsne[mask, 0],
-                    embeddings_tsne[mask, 1],
-                    c=color,
-                    label=f"{name} (n={type_count})",
-                    alpha=embedding_plots["alpha"],
-                    s=embedding_plots["marker_size"],
-                )
+    unique_types = np.unique(blocker_types)
+    for i, blocker_type in enumerate(unique_types):
+        mask = blocker_types == blocker_type
+        type_count = np.sum(mask)
+        if type_count > 0:
+            color = type_colors[i] if i < len(type_colors) else f"C{i}"
+            name = type_names[i] if i < len(type_names) else f"Type {blocker_type}"
+            ax2.scatter(
+                embeddings_tsne[mask, 0],
+                embeddings_tsne[mask, 1],
+                c=color,
+                label=f"{name} (n={type_count})",
+                alpha=embedding_plots["alpha"],
+                s=embedding_plots["marker_size"],
+            )
 
-        ax2.set_title("t-SNE by Blocker Type")
-        ax2.set_xlabel("t-SNE 1")
-        ax2.set_ylabel("t-SNE 2")
-        ax2.legend()
-        ax2.grid(True, alpha=0.3)
-    else:
-        ax2.text(
-            0.5,
-            0.5,
-            f"Insufficient samples\nfor t-SNE ({len(blocker_embeddings)})",
-            ha="center",
-            va="center",
-            transform=ax2.transAxes,
-        )
-        ax2.set_title("t-SNE by Blocker Type")
+    ax2.set_title("t-SNE by Blocker Type")
+    ax2.set_xlabel("t-SNE 1")
+    ax2.set_ylabel("t-SNE 2")
+    ax2.legend()
+    ax2.grid(True, alpha=0.3)
 
     plt.tight_layout()
 
@@ -1426,46 +1402,35 @@ def _plot_type_based_embeddings_for_achiever(
         ax1.grid(True, alpha=0.3)
 
     # t-SNE visualization
-    if len(achiever_embeddings) > 30:  # Minimum samples for t-SNE
-        print("Computing t-SNE for achiever types...")
-        tsne = TSNE(
-            n_components=2,
-            random_state=42,
-            perplexity=min(30, len(achiever_embeddings) // 4),
-        )
-        embeddings_tsne = tsne.fit_transform(achiever_embeddings)
+    print("Computing t-SNE for achiever types...")
+    tsne = TSNE(
+        n_components=2,
+        random_state=42,
+        perplexity=min(30, len(achiever_embeddings) // 4),
+    )
+    embeddings_tsne = tsne.fit_transform(achiever_embeddings)
 
-        unique_types = np.unique(achiever_types)
-        for i, achiever_type in enumerate(unique_types):
-            mask = achiever_types == achiever_type
-            type_count = np.sum(mask)
-            if type_count > 0:
-                color = type_colors[i] if i < len(type_colors) else f"C{i}"
-                name = type_names[i] if i < len(type_names) else f"Type {achiever_type}"
-                ax2.scatter(
-                    embeddings_tsne[mask, 0],
-                    embeddings_tsne[mask, 1],
-                    c=color,
-                    label=f"{name} (n={type_count})",
-                    alpha=embedding_plots["alpha"],
-                    s=embedding_plots["marker_size"],
-                )
+    unique_types = np.unique(achiever_types)
+    for i, achiever_type in enumerate(unique_types):
+        mask = achiever_types == achiever_type
+        type_count = np.sum(mask)
+        if type_count > 0:
+            color = type_colors[i] if i < len(type_colors) else f"C{i}"
+            name = type_names[i] if i < len(type_names) else f"Type {achiever_type}"
+            ax2.scatter(
+                embeddings_tsne[mask, 0],
+                embeddings_tsne[mask, 1],
+                c=color,
+                label=f"{name} (n={type_count})",
+                alpha=embedding_plots["alpha"],
+                s=embedding_plots["marker_size"],
+            )
 
-        ax2.set_title("t-SNE by Achiever Type")
-        ax2.set_xlabel("t-SNE 1")
-        ax2.set_ylabel("t-SNE 2")
-        ax2.legend()
-        ax2.grid(True, alpha=0.3)
-    else:
-        ax2.text(
-            0.5,
-            0.5,
-            f"Insufficient samples\nfor t-SNE ({len(achiever_embeddings)})",
-            ha="center",
-            va="center",
-            transform=ax2.transAxes,
-        )
-        ax2.set_title("t-SNE by Achiever Type")
+    ax2.set_title("t-SNE by Achiever Type")
+    ax2.set_xlabel("t-SNE 1")
+    ax2.set_ylabel("t-SNE 2")
+    ax2.legend()
+    ax2.grid(True, alpha=0.3)
 
     plt.tight_layout()
 

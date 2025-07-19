@@ -313,9 +313,9 @@ class Config:
 
         # N_past evaluation settings
         self.n_past_evaluation = {
-            "n_past_min": 0,
-            "n_past_max": 10,
-            "n_past_infer": 10,
+            "n_past_min": 1,
+            "n_past_max": 1,
+            "n_past_infer": 1,
         }
 
     def get_env_name(self):
@@ -562,16 +562,11 @@ class Config:
         """Enable debug mode with smaller scale settings for testing"""
         self.debug_mode = True
 
-        # Reduce data generation for testing
-        # Set small values for debug mode
-        self.achiever_types = {"lv0va": 100}
-        self.blocker_types = {"lv0vb": 100}
-
         # Reduce training settings for faster testing
         self.training_config.update(
             {
                 "batch_size": 64,  # Reduced from 1024
-                "epochs": 1,  # Reduced from 200 (faster test)
+                "epochs": 2,  # Reduced from 200 (faster test)
                 "gradient_accumulation_steps": 1,  # Reduced from 2
             }
         )

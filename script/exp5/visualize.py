@@ -1484,3 +1484,179 @@ def _plot_type_based_embeddings_for_achiever(
     plt.close()
 
 
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Visualize AchieverBlocker ToMnet results"
+    )
+    parser.add_argument(
+        "--config_override",
+        action="store_true",
+        help="Override config with command line arguments",
+    )
+    parser.add_argument("--result_dir", type=str, help="Directory containing results")
+    parser.add_argument("--plot_dir", type=str, help="Directory to save plots")
+    parser.add_argument(
+        "--experiment_no", type=int, default=5, help="Experiment number"
+    )
+    parser.add_argument(
+        "--plot_type",
+        type=str,
+        choices=["training", "confusion", "likelihood", "embeddings", "n_past", "all"],
+        default="all",
+        help="Type of plot to create",
+    )
+
+    args = parser.parse_args()
+
+    config = Config()
+
+    # Override config with command line arguments if specified
+    if args.config_override:
+        config.update_from_args(args)
+
+    results_dir = args.result_dir or getattr(config, "result_dir", "results/exp5")
+    plot_dir = args.plot_dir or getattr(config, "plot_dir", "results/exp5/plots")
+    experiment_no = args.experiment_no or getattr(config, "experiment_no", 5)
+
+    # Create plot directory
+    os.makedirs(plot_dir, exist_ok=True)
+
+    print(f"Creating AchieverBlocker visualizations for experiment {experiment_no}")
+    print(f"Results directory: {results_dir}")
+    print(f"Plot directory: {plot_dir}")
+
+    # Plot training curves
+    if args.plot_type in ["training", "all"]:
+        # Get history file paths from config
+        history_config = config.get_history_config()
+        history_files = history_config.get(
+            "history_files",
+            [
+                os.path.join(results_dir, "training_history.json"),
+                os.path.join(
+                    results_dir, f"exp{experiment_no}_*/training_history.json"
+                ),
+            ],
+        )
+
+        import glob
+
+        for pattern in history_files:
+            matching_files = glob.glob(pattern)
+            for history_file in matching_files:
+                if os.path.exists(history_file):
+                    plot_training_curves(history_file, plot_dir, config, experiment_no)
+                    break
+
+    # Plot confusion matrix
+    if args.plot_type in ["confusion", "all"]:
+        # Get prediction file paths from config
+        pred_config = config.get_prediction_config()
+        pred_files = pred_config.get(
+            "prediction_files",
+            [
+                os.path.join(results_dir, "predictions.pkl"),
+                os.path.join(results_dir, f"exp{experiment_no}_*/predictions.pkl"),
+            ],
+        )
+
+        import glob
+
+        for pattern in pred_files:
+            matching_files = glob.glob(pattern)
+            for pred_file in matching_files:
+                if os.path.exists(pred_file):
+                    plot_confusion_matrix(pred_file, plot_dir, config, experiment_no)
+                    break
+
+    # Plot action likelihood
+    if args.plot_type in ["likelihood", "all"]:
+        # Get prediction file paths from config
+        pred_config = config.get_prediction_config()
+        pred_files = pred_config.get(
+            "prediction_files",
+            [
+                os.path.join(results_dir, "predictions.pkl"),
+                os.path.join(results_dir, f"exp{experiment_no}_*/predictions.pkl"),
+            ],
+        )
+
+        import glob
+
+        for pattern in pred_files:
+            matching_files = glob.glob(pattern)
+            for pred_file in matching_files:
+                if os.path.exists(pred_file):
+                    plot_action_likelihood(pred_file, plot_dir, config, experiment_no)
+                    break
+
+    # Plot character embeddings
+    if args.plot_type in ["embeddings", "all"]:
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        
+        # Find the best model
+        model_path = os.path.join(results_dir, "best_model.pth")
+        
+        if os.path.exists(model_path):
+            # Load model
+            from evaluate import load_model
+            model_kwargs = config.get_model_kwargs()
+            model = load_model(model_path, device, model_kwargs)
+            
+            # Load test data using the same multi-combination approach as evaluate.py
+            from utils import load_test_data_all_combinations, combine_all_combinations_data
+            
+            env_name = config.get_env_name()
+            test_data_dir_base = f"./data/{env_name}"
+            
+            # Load test data for all combinations efficiently (same as evaluate.py)
+            try:
+                all_test_data = load_test_data_all_combinations(config, test_data_dir_base=test_data_dir_base)
+                # Combine data from all combinations
+                test_data = combine_all_combinations_data(all_test_data)
+                print(f"Successfully loaded test data from all combinations: {test_data['trajectories'].shape[0]} samples")
+            except Exception as e:
+                print(f"Failed to load test data from combinations: {e}")
+                test_data = None
+
+            if test_data:
+                # Convert numpy arrays to tensors for TensorDataset (same as evaluate.py fix)
+                test_tensors = {
+                    key: torch.from_numpy(data) if isinstance(data, np.ndarray) else torch.tensor(data)
+                    for key, data in test_data.items()
+                }
+                
+                # Create test dataset
+                test_dataset = TensorDataset(
+                    test_tensors["trajectories"],
+                    test_tensors["actions"],
+                    test_tensors["goals"],
+                    test_tensors["goal_ranks"],
+                    test_tensors["agents"],
+                    test_tensors["types"],
+                    test_tensors["consumption_labels"],
+                    test_tensors["sr_labels"],
+                )
+                test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
+
+                # Create character embeddings plot
+                plot_character_embeddings(
+                    model,
+                    test_loader,
+                    device,
+                    plot_dir,
+                    config,
+                    experiment_no,
+                    n_samples=None,
+                )
+                print("Character embedding visualization completed!")
+            else:
+                print("No test games found for character embedding visualization")
+        else:
+            print(f"Model file not found: {model_path}")
+
+    print("Visualization completed!")
+
+

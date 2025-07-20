@@ -7,7 +7,7 @@ import torch.nn.functional as F
 
 # Add lib to path for imports
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from utils import set_seed
+from utils import set_seed, calculate_sr_loss_kl_divergence
 
 # Add current directory for config import
 sys.path.append(os.path.dirname(__file__))
@@ -586,7 +586,7 @@ class PredNet(nn.Module):
         # Agent prediction head (2 outputs: 0=achiever, 1=blocker)
         self.fc3_agent = nn.Linear(out_channels, 2)
 
-        # Type prediction head (2 outputs: 0=randomly select, 1=rule-based)
+        # Type prediction head (2 outputs: level, depth)
         self.fc3_type = nn.Linear(out_channels, 2)
 
         # Consumption prediction head (8 outputs: 4 keys + 4 doors)
@@ -959,9 +959,6 @@ class ToMnetLoss(nn.Module):
         consumption_loss = self.consumption_loss(
             consumption_logits, consumption_targets
         )
-
-        # SR loss using KL divergence
-        from utils import calculate_sr_loss_kl_divergence
 
         sr_loss = calculate_sr_loss_kl_divergence(sr_pred, sr_targets)
 

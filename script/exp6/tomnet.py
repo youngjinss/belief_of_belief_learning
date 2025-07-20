@@ -25,9 +25,10 @@ Architectures:
 - use_mentalnet=False: experiment5-style (CharNet → PredNet) - bypasses bottleneck
 - use_mentalnet=True: original 3-stage (CharNet → MentalNet → PredNet) - with bottleneck
 
-Channel structure (9 channels total):
-- Channels 0-7: Original game state channels (walls, keys, doors, agent position, etc.)
-- Channel 8: Agent heading direction (0=north, 1=east, 2=south, 3=west)
+Channel structure (10 channels total):
+- Channels 0-7: Original game state channels (walls, keys, doors, etc.)
+- Channel 8: Self position (agent whose action is being predicted)
+- Channel 9: Opponent position (0 for single-agent mode)
 
 @author: Based on ToMnetF experiment5, adapted for KeyDoor environment
 """
@@ -340,12 +341,12 @@ class MentalNet(nn.Module):
         self.time_step = time_step
         self.n_echar = n_echar
 
-        # Paper spec: state channels (8) + action channel (1) = 9 total input channels
-        self.state_channels = channels_in  # Use channels_in directly (8 state channels)
+        # State channels (8 original + 2 position) + action channel (1) = 11 total input channels
+        self.state_channels = channels_in  # Use channels_in directly (now 10 channels)
         self.action_space = action_space  # Number of possible actions from config
         self.input_channels = (
             self.state_channels + 1
-        )  # State + spatialized action (8+1=9)
+        )  # State + spatialized action (10+1=11)
 
         # Use configurable n_ement channels throughout
         self.resnet_channels = n_ement
@@ -716,7 +717,7 @@ class ToMnet(nn.Module):
         n_echar: int = 64,
         n_ement: int = 64,
         out_channels: int = 32,
-        channels_in: int = 9,  # 8 original channels + 1 heading direction channel (for CharNet)
+        channels_in: int = 10,  # 8 original channels + 1 self position + 1 opponent position (for CharNet)
         current_state_channels: int = 8,  # For PredNet (without heading direction)
         time_step: int = 500,
         action_space: int = 7,
@@ -1009,7 +1010,7 @@ def create_model(config, save_dir=None):
             n_echar=config.get("n_echar", 64),
             n_ement=config.get("n_ement", 64),
             out_channels=config.get("out_channels", 32),
-            channels_in=config.get("channels_in", 8),
+            channels_in=config.get("channels_in", 10),
             current_state_channels=config.get("current_state_channels", 8),
             time_step=config.get("time_step", 500),
             action_space=config.get("action_space", 7),
@@ -1062,7 +1063,7 @@ if __name__ == "__main__":
             "n_echar": 16,
             "n_ement": 16,
             "out_channels": 32,
-            "channels_in": 9,
+            "channels_in": 10,
             "current_state_channels": 8,
             "time_step": 20,
             "action_space": 7,

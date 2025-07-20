@@ -1669,7 +1669,7 @@ def load_data_all_combinations(config, data_dir_base=None, data_type="train"):
                 time_step=data_config.get("time_step", 500),
                 w=config.width,
                 h=config.height,
-                d=data_config.get("maze_depth", 9),
+                d=data_config.get("maze_depth", 10),
                 config=config,
             )
 

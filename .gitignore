@@ -39,6 +39,9 @@ lib/env/pymarketsim/
 lib/env/maxe/
 lib/env/rl-starter-files/
 
+# 보고용 visualize 관련 무시
+visualize/
+
 # backup 파일 무시
 */backup/*
 

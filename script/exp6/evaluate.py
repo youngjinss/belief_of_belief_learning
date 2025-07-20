@@ -108,7 +108,7 @@ def load_model(model_path, device, model_kwargs):
                         "n_echar": model_config.get("n_echar", 64),
                         "n_ement": model_config.get("n_ement", 64),
                         "out_channels": model_config.get("out_channels", 32),
-                        "channels_in": model_config.get("channels_in", 9),
+                        "channels_in": model_config.get("channels_in", 10),
                         "current_state_channels": model_config.get(
                             "current_state_channels", 8
                         ),

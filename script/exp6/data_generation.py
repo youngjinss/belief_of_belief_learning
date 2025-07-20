@@ -55,7 +55,7 @@ Each trajectory file generates 2 samples (1 achiever + 1 blocker)
 
 
 class DataGenerator:
-    def __init__(self, time_step=500, w=9, h=9, d=9, config=None):
+    def __init__(self, time_step=500, w=9, h=9, d=10, config=None):
         """
         Initialize DataGenerator for AchieverBlocker environment
 
@@ -63,7 +63,7 @@ class DataGenerator:
             time_step: Maximum trajectory length
             w: Maze width (9x9 for AchieverBlocker)
             h: Maze height (9x9 for AchieverBlocker)
-            d: Maze depth (9 layers: 8 original + 1 heading direction)
+            d: Maze depth (10 layers: 8 original + 1 self position + 1 opponent position)
             config: Config object for getting action spaces
         """
         self.MAX_TRAJECTORY_SIZE = time_step
@@ -552,7 +552,20 @@ class DataGenerator:
         agent_type: str,
         trajectory_length: int,
     ) -> np.ndarray:
-        """Create trajectory tensor for specified agent using vectorized operations"""
+        """Create trajectory tensor for specified agent using vectorized operations
+        
+        Channel structure (10 channels total):
+        - Channel 0: Wall positions
+        - Channel 1: Empty space
+        - Channel 2: Any key present
+        - Channel 3: Any door present
+        - Channel 4: Red objects (keys/doors)
+        - Channel 5: Green objects
+        - Channel 6: Blue objects
+        - Channel 7: Yellow objects
+        - Channel 8: Self position (agent whose action is being predicted)
+        - Channel 9: Opponent position (0 if single-agent mode)
+        """
 
         seq_len = min(trajectory_length, self.MAX_TRAJECTORY_SIZE)
         trajectory = np.zeros(
@@ -570,7 +583,10 @@ class DataGenerator:
         green_mask = np.isin(maze, [3, 7]).astype(np.float32)
         blue_mask = np.isin(maze, [4, 8]).astype(np.float32)
         yellow_mask = np.isin(maze, [5, 9]).astype(np.float32)
-        heading_mask = np.zeros((self.MAZE_HEIGHT, self.MAZE_WIDTH), dtype=np.float32)
+        
+        # Initialize position masks for self and opponent
+        self_mask = np.zeros((self.MAZE_HEIGHT, self.MAZE_WIDTH), dtype=np.float32)
+        opponent_mask = np.zeros((self.MAZE_HEIGHT, self.MAZE_WIDTH), dtype=np.float32)
 
         # Broadcast static layers to all timesteps at once
         trajectory[:, 0] = wall_mask[np.newaxis, :, :]
@@ -581,48 +597,66 @@ class DataGenerator:
         trajectory[:, 5] = green_mask[np.newaxis, :, :]
         trajectory[:, 6] = blue_mask[np.newaxis, :, :]
         trajectory[:, 7] = yellow_mask[np.newaxis, :, :]
-        trajectory[:, 8] = heading_mask[np.newaxis, :, :]
+        trajectory[:, 8] = self_mask[np.newaxis, :, :]
+        trajectory[:, 9] = opponent_mask[np.newaxis, :, :]
 
         # Vectorized dynamic layer processing (agent positions)
         steps_to_process = min(len(trajectory_steps), seq_len)
         if steps_to_process > 0:
-            # Extract positions for all timesteps at once
+            # Extract positions for both agents
+            achiever_positions = []
+            blocker_positions = []
+            
+            for step in trajectory_steps[:steps_to_process]:
+                achiever_pos = step["achiever_pos"]
+                blocker_pos = step["blocker_pos"]
+                achiever_positions.append(achiever_pos if achiever_pos is not None else [-1, -1])
+                blocker_positions.append(blocker_pos if blocker_pos is not None else [-1, -1])
+            
+            achiever_positions = np.array(achiever_positions)
+            blocker_positions = np.array(blocker_positions)
+            
+            # Determine self and opponent positions based on agent type
             if agent_type == "achiever":
-                positions = np.array(
-                    [
-                        step["achiever_pos"]
-                        for step in trajectory_steps[:steps_to_process]
-                    ]
-                )
+                self_positions = achiever_positions
+                opponent_positions = blocker_positions
             else:  # blocker
-                positions = np.array(
-                    [
-                        step["blocker_pos"]
-                        for step in trajectory_steps[:steps_to_process]
-                    ]
-                )
+                self_positions = blocker_positions
+                opponent_positions = achiever_positions
 
-            # Vectorized bounds checking
-            valid_positions = (
-                (positions[:, 0] >= 0)
-                & (positions[:, 0] < self.MAZE_WIDTH)
-                & (positions[:, 1] >= 0)
-                & (positions[:, 1] < self.MAZE_HEIGHT)
+            # Process self positions
+            valid_self = (
+                (self_positions[:, 0] >= 0)
+                & (self_positions[:, 0] < self.MAZE_WIDTH)
+                & (self_positions[:, 1] >= 0)
+                & (self_positions[:, 1] < self.MAZE_HEIGHT)
             )
-
-            # Process all valid positions at once
-            if np.any(valid_positions):
-                valid_times = np.arange(steps_to_process)[valid_positions]
-                valid_pos = positions[valid_positions]
-
-                # Clear other objects at agent positions (vectorized)
-                trajectory[valid_times, :, valid_pos[:, 1], valid_pos[:, 0]] = 0
-
-                # Set agent in empty space layer (vectorized)
+            
+            if np.any(valid_self):
+                valid_times = np.arange(steps_to_process)[valid_self]
+                valid_pos = self_positions[valid_self]
+                
+                # Set self position in channel 8
+                trajectory[valid_times, 8, valid_pos[:, 1], valid_pos[:, 0]] = 1
+                
+                # Also maintain the agent in empty space layer for compatibility
                 trajectory[valid_times, 1, valid_pos[:, 1], valid_pos[:, 0]] = 1
-
-                # Set heading direction (vectorized)
-                trajectory[valid_times, 8, valid_pos[:, 1], valid_pos[:, 0]] = 2
+            
+            # Process opponent positions (only in multi-agent mode)
+            if not self.is_single_agent_mode:
+                valid_opponent = (
+                    (opponent_positions[:, 0] >= 0)
+                    & (opponent_positions[:, 0] < self.MAZE_WIDTH)
+                    & (opponent_positions[:, 1] >= 0)
+                    & (opponent_positions[:, 1] < self.MAZE_HEIGHT)
+                )
+                
+                if np.any(valid_opponent):
+                    valid_times = np.arange(steps_to_process)[valid_opponent]
+                    valid_pos = opponent_positions[valid_opponent]
+                    
+                    # Set opponent position in channel 9
+                    trajectory[valid_times, 9, valid_pos[:, 1], valid_pos[:, 0]] = 1
 
         return trajectory
 
@@ -833,7 +867,7 @@ if __name__ == "__main__":
     parser.add_argument("--maze_width", type=int, default=9, help="Maze width")
     parser.add_argument("--maze_height", type=int, default=9, help="Maze height")
     parser.add_argument(
-        "--maze_depth", type=int, default=9, help="Maze depth (channels)"
+        "--maze_depth", type=int, default=10, help="Maze depth (channels)"
     )
 
     args = parser.parse_args()

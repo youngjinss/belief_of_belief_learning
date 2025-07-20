@@ -260,8 +260,8 @@ class Config:
             "n_echar": 128,
             "n_ement": 128,
             "out_channels": 64,
-            "channels_in": 9,  # 8 original channels + 1 heading direction channel
-            "current_state_channels": 8,  # For MentalNet: 8 original channels (no heading direction)
+            "channels_in": 10,  # 8 original channels + 1 self position + 1 opponent position
+            "current_state_channels": 8,  # For MentalNet: 8 original channels (no position channels)
             "achiever_action_space": 7,  # up, right, down, left, stay, pickup, toggle
             "blocker_action_space": 6,  # up, right, down, left, stay, broken
             "goal_space": 4,
@@ -285,7 +285,7 @@ class Config:
             "rank_threshold": 4,  # How many top ranks to consider for matching (1=only highest, 2=top 2, etc.)
             "maze_width": self.width,
             "maze_height": self.height,
-            "maze_depth": 9,  # 8 original channels + 1 heading direction channel
+            "maze_depth": 10,  # 8 original channels + 1 self position + 1 opponent position
             "chunk_size": 5000,  # Number of samples to process per chunk for memory efficiency
         }
 

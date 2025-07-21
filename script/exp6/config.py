@@ -278,7 +278,7 @@ class Config:
         self.data_config = {
             "max_moves": 50,  # Maximum moves per trajectory (equivalent to experiment5)
             "time_step": 50,  # Time step for model processing (equivalent to experiment5)
-            "min_time_steps": 5,  # Minimum timestep to start trajectory slicing from
+            "min_time_steps": 7,  # Minimum timestep to start trajectory slicing from
             "max_n_past": 1,  # Maximum past episodes (matching experiment5)
             "n_past_min": 1,  # Minimum past episodes (matching experiment5)
             "n_past_max": 1,  # Maximum past episodes for sampling (matching experiment5)

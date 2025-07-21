@@ -312,6 +312,7 @@ class InteractionAnalyzer:
                 avg_length = sum(results["trajectory_lengths"]) / len(
                     results["trajectory_lengths"]
                 )
+                max_length = max(results["trajectory_lengths"])
                 print(f"Average trajectory length: {avg_length:.1f}")
                 print(
                     f"Min/Max trajectory length: {min(results['trajectory_lengths'])}/{max(results['trajectory_lengths'])}"
@@ -405,7 +406,9 @@ class InteractionAnalyzer:
                     avg_length = sum(results["trajectory_lengths"]) / len(
                         results["trajectory_lengths"]
                     )
+                    max_length = max(results["trajectory_lengths"])
                     f.write(f"Average trajectory length: {avg_length:.1f}\n")
+                    f.write(f"Max trajectory length: {max_length:.1f}\n")
 
                 # Detailed interaction counts
                 f.write("\nAchiever interactions:\n")

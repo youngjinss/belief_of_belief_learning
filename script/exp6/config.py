@@ -60,10 +60,10 @@ class Config:
 
         # Environment variants
         self.env_variants = {
-            "3x3": {"grid_size": 3, "max_steps": 20},
-            "5x5": {"grid_size": 5, "max_steps": 30},
-            "9x9": {"grid_size": 9, "max_steps": 50},
-            "11x11": {"grid_size": 11, "max_steps": 70},
+            "3x3": {"grid_size": 3, "max_steps": 100},
+            "5x5": {"grid_size": 5, "max_steps": 100},
+            "9x9": {"grid_size": 9, "max_steps": 100},
+            "11x11": {"grid_size": 11, "max_steps": 100},
         }
 
         # Set max_steps based on current env_size

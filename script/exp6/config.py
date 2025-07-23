@@ -238,7 +238,7 @@ class Config:
 
         # Training configuration
         self.training_config = {
-            "batch_size": 512,
+            "batch_size": 2048,
             "epochs": 300,
             "lr": 0.0001,
             "weight_decay": 0.001,

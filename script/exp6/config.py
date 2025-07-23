@@ -277,9 +277,9 @@ class Config:
         # Data processing configuration
         self.data_config = {
             "time_step": 10,  # Window size for trajectory slicing
-            "max_n_past": 1,  # Maximum past episodes (matching experiment5)
-            "n_past_min": 1,  # Minimum past episodes (matching experiment5)
-            "n_past_max": 1,  # Maximum past episodes for sampling (matching experiment5)
+            "max_n_past": 10,  # Maximum past episodes (matching experiment5)
+            "n_past_min": 0,  # Minimum past episodes (matching experiment5)
+            "n_past_max": 5,  # Maximum past episodes for sampling (matching experiment5)
             "rank_threshold": 4,  # How many top ranks to consider for matching (1=only highest, 2=top 2, etc.)
             "maze_width": self.width,
             "maze_height": self.height,

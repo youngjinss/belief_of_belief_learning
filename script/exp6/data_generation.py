@@ -12,10 +12,10 @@ from tqdm import tqdm
 
 def process_file_batch_worker(file_batch_and_config: tuple) -> List[Dict[str, Any]]:
     """Standalone worker function for multiprocessing"""
-    file_batch, is_single_agent = file_batch_and_config
+    file_batch, is_single_agent, config = file_batch_and_config
     
     # Create a DataGenerator instance for this worker
-    generator = DataGenerator()
+    generator = DataGenerator(config=config)
     batch_samples = []
 
     for filepath in file_batch:
@@ -66,6 +66,8 @@ class DataGenerator:
             d: Maze depth (10 layers: 8 original + 1 self position + 1 opponent position)
             config: Config object for getting action spaces
         """
+        # Store config for access by multiprocessing workers
+        self.config = config
         # Use actual environment max_steps from config
         self.MAX_TRAJECTORY_SIZE = config.max_steps
         self.MAZE_WIDTH = w
@@ -742,9 +744,9 @@ class DataGenerator:
                 for i in range(0, len(test_files), batch_size)
             ]
             
-            # Add single-agent flag to each batch
+            # Add single-agent flag and config to each batch
             file_batches_with_config = [
-                (batch, self.is_single_agent_mode if hasattr(self, 'is_single_agent_mode') else False)
+                (batch, self.is_single_agent_mode if hasattr(self, 'is_single_agent_mode') else False, self.config)
                 for batch in file_batches
             ]
 

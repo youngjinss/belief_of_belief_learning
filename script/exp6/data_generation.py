@@ -66,7 +66,8 @@ class DataGenerator:
             d: Maze depth (10 layers: 8 original + 1 self position + 1 opponent position)
             config: Config object for getting action spaces
         """
-        self.MAX_TRAJECTORY_SIZE = time_step
+        # Use actual environment max_steps from config
+        self.MAX_TRAJECTORY_SIZE = config.max_steps
         self.MAZE_WIDTH = w
         self.MAZE_HEIGHT = h
         self.MAZE_DEPTH = d
@@ -388,9 +389,6 @@ class DataGenerator:
                 intended_goal = "A"  # Default fallback
 
         # Create consumption labels using slicing approach - track all interactions during trajectory
-        # The slicing will be applied later in prepare_data_for_training to create multiple samples per trajectory
-        trajectory_length = parsed_data["trajectory_length"]
-        max_length = min(trajectory_length, self.MAX_TRAJECTORY_SIZE)
         consumption_labels = np.zeros(
             8, dtype=np.float32
         )  # [key_A, key_B, key_C, key_D, door_A, door_B, door_C, door_D]
@@ -398,7 +396,7 @@ class DataGenerator:
         # Extract all achiever interactions at once
         achiever_interactions = [
             step["achiever_interaction"]
-            for step in parsed_data["trajectory_steps"][:max_length]
+            for step in parsed_data["trajectory_steps"]
         ]
 
         # Vectorized consumption tracking - accumulate all interactions throughout the trajectory
@@ -480,9 +478,7 @@ class DataGenerator:
         interaction_result = parsed_data["blocker_data"]["interaction"]
 
         # Create consumption labels for blocker using slicing approach - track all interactions during trajectory
-        # The slicing will be applied later in prepare_data_for_training to create multiple samples per trajectory
-        trajectory_length = parsed_data["trajectory_length"]
-        max_length = min(trajectory_length, self.MAX_TRAJECTORY_SIZE)
+
         consumption_labels = np.zeros(
             8, dtype=np.float32
         )  # [key_A, key_B, key_C, key_D, door_A, door_B, door_C, door_D]
@@ -490,7 +486,7 @@ class DataGenerator:
         # Extract all blocker interactions at once
         blocker_interactions = [
             step["blocker_interaction"]
-            for step in parsed_data["trajectory_steps"][:max_length]
+            for step in parsed_data["trajectory_steps"]
         ]
 
         # Vectorized consumption tracking - accumulate all interactions throughout the trajectory

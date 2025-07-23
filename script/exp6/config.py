@@ -14,14 +14,14 @@ class Config:
         self.seed = 42
 
         # Agent settings
-        self.n_games_per_type = 50000  # Number of games to generate for ToMnet data
+        self.n_games_per_type = 12500  # Number of games to generate for ToMnet data
         self.achiever_types = {
             "lv0va": self.n_games_per_type,
-            # "lv1va": self.n_games_per_type,
+            "lv1va": self.n_games_per_type,
         }  # Options: "lv0va", "lv1va", "astar", "random", "value"
         self.blocker_types = {
-            # "lv0vb": self.n_games_per_type,
-            # "lv1vb": self.n_games_per_type,
+            "lv0vb": self.n_games_per_type,
+            "lv1vb": self.n_games_per_type,
         }  # Options: "lv0vb", "lv1vb", "random", "goal_direct", "randomly_selected", "rule_based"
         self.observability = "full"  # Options: "full", "partial"
         self.movement_prob = 0.8  # For random agent
@@ -276,9 +276,7 @@ class Config:
 
         # Data processing configuration
         self.data_config = {
-            "max_moves": 50,  # Maximum moves per trajectory (equivalent to experiment5)
-            "time_step": 50,  # Time step for model processing (equivalent to experiment5)
-            "min_time_steps": 7,  # Minimum timestep to start trajectory slicing from
+            "time_step": 10,  # Window size for trajectory slicing
             "max_n_past": 1,  # Maximum past episodes (matching experiment5)
             "n_past_min": 1,  # Minimum past episodes (matching experiment5)
             "n_past_max": 1,  # Maximum past episodes for sampling (matching experiment5)
@@ -600,8 +598,6 @@ class Config:
         # Reduce data processing settings
         self.data_config.update(
             {
-                "max_moves": 20,  # Reduced from 50
-                "min_time_steps": 2,
                 "time_step": 6,  # Reduced from 10
             }
         )
@@ -648,7 +644,6 @@ class Config:
             "epochs": self.training_config["epochs"],
             "lr": self.training_config["lr"],
             "training_proportion": self.training_config["training_proportion"],
-            "max_moves": self.data_config["max_moves"],
             "time_step": self.data_config["time_step"],
             "max_n_past": self.data_config["max_n_past"],
             "device": self.training_config["device"],
@@ -755,12 +750,8 @@ class Config:
             self.model_config["hidden_size_lstm"] = args.hidden_size_lstm
 
         # Data processing configuration
-        if hasattr(args, "max_moves") and args.max_moves is not None:
-            self.data_config["max_moves"] = args.max_moves
         if hasattr(args, "time_step") and args.time_step is not None:
             self.data_config["time_step"] = args.time_step
-        if hasattr(args, "min_time_steps") and args.min_time_steps is not None:
-            self.data_config["min_time_steps"] = args.min_time_steps
         if hasattr(args, "max_n_past") and args.max_n_past is not None:
             self.data_config["max_n_past"] = args.max_n_past
         if hasattr(args, "n_past_min") and args.n_past_min is not None:

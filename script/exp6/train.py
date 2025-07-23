@@ -1257,7 +1257,6 @@ if __name__ == "__main__":
     parser.add_argument("--hidden_size_lstm", type=int, help="LSTM hidden size")
 
     # Data processing
-    parser.add_argument("--max_moves", type=int, help="Maximum moves per trajectory")
     parser.add_argument("--time_step", type=int, help="Time step for model processing")
     parser.add_argument(
         "--max_n_past", type=int, help="Maximum number of past episodes"

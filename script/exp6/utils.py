@@ -269,7 +269,7 @@ def generate_past_episodes_from_batch(
     return past_episodes_batch
 
 
-def process_sample_batch(samples, grid_size, min_timestep, max_trajectory_length):
+def process_sample_batch(samples, grid_size, window_size):
     """
     Process a batch of samples for better multiprocessing efficiency
     """
@@ -290,7 +290,7 @@ def process_sample_batch(samples, grid_size, min_timestep, max_trajectory_length
 
     for sample in samples:
         sample_result = process_single_sample(
-            sample, grid_size, min_timestep, max_trajectory_length
+            sample, grid_size, window_size
         )
 
         # Combine results
@@ -300,9 +300,17 @@ def process_sample_batch(samples, grid_size, min_timestep, max_trajectory_length
     return batch_results
 
 
-def process_single_sample(sample, grid_size, min_timestep, max_trajectory_length):
+def process_single_sample(sample, grid_size, window_size):
     """
-    Process a single sample for multiprocessing
+    Process a single sample for multiprocessing using window slicing
+    
+    Args:
+        sample: Single sample from DataGenerator
+        grid_size: Size of the grid (e.g., 9 for 9x9)
+        window_size: Window size for trajectory slicing (time_step from config)
+    
+    Returns:
+        Dictionary with lists of processed samples using window slicing
     """
     # Extract data from sample
     trajectory = sample["trajectory"]  # [seq_len, channels, height, width]
@@ -329,11 +337,9 @@ def process_single_sample(sample, grid_size, min_timestep, max_trajectory_length
 
     # Get actions from sample data
     action_list = sample.get("actions", [])
-
-    # Truncate trajectory to max length
-    seq_len = min(trajectory.shape[0], max_trajectory_length)
-    trajectory = trajectory[:seq_len]
-    action_list = action_list[:seq_len]
+    
+    # Get sequence length
+    seq_len = trajectory.shape[0]
 
     # Local lists for this sample
     sample_trajectories = []
@@ -345,48 +351,94 @@ def process_single_sample(sample, grid_size, min_timestep, max_trajectory_length
     sample_consumption_labels = []
     sample_sr_labels = []
 
-    # TRAJECTORY SLICING: Create multiple samples per trajectory
-    for i in range(min_timestep, seq_len):
-        # Slice trajectory up to timestep i
-        trajectory_slice = trajectory[:i]  # [i, channels, height, width]
-
-        # Pad trajectory slice to consistent length for batching
-        if i < max_trajectory_length:
-            padding_shape = (max_trajectory_length - i, *trajectory.shape[1:])
-            padding = np.zeros(padding_shape)
-            trajectory_padded = np.concatenate([trajectory_slice, padding], axis=0)
-        else:
-            trajectory_padded = trajectory_slice
-
-        # Current timestep for action prediction
-        current_timestep = i - 1
-
-        # Action at timestep i (what we want to predict)
-        if i < len(action_list):
-            action_target = action_list[i]
-        else:
-            continue  # Skip if no action available
-
-        # Process SR data for this timestep
-        if current_timestep in sr_data_per_timestep:
-            sr_data_timestep = sr_data_per_timestep[current_timestep]
-            sr_dense = convert_sparse_sr_to_dense(
-                sr_data_timestep, grid_size, grid_size
+    # WINDOW SLICING: Create multiple samples per trajectory using fixed window size
+    
+    if seq_len < window_size:
+        # Case 1: Trajectory shorter than window size - front-pad with -1
+        # Create padding for trajectory (use -1 for all channels to indicate padding)
+        padding_length = window_size - seq_len
+        padding_shape = (padding_length, *trajectory.shape[1:])
+        padding = np.full(padding_shape, -1, dtype=trajectory.dtype)
+        trajectory_padded = np.concatenate([padding, trajectory], axis=0)
+        
+        # The last action is what we predict
+        if len(action_list) > 0:
+            action_target = action_list[-1]
+            current_timestep = seq_len - 1
+            
+            # Process SR data for the last timestep
+            if current_timestep in sr_data_per_timestep:
+                sr_data_timestep = sr_data_per_timestep[current_timestep]
+                sr_dense = convert_sparse_sr_to_dense(
+                    sr_data_timestep, grid_size, grid_size
+                )
+            else:
+                sr_dense = np.zeros((3, grid_size, grid_size))
+            
+            # Add this single training sample
+            sample_trajectories.append(trajectory_padded)
+            sample_actions.append(
+                [action_target] + [-1] * (window_size - 1)
             )
-        else:
-            sr_dense = np.zeros((3, grid_size, grid_size))
-
-        # Add this training sample
-        sample_trajectories.append(trajectory_padded)
-        sample_actions.append(
-            [action_target] + [-1] * (max_trajectory_length - 1)
-        )  # Pad actions with -1 to distinguish from real action 0
-        sample_goals.append(goal_tensor)
-        sample_goal_ranks.append(goal_rank)
-        sample_agents.append(agent_label)
-        sample_types.append(type_label)
-        sample_consumption_labels.append(consumption)
-        sample_sr_labels.append(sr_dense)
+            sample_goals.append(goal_tensor)
+            sample_goal_ranks.append(goal_rank)
+            sample_agents.append(agent_label)
+            sample_types.append(type_label)
+            sample_consumption_labels.append(consumption)
+            sample_sr_labels.append(sr_dense)
+    else:
+        # Case 2: Trajectory longer than or equal to window size - vectorized sliding windows
+        num_windows = seq_len - window_size + 1
+        
+        # Vectorized creation of all windows using numpy stride tricks for maximum efficiency
+        from numpy.lib.stride_tricks import sliding_window_view
+        
+        # Create sliding windows along the time dimension
+        # trajectory shape: [seq_len, channels, height, width]
+        # sliding_window_view will create: [num_windows, window_size, channels, height, width]
+        trajectory_windows = sliding_window_view(trajectory, window_shape=window_size, axis=0)
+        
+        # sliding_window_view creates shape [num_windows, channels, height, width, window_size]
+        # We need to move the window_size dimension to position 1: [num_windows, window_size, channels, height, width]
+        trajectory_windows = np.moveaxis(trajectory_windows, -1, 1)
+        
+        # Extract all action targets at once (actions at the end of each window)
+        # For windows starting at positions 0, 1, 2, ..., we want actions at positions window_size-1, window_size, window_size+1, ...
+        action_targets = np.array(action_list[window_size - 1:window_size - 1 + num_windows])
+        
+        # Process SR data vectorized
+        sr_dense_list = []
+        for window_idx in range(num_windows):
+            current_timestep = window_size - 1 + window_idx  # The last timestep in each window
+            if current_timestep in sr_data_per_timestep:
+                sr_data_timestep = sr_data_per_timestep[current_timestep]
+                sr_dense = convert_sparse_sr_to_dense(
+                    sr_data_timestep, grid_size, grid_size
+                )
+            else:
+                sr_dense = np.zeros((3, grid_size, grid_size))
+            sr_dense_list.append(sr_dense)
+        
+        # Vectorized creation of padded actions
+        action_padding = np.full((num_windows, window_size - 1), -1)
+        padded_actions = np.column_stack([action_targets[:, np.newaxis], action_padding])
+        
+        # Vectorized replication of metadata for all windows
+        goals_repeated = np.tile(goal_tensor, (num_windows, 1))
+        goal_ranks_repeated = np.tile(goal_rank, (num_windows, 1))
+        agents_repeated = np.full(num_windows, agent_label)
+        types_repeated = np.full(num_windows, type_label)
+        consumption_repeated = np.tile(consumption, (num_windows, 1))
+        
+        # Add all samples at once
+        sample_trajectories.extend(trajectory_windows)
+        sample_actions.extend(padded_actions.tolist())
+        sample_goals.extend(goals_repeated.tolist())
+        sample_goal_ranks.extend(goal_ranks_repeated.tolist())
+        sample_agents.extend(agents_repeated.tolist())
+        sample_types.extend(types_repeated.tolist())
+        sample_consumption_labels.extend(consumption_repeated.tolist())
+        sample_sr_labels.extend(sr_dense_list)
 
     return {
         "trajectories": sample_trajectories,
@@ -403,22 +455,20 @@ def process_single_sample(sample, grid_size, min_timestep, max_trajectory_length
 def prepare_data_for_training(
     samples,
     grid_size=9,
-    min_timestep=3,
-    max_trajectory_length=100,
+    window_size=50,
     n_processes=None,
     use_batch_processing=True,
     chunk_size=10000,  # Number of samples per chunk
     output_dir="./data_chunks",
 ):
     """
-    Prepare multi-agent sample data for training from processed samples with trajectory slicing
+    Prepare multi-agent sample data for training from processed samples with window slicing
     Now supports multiprocessing and memory-efficient chunked processing
 
     Args:
         samples: List of processed samples from DataGenerator (containing both achiever and blocker samples)
         grid_size: Size of the grid (default 9 for 9x9)
-        min_timestep: Minimum timestep to start slicing from
-        max_trajectory_length: Maximum length of trajectory to use
+        window_size: Window size for trajectory slicing (time_step from config)
         n_processes: Number of processes to use (default: CPU count)
         use_batch_processing: Whether to use batch processing for better efficiency (default: True)
         chunk_size: Number of samples to process per chunk (default: 10000)
@@ -458,8 +508,7 @@ def prepare_data_for_training(
         chunk_data = prepare_data_memory_efficient(
             chunk_samples,
             grid_size=grid_size,
-            min_timestep=min_timestep,
-            max_trajectory_length=max_trajectory_length,
+            window_size=window_size,
             n_processes=n_processes,
             use_batch_processing=use_batch_processing,
         )
@@ -509,8 +558,7 @@ def prepare_data_for_training(
 def prepare_data_memory_efficient(
     samples,
     grid_size=9,
-    min_timestep=3,
-    max_trajectory_length=100,
+    window_size=50,
     n_processes=None,
     use_batch_processing=True,
 ):
@@ -534,8 +582,7 @@ def prepare_data_memory_efficient(
         batch_worker_func = partial(
             process_sample_batch,
             grid_size=grid_size,
-            min_timestep=min_timestep,
-            max_trajectory_length=max_trajectory_length,
+            window_size=window_size,
         )
 
         # Process batches in parallel
@@ -555,8 +602,7 @@ def prepare_data_memory_efficient(
         worker_func = partial(
             process_single_sample,
             grid_size=grid_size,
-            min_timestep=min_timestep,
-            max_trajectory_length=max_trajectory_length,
+            window_size=window_size,
         )
 
         # Process samples in parallel with chunking for better CPU utilization
@@ -1681,8 +1727,7 @@ def load_data_all_combinations(config, data_dir_base=None, data_type="train"):
             # Process data using chunked approach
             processed_data = prepare_data_for_training(
                 games,
-                min_timestep=data_config.get("min_time_steps", 6),
-                max_trajectory_length=data_config.get("time_step", 500),
+                window_size=data_config.get("time_step", 10),
                 chunk_size=data_config.get(
                     "chunk_size", 5000
                 ),  # Process in smaller chunks to avoid memory issues

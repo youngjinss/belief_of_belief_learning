@@ -55,7 +55,7 @@ Each trajectory file generates 2 samples (1 achiever + 1 blocker)
 
 
 class DataGenerator:
-    def __init__(self, time_step=500, w=9, h=9, d=10, config=None):
+    def __init__(self, time_step=10, w=9, h=9, d=10, config=None):
         """
         Initialize DataGenerator for AchieverBlocker environment
 

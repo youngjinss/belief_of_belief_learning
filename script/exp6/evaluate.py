@@ -199,6 +199,7 @@ def evaluate_model_with_n_past(
                 goals = goals.to(device)
                 goal_ranks = goal_ranks.to(device)
                 agents = agents.to(device)
+                types = types.to(device)
 
                 batch_size = trajectories.size(0)
 

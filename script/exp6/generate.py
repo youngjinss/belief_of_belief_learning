@@ -1032,10 +1032,12 @@ def run_single_game(game_id, config_dict, save_dir, blocker_type=None):
             current_keys = list(env.agent_keys) if hasattr(env, "agent_keys") else []
         else:
             current_keys = list(env.achiever_keys) if hasattr(env, "achiever_keys") else []
-            if len(current_keys) > len(keys_collected):
-                new_key = [k for k in current_keys if k not in keys_collected][0]
-                keys_collected.append(new_key)
-                keys_collected_steps.append((step_count, new_key))
+        
+        # Check if new keys were collected (for both single and multi-agent)
+        if len(current_keys) > len(keys_collected):
+            new_key = [k for k in current_keys if k not in keys_collected][0]
+            keys_collected.append(new_key)
+            keys_collected_steps.append((step_count, new_key))
 
         # Check for door opening by reward
         # Handle both single-agent (scalar) and multi-agent (dict) reward formats

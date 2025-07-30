@@ -14,14 +14,14 @@ class Config:
         self.seed = 42
 
         # Agent settings
-        self.n_games_per_type = 12500  # Number of games to generate for ToMnet data
+        self.n_games_per_type = 50000  # Number of games to generate for ToMnet data
         self.achiever_types = {
             "lv0va": self.n_games_per_type,
-            "lv1va": self.n_games_per_type,
+            # "lv1va": self.n_games_per_type,
         }  # Options: "lv0va", "lv1va", "astar", "random", "value"
         self.blocker_types = {
-            "lv0vb": self.n_games_per_type,
-            "lv1vb": self.n_games_per_type,
+            # "lv0vb": self.n_games_per_type,
+            # "lv1vb": self.n_games_per_type,
         }  # Options: "lv0vb", "lv1vb", "random", "goal_direct", "randomly_selected", "rule_based"
         self.observability = "full"  # Options: "full", "partial"
         self.movement_prob = 0.8  # For random agent
@@ -294,8 +294,8 @@ class Config:
             "max_grad_norm": 1.0,
             "action_weight": 1,
             "goal_weight": 1,
-            "agent_weight": 1,
-            "type_weight": 1,
+            "agent_weight": 0,
+            "type_weight": 0,
             "consumption_weight": 1,
             "sr_weight": 1,
         }

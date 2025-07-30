@@ -301,13 +301,14 @@ class KeyDoorEnv(MiniGridEnv):
         return door_positions
 
     def can_overlap(self, pos, obj):
-        """Allow agent to overlap with keys and open doors"""
+        """Allow agent to overlap with keys and doors (if agent has the key)"""
         cell = self.grid.get(*pos)
-        return (
-            cell is None
-            or isinstance(cell, Key)
-            or (isinstance(cell, Door) and cell.is_open)
-        )
+        if cell is None or isinstance(cell, Key):
+            return True
+        elif isinstance(cell, Door):
+            # Allow overlap with open doors, or locked doors if agent has the key
+            return cell.is_open or cell.color in self.agent_keys
+        return False
 
     def render(self, mode="human"):
         """Custom render"""

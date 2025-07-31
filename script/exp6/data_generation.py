@@ -9,6 +9,18 @@ import gc
 import multiprocessing as mp
 from tqdm import tqdm
 
+# Add the lib directory to the path
+lib_path = os.path.join(os.path.dirname(__file__), "..", "..", "lib")
+sys.path.insert(0, lib_path)
+
+# Add parent directory to path for imports
+sys.path.append(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+)
+
+from script.exp6.config import Config
+config = Config()
+
 
 def process_file_batch_worker(file_batch_and_config: tuple) -> List[Dict[str, Any]]:
     """Standalone worker function for multiprocessing"""
@@ -870,12 +882,17 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    # Override config with command line arguments if specified
+    if args.config_override:
+        config.update_from_args(args)
+    
     # Initialize data generator
     generator = DataGenerator(
         time_step=args.time_step,
         w=args.maze_width,
         h=args.maze_height,
         d=args.maze_depth,
+        config=config,
     )
 
     # Process directory

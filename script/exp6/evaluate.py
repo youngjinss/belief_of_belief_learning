@@ -509,15 +509,8 @@ def evaluate_achieverblocker_model(
             raise FileNotFoundError(f"No trained model found at {model_path}")
 
     if test_data_dir is None:
-        # Generate base path from config based on single-agent vs multi-agent mode
-        if config.is_single_agent_mode():
-            # For single-agent mode, use the first achiever type's test directory
-            achiever_type = list(config.achiever_types.keys())[0]
-            test_data_dir = os.path.dirname(config.get_training_data_path(achiever_type, None, is_test=True))
-        else:
-            # For multi-agent mode, use environment base path
-            env_name = config.get_env_name()
-            test_data_dir = f"./data/{env_name}"
+        # Get base data directory from config
+        test_data_dir = os.path.join(config.save_dir, config.get_env_name())
 
     if results_dir is None:
         results_dir = config.result_dir

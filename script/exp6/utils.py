@@ -1623,12 +1623,8 @@ def load_data_all_combinations(config, data_dir_base=None, data_type="train"):
         # Construct data directory path
         agent_pair = config.get_agent_pair_name(combo_achiever, combo_blocker)
         if data_type == "test":
-            if config.is_single_agent_mode():
-                # For single-agent mode, test files are directly in agent directory
-                data_dir = os.path.join(data_dir_base, agent_pair)
-            else:
-                # For multi-agent mode, test files are in test subdirectory
-                data_dir = os.path.join(data_dir_base, agent_pair, "test")
+            # Test files are always in test subdirectory
+            data_dir = os.path.join(data_dir_base, agent_pair, "test")
             processed_data_path = os.path.join(
                 data_dir,
                 f"processed_test_data_exp{config.experiment_no}_{combo_achiever}_{combo_blocker}.pkl",
@@ -1662,6 +1658,7 @@ def load_data_all_combinations(config, data_dir_base=None, data_type="train"):
             # Construct data directory path
             agent_pair = config.get_agent_pair_name(combo_achiever, combo_blocker)
             if data_type == "test":
+                # Test files are always in test subdirectory
                 data_dir = os.path.join(data_dir_base, agent_pair, "test")
                 processed_data_path = os.path.join(
                     data_dir,

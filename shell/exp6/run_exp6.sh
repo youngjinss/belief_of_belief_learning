@@ -89,6 +89,17 @@ create_log_files
 run_data_generation() {
     log_step "Starting AchieverBlocker trajectory generation for experiment $EXPERIMENT_NO"
     log_step "Using config-based data path generation"
+    
+    # Get data paths from config to check if data already exists
+    eval $(get_data_paths)
+    
+    # Check if data already exists
+    if [ -d "$TRAIN_DATA_DIR" ] && [ "$(find "$TRAIN_DATA_DIR" -name "test*.txt" 2>/dev/null | wc -l)" -gt 0 ]; then
+        local existing_files=$(find "$TRAIN_DATA_DIR" -name "test*.txt" | wc -l)
+        log_step "Data generation skipped - $existing_files trajectory files already exist in $TRAIN_DATA_DIR"
+        return 0
+    fi
+    
     log_step "Logging data generation output to: $RUN_LOG_DIR/train_data_generation.log"
     
     # Run generate.py from base directory to maintain correct relative paths (same as exp4)
@@ -116,6 +127,17 @@ run_test_data_generation() {
     log_step "Starting test data generation for experiment $EXPERIMENT_NO"
     log_step "Generating $VALIDATION_GAMES test games with random seed $TEST_RANDOM_SEED"
     log_step "Using config-based test data path generation"
+    
+    # Get data paths from config to check if test data already exists
+    eval $(get_data_paths)
+    
+    # Check if test data already exists
+    if [ -d "$TEST_DATA_DIR" ] && [ "$(find "$TEST_DATA_DIR" -name "test*.txt" 2>/dev/null | wc -l)" -gt 0 ]; then
+        local existing_files=$(find "$TEST_DATA_DIR" -name "test*.txt" | wc -l)
+        log_step "Test data generation skipped - $existing_files test files already exist in $TEST_DATA_DIR"
+        return 0
+    fi
+    
     log_step "Logging test data generation output to: $RUN_LOG_DIR/test_data_generation.log"
     
     # Run generate.py from base directory to maintain correct relative paths (same as exp4)

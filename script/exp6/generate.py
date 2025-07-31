@@ -1411,8 +1411,6 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    config = Config()
-
     # Override config with command line arguments if specified
     if args.config_override:
         config.update_from_args(args)

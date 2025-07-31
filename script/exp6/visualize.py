@@ -1602,15 +1602,8 @@ if __name__ == "__main__":
             # Load test data using the same multi-combination approach as evaluate.py
             from utils import load_test_data_all_combinations, combine_all_combinations_data
             
-            # Generate base path from config based on single-agent vs multi-agent mode
-            if config.is_single_agent_mode():
-                # For single-agent mode, use the first achiever type's test directory
-                achiever_type = list(config.achiever_types.keys())[0]
-                test_data_dir_base = os.path.dirname(config.get_training_data_path(achiever_type, None, is_test=True))
-            else:
-                # For multi-agent mode, use environment base path
-                env_name = config.get_env_name()
-                test_data_dir_base = f"./data/{env_name}"
+            # Get base data directory from config
+            test_data_dir_base = os.path.join(config.save_dir, config.get_env_name())
             
             # Load test data for all combinations efficiently (same as evaluate.py)
             try:

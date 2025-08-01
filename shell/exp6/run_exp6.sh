@@ -178,7 +178,7 @@ run_training() {
         if command -v nvidia-smi &> /dev/null && nvidia-smi &> /dev/null; then
             DEVICE="cuda"
         fi
-        python script/exp6/train.py --config_override --save_dir "$RESULTS_DIR" --device "$DEVICE" --epochs 2 > "$RUN_LOG_DIR/training.log" 2>&1
+        python script/exp6/train.py --config_override --save_dir "$RESULTS_DIR" --device "$DEVICE" --epochs 2 --debug > "$RUN_LOG_DIR/training.log" 2>&1
     else
         python script/exp6/train.py --config_override --save_dir "$RESULTS_DIR" > "$RUN_LOG_DIR/training.log" 2>&1
     fi

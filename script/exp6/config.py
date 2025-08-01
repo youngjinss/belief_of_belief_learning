@@ -580,6 +580,14 @@ class Config:
         """Enable debug mode with smaller scale settings for testing"""
         self.debug_mode = True
 
+        # Reduce data generation settings for faster testing
+        self.n_games_per_type = 500  # Reduced from 50000 for debug mode
+        # Update achiever and blocker types with new counts
+        for achiever_type in self.achiever_types:
+            self.achiever_types[achiever_type] = self.n_games_per_type
+        for blocker_type in self.blocker_types:
+            self.blocker_types[blocker_type] = self.n_games_per_type
+
         # Reduce training settings for faster testing
         self.training_config.update(
             {

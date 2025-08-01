@@ -495,7 +495,7 @@ def evaluate_achieverblocker_model(
         model_path: Path to trained model
         test_data_dir: Directory containing test data
         results_dir: Directory to save results
-        plot_type: Type of evaluation to perform ("basic", "n_past", "embeddings", "all")
+        plot_type: Type of evaluation to perform ("basic", "n_past", "char_embeddings", "mental_embeddings", "all")
     """
     if config is None:
         config = Config()
@@ -627,7 +627,7 @@ def evaluate_achieverblocker_model(
         print("N_past evaluation completed!")
 
     # Create character embeddings if requested (using same model and test_loader)
-    if plot_type in ["embeddings", "all"]:
+    if plot_type in ["char_embeddings", "all"]:
         print("Creating character embedding visualizations...")
         # Import locally to avoid circular import
         import visualize
@@ -641,6 +641,23 @@ def evaluate_achieverblocker_model(
             n_samples=config.evaluation_config.get("n_samples", 1000),
         )
         print("Character embedding visualization completed!")
+
+    # Create mental embeddings if requested (using same model and test_loader)
+    if plot_type in ["mental_embeddings", "all"]:
+        print("Creating mental embedding visualizations...")
+        # Import locally to avoid circular import
+        import visualize
+
+        visualize.plot_mental_embeddings(
+            model,
+            test_loader,
+            device,
+            results_dir,
+            config=config,
+            experiment_no=config.experiment_no,
+            n_samples=config.evaluation_config.get("n_samples", 1000),
+        )
+        print("Mental embedding visualization completed!")
 
     return metrics
 
@@ -947,7 +964,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--plot_type",
         type=str,
-        choices=["basic", "embeddings", "n_past", "all"],
+        choices=["basic", "char_embeddings", "mental_embeddings", "n_past", "all"],
         default="all",
         help="Type of visualization to create",
     )
@@ -968,7 +985,7 @@ if __name__ == "__main__":
     seed_worker = set_seed(seed)
     print(f"Set random seed to {seed} for reproducibility")
 
-    # Run evaluation (now handles n_past and embeddings internally)
+    # Run evaluation (now handles n_past and char_embeddings/mental_embeddings internally)
     results = evaluate_achieverblocker_model(
         config=config,
         model_path=args.model_path,

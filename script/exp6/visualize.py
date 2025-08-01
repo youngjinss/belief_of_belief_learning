@@ -1477,6 +1477,736 @@ def _plot_type_based_embeddings_for_achiever(
     plt.close()
 
 
+def extract_mental_embeddings_from_batch(
+    model, trajectories, actions, agents, goal_ranks, device, config, batch_size=32
+):
+    """
+    Extract mental embeddings from test data batches using the MentalNet
+    
+    Args:
+        model: Trained ToMnet model with MentalNet
+        trajectories: Trajectory tensor (batch_size, seq_len, channels, height, width)
+        actions: Action tensor (batch_size, seq_len) 
+        agents: Agent tensor (batch_size,)
+        goal_ranks: Goal rank tensor (batch_size,)
+        device: Computing device
+        config: Configuration object
+        batch_size: Batch size for processing
+        
+    Returns:
+        numpy array: Mental embeddings as vectors (n_samples, embedding_dim)
+    """
+    if not model.use_mentalnet:
+        print("Warning: Model does not use MentalNet. Cannot extract mental embeddings.")
+        return None
+        
+    model.eval()
+    embeddings = []
+    current_state_channels = config.get_data_config().get("current_state_channels", 8)
+    
+    print(f"Extracting mental embeddings from {len(trajectories)} samples...")
+    
+    with torch.no_grad():
+        for start_idx in range(0, len(trajectories), batch_size):
+            end_idx = min(start_idx + batch_size, len(trajectories))
+            current_batch_size = end_idx - start_idx
+            
+            if start_idx % (batch_size * 10) == 0:
+                print(f"Processing batch {start_idx//batch_size + 1}/{(len(trajectories) + batch_size - 1)//batch_size}")
+            
+            try:
+                # Get batch tensors
+                batch_trajectories = trajectories[start_idx:end_idx].to(device)
+                batch_actions = actions[start_idx:end_idx].to(device)
+                batch_agents = agents[start_idx:end_idx].to(device)
+                batch_goal_ranks = goal_ranks[start_idx:end_idx].to(device)
+                
+                # Generate past episodes for character embeddings (needed for MentalNet)
+                past_episodes = generate_past_episodes_from_batch(
+                    trajectories=batch_trajectories,
+                    goal_ranks=batch_goal_ranks,
+                    agents=batch_agents,
+                    batch_size=current_batch_size,
+                    n_past_min=config.get_n_past_evaluation_config()["n_past_min"],
+                    n_past_max=config.get_n_past_evaluation_config()["n_past_max"],
+                    max_n_past=config.get_n_past_evaluation_config()["n_past_max"],
+                    rank_threshold=config.get_data_config().get("rank_threshold", 4),
+                )
+                
+                # Extract recent trajectory for MentalNet (use first 8 channels, excluding heading)
+                recent_trajectory = batch_trajectories[:, :, :current_state_channels]
+                
+                # Extract actions for MentalNet (use first action of each trajectory slice)
+                recent_actions = batch_actions[:, 0:1].expand(-1, recent_trajectory.size(1))
+                
+                # Get mental state embeddings from MentalNet
+                # Mental state shape: (batch_size, n_ement, height, width) - spatial
+                mental_state = model.mental_net(recent_trajectory, recent_actions)
+                
+                # Convert spatial embeddings to vectors using global average pooling
+                # mental_state: (batch_size, n_ement, height, width) -> (batch_size, n_ement)
+                mental_vectors = torch.mean(mental_state, dim=(2, 3))  # Global average pooling
+                
+                # Add batch embeddings to list
+                for emb in mental_vectors.cpu().numpy():
+                    embeddings.append(emb.flatten())
+                    
+            except Exception as e:
+                print(f"Error processing batch starting at {start_idx}: {e}")
+                # Add zero embeddings as placeholders for the failed batch
+                embedding_dim = model.n_ement  # Mental embedding dimension
+                for _ in range(current_batch_size):
+                    embeddings.append(np.zeros(embedding_dim))
+                continue
+    
+    embeddings = np.array(embeddings)
+    print(f"Extracted mental embeddings shape: {embeddings.shape}")
+    return embeddings
+
+
+def plot_mental_embeddings(
+    model,
+    test_loader,
+    device,
+    output_dir,
+    config=None,
+    experiment_no=None,
+    n_samples=None,
+):
+    """
+    Plot mental embeddings using PCA and t-SNE with separate agent analysis
+    Creates visualizations colored by:
+    1. Agent-based coloring (achiever vs blocker) 
+    2. Goal-based coloring (red, green, blue, yellow)
+    3. Type-based coloring for achievers and blockers separately
+    
+    Args:
+        model: Trained ToMnet model with MentalNet
+        test_loader: Test data loader
+        device: Computing device
+        output_dir: Directory to save plots
+        config: Configuration object containing experiment settings
+        experiment_no: Experiment number (defaults to config.experiment_no)
+        n_samples: Number of samples to visualize (None for all samples)
+    """
+    if not model.use_mentalnet:
+        print("Warning: Model does not use MentalNet. Skipping mental embedding visualization.")
+        return
+        
+    if config is None:
+        config = Config()
+        
+    if experiment_no is None:
+        experiment_no = config.experiment_no
+        
+    print("Creating mental embedding visualizations...")
+    print(f"Model has MentalNet: {model.use_mentalnet}")
+    
+    # Load processed test data from all combinations to get agent information
+    print("Loading processed test data from all combinations to extract agent and goal information...")
+    
+    # Get base data directory from config
+    test_data_dir = os.path.join(config.save_dir, config.get_env_name())
+    
+    # Load test data for all combinations efficiently
+    all_test_data = load_test_data_all_combinations(config, test_data_dir_base=test_data_dir)
+    
+    # Combine data from all combinations
+    processed_data = combine_all_combinations_data(all_test_data)
+    
+    print(f"Loaded combined test data from all combinations with {processed_data['trajectories'].shape[0]} samples")
+    print(f"Achiever types: {list(config.achiever_types.keys())}")
+    if config.is_single_agent_mode():
+        print(f"Single-agent mode: No blockers")
+    else:
+        print(f"Blocker types: {list(config.blocker_types.keys())}")
+    
+    # Extract agent labels, goal labels, and types from processed tensors
+    agent_indices = processed_data["agents"]
+    agent_labels = np.array(
+        ["achiever" if idx == 0 else "blocker" for idx in agent_indices]
+    )
+    
+    # goals tensor: one-hot encoded [A, B, C, D]
+    goals_tensor = processed_data["goals"]
+    goal_labels = np.argmax(goals_tensor, axis=1)  # Convert one-hot to indices
+    
+    # types tensor
+    types_tensor = processed_data["types"]
+    type_labels = types_tensor.astype(int)
+    
+    print(f"Agent distribution: {np.unique(agent_labels, return_counts=True)}")
+    print(f"Goal distribution: {np.unique(goal_labels, return_counts=True)}")
+    
+    # Get the data tensors
+    if isinstance(processed_data["trajectories"], torch.Tensor):
+        trajectories_tensor = processed_data["trajectories"]
+        actions_tensor = processed_data["actions"]
+        goal_ranks_tensor = processed_data["goal_ranks"]
+        agents_tensor = processed_data["agents"]
+    else:
+        trajectories_tensor = torch.from_numpy(processed_data["trajectories"]).float()
+        actions_tensor = torch.from_numpy(processed_data["actions"]).long()
+        goal_ranks_tensor = torch.from_numpy(processed_data["goal_ranks"]).long()
+        agents_tensor = torch.from_numpy(processed_data["agents"]).long()
+    
+    if n_samples is not None:
+        # Limit samples if specified
+        indices = np.random.choice(
+            len(agent_labels), min(n_samples, len(agent_labels)), replace=False
+        )
+        trajectories_tensor = trajectories_tensor[indices]
+        actions_tensor = actions_tensor[indices]
+        goal_ranks_tensor = goal_ranks_tensor[indices]
+        agents_tensor = agents_tensor[indices]
+        agent_labels = agent_labels[indices]
+        goal_labels = goal_labels[indices]
+        type_labels = type_labels[indices]
+        
+    print(f"Extracting mental embeddings for {len(agent_labels)} samples...")
+    
+    # Extract mental embeddings
+    embeddings = extract_mental_embeddings_from_batch(
+        model, trajectories_tensor, actions_tensor, agents_tensor, 
+        goal_ranks_tensor, device, config, batch_size=32
+    )
+    
+    if embeddings is None or len(embeddings) == 0:
+        print("No mental embeddings to visualize!")
+        return
+        
+    print(f"Mental embeddings shape: {embeddings.shape}")
+    
+    # Create plots based on mode
+    if config.is_single_agent_mode():
+        # Single-agent mode: only create goal-based and achiever type embeddings
+        _plot_mental_goal_based_embeddings(
+            embeddings, agent_labels, goal_labels, config, output_dir, experiment_no
+        )
+        _plot_mental_type_based_embeddings_for_achiever(
+            embeddings, agent_labels, goal_labels, type_labels, config, output_dir, experiment_no
+        )
+    else:
+        # Multi-agent mode: create all types of plots
+        _plot_mental_agent_based_embeddings(
+            embeddings, agent_labels, goal_labels, config, output_dir, experiment_no
+        )
+        _plot_mental_goal_based_embeddings(
+            embeddings, agent_labels, goal_labels, config, output_dir, experiment_no
+        )
+        _plot_mental_separate_agent_goal_embeddings(
+            embeddings, agent_labels, goal_labels, config, output_dir, experiment_no
+        )
+        _plot_mental_type_based_embeddings_for_blockers(
+            embeddings, agent_labels, goal_labels, type_labels, config, output_dir, experiment_no
+        )
+        _plot_mental_type_based_embeddings_for_achiever(
+            embeddings, agent_labels, goal_labels, type_labels, config, output_dir, experiment_no
+        )
+
+
+def _plot_mental_agent_based_embeddings(
+    embeddings, agent_labels, goal_labels, config, output_dir, experiment_no
+):
+    """Plot mental embeddings colored by agent type (achiever vs blocker)"""
+    vis_config = config.get_visualization_config()
+    agent_colors = vis_config["agent_colors"]
+    agent_names = vis_config["agent_names"]
+    embedding_plots = vis_config["embedding_plots"]
+
+    print("\nCreating agent-based mental embedding plots...")
+
+    # Create figure with PCA and t-SNE subplots
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=embedding_plots["pca_figsize"])
+    fig.suptitle(
+        f"Mental Embeddings by Agent Type (Experiment {experiment_no})", fontsize=16
+    )
+
+    # PCA visualization
+    if embeddings.shape[1] > 2:
+        print("Computing PCA for mental embeddings...")
+        pca = PCA(n_components=2)
+        embeddings_pca = pca.fit_transform(embeddings)
+
+        unique_agents = np.unique(agent_labels)
+        for i, agent in enumerate(unique_agents):
+            mask = agent_labels == agent
+            agent_count = np.sum(mask)
+            if agent_count > 0:
+                color = agent_colors[i] if i < len(agent_colors) else f"C{i}"
+                name = agent_names[i] if i < len(agent_names) else agent
+                ax1.scatter(
+                    embeddings_pca[mask, 0],
+                    embeddings_pca[mask, 1],
+                    c=color,
+                    label=f"{name} (n={agent_count})",
+                    alpha=embedding_plots["alpha"],
+                    s=embedding_plots["marker_size"],
+                )
+
+        ax1.set_title(f"PCA by Agent Type")
+        ax1.set_xlabel(f"PC1 ({pca.explained_variance_ratio_[0]:.2%} variance)")
+        ax1.set_ylabel(f"PC2 ({pca.explained_variance_ratio_[1]:.2%} variance)")
+        ax1.legend()
+        ax1.grid(True, alpha=0.3)
+
+    # t-SNE visualization with optimized parameters
+    print("Computing t-SNE for mental embeddings...")
+    tsne = TSNE(
+        n_components=2,
+        random_state=42,
+        perplexity=min(30, len(embeddings) // 4),
+        n_iter=300,
+        early_exaggeration=12,
+        learning_rate="auto",
+    )
+    embeddings_tsne = tsne.fit_transform(embeddings)
+
+    unique_agents = np.unique(agent_labels)
+    for i, agent in enumerate(unique_agents):
+        mask = agent_labels == agent
+        agent_count = np.sum(mask)
+        if agent_count > 0:
+            color = agent_colors[i] if i < len(agent_colors) else f"C{i}"
+            name = agent_names[i] if i < len(agent_names) else agent
+            ax2.scatter(
+                embeddings_tsne[mask, 0],
+                embeddings_tsne[mask, 1],
+                c=color,
+                label=f"{name} (n={agent_count})",
+                alpha=embedding_plots["alpha"],
+                s=embedding_plots["marker_size"],
+            )
+
+    ax2.set_title(f"t-SNE by Agent Type")
+    ax2.set_xlabel("t-SNE 1")
+    ax2.set_ylabel("t-SNE 2")
+    ax2.legend()
+    ax2.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    os.makedirs(output_dir, exist_ok=True)
+    plt.savefig(
+        os.path.join(
+            output_dir, f"mental_embeddings_by_agent_exp{experiment_no}.png"
+        ),
+        dpi=300,
+        bbox_inches="tight",
+    )
+    plt.close()
+
+
+def _plot_mental_goal_based_embeddings(
+    embeddings, agent_labels, goal_labels, config, output_dir, experiment_no
+):
+    """Plot mental embeddings colored by goal type (red, green, blue, yellow)"""
+    vis_config = config.get_visualization_config()
+    goal_colors = vis_config["goal_colors"]
+    goal_names = vis_config["goal_names"]
+    embedding_plots = vis_config["embedding_plots"]
+
+    print("\nCreating goal-based mental embedding plots...")
+
+    # Create figure with PCA and t-SNE subplots
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=embedding_plots["pca_figsize"])
+    fig.suptitle(
+        f"Mental Embeddings by Goal Type (Experiment {experiment_no})", fontsize=16
+    )
+
+    # PCA visualization
+    if embeddings.shape[1] > 2:
+        print("Computing PCA for mental embeddings...")
+        pca = PCA(n_components=2)
+        embeddings_pca = pca.fit_transform(embeddings)
+
+        unique_goals = np.unique(goal_labels)
+        for goal in unique_goals:
+            mask = goal_labels == goal
+            goal_count = np.sum(mask)
+            if goal_count > 0:
+                color = goal_colors[goal] if goal < len(goal_colors) else f"C{goal}"
+                name = goal_names[goal] if goal < len(goal_names) else f"Goal {goal}"
+                ax1.scatter(
+                    embeddings_pca[mask, 0],
+                    embeddings_pca[mask, 1],
+                    c=color,
+                    label=f"{name} (n={goal_count})",
+                    alpha=embedding_plots["alpha"],
+                    s=embedding_plots["marker_size"],
+                )
+
+        ax1.set_title(f"PCA by Goal Type")
+        ax1.set_xlabel(f"PC1 ({pca.explained_variance_ratio_[0]:.2%} variance)")
+        ax1.set_ylabel(f"PC2 ({pca.explained_variance_ratio_[1]:.2%} variance)")
+        ax1.legend()
+        ax1.grid(True, alpha=0.3)
+
+    # t-SNE visualization with optimized parameters
+    print("Computing t-SNE for mental embeddings...")
+    tsne = TSNE(
+        n_components=2,
+        random_state=42,
+        perplexity=min(30, len(embeddings) // 4),
+        n_iter=300,
+        early_exaggeration=12,
+        learning_rate="auto",
+    )
+    embeddings_tsne = tsne.fit_transform(embeddings)
+
+    unique_goals = np.unique(goal_labels)
+    for goal in unique_goals:
+        mask = goal_labels == goal
+        goal_count = np.sum(mask)
+        if goal_count > 0:
+            color = goal_colors[goal] if goal < len(goal_colors) else f"C{goal}"
+            name = goal_names[goal] if goal < len(goal_names) else f"Goal {goal}"
+            ax2.scatter(
+                embeddings_tsne[mask, 0],
+                embeddings_tsne[mask, 1],
+                c=color,
+                label=f"{name} (n={goal_count})",
+                alpha=embedding_plots["alpha"],
+                s=embedding_plots["marker_size"],
+            )
+
+    ax2.set_title(f"t-SNE by Goal Type")
+    ax2.set_xlabel("t-SNE 1")
+    ax2.set_ylabel("t-SNE 2")
+    ax2.legend()
+    ax2.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    os.makedirs(output_dir, exist_ok=True)
+    plt.savefig(
+        os.path.join(
+            output_dir, f"mental_embeddings_by_goal_exp{experiment_no}.png"
+        ),
+        dpi=300,
+        bbox_inches="tight",
+    )
+    plt.close()
+
+
+def _plot_mental_separate_agent_goal_embeddings(
+    embeddings, agent_labels, goal_labels, config, output_dir, experiment_no
+):
+    """Plot separate mental embeddings for achiever goals and blocker goals"""
+    vis_config = config.get_visualization_config()
+    goal_colors = vis_config["goal_colors"]
+    goal_names = vis_config["goal_names"]
+    embedding_plots = vis_config["embedding_plots"]
+
+    print("\nCreating separate agent-goal mental embedding plots...")
+
+    # Create figure with 2x2 subplots (PCA and t-SNE for each agent)
+    fig, axes = plt.subplots(2, 2, figsize=embedding_plots["combined_figsize"])
+    fig.suptitle(
+        f"Mental Embeddings: Achiever vs Blocker Goals (Experiment {experiment_no})",
+        fontsize=16,
+    )
+
+    agents = ["achiever", "blocker"]
+
+    for agent_idx, agent in enumerate(agents):
+        agent_mask = agent_labels == agent
+        agent_embeddings = embeddings[agent_mask]
+        agent_goals = goal_labels[agent_mask]
+
+        if len(agent_embeddings) == 0:
+            print(f"No mental embeddings found for {agent}")
+            continue
+
+        print(f"Processing {agent}: {len(agent_embeddings)} mental embeddings")
+
+        # PCA for this agent
+        ax_pca = axes[agent_idx, 0]
+        if agent_embeddings.shape[1] > 2:
+            pca = PCA(n_components=2)
+            agent_embeddings_pca = pca.fit_transform(agent_embeddings)
+
+            unique_goals = np.unique(agent_goals)
+            for goal in unique_goals:
+                goal_mask = agent_goals == goal
+                goal_count = np.sum(goal_mask)
+                if goal_count > 0:
+                    color = goal_colors[goal] if goal < len(goal_colors) else f"C{goal}"
+                    name = (
+                        goal_names[goal] if goal < len(goal_names) else f"Goal {goal}"
+                    )
+                    ax_pca.scatter(
+                        agent_embeddings_pca[goal_mask, 0],
+                        agent_embeddings_pca[goal_mask, 1],
+                        c=color,
+                        label=f"{name} (n={goal_count})",
+                        alpha=embedding_plots["alpha"],
+                        s=embedding_plots["marker_size"],
+                    )
+
+            ax_pca.set_title(f"PCA: {agent.capitalize()} Goals")
+            ax_pca.set_xlabel(f"PC1 ({pca.explained_variance_ratio_[0]:.2%})")
+            ax_pca.set_ylabel(f"PC2 ({pca.explained_variance_ratio_[1]:.2%})")
+            ax_pca.legend(fontsize=8)
+            ax_pca.grid(True, alpha=0.3)
+
+        # t-SNE for this agent
+        ax_tsne = axes[agent_idx, 1]
+        tsne = TSNE(n_components=2, random_state=42)
+        agent_embeddings_tsne = tsne.fit_transform(agent_embeddings)
+
+        unique_goals = np.unique(agent_goals)
+        for goal in unique_goals:
+            goal_mask = agent_goals == goal
+            goal_count = np.sum(goal_mask)
+            if goal_count > 0:
+                color = goal_colors[goal] if goal < len(goal_colors) else f"C{goal}"
+                name = (
+                    goal_names[goal] if goal < len(goal_names) else f"Goal {goal}"
+                )
+                ax_tsne.scatter(
+                    agent_embeddings_tsne[goal_mask, 0],
+                    agent_embeddings_tsne[goal_mask, 1],
+                    c=color,
+                    label=f"{name} (n={goal_count})",
+                    alpha=embedding_plots["alpha"],
+                    s=embedding_plots["marker_size"],
+                )
+
+        ax_tsne.set_title(f"t-SNE: {agent.capitalize()} Goals")
+        ax_tsne.set_xlabel("t-SNE 1")
+        ax_tsne.set_ylabel("t-SNE 2")
+        ax_tsne.legend(fontsize=8)
+        ax_tsne.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    os.makedirs(output_dir, exist_ok=True)
+    plt.savefig(
+        os.path.join(
+            output_dir, f"mental_embeddings_separate_agents_exp{experiment_no}.png"
+        ),
+        dpi=300,
+        bbox_inches="tight",
+    )
+    plt.close()
+
+    print(f"All mental embedding plots saved to {output_dir}")
+
+
+def _plot_mental_type_based_embeddings_for_blockers(
+    embeddings, agent_labels, goal_labels, type_labels, config, output_dir, experiment_no
+):
+    """Plot mental embeddings colored by Type, constrained to Blocker agents only"""
+    vis_config = config.get_visualization_config()
+    embedding_plots = vis_config["embedding_plots"]
+
+    print("\nCreating Type-based mental embedding plots for Blocker agents...")
+
+    # Filter for blocker agents only
+    blocker_mask = agent_labels == "blocker"
+    blocker_embeddings = embeddings[blocker_mask]
+    blocker_types = type_labels[blocker_mask]
+
+    if len(blocker_embeddings) == 0:
+        print("No blocker samples found for mental Type visualization")
+        return
+
+    print(f"Found {len(blocker_embeddings)} blocker samples for mental Type visualization")
+    print(f"Type distribution: {np.unique(blocker_types, return_counts=True)}")
+
+    # Create figure with PCA and t-SNE subplots
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=embedding_plots["pca_figsize"])
+    fig.suptitle(
+        f"Mental Embeddings by Blocker Type (Experiment {experiment_no})",
+        fontsize=16,
+    )
+
+    # Type colors and names
+    type_colors = ["lightcoral", "darkgreen"]  # 0=randomly select, 1=rule-based
+    type_names = ["Randomly Select", "Rule-based"]
+
+    # PCA visualization
+    if blocker_embeddings.shape[1] > 2:
+        print("Computing PCA for blocker mental types...")
+        pca = PCA(n_components=2)
+        embeddings_pca = pca.fit_transform(blocker_embeddings)
+
+        unique_types = np.unique(blocker_types)
+        for i, blocker_type in enumerate(unique_types):
+            mask = blocker_types == blocker_type
+            type_count = np.sum(mask)
+            if type_count > 0:
+                color = type_colors[i] if i < len(type_colors) else f"C{i}"
+                name = type_names[i] if i < len(type_names) else f"Type {blocker_type}"
+                ax1.scatter(
+                    embeddings_pca[mask, 0],
+                    embeddings_pca[mask, 1],
+                    c=color,
+                    label=f"{name} (n={type_count})",
+                    alpha=embedding_plots["alpha"],
+                    s=embedding_plots["marker_size"],
+                )
+
+        ax1.set_title(f"PCA by Blocker Mental Type")
+        ax1.set_xlabel(f"PC1 ({pca.explained_variance_ratio_[0]:.2%} variance)")
+        ax1.set_ylabel(f"PC2 ({pca.explained_variance_ratio_[1]:.2%} variance)")
+        ax1.legend()
+        ax1.grid(True, alpha=0.3)
+
+    # t-SNE visualization
+    print("Computing t-SNE for blocker mental types...")
+    tsne = TSNE(
+        n_components=2,
+        random_state=42,
+        perplexity=min(30, len(blocker_embeddings) // 4),
+    )
+    embeddings_tsne = tsne.fit_transform(blocker_embeddings)
+
+    unique_types = np.unique(blocker_types)
+    for i, blocker_type in enumerate(unique_types):
+        mask = blocker_types == blocker_type
+        type_count = np.sum(mask)
+        if type_count > 0:
+            color = type_colors[i] if i < len(type_colors) else f"C{i}"
+            name = type_names[i] if i < len(type_names) else f"Type {blocker_type}"
+            ax2.scatter(
+                embeddings_tsne[mask, 0],
+                embeddings_tsne[mask, 1],
+                c=color,
+                label=f"{name} (n={type_count})",
+                alpha=embedding_plots["alpha"],
+                s=embedding_plots["marker_size"],
+            )
+
+    ax2.set_title("t-SNE by Blocker Mental Type")
+    ax2.set_xlabel("t-SNE 1")
+    ax2.set_ylabel("t-SNE 2")
+    ax2.legend()
+    ax2.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+
+    # Save plot
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+        plt.savefig(
+            os.path.join(
+                output_dir, f"mental_embeddings_blocker_type_exp{experiment_no}.png"
+            ),
+            dpi=300,
+            bbox_inches="tight",
+        )
+        print(f"Blocker Mental Type embedding plot saved to {output_dir}")
+
+    plt.close()
+
+
+def _plot_mental_type_based_embeddings_for_achiever(
+    embeddings, agent_labels, goal_labels, type_labels, config, output_dir, experiment_no
+):
+    """Plot mental embeddings colored by Type, constrained to Achiever agents only"""
+    vis_config = config.get_visualization_config()
+    embedding_plots = vis_config["embedding_plots"]
+
+    print("\nCreating Type-based mental embedding plots for Achiever agents...")
+
+    # Filter for achiever agents only
+    achiever_mask = agent_labels == "achiever"
+    achiever_embeddings = embeddings[achiever_mask]
+    achiever_types = type_labels[achiever_mask]
+
+    if len(achiever_embeddings) == 0:
+        print("No achiever samples found for mental Type visualization")
+        return
+
+    print(f"Found {len(achiever_embeddings)} achiever samples for mental Type visualization")
+    print(f"Type distribution: {np.unique(achiever_types, return_counts=True)}")
+
+    # Create figure with PCA and t-SNE subplots
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=embedding_plots["pca_figsize"])
+    fig.suptitle(
+        f"Mental Embeddings by Achiever Type (Experiment {experiment_no})",
+        fontsize=16,
+    )
+
+    # Type colors and names for achievers
+    type_colors = ["lightblue", "darkblue"]  # 0=random/lv0va, 1=strategic/lv1va
+    type_names = ["Random Achiever", "Strategic Achiever"]
+
+    # PCA visualization
+    if achiever_embeddings.shape[1] > 2:
+        print("Computing PCA for achiever mental types...")
+        pca = PCA(n_components=2)
+        embeddings_pca = pca.fit_transform(achiever_embeddings)
+
+        unique_types = np.unique(achiever_types)
+        for i, achiever_type in enumerate(unique_types):
+            mask = achiever_types == achiever_type
+            type_count = np.sum(mask)
+            if type_count > 0:
+                color = type_colors[i] if i < len(type_colors) else f"C{i}"
+                name = type_names[i] if i < len(type_names) else f"Type {achiever_type}"
+                ax1.scatter(
+                    embeddings_pca[mask, 0],
+                    embeddings_pca[mask, 1],
+                    c=color,
+                    label=f"{name} (n={type_count})",
+                    alpha=embedding_plots["alpha"],
+                    s=embedding_plots["marker_size"],
+                )
+
+        ax1.set_title(f"PCA by Achiever Mental Type")
+        ax1.set_xlabel(f"PC1 ({pca.explained_variance_ratio_[0]:.2%} variance)")
+        ax1.set_ylabel(f"PC2 ({pca.explained_variance_ratio_[1]:.2%} variance)")
+        ax1.legend()
+        ax1.grid(True, alpha=0.3)
+
+    # t-SNE visualization
+    print("Computing t-SNE for achiever mental types...")
+    tsne = TSNE(
+        n_components=2,
+        random_state=42,
+        perplexity=min(30, len(achiever_embeddings) // 4),
+    )
+    embeddings_tsne = tsne.fit_transform(achiever_embeddings)
+
+    unique_types = np.unique(achiever_types)
+    for i, achiever_type in enumerate(unique_types):
+        mask = achiever_types == achiever_type
+        type_count = np.sum(mask)
+        if type_count > 0:
+            color = type_colors[i] if i < len(type_colors) else f"C{i}"
+            name = type_names[i] if i < len(type_names) else f"Type {achiever_type}"
+            ax2.scatter(
+                embeddings_tsne[mask, 0],
+                embeddings_tsne[mask, 1],
+                c=color,
+                label=f"{name} (n={type_count})",
+                alpha=embedding_plots["alpha"],
+                s=embedding_plots["marker_size"],
+            )
+
+    ax2.set_title("t-SNE by Achiever Mental Type")
+    ax2.set_xlabel("t-SNE 1")
+    ax2.set_ylabel("t-SNE 2")
+    ax2.legend()
+    ax2.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+
+    # Save plot
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+        plt.savefig(
+            os.path.join(
+                output_dir, f"mental_embeddings_achiever_type_exp{experiment_no}.png"
+            ),
+            dpi=300,
+            bbox_inches="tight",
+        )
+        print(f"Achiever Mental Type embedding plot saved to {output_dir}")
+
+    plt.close()
+
+
 if __name__ == "__main__":
     import argparse
 
@@ -1496,7 +2226,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--plot_type",
         type=str,
-        choices=["training", "confusion", "likelihood", "embeddings", "n_past", "all"],
+        choices=["training", "confusion", "likelihood", "embeddings", "mental_embeddings", "n_past", "all"],
         default="all",
         help="Type of plot to create",
     )
@@ -1648,6 +2378,71 @@ if __name__ == "__main__":
                 print("Character embedding visualization completed!")
             else:
                 print("No test games found for character embedding visualization")
+        else:
+            print(f"Model file not found: {model_path}")
+
+    # Plot mental embeddings
+    if args.plot_type in ["mental_embeddings", "embeddings", "all"]:
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        
+        # Find the best model
+        model_path = os.path.join(results_dir, "best_model.pth")
+        
+        if os.path.exists(model_path):
+            # Load model
+            from evaluate import load_model
+            model_kwargs = config.get_model_kwargs()
+            model = load_model(model_path, device, model_kwargs)
+            
+            # Load test data using the same multi-combination approach as evaluate.py
+            from utils import load_test_data_all_combinations, combine_all_combinations_data
+            
+            # Get base data directory from config
+            test_data_dir_base = os.path.join(config.save_dir, config.get_env_name())
+            
+            # Load test data for all combinations efficiently (same as evaluate.py)
+            try:
+                all_test_data = load_test_data_all_combinations(config, test_data_dir_base=test_data_dir_base)
+                # Combine data from all combinations
+                test_data = combine_all_combinations_data(all_test_data)
+                print(f"Successfully loaded test data from all combinations: {test_data['trajectories'].shape[0]} samples")
+            except Exception as e:
+                print(f"Failed to load test data from combinations: {e}")
+                test_data = None
+
+            if test_data:
+                # Convert numpy arrays to tensors for TensorDataset (same as evaluate.py fix)
+                test_tensors = {
+                    key: torch.from_numpy(data) if isinstance(data, np.ndarray) else torch.tensor(data)
+                    for key, data in test_data.items()
+                }
+                
+                # Create test dataset
+                test_dataset = TensorDataset(
+                    test_tensors["trajectories"],
+                    test_tensors["actions"],
+                    test_tensors["goals"],
+                    test_tensors["goal_ranks"],
+                    test_tensors["agents"],
+                    test_tensors["types"],
+                    test_tensors["consumption_labels"],
+                    test_tensors["sr_labels"],
+                )
+                test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
+
+                # Create mental embeddings plot
+                plot_mental_embeddings(
+                    model,
+                    test_loader,
+                    device,
+                    plot_dir,
+                    config,
+                    experiment_no,
+                    n_samples=None,
+                )
+                print("Mental embedding visualization completed!")
+            else:
+                print("No test games found for mental embedding visualization")
         else:
             print(f"Model file not found: {model_path}")
 

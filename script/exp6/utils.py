@@ -1768,13 +1768,14 @@ def load_test_data_all_combinations(config, test_data_dir_base=None):
 
 def combine_all_combinations_data(all_data_dict):
     """
-    Combine data from all achiever-blocker combinations into a single dataset
+    Combine data from all achiever-blocker combinations into a single dataset.
+    Expects all data to be in pre-processed numpy array format.
     
     Args:
         all_data_dict: Dictionary with (achiever_type, blocker_type) -> chunk_metadata mapping
         
     Returns:
-        dict: Combined chunk metadata from all combinations
+        dict: Combined dataset with concatenated numpy arrays
     """
     import numpy as np
     
@@ -1795,7 +1796,11 @@ def combine_all_combinations_data(all_data_dict):
         # Load chunked data for this combination
         data = _load_chunks_memory_efficient(chunk_metadata)
         
-        # Append to combined lists
+        # Data is expected to be in pre-processed numpy array format
+        if not (isinstance(data, dict) and "trajectories" in data):
+            raise ValueError(f"Data for combination {achiever_type}_{blocker_type} is not in expected format. Expected dictionary with 'trajectories' key.")
+            
+        # Add pre-processed arrays to combined lists
         combined_trajectories.append(data["trajectories"])
         combined_actions.append(data["actions"])
         combined_goals.append(data["goals"])
@@ -1804,7 +1809,6 @@ def combine_all_combinations_data(all_data_dict):
         combined_types.append(data["types"])
         combined_consumption_labels.append(data["consumption_labels"])
         combined_sr_labels.append(data["sr_labels"])
-        
         print(f"    Added {data['trajectories'].shape[0]} samples")
     
     # Check if we have any data to concatenate

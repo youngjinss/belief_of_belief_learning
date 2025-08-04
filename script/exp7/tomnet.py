@@ -1,5 +1,6 @@
 import os
 import sys
+from typing import Tuple
 
 import torch
 from torch import nn
@@ -264,7 +265,7 @@ class ConvLSTM2d(nn.Module):
             padding=padding,
         )
 
-    def forward(self, x: torch.Tensor, hidden_state=None) -> tuple[torch.Tensor, tuple[torch.Tensor, torch.Tensor]]:
+    def forward(self, x: torch.Tensor, hidden_state=None) -> Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """
         Vectorized ConvLSTM forward pass
 
@@ -696,7 +697,7 @@ class CrossAttentionModule(nn.Module):
         self.dropout = nn.Dropout(dropout)
         self.layer_norm = nn.LayerNorm(hidden_dim)
         
-    def forward(self, e_char: torch.Tensor, e_mental: torch.Tensor, e_opp2: torch.Tensor, current_state_features: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, e_char: torch.Tensor, e_mental: torch.Tensor, e_opp2: torch.Tensor, current_state_features: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Forward pass for cross-attention
         
@@ -866,7 +867,7 @@ class PredNet(nn.Module):
             kernel_size=1,
         )
 
-    def forward(self, mental_state: torch.Tensor, character_embedding: torch.Tensor, current_state: torch.Tensor, e_opp2: torch.Tensor = None) -> tuple[torch.Tensor, ...]:
+    def forward(self, mental_state: torch.Tensor, character_embedding: torch.Tensor, current_state: torch.Tensor, e_opp2: torch.Tensor = None) -> Tuple[torch.Tensor, ...]:
         """
         Forward pass for prediction network with optional second belief
 
@@ -940,7 +941,7 @@ class PredNet(nn.Module):
 
         return self._forward_shared(x)
 
-    def forward_direct(self, mixed_data: torch.Tensor) -> tuple[torch.Tensor, ...]:
+    def forward_direct(self, mixed_data: torch.Tensor) -> Tuple[torch.Tensor, ...]:
         """
         Direct forward pass for 2-stage architecture - bypasses mental state modeling
 
@@ -952,7 +953,7 @@ class PredNet(nn.Module):
         """
         return self._forward_shared(mixed_data)
 
-    def _forward_shared(self, x: torch.Tensor) -> tuple[torch.Tensor, ...]:
+    def _forward_shared(self, x: torch.Tensor) -> Tuple[torch.Tensor, ...]:
         """Shared forward pass implementation"""
         # Shared torso
         x = self.conv_1(x)

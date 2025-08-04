@@ -14,7 +14,7 @@ class Config:
         self.seed = 42
 
         # Agent settings
-        self.n_games_per_type = 500  # Number of games to generate for ToMnet data
+        self.n_games_per_type = 12500  # Number of games to generate for ToMnet data
         self.achiever_types = {
             "lv0va": self.n_games_per_type,
             "lv1va": self.n_games_per_type,
@@ -238,7 +238,7 @@ class Config:
 
         # Training configuration
         self.training_config = {
-            "batch_size": 128,
+            "batch_size": 2048,
             "epochs": 300,
             "lr": 0.0001,
             "weight_decay": 0.001,

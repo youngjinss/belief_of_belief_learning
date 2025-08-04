@@ -4,8 +4,6 @@ import os
 import argparse
 import time
 from PIL import Image
-import warnings
-
 # Add lib to path for imports
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from utils import set_seed
@@ -17,15 +15,6 @@ from config import Config
 # Set seed using Config default value
 config = Config()
 set_seed(config.seed)
-
-# Suppress gymnasium registration warnings
-warnings.filterwarnings(
-    "ignore", message=".*Overriding environment.*already in registry.*"
-)
-warnings.filterwarnings("ignore", message=".*gym_minigrid has been deprecated.*")
-warnings.filterwarnings(
-    "ignore", message=".*environment creator metadata doesn't include `render_modes`.*"
-)
 
 # Add the lib directory to the path
 lib_path = os.path.join(os.path.dirname(__file__), "..", "..", "lib")
@@ -43,12 +32,9 @@ gym_minigrid_path = os.path.join(os.path.dirname(__file__), "../../lib/env")
 sys.path.insert(0, gym_minigrid_path)
 
 # Import the gym_minigrid environments
-try:
-    import gym_minigrid
+import gym_minigrid
 
-    print("Successfully imported gym_minigrid")
-except Exception as e:
-    print(f"Warning: Could not import gym_minigrid: {e}")
+print("Successfully imported gym_minigrid")
 
 
 def env_to_maze_format(env, achiever_pos, blocker_pos):
@@ -505,10 +491,7 @@ class GameSimulation:
                 frames.append(initial_frame)
 
         # Display initial state
-        try:
-            env.render()
-        except Exception as e:
-            print(f"Warning: Could not render: {e}")
+        env.render()
 
         print(f"Initial achiever position: {env.achiever_pos}")
         print(f"Initial blocker position: {env.blocker_pos}")
@@ -559,69 +542,61 @@ class GameSimulation:
                 print(f"  Blocker inventory: {env.blocker_keys}")
 
             # Update agent positions and directions for visualization
-            try:
-                # Update agent directions based on actions (for visualization)
-                action_to_direction = {
-                    0: 3,  # up -> north
-                    1: 0,  # right -> east
-                    2: 1,  # down -> south
-                    3: 2,  # left -> west
-                    # For stay, pickup, toggle actions, keep current direction
-                }
+            # Update agent directions based on actions (for visualization)
+            action_to_direction = {
+                0: 3,  # up -> north
+                1: 0,  # right -> east
+                2: 1,  # down -> south
+                3: 2,  # left -> west
+                # For stay, pickup, toggle actions, keep current direction
+            }
 
-                if achiever_action in action_to_direction:
-                    env.achiever_dir = action_to_direction[achiever_action]
+            if achiever_action in action_to_direction:
+                env.achiever_dir = action_to_direction[achiever_action]
 
-                if blocker_action in action_to_direction:
-                    env.blocker_dir = action_to_direction[blocker_action]
+            if blocker_action in action_to_direction:
+                env.blocker_dir = action_to_direction[blocker_action]
 
-                # Execute actions in environment and let it handle state naturally
-                action_pair = (achiever_action, blocker_action)
-                obs, rewards, terminated, truncated, info = env.step(action_pair)
-                done = terminated or truncated
+            # Execute actions in environment and let it handle state naturally
+            action_pair = (achiever_action, blocker_action)
+            obs, rewards, terminated, truncated, info = env.step(action_pair)
+            done = terminated or truncated
 
-                # Update agent positions for rendering consistency (after env.step)
-                env.achiever_pos = np.array(achiever_position)
-                env.blocker_pos = np.array(blocker_position)
+            # Update agent positions for rendering consistency (after env.step)
+            env.achiever_pos = np.array(achiever_position)
+            env.blocker_pos = np.array(blocker_position)
 
-                # Reset environment state to match trajectory exactly (override automatic behavior)
-                self._reset_environment_state_from_trajectory(env, step)
+            # Reset environment state to match trajectory exactly (override automatic behavior)
+            self._reset_environment_state_from_trajectory(env, step)
 
-                # Update the main agent_pos for rendering (use achiever as primary)
-                env.agent_pos = env.achiever_pos
-                env.agent_dir = env.achiever_dir
+            # Update the main agent_pos for rendering (use achiever as primary)
+            env.agent_pos = env.achiever_pos
+            env.agent_dir = env.achiever_dir
 
-                # Update step counter to match trajectory
-                env.step_count = step + 1
+            # Update step counter to match trajectory
+            env.step_count = step + 1
 
-                # Render environment (currently shows only achiever due to MiniGrid limitation)
-                try:
-                    env.render()
-                except Exception as e:
-                    print(f"Warning: Could not render: {e}")
+            # Render environment (currently shows only achiever due to MiniGrid limitation)
+            env.render()
 
-                # Capture frame for GIF
-                if save_gif:
-                    frame = self.render_to_image(env)
-                    if frame:
-                        frames.append(frame)
+            # Capture frame for GIF
+            if save_gif:
+                frame = self.render_to_image(env)
+                if frame:
+                    frames.append(frame)
 
-                # Check if episode is done
-                if done:
-                    print(f"Episode ended at step {step + 1} with rewards: {rewards}")
-                    print(
-                        f"Environment says episode is done, but trajectory continues..."
-                    )
-                    print(f"Terminated: {terminated}, Truncated: {truncated}")
-                    # Don't break here - continue with the trajectory regardless of environment state
+            # Check if episode is done
+            if done:
+                print(f"Episode ended at step {step + 1} with rewards: {rewards}")
+                print(
+                    f"Environment says episode is done, but trajectory continues..."
+                )
+                print(f"Terminated: {terminated}, Truncated: {truncated}")
+                # Don't break here - continue with the trajectory regardless of environment state
 
-                # Pause between steps
-                if pause_time > 0:
-                    time.sleep(pause_time)
-
-            except Exception as e:
-                print(f"Error during step {step + 1}: {e}")
-                break
+            # Pause between steps
+            if pause_time > 0:
+                time.sleep(pause_time)
 
         # Save GIF if requested
         if save_gif and frames:

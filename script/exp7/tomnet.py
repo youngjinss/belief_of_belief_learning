@@ -59,7 +59,7 @@ class ResidualBlock(nn.Module):
                 stride=stride,
             ),
             nn.BatchNorm2d(out_channels),
-            nn.ReLU(å),
+            nn.ReLU(),
         )
         self.conv_block_2 = nn.Sequential(
             nn.Conv2d(

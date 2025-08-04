@@ -400,7 +400,7 @@ def process_single_sample(sample, grid_size, window_size):
             # Add this single training sample
             sample_self_states.append(self_states_padded)
             sample_self_actions.append(
-                [self_action_target] + [-1] * (window_size - 1)
+                [-1] * (window_size - 1) + [self_action_target]
             )
             sample_goals.append(goal_tensor)
             sample_goal_ranks.append(goal_rank)
@@ -445,7 +445,7 @@ def process_single_sample(sample, grid_size, window_size):
         
         # Vectorized creation of padded self actions
         self_action_padding = np.full((num_windows, window_size - 1), -1)
-        padded_self_actions = np.column_stack([self_action_targets[:, np.newaxis], self_action_padding])
+        padded_self_actions = np.column_stack([self_action_padding, self_action_targets[:, np.newaxis]])
         
         # Vectorized replication of metadata for all windows
         goals_repeated = np.tile(goal_tensor, (num_windows, 1))

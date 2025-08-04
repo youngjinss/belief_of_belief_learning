@@ -1347,7 +1347,7 @@ def generate_trajectories_for_combination(
 
 if __name__ == "__main__":
     # Set multiprocessing start method to avoid issues
-    mp.set_start_method("spawn")
+    mp.set_start_method("spawn", force=True)
 
     import argparse
 

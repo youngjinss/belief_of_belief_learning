@@ -24,13 +24,9 @@ gym_minigrid_path = os.path.join(os.path.dirname(__file__), "../../lib/env")
 sys.path.insert(0, gym_minigrid_path)
 
 # Import the gym_minigrid environments
-try:
-    import gym_minigrid
+import gym_minigrid
 
-    print("Successfully imported gym_minigrid")
-except Exception as e:
-    print(f"Warning: Could not import gym_minigrid: {e}")
-    # Continue anyway as environments might be registered elsewhere
+print("Successfully imported gym_minigrid")
 
 # Import our modules
 from config import Config
@@ -173,10 +169,7 @@ def run_episode(env, agent, config, episode, args):
 
     # Display initial state and capture frame for GIF
     if config.render:
-        try:
-            env.render()
-        except Exception as e:
-            print(f"Warning: Could not render: {e}")
+        env.render()
 
     # Capture initial frame for GIF if saving
     if hasattr(args, "gif") and args.gif:
@@ -220,10 +213,7 @@ def run_episode(env, agent, config, episode, args):
 
         # Render environment
         if config.render:
-            try:
-                env.render()
-            except Exception as e:
-                print(f"Warning: Could not render: {e}")
+            env.render()
 
         # Capture frame for GIF if saving
         if hasattr(args, "gif") and args.gif:
@@ -359,54 +349,40 @@ def main():
     env_name = config.get_env_name()
     print(f"Creating environment: {env_name}")
 
-    try:
-        env = gym.make(env_name, max_steps=config.max_steps)
-        # Disable gym wrappers that cause issues
-        env = env.unwrapped if hasattr(env, "unwrapped") else env
+    env = gym.make(env_name, max_steps=config.max_steps)
+    # Disable gym wrappers that cause issues
+    env = env.unwrapped if hasattr(env, "unwrapped") else env
 
-        # Set render mode for GIF saving
-        if args.gif:
-            env.render_mode = "rgb_array"
+    # Set render mode for GIF saving
+    if args.gif:
+        env.render_mode = "rgb_array"
 
-        print(f"✓ Environment {env_name} created successfully")
-    except Exception as e:
-        print(f"✗ Failed to create environment {env_name}: {e}")
-        return
+    print(f"✓ Environment {env_name} created successfully")
 
     # Create agent
-    try:
-        # Use first achiever type as default
-        achiever_type = config.achiever_types[0]
-        agent = create_agent(achiever_type, env, config)
-        print(f"✓ Agent {achiever_type} created successfully")
-    except Exception as e:
-        # Use first achiever type as default
-        achiever_type = config.achiever_types[0]
-        print(f"✗ Failed to create agent {achiever_type}: {e}")
-        return
+    # Use first achiever type as default
+    achiever_type = config.achiever_types[0]
+    agent = create_agent(achiever_type, env, config)
+    print(f"✓ Agent {achiever_type} created successfully")
 
     # Statistics tracking
     total_steps = 0
     total_rewards = 0
     successful_episodes = 0
 
-    try:
-        # Run episodes
-        for episode in range(config.episodes):
-            step_count, episode_reward, success = run_episode(
-                env, agent, config, episode, args
-            )
+    # Run episodes
+    for episode in range(config.episodes):
+        step_count, episode_reward, success = run_episode(
+            env, agent, config, episode, args
+        )
 
-            total_steps += step_count
-            total_rewards += episode_reward
-            if success:
-                successful_episodes += 1
+        total_steps += step_count
+        total_rewards += episode_reward
+        if success:
+            successful_episodes += 1
 
-            # Print episode summary
-            print_episode_summary(episode, step_count, episode_reward, agent, config)
-
-    except KeyboardInterrupt:
-        print("\nInterrupted by user")
+        # Print episode summary
+        print_episode_summary(episode, step_count, episode_reward, agent, config)
 
     # Print final statistics
     print(f"\n=== Final Statistics ===")

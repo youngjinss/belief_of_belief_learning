@@ -275,6 +275,15 @@ python script/exp7/evaluate.py --compare_models baseline enhanced
   - Cross-attention mechanism
   - Opponent trajectory integration
   - Enhanced evaluation and visualization
+- **v2.1** (2025-08-04): Major refactoring and bug fixes
+  - Moved `spatialize_action` function to `utils.py` to prevent code duplication
+  - Renamed variables for clarity: `trajectory→self_states`, `opponent_trajectory→oppo_states`, `actions→self_actions`, `opponent_actions→oppo_actions`
+  - Removed `extract_actions_from_trajectory` function from all networks
+  - Fixed critical bug where models were using zero-filled actions instead of real action data
+  - Networks now properly concatenate states with spatialized actions using `spatialize_action` from utils
+  - Updated all function signatures and calls across exp7 scripts
+  - Fixed tensor shape mismatches in MentalNet and SecondBeliefNet
+  - Comprehensive testing validates all ToMnet configurations work correctly
 
 ## Research Applications
 

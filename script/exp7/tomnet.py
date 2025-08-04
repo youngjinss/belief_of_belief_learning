@@ -9,6 +9,9 @@ import torch.nn.functional as F
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from utils import set_seed, calculate_sr_loss_kl_divergence
 
+# Add current directory for utils import
+from utils import spatialize_action
+
 # Add current directory for config import
 sys.path.append(os.path.dirname(__file__))
 from config import Config
@@ -18,19 +21,20 @@ config = Config()
 set_seed(config.seed)
 
 """
-Integrated ToMnet architecture for KeyDoor environment (experiment 4)
-Supports both original 3-stage and fixed 2-stage architectures via config flag
+Integrated ToMnet architecture for KeyDoor environment with second-order belief modeling (exp7)
+Supports multiple architectures including novel second belief integration
 
 Architectures:
-- use_mentalnet=False: experiment5-style (CharNet → PredNet) - bypasses bottleneck
-- use_mentalnet=True: original 3-stage (CharNet → MentalNet → PredNet) - with bottleneck
+- use_mentalnet=False: 2-stage (CharNet → PredNet) - direct prediction
+- use_mentalnet=True: 3-stage (CharNet → MentalNet → PredNet) - with mental state modeling
+- use_second_belief=True: Enhanced with SecondBeliefNet for modeling beliefs about others' beliefs
 
 Channel structure (10 channels total):
 - Channels 0-7: Original game state channels (walls, keys, doors, etc.)
 - Channel 8: Self position (agent whose action is being predicted)
 - Channel 9: Opponent position (0 for single-agent mode)
 
-@author: Based on ToMnetF experiment5, adapted for KeyDoor environment
+@author: exp7 implementation with second-order belief modeling capabilities
 """
 
 
@@ -45,8 +49,8 @@ class ResidualBlock(nn.Module):
     ):
         super(ResidualBlock, self).__init__()
 
-        # Block structure
-        self.convBlock_1 = nn.Sequential(
+        # Block structure with improved initialization
+        self.conv_block_1 = nn.Sequential(
             nn.Conv2d(
                 in_channels=in_channels,
                 out_channels=out_channels,
@@ -55,9 +59,9 @@ class ResidualBlock(nn.Module):
                 stride=stride,
             ),
             nn.BatchNorm2d(out_channels),
-            nn.ReLU(),
+            nn.ReLU(å),
         )
-        self.convBlock_2 = nn.Sequential(
+        self.conv_block_2 = nn.Sequential(
             nn.Conv2d(
                 in_channels=out_channels,
                 out_channels=out_channels,
@@ -71,12 +75,11 @@ class ResidualBlock(nn.Module):
         self.relu = nn.ReLU()
         self.out_channels = out_channels
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         residual = x
-        x = self.convBlock_1(x)
-        x = self.convBlock_2(x)
-
-        return self.relu(x + residual)  # skipping connection
+        x = self.conv_block_1(x)
+        x = self.conv_block_2(x)
+        return self.relu(x + residual)
 
 
 class LSTM(nn.Module):
@@ -86,12 +89,15 @@ class LSTM(nn.Module):
         self.hidden_size = hidden_size
         self.lstm = nn.LSTM(input_size, hidden_size, batch_first=True)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x.shape -> (batch_size, seq_len, input_size)
-        h0 = torch.zeros(1, x.size(0), self.hidden_size).to(x.device)
-        c0 = torch.zeros(1, x.size(0), self.hidden_size).to(x.device)
+        device = x.device
+        batch_size = x.size(0)
+        
+        h0 = torch.zeros(1, batch_size, self.hidden_size, device=device, dtype=x.dtype)
+        c0 = torch.zeros(1, batch_size, self.hidden_size, device=device, dtype=x.dtype)
+        
         out, _ = self.lstm(x, (h0, c0))
-
         return out[:, -1, :]  # Return last timestep output
 
 
@@ -148,7 +154,7 @@ class CharNet(nn.Module):
         # Always create default_embedding as a fallback
         self.default_embedding = nn.Parameter(torch.zeros(n_echar))
 
-    def forward(self, past_trajectories):
+    def forward(self, past_trajectories: torch.Tensor) -> torch.Tensor:
         """
         Forward pass for character network
 
@@ -159,16 +165,14 @@ class CharNet(nn.Module):
             Character embeddings: (batch_size, n_echar)
         """
         if self.use_n_past and past_trajectories is not None:
-            batch_size, n_past_max = past_trajectories.size(0), past_trajectories.size(
-                1
-            )
+            batch_size, n_past_max = past_trajectories.size(0), past_trajectories.size(1)
+            device = past_trajectories.device
+            dtype = past_trajectories.dtype
 
             # Initialize character embedding from past episodes
-            e_char_past = torch.zeros(batch_size, self.n_echar).to(
-                past_trajectories.device
-            )
+            e_char_past = torch.zeros(batch_size, self.n_echar, device=device, dtype=dtype)
             # Track number of valid episodes per sample for averaging
-            valid_episode_counts = torch.zeros(batch_size).to(past_trajectories.device)
+            valid_episode_counts = torch.zeros(batch_size, device=device, dtype=dtype)
 
             # Process each past episode and accumulate for averaging
             for ep_idx in range(n_past_max):
@@ -226,9 +230,7 @@ class CharNet(nn.Module):
 
             # Average the character embeddings over valid episodes
             # Avoid division by zero by using maximum of counts and 1
-            valid_episode_counts = torch.maximum(
-                valid_episode_counts, torch.ones_like(valid_episode_counts)
-            )
+            valid_episode_counts = torch.clamp(valid_episode_counts, min=1.0)
             e_char_past = e_char_past / valid_episode_counts.unsqueeze(-1)
 
             return e_char_past
@@ -239,7 +241,8 @@ class CharNet(nn.Module):
                 if past_trajectories is not None
                 else self.batch
             )
-            return self.default_embedding.unsqueeze(0).expand(batch_size, -1)
+            device = past_trajectories.device if past_trajectories is not None else self.default_embedding.device
+            return self.default_embedding.unsqueeze(0).expand(batch_size, -1).to(device=device)
 
 
 class ConvLSTM2d(nn.Module):
@@ -261,7 +264,7 @@ class ConvLSTM2d(nn.Module):
             padding=padding,
         )
 
-    def forward(self, x, hidden_state=None):
+    def forward(self, x: torch.Tensor, hidden_state=None) -> tuple[torch.Tensor, tuple[torch.Tensor, torch.Tensor]]:
         """
         Vectorized ConvLSTM forward pass
 
@@ -274,20 +277,22 @@ class ConvLSTM2d(nn.Module):
             (h, c): Final hidden and cell states
         """
         batch_size, seq_len, input_channels, height, width = x.size()
+        device = x.device
+        dtype = x.dtype
 
         if hidden_state is None:
             h = torch.zeros(
-                batch_size, self.hidden_channels, height, width, device=x.device
+                batch_size, self.hidden_channels, height, width, device=device, dtype=dtype
             )
             c = torch.zeros(
-                batch_size, self.hidden_channels, height, width, device=x.device
+                batch_size, self.hidden_channels, height, width, device=device, dtype=dtype
             )
         else:
             h, c = hidden_state
 
         # Initialize output storage
         outputs = torch.zeros(
-            batch_size, seq_len, self.hidden_channels, height, width, device=x.device
+            batch_size, seq_len, self.hidden_channels, height, width, device=device, dtype=dtype
         )
 
         # Process each timestep (minimal sequential processing for LSTM dependencies)
@@ -341,12 +346,12 @@ class MentalNet(nn.Module):
         self.time_step = time_step
         self.n_echar = n_echar
 
-        # State channels (8 original + 2 position) + action channel (1) = 11 total input channels
-        self.state_channels = channels_in  # Use channels_in directly (now 10 channels)
+        # State channels (now includes all channels) + action channel (1) = total input channels
+        self.state_channels = channels_in  # Use channels_in directly (now 10 channels including position info)
         self.action_space = action_space  # Number of possible actions from config
         self.input_channels = (
             self.state_channels + 1
-        )  # State + spatialized action (10+1=11)
+        )  # State + spatialized action (channels_in+1)
 
         # Use configurable n_ement channels throughout
         self.resnet_channels = n_ement
@@ -385,89 +390,55 @@ class MentalNet(nn.Module):
             self.resnet_channels, self.output_channels, kernel_size=3, padding=1
         )
 
-    def spatialize_action(self, action_indices, height, width):
-        """
-        Convert action indices to spatial representation
 
-        Args:
-            action_indices: (batch_size,) - action indices for each sample
-            height, width: spatial dimensions
 
-        Returns:
-            Spatialized actions: (batch_size, 1, height, width)
-        """
-        batch_size = action_indices.size(0)
-        device = action_indices.device
-
-        # Create spatial action maps
-        # Each action gets a unique value across the entire spatial map
-        action_maps = torch.zeros(batch_size, 1, height, width, device=device)
-
-        for i in range(batch_size):
-            action_idx = action_indices[i].item()
-            # Normalize action index to [0, 1] range
-            action_value = (
-                action_idx / (self.action_space - 1) if self.action_space > 1 else 0
-            )
-            action_maps[i, 0] = action_value
-
-        return action_maps
-
-    def forward(self, recent_trajectory, recent_actions):
+    def forward(self, self_states: torch.Tensor, self_actions: torch.Tensor = None) -> torch.Tensor:
         """
         Forward pass following paper specification
 
         Args:
-            recent_trajectory: (batch_size, seq_len, channels, height, width) - full trajectory
-            recent_actions: (batch_size, seq_len) - actions taken at each timestep
+            self_states: (batch_size, seq_len, channels, height, width) - state channels only
+            self_actions: (batch_size, seq_len) - action indices (optional)
 
         Returns:
             Mental state embedding: (batch_size, output_channels, height, width) - SPATIAL output
         """
-        batch_size, seq_len, channels, height, width = recent_trajectory.shape
+        batch_size, seq_len, _, height, width = self_states.shape
 
-        # Extract state channels (first 8 channels, excluding heading direction)
-        states = recent_trajectory[
-            :, :, : self.state_channels
-        ]  # (batch_size, seq_len, 8, height, width)
-
-        # Check if trajectory is empty (query state is initial state)
-        trajectory_sum = torch.sum(states, dim=(2, 3, 4))  # (batch_size, seq_len)
-        is_empty = torch.all(trajectory_sum == 0, dim=1)  # (batch_size,)
+        # Check if self states is empty (query state is initial state)
+        self_states_sum = torch.sum(self_states, dim=(2, 3, 4))  # (batch_size, seq_len)
+        is_empty = torch.all(self_states_sum == 0, dim=1)  # (batch_size,)
 
         if torch.all(is_empty):
-            # Return zero vector for empty trajectories
-            return torch.zeros(
-                batch_size,
-                self.output_channels,
-                height,
-                width,
-                device=recent_trajectory.device,
-            )
+            raise ValueError("self_states cannot be Zero tensor")
+        
+        # Create fallback actions if not available
+        if self_actions is None:
+            raise ValueError("self_actions cannot be Zero tensor")
 
         # Pre-process each timestep: spatialize action + concatenate with state
         processed_timesteps = []
 
         for t in range(seq_len):
-            state_t = states[:, t]  # (batch_size, 8, height, width)
-            action_t = recent_actions[:, t]  # (batch_size,)
+            state_t = self_states[:, t]  # (batch_size, channels, height, width)
+            action_t = self_actions[:, t]  # (batch_size,)
 
             # Spatialize action
-            action_spatial_t = self.spatialize_action(
-                action_t, height, width
+            action_spatial_t = spatialize_action(
+                action_t, height, width, self.action_space
             )  # (batch_size, 1, height, width)
 
             # Concatenate state and spatialized action
             combined_t = torch.cat(
                 [state_t, action_spatial_t], dim=1
-            )  # (batch_size, 9, height, width)
+            )  # (batch_size, channels+1, height, width)
 
             processed_timesteps.append(combined_t)
 
         # Stack timesteps
         processed_trajectory = torch.stack(
             processed_timesteps, dim=1
-        )  # (batch_size, seq_len, 9, height, width)
+        )  # (batch_size, seq_len, channels+1, height, width)
 
         # Pass through initial conv to get to 32 channels
         # Reshape for processing
@@ -488,15 +459,15 @@ class MentalNet(nn.Module):
         x = x.view(batch_size, seq_len, self.resnet_channels, height, width)
 
         # Feed into convolutional LSTM with 32 channels
-        lstm_output, (final_h, final_c) = self.conv_lstm(x)
+        _, (final_h, _) = self.conv_lstm(x)
 
         # Use final hidden state from LSTM
         final_features = final_h  # (batch_size, 32, height, width)
 
-        # LSTM output through 1-layer convnet with 32 channels
+        # LSTM output through 1-layer convnet with n_ement channels
         mental_state = self.output_conv(
             final_features
-        )  # (batch_size, 32, height, width)
+        )  # (batch_size, n_ement, height, width)
 
         # Handle empty trajectories - set their output to zero
         for i in range(batch_size):
@@ -535,9 +506,9 @@ class SecondBeliefNet(nn.Module):
         self.hidden_size = hidden_size
         self.action_space = action_space
         
-        # SAME AS MENTALNET: State channels (10) + action channel (1) = 11 total input channels
-        self.state_channels = channels_in  # 10 channels
-        self.input_channels = self.state_channels + 1  # State + spatialized action (10+1=11)
+        # SAME AS MENTALNET: State channels (channels_in) + action channel (1) = total input channels
+        self.state_channels = channels_in  # channels_in value
+        self.input_channels = self.state_channels + 1  # State + spatialized action (channels_in+1)
         
         # SAME AS MENTALNET: Initial conv to process combined state+action
         self.input_conv = nn.Conv2d(
@@ -583,79 +554,54 @@ class SecondBeliefNet(nn.Module):
         # Dropout for regularization
         self.dropout = nn.Dropout(0.1)
         
-    def spatialize_action(self, action_indices, height, width):
-        """
-        SAME AS MENTALNET: Convert action indices to spatial representation
-        Args:
-            action_indices: (batch_size,) - action indices for each sample
-            height, width: spatial dimensions
-        Returns:
-            Spatialized actions: (batch_size, 1, height, width)
-        """
-        batch_size = action_indices.size(0)
-        action_maps = torch.zeros(batch_size, 1, height, width).to(action_indices.device)
-        
-        # Map action index to continuous value (same as MentalNet)
-        action_values = action_indices.float() / (self.action_space - 1)  # Normalize to [0, 1]
-        
-        # Fill entire spatial map with action value (same as MentalNet)
-        for i in range(batch_size):
-            action_value = action_values[i]
-            action_maps[i, 0] = action_value
-            
-        return action_maps
     
-    def forward(self, mental_state, opponent_trajectory, opponent_actions=None):
+    def forward(self, mental_state: torch.Tensor, oppo_states: torch.Tensor, oppo_actions: torch.Tensor = None) -> torch.Tensor:
         """
         Forward pass for SecondBeliefNet - USING SAME LOGIC AS MENTALNET
         
         Args:
             mental_state: (batch_size, n_ement, height, width) - spatial mental state
-            opponent_trajectory: (batch_size, seq_len, channels_in, height, width) - opponent's trajectory
-            opponent_actions: (batch_size, seq_len) - opponent's actions (REQUIRED)
+            oppo_states: (batch_size, seq_len, channels_in, height, width) - opponent's state channels
+            oppo_actions: (batch_size, seq_len) - opponent's action indices (optional)
             
         Returns:
             e_opp2: (batch_size, n_eopp2) - second belief embedding
         """
-        if opponent_trajectory is None:
-            # Handle case where opponent trajectory is not available (single-agent mode)
-            batch_size = mental_state.size(0)
-            return torch.zeros(batch_size, self.n_eopp2, device=mental_state.device)
-        
-        if opponent_actions is None:
-            raise ValueError("opponent_actions is required for SecondBeliefNet (following MentalNet logic)")
+        if oppo_states is None:
+            raise ValueError("oppo_states cannot be None")
             
-        batch_size, seq_len, channels, height, width = opponent_trajectory.shape
+        batch_size, seq_len, _, height, width = oppo_states.shape
         
-        # Extract state channels (first 10 channels) - SAME AS MENTALNET
-        states = opponent_trajectory[:, :, :self.state_channels]  # (batch_size, seq_len, 10, height, width)
+        # Create fallback actions if not available
+        if oppo_actions is None:
+            raise ValueError("oppo_actions cannot be None")
         
-        # Check if trajectory is empty - SAME AS MENTALNET
-        trajectory_sum = torch.sum(states, dim=(2, 3, 4))  # (batch_size, seq_len)
-        is_empty = torch.all(trajectory_sum == 0, dim=1)  # (batch_size,)
+        # Check if opponent states is empty - SAME AS MENTALNET
+        oppo_states_sum = torch.sum(oppo_states, dim=(2, 3, 4))  # (batch_size, seq_len)
+        is_empty = torch.all(oppo_states_sum == 0, dim=1)  # (batch_size,)
         
         # Process each timestep with state + spatialized action - SAME AS MENTALNET
         processed_timesteps = []
         for t in range(seq_len):
-            state_t = states[:, t]  # (batch_size, 10, height, width)
-            action_t = opponent_actions[:, t]  # (batch_size,)
+            state_t = oppo_states[:, t]  # (batch_size, channels, height, width)
+            action_t = oppo_actions[:, t]  # (batch_size,)
             
             # Spatialize action - SAME AS MENTALNET
-            action_spatial_t = self.spatialize_action(
-                action_t, height, width
+            action_spatial_t = spatialize_action(
+                action_t, height, width, self.action_space
             )  # (batch_size, 1, height, width)
             
             # Concatenate state and spatialized action - SAME AS MENTALNET
             combined_t = torch.cat(
                 [state_t, action_spatial_t], dim=1
-            )  # (batch_size, 11, height, width)
+            )  # (batch_size, channels+1, height, width)
             
             processed_timesteps.append(combined_t)
         
         # Stack timesteps
         processed_trajectory = torch.stack(
             processed_timesteps, dim=1
-        )  # (batch_size, seq_len, 11, height, width)
+        )  # (batch_size, seq_len, channels+1, height, width)
         
         # Flatten for processing - SAME AS MENTALNET
         trajectory_flat = processed_trajectory.view(
@@ -750,7 +696,7 @@ class CrossAttentionModule(nn.Module):
         self.dropout = nn.Dropout(dropout)
         self.layer_norm = nn.LayerNorm(hidden_dim)
         
-    def forward(self, e_char, e_mental, e_opp2, current_state_features):
+    def forward(self, e_char: torch.Tensor, e_mental: torch.Tensor, e_opp2: torch.Tensor, current_state_features: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Forward pass for cross-attention
         
@@ -762,6 +708,7 @@ class CrossAttentionModule(nn.Module):
             
         Returns:
             attended_features: (batch_size, hidden_dim) - attention-weighted features
+            attention_weights: attention weights tensor
         """
         batch_size = e_char.size(0)
         
@@ -786,7 +733,7 @@ class CrossAttentionModule(nn.Module):
         
         # Project query to attention space if needed
         if current_state_features.size(-1) != self.hidden_dim:
-            query_proj = nn.Linear(current_state_features.size(-1), self.hidden_dim).to(current_state_features.device)
+            query_proj = nn.Linear(current_state_features.size(-1), self.hidden_dim, device=current_state_features.device)
             query = query_proj(query)  # (batch, 1, hidden_dim)
         
         # Apply multi-head attention
@@ -810,7 +757,7 @@ class PredNet(nn.Module):
         batch: int,
         n_ement: int,
         n_echar: int,
-        current_state_channels: int,
+        channels_in: int,
         residual_blocks: int,
         action_space: int = 7,
         out_channels: int = 64,
@@ -828,7 +775,7 @@ class PredNet(nn.Module):
         self.batch = batch
         self.n_ement = n_ement
         self.n_echar = n_echar
-        self.current_state_channels = current_state_channels
+        self.channels_in = channels_in
         self.action_space = action_space
         self.goal_space = goal_space
         self.env_width = env_width
@@ -850,14 +797,14 @@ class PredNet(nn.Module):
                 num_heads=attention_heads,
             )
             # Input channels: current_state + attention output
-            input_channels = current_state_channels + attention_hidden
+            input_channels = channels_in + attention_hidden
         elif use_mentalnet:
             # Original 3-stage: current_state + mental_state + character_embedding
             # MentalNet outputs n_ement channels (spatial)
-            input_channels = current_state_channels + n_ement + n_echar
+            input_channels = channels_in + n_ement + n_echar
         else:
-            # Fixed 2-stage: current_state + character_embedding (like experiment5)
-            input_channels = current_state_channels + n_echar
+            # 2-stage architecture: current_state + character_embedding - direct prediction
+            input_channels = channels_in + n_echar
 
         # Shared torso - processes input data
         self.conv_1 = nn.Conv2d(
@@ -919,25 +866,25 @@ class PredNet(nn.Module):
             kernel_size=1,
         )
 
-    def forward(self, mental_state, character_embedding, current_state, e_opp2=None):
+    def forward(self, mental_state: torch.Tensor, character_embedding: torch.Tensor, current_state: torch.Tensor, e_opp2: torch.Tensor = None) -> tuple[torch.Tensor, ...]:
         """
         Forward pass for prediction network with optional second belief
 
         Args:
             mental_state: (batch_size, n_ement, height, width) - spatial mental state from MentalNet
             character_embedding: (batch_size, n_echar)
-            current_state: (batch_size, current_state_channels, height, width)
+            current_state: (batch_size, channels_in, height, width)
             e_opp2: (batch_size, n_eopp2) - second belief embedding (optional)
 
         Returns:
-            action_logits, goal_logits, agent_logits, type_logits, consumption_logits, sr_pred
+            tuple of prediction tensors: (action_logits, goal_logits, agent_logits, type_logits, consumption_logits, sr_pred)
         """
         batch_size, _, height, width = current_state.shape
 
         if self.use_second_belief and e_opp2 is not None:
             # Use cross-attention to combine all embeddings
             # Extract features from current state for query
-            current_features = torch.mean(current_state, [2, 3])  # (batch, current_state_channels)
+            current_features = torch.mean(current_state, [2, 3])  # (batch, channels_in)
             
             # Apply cross-attention
             attended_features, attention_weights = self.cross_attention(
@@ -993,19 +940,19 @@ class PredNet(nn.Module):
 
         return self._forward_shared(x)
 
-    def forward_direct(self, mixed_data):
+    def forward_direct(self, mixed_data: torch.Tensor) -> tuple[torch.Tensor, ...]:
         """
-        Direct forward pass like experiment5 PredNet (fixed 2-stage architecture)
+        Direct forward pass for 2-stage architecture - bypasses mental state modeling
 
         Args:
-            mixed_data: (batch_size, current_state_channels + n_echar, height, width)
+            mixed_data: (batch_size, channels_in + n_echar, height, width)
 
         Returns:
-            action_logits, goal_logits, agent_logits, type_logits, consumption_logits, sr_pred
+            tuple of prediction tensors: (action_logits, goal_logits, agent_logits, type_logits, consumption_logits, sr_pred)
         """
         return self._forward_shared(mixed_data)
 
-    def _forward_shared(self, x):
+    def _forward_shared(self, x: torch.Tensor) -> tuple[torch.Tensor, ...]:
         """Shared forward pass implementation"""
         # Shared torso
         x = self.conv_1(x)
@@ -1069,7 +1016,6 @@ class ToMnet(nn.Module):
         n_eopp2: int = 64,
         out_channels: int = 32,
         channels_in: int = 10,  # 8 original channels + 1 self position + 1 opponent position (for CharNet)
-        current_state_channels: int = 8,  # For PredNet (without heading direction)
         time_step: int = 500,
         action_space: int = 7,
         goal_space: int = 4,
@@ -1096,7 +1042,6 @@ class ToMnet(nn.Module):
         self.max_n_past = max_n_past
         self.use_n_past = use_n_past
         self.channels_in = channels_in
-        self.current_state_channels = current_state_channels
         self.env_width = env_width
         self.env_height = env_height
 
@@ -1120,7 +1065,7 @@ class ToMnet(nn.Module):
                 residual_blocks=residual_blocks,
                 n_ement=n_ement,
                 out_channels=out_channels,
-                channels_in=current_state_channels,
+                channels_in=channels_in,  # Use full channels_in (10)
                 time_step=time_step,
                 n_echar=n_echar,
                 action_space=action_space,
@@ -1131,7 +1076,7 @@ class ToMnet(nn.Module):
             self.second_belief_net = SecondBeliefNet(
                 n_ement=n_ement,
                 n_eopp2=n_eopp2,
-                channels_in=channels_in,
+                channels_in=channels_in,  # Keep channels_in (10) for opponent states which include position info
                 time_step=time_step,
                 hidden_size=second_belief_hidden,
                 residual_blocks=residual_blocks,
@@ -1143,7 +1088,7 @@ class ToMnet(nn.Module):
             batch=batch,
             n_ement=n_ement,
             n_echar=n_echar,
-            current_state_channels=current_state_channels,
+            channels_in=channels_in,
             residual_blocks=residual_blocks,
             action_space=action_space,
             out_channels=out_channels,
@@ -1157,79 +1102,61 @@ class ToMnet(nn.Module):
             attention_heads=attention_heads,
         )
 
-    def forward(self, past_trajectories, recent_trajectory, current_state, opponent_recent_trajectory=None, opponent_recent_actions=None, **kwargs):
+
+    def forward(self, past_trajectories: torch.Tensor, self_states: torch.Tensor, self_actions: torch.Tensor,
+                current_state: torch.Tensor, oppo_states: torch.Tensor = None, oppo_actions: torch.Tensor = None, **kwargs) -> dict:
         """
         Forward pass for ToMnet (supports all architectures including second belief)
 
         Args:
-            past_trajectories: (batch_size, n_past, seq_len, channels, height, width) - for CharNet
-            recent_trajectory: (batch_size, seq_len, channels, height, width) - for MentalNet (if used)
+            past_trajectories: (batch_size, n_past, seq_len, channels, height, width) - for CharNet (past self states)
+            self_states: (batch_size, seq_len, channels, height, width) - recent self states for MentalNet (if used)
+            self_actions: (batch_size, seq_len) - recent self actions for MentalNet (if used)
             current_state: (batch_size, channels, height, width) - for PredNet
-            opponent_recent_trajectory: (batch_size, seq_len, channels, height, width) - for SecondBeliefNet (optional)
-            opponent_recent_actions: (batch_size, seq_len) - opponent's actions for SecondBeliefNet (required if opponent_recent_trajectory is provided)
-            **kwargs: Additional keyword arguments (handled for backward compatibility)
+            oppo_states: (batch_size, seq_len, channels, height, width) - opponent states for SecondBeliefNet (optional)
+            oppo_actions: (batch_size, seq_len) - opponent actions for SecondBeliefNet (optional)
+            **kwargs: Additional keyword arguments for flexible parameter passing
 
         Returns:
             Dict with keys: action_logits, goal_logits, agent_logits, type_logits, consumption_logits, sr_pred, 
                            character_embedding, mental_state, second_belief (optional)
         """
-        # Handle legacy parameter handling
-        if 'opponent_recent_actions' in kwargs and opponent_recent_actions is None:
-            # If passed through kwargs, extract it
-            opponent_recent_actions = kwargs.pop('opponent_recent_actions', None)
-        
         # Validate inputs for second belief functionality
-        if self.use_second_belief and opponent_recent_trajectory is None:
-            import warnings
-            warnings.warn(
-                "SecondBeliefNet is enabled but opponent_recent_trajectory is None. "
-                "Second belief embeddings will be zero vectors.",
-                UserWarning,
-                stacklevel=2
-            )
+        if self.use_second_belief and oppo_states is None:
+            pass
         # 1. Character network - processes past episodes (same for both architectures)
         if self.use_n_past and past_trajectories is not None:
             character_embedding = self.char_net(past_trajectories)
         else:
             batch_size = current_state.size(0)
+            device = current_state.device
+            dtype = current_state.dtype
             character_embedding = torch.zeros(
-                batch_size, self.n_echar, device=current_state.device
+                batch_size, self.n_echar, device=device, dtype=dtype
             )
 
-        # Extract relevant channels for PredNet
-        current_state_for_pred = current_state[:, : self.current_state_channels]
+        # Use full state for PredNet (no channel slicing)
+        current_state_for_pred = current_state
         batch_size, _, height, width = current_state_for_pred.shape
 
         # Initialize second_belief as None
         second_belief = None
+        device = current_state.device
+        dtype = current_state.dtype
 
         if self.use_mentalnet:
-            # Extract actions from recent trajectory for MentalNet
-            # For simplicity, assume actions are embedded in trajectory or use dummy actions
-            recent_actions = torch.zeros(
-                batch_size,
-                recent_trajectory.size(1),
-                dtype=torch.long,
-                device=recent_trajectory.device,
-            )
-
             # Process recent trajectory through MentalNet
-            mental_state = self.mental_net(recent_trajectory, recent_actions)
+            # Use all channels (no slicing needed anymore)
+            state_channels_only = self_states  # (batch_size, seq_len, channels_in, height, width)
+            mental_state = self.mental_net(state_channels_only, self_actions)
 
             # Generate second belief if enabled
-            if self.use_second_belief and opponent_recent_trajectory is not None:
-                # Extract opponent actions if not provided
-                if opponent_recent_actions is None:
-                    # Create dummy opponent actions (same approach as recent_actions)
-                    opponent_recent_actions = torch.zeros(
-                        batch_size,
-                        opponent_recent_trajectory.size(1),
-                        dtype=torch.long,
-                        device=opponent_recent_trajectory.device,
-                    )
-                second_belief = self.second_belief_net(mental_state, opponent_recent_trajectory, opponent_recent_actions)
+            if self.use_second_belief and oppo_states is not None:
+                # Use all channels from opponent states as well
+                oppo_state_channels_only = oppo_states  # (batch_size, seq_len, channels_in, height, width)
+                second_belief = self.second_belief_net(mental_state, oppo_state_channels_only, oppo_actions)
             else:
-                second_belief = torch.zeros(batch_size, self.n_eopp2, device=current_state.device)
+                second_belief = torch.zeros(batch_size, self.n_eopp2, device=device, dtype=dtype)
 
             # PredNet with all embeddings
             (
@@ -1241,31 +1168,24 @@ class ToMnet(nn.Module):
                 sr_pred,
             ) = self.pred_net(mental_state, character_embedding, current_state_for_pred, second_belief)
         else:
-            # 2-stage architecture: CharNet → PredNet (like experiment5)
-            # Create dummy mental_state for compatibility
+            # 2-stage architecture: CharNet → PredNet - direct prediction without mental modeling
+            # Create dummy mental_state since MentalNet is not used in 2-stage architecture
+            device = current_state.device
+            dtype = current_state.dtype
             mental_state = torch.zeros(
-                batch_size, self.n_ement, device=current_state.device
+                batch_size, self.n_ement, device=device, dtype=dtype
             )
 
             if self.use_second_belief:
                 # 2-stage mode with second belief: use cross-attention
                 dummy_mental_state = torch.zeros(
-                    batch_size, self.n_ement, height, width, device=current_state.device
+                    batch_size, self.n_ement, height, width, device=device, dtype=dtype
                 )
                 
-                if opponent_recent_trajectory is not None:
-                    # Extract opponent actions if not provided
-                    if opponent_recent_actions is None:
-                        # Create dummy opponent actions
-                        opponent_recent_actions = torch.zeros(
-                            batch_size,
-                            opponent_recent_trajectory.size(1),
-                            dtype=torch.long,
-                            device=opponent_recent_trajectory.device,
-                        )
-                    second_belief = self.second_belief_net(dummy_mental_state, opponent_recent_trajectory, opponent_recent_actions)
+                if oppo_states is not None:
+                    second_belief = self.second_belief_net(dummy_mental_state, oppo_states, oppo_actions)
                 else:
-                    second_belief = torch.zeros(batch_size, self.n_eopp2, device=current_state.device)
+                    second_belief = torch.zeros(batch_size, self.n_eopp2, device=device, dtype=dtype)
                 
                 # Use PredNet with all embeddings (it will use cross-attention internally)
                 (
@@ -1298,7 +1218,7 @@ class ToMnet(nn.Module):
                     sr_pred,
                 ) = self.pred_net.forward_direct(mixed_data)
                 
-                second_belief = torch.zeros(batch_size, self.n_eopp2, device=current_state.device)
+                second_belief = torch.zeros(batch_size, self.n_eopp2, device=device, dtype=dtype)
 
         return {
             "action_logits": action_logits,
@@ -1312,17 +1232,18 @@ class ToMnet(nn.Module):
             "second_belief": second_belief,
         }
 
-    def predict_action(self, past_trajectories: torch.Tensor, recent_trajectory: torch.Tensor, 
-                      current_state: torch.Tensor, opponent_recent_trajectory: torch.Tensor = None, 
-                      **kwargs) -> torch.Tensor:
+    def predict_action(self, past_trajectories: torch.Tensor, self_states: torch.Tensor, self_actions: torch.Tensor,
+                      current_state: torch.Tensor, oppo_states: torch.Tensor = None, oppo_actions: torch.Tensor = None, **kwargs) -> torch.Tensor:
         """
         Predict next action probabilities using softmax on action logits.
         
         Args:
             past_trajectories: Past episode trajectories for character embedding
-            recent_trajectory: Recent trajectory for mental state modeling
+            self_states: Recent self states for mental state modeling
+            self_actions: Recent self actions for mental state modeling
             current_state: Current state for prediction
-            opponent_recent_trajectory: Opponent trajectory for second belief (optional)
+            oppo_states: Opponent states for second belief (optional)
+            oppo_actions: Opponent actions for second belief (optional)
             **kwargs: Additional arguments
             
         Returns:
@@ -1330,15 +1251,15 @@ class ToMnet(nn.Module):
         """
         with torch.no_grad():
             outputs = self.forward(
-                past_trajectories, recent_trajectory, current_state, opponent_recent_trajectory, **kwargs
+                past_trajectories, self_states, self_actions, current_state, oppo_states, oppo_actions, **kwargs
             )
             return F.softmax(outputs["action_logits"], dim=1)
 
-    def predict_goal(self, past_trajectories, recent_trajectory, current_state, opponent_recent_trajectory=None, **kwargs):
+    def predict_goal(self, past_trajectories, self_states, self_actions, current_state, oppo_states=None, oppo_actions=None, **kwargs):
         """Predict goal"""
         with torch.no_grad():
             outputs = self.forward(
-                past_trajectories, recent_trajectory, current_state, opponent_recent_trajectory, **kwargs
+                past_trajectories, self_states, self_actions, current_state, oppo_states, oppo_actions, **kwargs
             )
             return F.softmax(outputs["goal_logits"], dim=1)
 
@@ -1351,19 +1272,20 @@ class ToMnet(nn.Module):
                 batch_size = 1
                 return torch.zeros(batch_size, self.n_echar)
 
-    def get_mental_state(self, recent_trajectory, character_embedding):
-        """Get mental state from recent trajectory and character embedding"""
+    def get_mental_state(self, self_states, self_actions):
+        """Get mental state from recent trajectory states and actions"""
         with torch.no_grad():
             if self.use_mentalnet:
-                # Use new MentalNet interface - pass full trajectory and character embedding
-                mental_state = self.mental_net(recent_trajectory, character_embedding)
+                # Use new MentalNet interface - pass states and actions separately
+                mental_state = self.mental_net(self_states, self_actions)
                 return mental_state
             else:
                 # Return dummy mental state for fixed architecture
                 batch_size = (
-                    1 if recent_trajectory is None else recent_trajectory.size(0)
+                    1 if self_states is None else self_states.size(0)
                 )
-                return torch.zeros(batch_size, self.n_ement)
+                device = self_states.device if self_states is not None else torch.device('cpu')
+                return torch.zeros(batch_size, self.n_ement, device=device)
     
     def validate_configuration(self) -> bool:
         """
@@ -1495,7 +1417,7 @@ class ToMnetLoss(nn.Module):
 # Utility functions
 def create_model(config, save_dir=None):
     """
-    Create ToMnet model from configuration with validation and error handling.
+    Create ToMnet model from configuration.
 
     Args:
         config: Configuration object or dictionary containing model parameters
@@ -1503,73 +1425,51 @@ def create_model(config, save_dir=None):
 
     Returns:
         ToMnet: Model instance with loaded weights if checkpoint exists
-        
-    Raises:
-        ValueError: If configuration is invalid
-        RuntimeError: If model creation fails
     """
-    try:
-        # Handle both Config object and dictionary
-        if hasattr(config, "get_model_kwargs"):
-            # Config object
-            model_kwargs = config.get_model_kwargs()
-            model = ToMnet(**model_kwargs)
-        else:
-            # Dictionary - validate required parameters
-            required_params = ["use_mentalnet", "use_second_belief"]
-            for param in required_params:
-                if param not in config:
-                    raise ValueError(f"Missing required parameter: {param}")
-            
-            model = ToMnet(
-                use_mentalnet=config.get("use_mentalnet", False),
-                use_second_belief=config.get("use_second_belief", False),
-                batch=config.get("batch", 32),
-                residual_blocks=config.get("residual_blocks", 3),
-                n_echar=config.get("n_echar", 64),
-                n_ement=config.get("n_ement", 64),
-                n_eopp2=config.get("n_eopp2", 64),
-                out_channels=config.get("out_channels", 32),
-                channels_in=config.get("channels_in", 10),
-                current_state_channels=config.get("current_state_channels", 8),
-                time_step=config.get("time_step", 500),
-                action_space=config.get("action_space", 7),
-                goal_space=config.get("goal_space", 4),
-                max_n_past=config.get("max_n_past", 10),
-                use_n_past=config.get("use_n_past", True),
-                env_width=config.get("env_width", 9),
-                env_height=config.get("env_height", 9),
-                hidden_size_lstm=config.get("hidden_size_lstm", 64),
-                second_belief_hidden=config.get("second_belief_hidden", 128),
-                attention_hidden=config.get("attention_hidden", 256),
-                attention_heads=config.get("attention_heads", 8),
-            )
-    except Exception as e:
-        raise RuntimeError(f"Failed to create model: {e}")
-    
-    # Validate model configuration
-    if not model.validate_configuration():
-        raise ValueError("Model configuration validation failed")
+    # Handle both Config object and dictionary
+    if hasattr(config, "get_model_kwargs"):
+        # Config object
+        model_kwargs = config.get_model_kwargs()
+        model = ToMnet(**model_kwargs)
+    else:
+        # Dictionary - use provided parameters directly
+        model = ToMnet(
+            use_mentalnet=config["use_mentalnet"],
+            use_second_belief=config["use_second_belief"],
+            batch=config.get("batch", 32),
+            residual_blocks=config.get("residual_blocks", 3),
+            n_echar=config.get("n_echar", 64),
+            n_ement=config.get("n_ement", 64),
+            n_eopp2=config.get("n_eopp2", 64),
+            out_channels=config.get("out_channels", 32),
+            channels_in=config.get("channels_in", 10),
+            time_step=config.get("time_step", 500),
+            action_space=config.get("action_space", 7),
+            goal_space=config.get("goal_space", 4),
+            max_n_past=config.get("max_n_past", 10),
+            use_n_past=config.get("use_n_past", True),
+            env_width=config.get("env_width", 9),
+            env_height=config.get("env_height", 9),
+            hidden_size_lstm=config.get("hidden_size_lstm", 64),
+            second_belief_hidden=config.get("second_belief_hidden", 128),
+            attention_hidden=config.get("attention_hidden", 256),
+            attention_heads=config.get("attention_heads", 8),
+        )
     
     print(f"Created model with configuration: {model.get_model_info()}")
 
-    # Check if save_dir is provided and if a checkpoint exists
+    # Load checkpoint if available
     if save_dir is not None:
         checkpoint_path = os.path.join(save_dir, "best_model.pth")
         if os.path.exists(checkpoint_path):
-            print(f"Found existing checkpoint at: {checkpoint_path}")
-            try:
-                # Use the device from config for map_location
-                checkpoint = torch.load(checkpoint_path, map_location="cpu")
-                model.load_state_dict(checkpoint)
-                print("Successfully loaded model parameters from checkpoint")
-            except Exception as e:
-                print(f"Warning: Failed to load checkpoint: {e}")
-                print("Proceeding with randomly initialized model")
+            print(f"Loading checkpoint from: {checkpoint_path}")
+            checkpoint = torch.load(checkpoint_path, map_location="cpu")
+            model.load_state_dict(checkpoint)
+            print("Successfully loaded model parameters from checkpoint")
         else:
-            print(f"No loading model: {checkpoint_path}")
+            print(f"No checkpoint found at: {checkpoint_path}")
     else:
-        print("No loading model: save_dir is None")
+        print("No save_dir provided, skipping checkpoint loading")
 
     return model
 
@@ -1602,7 +1502,6 @@ if __name__ == "__main__":
             "n_eopp2": 16,
             "out_channels": 32,
             "channels_in": 10,
-            "current_state_channels": 8,
             "time_step": 20,
             "action_space": 7,
             "goal_space": 4,
@@ -1618,13 +1517,16 @@ if __name__ == "__main__":
 
         # Test forward pass
         batch_size = 4
-        past_trajectories = torch.randn(batch_size, 1, 20, 10, 9, 9)
-        recent_trajectory = torch.randn(batch_size, 20, 8, 9, 9)
+        seq_len = 20
+        past_trajectories = torch.randn(batch_size, 1, seq_len, 10, 9, 9)
+        self_states = torch.randn(batch_size, seq_len, 8, 9, 9)
+        self_actions = torch.randint(0, 7, (batch_size, seq_len))
         current_state = torch.randn(batch_size, 8, 9, 9)
-        opponent_recent_trajectory = torch.randn(batch_size, 20, 10, 9, 9)
+        oppo_states = torch.randn(batch_size, seq_len, 10, 9, 9)
+        oppo_actions = torch.randint(0, 7, (batch_size, seq_len))
 
         # Test with opponent trajectory
-        outputs = model(past_trajectories, recent_trajectory, current_state, opponent_recent_trajectory)
+        outputs = model(past_trajectories, self_states, self_actions, current_state, oppo_states, oppo_actions)
 
         print(f"Action logits: {outputs['action_logits'].shape}")
         print(f"Goal logits: {outputs['goal_logits'].shape}")
@@ -1638,5 +1540,5 @@ if __name__ == "__main__":
         
         # Test without opponent trajectory (single-agent mode)
         if test_config["use_second_belief"]:
-            outputs_single = model(past_trajectories, recent_trajectory, current_state, None)
+            outputs_single = model(past_trajectories, self_states, self_actions, current_state, None, None)
             print(f"Single-agent mode - Second belief: {outputs_single['second_belief'].shape}")

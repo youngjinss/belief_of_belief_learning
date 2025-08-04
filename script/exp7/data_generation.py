@@ -395,12 +395,9 @@ class DataGenerator:
         goal_rank = parsed_data["achiever_data"]["goal_rank"]
         intended_goal = None
         if goal_rank:
-            try:
-                highest_rank_idx = goal_rank.index(1)
-                goal_symbols = ["A", "B", "C", "D"]
-                intended_goal = goal_symbols[highest_rank_idx]
-            except ValueError:
-                intended_goal = "A"  # Default fallback
+            highest_rank_idx = goal_rank.index(1)
+            goal_symbols = ["A", "B", "C", "D"]
+            intended_goal = goal_symbols[highest_rank_idx]
 
         # Create consumption labels using slicing approach - track all interactions during trajectory
         consumption_labels = np.zeros(
@@ -440,32 +437,32 @@ class DataGenerator:
         if consumed_goal is None:
             consumed_goal = intended_goal
 
-        # Create trajectory tensor
-        trajectory_tensor = self._create_trajectory_tensor(
+        # Create self states tensor
+        self_states_tensor = self._create_trajectory_tensor(
             parsed_data["maze"],
             parsed_data["trajectory_steps"],
             "achiever",
             parsed_data["trajectory_length"],
         )
 
-        # Create opponent trajectory tensor (perspective from opponent's view)
-        opponent_trajectory_tensor = None
-        opponent_actions = None
+        # Create opponent states tensor (perspective from opponent's view)
+        oppo_states_tensor = None
+        oppo_actions = None
         if not parsed_data.get("is_single_agent", False):
-            opponent_trajectory_tensor = self._create_trajectory_tensor(
+            oppo_states_tensor = self._create_trajectory_tensor(
                 parsed_data["maze"],
                 parsed_data["trajectory_steps"],
                 "blocker",  # Opponent is blocker
                 parsed_data["trajectory_length"],
             )
             # Extract opponent actions
-            opponent_actions = [step["blocker_action"] for step in parsed_data["trajectory_steps"] if step["blocker_action"] is not None]
+            oppo_actions = [step["blocker_action"] for step in parsed_data["trajectory_steps"] if step["blocker_action"] is not None]
 
         # Create goal tensor (one-hot encoding of intended goal)
         goal_tensor = self._create_goal_tensor(intended_goal)
 
-        # Extract actions for achiever
-        actions = [step["achiever_action"] for step in parsed_data["trajectory_steps"]]
+        # Extract self actions for achiever
+        self_actions = [step["achiever_action"] for step in parsed_data["trajectory_steps"]]
 
         # Get SR data if available
         sr_data_per_timestep = parsed_data["achiever_data"].get(
@@ -476,8 +473,8 @@ class DataGenerator:
         achiever_type = parsed_data["achiever_data"].get("type", -1)
 
         return {
-            "trajectory": trajectory_tensor,
-            "actions": actions,
+            "self_states": self_states_tensor,
+            "self_actions": self_actions,
             "goal": goal_tensor,
             "consumption_labels": consumption_labels,
             "intended_goal": intended_goal,
@@ -486,8 +483,8 @@ class DataGenerator:
             "type": achiever_type,
             "sr_data_per_timestep": sr_data_per_timestep,
             "filename": parsed_data["filename"],
-            "opponent_trajectory": opponent_trajectory_tensor,
-            "opponent_actions": opponent_actions,
+            "oppo_states": oppo_states_tensor,
+            "oppo_actions": oppo_actions,
         }
 
     def create_blocker_sample(self, parsed_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -537,32 +534,32 @@ class DataGenerator:
         # If no door interaction occurred, consumed_goal remains None
         # Note: Blocker may not have a consumed goal if no door interactions occurred
 
-        # Create trajectory tensor
-        trajectory_tensor = self._create_trajectory_tensor(
+        # Create self states tensor
+        self_states_tensor = self._create_trajectory_tensor(
             parsed_data["maze"],
             parsed_data["trajectory_steps"],
             "blocker",
             parsed_data["trajectory_length"],
         )
 
-        # Create opponent trajectory tensor (perspective from opponent's view)
-        opponent_trajectory_tensor = None
-        opponent_actions = None
+        # Create opponent states tensor (perspective from opponent's view)
+        oppo_states_tensor = None
+        oppo_actions = None
         if not parsed_data.get("is_single_agent", False):
-            opponent_trajectory_tensor = self._create_trajectory_tensor(
+            oppo_states_tensor = self._create_trajectory_tensor(
                 parsed_data["maze"],
                 parsed_data["trajectory_steps"],
                 "achiever",  # Opponent is achiever
                 parsed_data["trajectory_length"],
             )
             # Extract opponent actions
-            opponent_actions = [step["achiever_action"] for step in parsed_data["trajectory_steps"] if step["achiever_action"] is not None]
+            oppo_actions = [step["achiever_action"] for step in parsed_data["trajectory_steps"] if step["achiever_action"] is not None]
 
         # Create goal tensor (one-hot encoding of inferred goal)
         goal_tensor = self._create_goal_tensor(inferred_goal_letter)
 
-        # Extract actions for blocker
-        actions = [step["blocker_action"] for step in parsed_data["trajectory_steps"]]
+        # Extract self actions for blocker
+        self_actions = [step["blocker_action"] for step in parsed_data["trajectory_steps"]]
 
         # Get SR data if available
         sr_data_per_timestep = parsed_data["blocker_data"].get(
@@ -570,8 +567,8 @@ class DataGenerator:
         )
 
         return {
-            "trajectory": trajectory_tensor,
-            "actions": actions,
+            "self_states": self_states_tensor,
+            "self_actions": self_actions,
             "goal": goal_tensor,
             "consumption_labels": consumption_labels,
             "intended_goal": inferred_goal_letter,
@@ -581,8 +578,8 @@ class DataGenerator:
             "sr_data_per_timestep": sr_data_per_timestep,
             "inferred_goal_vector": inferred_goal_vector,
             "filename": parsed_data["filename"],
-            "opponent_trajectory": opponent_trajectory_tensor,
-            "opponent_actions": opponent_actions,
+            "oppo_states": oppo_states_tensor,
+            "oppo_actions": oppo_actions,
         }
 
     def _create_trajectory_tensor(
@@ -592,7 +589,7 @@ class DataGenerator:
         agent_type: str,
         trajectory_length: int,
     ) -> np.ndarray:
-        """Create trajectory tensor for specified agent using vectorized operations
+        """Create self states tensor for specified agent using vectorized operations
         
         Channel structure (10 channels total):
         - Channel 0: Wall positions
@@ -608,7 +605,7 @@ class DataGenerator:
         """
 
         seq_len = min(trajectory_length, self.MAX_TRAJECTORY_SIZE)
-        trajectory = np.zeros(
+        self_states = np.zeros(
             (seq_len, self.MAZE_DEPTH, self.MAZE_HEIGHT, self.MAZE_WIDTH),
             dtype=np.float32,
         )
@@ -629,16 +626,16 @@ class DataGenerator:
         opponent_mask = np.zeros((self.MAZE_HEIGHT, self.MAZE_WIDTH), dtype=np.float32)
 
         # Broadcast static layers to all timesteps at once
-        trajectory[:, 0] = wall_mask[np.newaxis, :, :]
-        trajectory[:, 1] = empty_mask[np.newaxis, :, :]
-        trajectory[:, 2] = key_mask[np.newaxis, :, :]
-        trajectory[:, 3] = door_mask[np.newaxis, :, :]
-        trajectory[:, 4] = red_mask[np.newaxis, :, :]
-        trajectory[:, 5] = green_mask[np.newaxis, :, :]
-        trajectory[:, 6] = blue_mask[np.newaxis, :, :]
-        trajectory[:, 7] = yellow_mask[np.newaxis, :, :]
-        trajectory[:, 8] = self_mask[np.newaxis, :, :]
-        trajectory[:, 9] = opponent_mask[np.newaxis, :, :]
+        self_states[:, 0] = wall_mask[np.newaxis, :, :]
+        self_states[:, 1] = empty_mask[np.newaxis, :, :]
+        self_states[:, 2] = key_mask[np.newaxis, :, :]
+        self_states[:, 3] = door_mask[np.newaxis, :, :]
+        self_states[:, 4] = red_mask[np.newaxis, :, :]
+        self_states[:, 5] = green_mask[np.newaxis, :, :]
+        self_states[:, 6] = blue_mask[np.newaxis, :, :]
+        self_states[:, 7] = yellow_mask[np.newaxis, :, :]
+        self_states[:, 8] = self_mask[np.newaxis, :, :]
+        self_states[:, 9] = opponent_mask[np.newaxis, :, :]
 
         # Vectorized dynamic layer processing (agent positions)
         steps_to_process = min(len(trajectory_steps), seq_len)
@@ -677,10 +674,10 @@ class DataGenerator:
                 valid_pos = self_positions[valid_self]
                 
                 # Set self position in channel 8
-                trajectory[valid_times, 8, valid_pos[:, 1], valid_pos[:, 0]] = 1
+                self_states[valid_times, 8, valid_pos[:, 1], valid_pos[:, 0]] = 1
                 
                 # Also maintain the agent in empty space layer for compatibility
-                trajectory[valid_times, 1, valid_pos[:, 1], valid_pos[:, 0]] = 1
+                self_states[valid_times, 1, valid_pos[:, 1], valid_pos[:, 0]] = 1
             
             # Process opponent positions (only in multi-agent mode)
             if not self.is_single_agent_mode:
@@ -696,9 +693,9 @@ class DataGenerator:
                     valid_pos = opponent_positions[valid_opponent]
                     
                     # Set opponent position in channel 9
-                    trajectory[valid_times, 9, valid_pos[:, 1], valid_pos[:, 0]] = 1
+                    self_states[valid_times, 9, valid_pos[:, 1], valid_pos[:, 0]] = 1
 
-        return trajectory
+        return self_states
 
     def _create_goal_tensor(self, goal_letter: str) -> np.ndarray:
         """Create goal tensor (one-hot encoded)"""
@@ -826,13 +823,9 @@ class DataGenerator:
         """Save processed samples to pickle file"""
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-        try:
-            with open(output_path, "wb") as f:
-                pickle.dump(samples, f)
-        except Exception as e:
-            print(f"Failed to save samples: {e}")
-        else:
-            print(f"Saved {len(samples)} samples to {output_path}.")
+        with open(output_path, "wb") as f:
+            pickle.dump(samples, f)
+        print(f"Saved {len(samples)} samples to {output_path}.")
 
     def load_processed_data(self, input_path: str) -> List[Dict[str, Any]]:
         """Load processed samples from pickle file"""
@@ -862,21 +855,21 @@ class DataGenerator:
         # Agent distribution
         agent_counts = {"achiever": achiever_count, "blocker": blocker_count}
 
-        # Trajectory lengths
-        trajectory_lengths = [sample["trajectory"].shape[0] for sample in samples]
+        # Self states lengths
+        trajectory_lengths = [sample["self_states"].shape[0] for sample in samples]
 
         stats = {
             "total_samples": len(samples),
             "agent_distribution": agent_counts,
             "goal_distribution": goal_counts,
-            "trajectory_lengths": {
+            "self_states_lengths": {
                 "min": min(trajectory_lengths),
                 "max": max(trajectory_lengths),
                 "mean": np.mean(trajectory_lengths),
                 "std": np.std(trajectory_lengths),
             },
             "maze_size": (self.MAZE_WIDTH, self.MAZE_HEIGHT),
-            "trajectory_depth": self.MAZE_DEPTH,
+            "self_states_depth": self.MAZE_DEPTH,
         }
 
         return stats

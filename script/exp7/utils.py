@@ -16,11 +16,7 @@ import psutil
 import atexit
 
 # Set multiprocessing start method to prevent semaphore leaks
-try:
-    mp.set_start_method("spawn", force=True)
-except RuntimeError:
-    # Start method already set, which is fine
-    pass
+mp.set_start_method("spawn", force=True)
 
 
 def convert_sparse_sr_to_dense(
@@ -150,7 +146,7 @@ class EarlyStopping:
 
 
 def generate_past_episodes_from_batch(
-    trajectories,
+    self_states,
     goal_ranks,
     agents,
     batch_size,
@@ -160,12 +156,12 @@ def generate_past_episodes_from_batch(
     rank_threshold=1,
 ):
     """
-    Generate past episodes by randomly sampling from other trajectories in the batch
+    Generate past episodes by randomly sampling from other self states in the batch
     with the same goal rank AND same agent type, using fully vectorized operations for efficiency
     (Adapted from experiment 5 for exp7 multi-agent tensor format)
 
     Args:
-        trajectories: Batch of trajectories [batch_size, seq_len, channels, height, width]
+        self_states: Batch of self states [batch_size, seq_len, channels, height, width]
         goal_ranks: Batch of goal ranks [batch_size, 4] (rank format [1,2,2,2] etc.)
         agents: Batch of agent labels [batch_size] (0=achiever, 1=blocker)
         batch_size: Size of current batch
@@ -177,13 +173,13 @@ def generate_past_episodes_from_batch(
     Returns:
         past_episodes_batch: [batch_size, max_n_past, seq_len, channels, height, width]
     """
-    device = trajectories.device
-    seq_len, channels, height, width = trajectories.shape[1:]
+    device = self_states.device
+    seq_len, channels, height, width = self_states.shape[1:]
 
     # Initialize past episodes tensor
     past_episodes_batch = torch.zeros(
         (batch_size, max_n_past, seq_len, channels, height, width),
-        dtype=trajectories.dtype,
+        dtype=self_states.dtype,
         device=device,
     )
 
@@ -260,9 +256,9 @@ def generate_past_episodes_from_batch(
             valid_targets = target_indices[valid_sources]
             valid_sources_idx = source_indices[valid_sources]
 
-            # Vectorized copy of trajectories
+            # Vectorized copy of self states
             if len(valid_targets) > 0:
-                past_episodes_batch[valid_targets, ep_idx] = trajectories[
+                past_episodes_batch[valid_targets, ep_idx] = self_states[
                     valid_sources_idx
                 ]
 
@@ -309,13 +305,13 @@ def process_single_sample(sample, grid_size, window_size):
     Args:
         sample: Single sample from DataGenerator
         grid_size: Size of the grid (e.g., 9 for 9x9)
-        window_size: Window size for trajectory slicing (time_step from config)
+        window_size: Window size for self states slicing (time_step from config)
     
     Returns:
         Dictionary with lists of processed samples using window slicing
     """
     # Extract data from sample
-    trajectory = sample["trajectory"]  # [seq_len, channels, height, width]
+    self_states = sample["self_states"]  # [seq_len, channels, height, width]
     goal_tensor = sample["goal"]  # [4] one-hot encoded
     agent_type = sample["agent"]  # 'achiever' or 'blocker'
     type_label = sample[
@@ -337,41 +333,41 @@ def process_single_sample(sample, grid_size, window_size):
         goal_rank = [2, 2, 2, 2]  # Default rank 2 for all
         goal_rank[goal_idx] = 1  # Set the inferred goal to rank 1
 
-    # Get actions from sample data
-    action_list = sample.get("actions", [])
+    # Get self actions from sample data
+    self_action_list = sample.get("self_actions", [])
     
     # Get opponent data from sample
-    opponent_trajectory = sample.get("opponent_trajectory", None)
-    opponent_actions = sample.get("opponent_actions", [])
+    oppo_states = sample.get("oppo_states", None)
+    oppo_actions = sample.get("oppo_actions", [])
     
     # Get sequence length
-    seq_len = trajectory.shape[0]
+    seq_len = self_states.shape[0]
 
     # Local lists for this sample
-    sample_trajectories = []
-    sample_actions = []
+    sample_self_states = []
+    sample_self_actions = []
     sample_goals = []
     sample_goal_ranks = []
     sample_agents = []
     sample_types = []
     sample_consumption_labels = []
     sample_sr_labels = []
-    sample_opponent_trajectories = []
-    sample_opponent_actions = []
+    sample_oppo_states = []
+    sample_oppo_actions = []
 
-    # WINDOW SLICING: Create multiple samples per trajectory using fixed window size
+    # WINDOW SLICING: Create multiple samples per self states using fixed window size
     
     if seq_len < window_size:
-        # Case 1: Trajectory shorter than window size - front-pad with -1
-        # Create padding for trajectory (use -1 for all channels to indicate padding)
+        # Case 1: Self states shorter than window size - front-pad with -1
+        # Create padding for self states (use -1 for all channels to indicate padding)
         padding_length = window_size - seq_len
-        padding_shape = (padding_length, *trajectory.shape[1:])
-        padding = np.full(padding_shape, -1, dtype=trajectory.dtype)
-        trajectory_padded = np.concatenate([padding, trajectory], axis=0)
+        padding_shape = (padding_length, *self_states.shape[1:])
+        padding = np.full(padding_shape, -1, dtype=self_states.dtype)
+        self_states_padded = np.concatenate([padding, self_states], axis=0)
         
         # The last action is what we predict
-        if len(action_list) > 0:
-            action_target = action_list[-1]
+        if len(self_action_list) > 0:
+            self_action_target = self_action_list[-1]
             current_timestep = seq_len - 1
             
             # Process SR data for the last timestep
@@ -383,28 +379,28 @@ def process_single_sample(sample, grid_size, window_size):
             else:
                 sr_dense = np.zeros((3, grid_size, grid_size))
             
-            # Process opponent data for short trajectory
-            if opponent_trajectory is not None:
-                # Pad opponent trajectory similar to main trajectory
-                opponent_padding_shape = (padding_length, *opponent_trajectory.shape[1:])
-                opponent_padding = np.zeros(opponent_padding_shape, dtype=opponent_trajectory.dtype)
-                opponent_trajectory_padded = np.concatenate([opponent_padding, opponent_trajectory], axis=0)
+            # Process opponent data for short self states
+            if oppo_states is not None:
+                # Pad opponent states similar to main self states
+                oppo_padding_shape = (padding_length, *oppo_states.shape[1:])
+                oppo_padding = np.zeros(oppo_padding_shape, dtype=oppo_states.dtype)
+                oppo_states_padded = np.concatenate([oppo_padding, oppo_states], axis=0)
             else:
-                # Create dummy opponent trajectory
-                opponent_trajectory_padded = np.zeros_like(trajectory_padded)
+                # Create dummy opponent states
+                oppo_states_padded = np.zeros_like(self_states_padded)
             
-            if opponent_actions and len(opponent_actions) > 0:
+            if oppo_actions and len(oppo_actions) > 0:
                 # Pad opponent actions - use last available action
-                opponent_action_target = opponent_actions[-1] if opponent_actions else 0
-                opponent_actions_padded = [opponent_action_target] + [-1] * (window_size - 1)
+                oppo_action_target = oppo_actions[-1] if oppo_actions else 0
+                oppo_actions_padded = [oppo_action_target] + [-1] * (window_size - 1)
             else:
                 # Create dummy opponent actions
-                opponent_actions_padded = [0] + [-1] * (window_size - 1)
+                oppo_actions_padded = [0] + [-1] * (window_size - 1)
             
             # Add this single training sample
-            sample_trajectories.append(trajectory_padded)
-            sample_actions.append(
-                [action_target] + [-1] * (window_size - 1)
+            sample_self_states.append(self_states_padded)
+            sample_self_actions.append(
+                [self_action_target] + [-1] * (window_size - 1)
             )
             sample_goals.append(goal_tensor)
             sample_goal_ranks.append(goal_rank)
@@ -412,27 +408,27 @@ def process_single_sample(sample, grid_size, window_size):
             sample_types.append(type_label)
             sample_consumption_labels.append(consumption)
             sample_sr_labels.append(sr_dense)
-            sample_opponent_trajectories.append(opponent_trajectory_padded)
-            sample_opponent_actions.append(opponent_actions_padded)
+            sample_oppo_states.append(oppo_states_padded)
+            sample_oppo_actions.append(oppo_actions_padded)
     else:
-        # Case 2: Trajectory longer than or equal to window size - vectorized sliding windows
+        # Case 2: Self states longer than or equal to window size - vectorized sliding windows
         num_windows = seq_len - window_size + 1
         
         # Vectorized creation of all windows using numpy stride tricks for maximum efficiency
         from numpy.lib.stride_tricks import sliding_window_view
         
         # Create sliding windows along the time dimension
-        # trajectory shape: [seq_len, channels, height, width]
+        # self_states shape: [seq_len, channels, height, width]
         # sliding_window_view will create: [num_windows, window_size, channels, height, width]
-        trajectory_windows = sliding_window_view(trajectory, window_shape=window_size, axis=0)
+        self_states_windows = sliding_window_view(self_states, window_shape=window_size, axis=0)
         
         # sliding_window_view creates shape [num_windows, channels, height, width, window_size]
         # We need to move the window_size dimension to position 1: [num_windows, window_size, channels, height, width]
-        trajectory_windows = np.moveaxis(trajectory_windows, -1, 1)
+        self_states_windows = np.moveaxis(self_states_windows, -1, 1)
         
-        # Extract all action targets at once (actions at the end of each window)
+        # Extract all self action targets at once (actions at the end of each window)
         # For windows starting at positions 0, 1, 2, ..., we want actions at positions window_size-1, window_size, window_size+1, ...
-        action_targets = np.array(action_list[window_size - 1:window_size - 1 + num_windows])
+        self_action_targets = np.array(self_action_list[window_size - 1:window_size - 1 + num_windows])
         
         # Process SR data vectorized
         sr_dense_list = []
@@ -447,9 +443,9 @@ def process_single_sample(sample, grid_size, window_size):
                 sr_dense = np.zeros((3, grid_size, grid_size))
             sr_dense_list.append(sr_dense)
         
-        # Vectorized creation of padded actions
-        action_padding = np.full((num_windows, window_size - 1), -1)
-        padded_actions = np.column_stack([action_targets[:, np.newaxis], action_padding])
+        # Vectorized creation of padded self actions
+        self_action_padding = np.full((num_windows, window_size - 1), -1)
+        padded_self_actions = np.column_stack([self_action_targets[:, np.newaxis], self_action_padding])
         
         # Vectorized replication of metadata for all windows
         goals_repeated = np.tile(goal_tensor, (num_windows, 1))
@@ -459,67 +455,67 @@ def process_single_sample(sample, grid_size, window_size):
         consumption_repeated = np.tile(consumption, (num_windows, 1))
         
         # Process opponent data for each window
-        if opponent_trajectory is not None:
-            # Create windows for opponent trajectory
-            opponent_trajectory_windows = []
+        if oppo_states is not None:
+            # Create windows for opponent states
+            oppo_states_windows = []
             for i in range(num_windows):
                 start_idx = i
                 end_idx = start_idx + window_size
                 if end_idx <= seq_len:
-                    opponent_trajectory_windows.append(opponent_trajectory[start_idx:end_idx])
+                    oppo_states_windows.append(oppo_states[start_idx:end_idx])
                 else:
-                    # Handle case where opponent trajectory is shorter
-                    window_data = opponent_trajectory[start_idx:]
+                    # Handle case where opponent states is shorter
+                    window_data = oppo_states[start_idx:]
                     padding_shape = (window_size - window_data.shape[0], *window_data.shape[1:])
                     padding = np.zeros(padding_shape, dtype=window_data.dtype)
                     padded_window = np.concatenate([window_data, padding], axis=0)
-                    opponent_trajectory_windows.append(padded_window)
+                    oppo_states_windows.append(padded_window)
         else:
-            # Create dummy opponent trajectories
-            opponent_trajectory_windows = [np.zeros_like(trajectory_windows[0]) for _ in range(num_windows)]
+            # Create dummy opponent states
+            oppo_states_windows = [np.zeros_like(self_states_windows[0]) for _ in range(num_windows)]
         
         # Process opponent actions for each window
-        if opponent_actions and len(opponent_actions) > 0:
-            opponent_action_windows = []
+        if oppo_actions and len(oppo_actions) > 0:
+            oppo_action_windows = []
             for i in range(num_windows):
                 start_idx = i
                 end_idx = start_idx + window_size
-                if end_idx <= len(opponent_actions):
-                    window_actions = opponent_actions[start_idx:end_idx]
+                if end_idx <= len(oppo_actions):
+                    window_actions = oppo_actions[start_idx:end_idx]
                 else:
                     # Handle case where opponent actions are shorter
-                    window_actions = opponent_actions[start_idx:] + [0] * (end_idx - len(opponent_actions))
+                    window_actions = oppo_actions[start_idx:] + [0] * (end_idx - len(oppo_actions))
                 # Pad to window_size with -1
                 action_padding = [-1] * (window_size - len(window_actions))
                 padded_window_actions = window_actions + action_padding
-                opponent_action_windows.append(padded_window_actions[:window_size])
+                oppo_action_windows.append(padded_window_actions[:window_size])
         else:
             # Create dummy opponent actions
-            opponent_action_windows = [np.zeros(window_size, dtype=np.int32) for _ in range(num_windows)]
+            oppo_action_windows = [np.zeros(window_size, dtype=np.int32) for _ in range(num_windows)]
         
         # Add all samples at once
-        sample_trajectories.extend(trajectory_windows)
-        sample_actions.extend(padded_actions.tolist())
+        sample_self_states.extend(self_states_windows)
+        sample_self_actions.extend(padded_self_actions.tolist())
         sample_goals.extend(goals_repeated.tolist())
         sample_goal_ranks.extend(goal_ranks_repeated.tolist())
         sample_agents.extend(agents_repeated.tolist())
         sample_types.extend(types_repeated.tolist())
         sample_consumption_labels.extend(consumption_repeated.tolist())
         sample_sr_labels.extend(sr_dense_list)
-        sample_opponent_trajectories.extend(opponent_trajectory_windows)
-        sample_opponent_actions.extend(opponent_action_windows)
+        sample_oppo_states.extend(oppo_states_windows)
+        sample_oppo_actions.extend(oppo_action_windows)
 
     return {
-        "trajectories": sample_trajectories,
-        "actions": sample_actions,
+        "trajectories": sample_self_states,
+        "actions": sample_self_actions,
         "goals": sample_goals,
         "goal_ranks": sample_goal_ranks,
         "agents": sample_agents,
         "types": sample_types,
         "consumption_labels": sample_consumption_labels,
         "sr_labels": sample_sr_labels,
-        "opponent_trajectories": sample_opponent_trajectories,
-        "opponent_actions": sample_opponent_actions,
+        "opponent_trajectories": sample_oppo_states,
+        "opponent_actions": sample_oppo_actions,
     }
 
 
@@ -539,7 +535,7 @@ def prepare_data_for_training(
     Args:
         samples: List of processed samples from DataGenerator (containing both achiever and blocker samples)
         grid_size: Size of the grid (default 9 for 9x9)
-        window_size: Window size for trajectory slicing (time_step from config)
+        window_size: Window size for self states slicing (time_step from config)
         n_processes: Number of processes to use (default: CPU count)
         use_batch_processing: Whether to use batch processing for better efficiency (default: True)
         chunk_size: Number of samples to process per chunk (default: 10000)
@@ -553,7 +549,7 @@ def prepare_data_for_training(
         n_processes = mp.cpu_count()
 
     print(
-        f"Preparing data from {len(samples)} samples with trajectory slicing using {n_processes} processes..."
+        f"Preparing data from {len(samples)} samples with self states slicing using {n_processes} processes..."
     )
     print(f"Processing in chunks of {chunk_size} samples, saving to {output_dir}")
 
@@ -693,8 +689,8 @@ def prepare_data_memory_efficient(
             pool.join()
 
     # Combine results from all processes
-    trajectories = []
-    actions = []
+    self_states = []
+    self_actions = []
     goals = []
     goal_ranks = []
     agents = []
@@ -703,8 +699,8 @@ def prepare_data_memory_efficient(
     sr_labels = []
 
     for result in results:
-        trajectories.extend(result["trajectories"])
-        actions.extend(result["actions"])
+        self_states.extend(result["trajectories"])
+        self_actions.extend(result["actions"])
         goals.extend(result["goals"])
         goal_ranks.extend(result["goal_ranks"])
         agents.extend(result["agents"])
@@ -713,8 +709,8 @@ def prepare_data_memory_efficient(
         sr_labels.extend(result["sr_labels"])
 
     # Convert to tensors (this is now done on smaller chunks)
-    trajectories = torch.tensor(np.array(trajectories), dtype=torch.float32)
-    actions = torch.tensor(np.array(actions), dtype=torch.long)
+    self_states = torch.tensor(np.array(self_states), dtype=torch.float32)
+    self_actions = torch.tensor(np.array(self_actions), dtype=torch.long)
     goals = torch.tensor(np.array(goals), dtype=torch.float32)
     goal_ranks = torch.tensor(np.array(goal_ranks), dtype=torch.long)
     agents = torch.tensor(np.array(agents), dtype=torch.long)
@@ -723,8 +719,8 @@ def prepare_data_memory_efficient(
     sr_labels = torch.tensor(np.array(sr_labels), dtype=torch.float32)
 
     print(f"Chunk data shapes:")
-    print(f"  Trajectories: {trajectories.shape}")
-    print(f"  Actions: {actions.shape}")
+    print(f"  Self states: {self_states.shape}")
+    print(f"  Self actions: {self_actions.shape}")
     print(f"  Goals: {goals.shape}")
     print(f"  Goal ranks: {goal_ranks.shape}")
     print(f"  Agents: {agents.shape}")
@@ -733,8 +729,8 @@ def prepare_data_memory_efficient(
     print(f"  SR labels: {sr_labels.shape}")
 
     return {
-        "trajectories": trajectories,
-        "actions": actions,
+        "trajectories": self_states,
+        "actions": self_actions,
         "goals": goals,
         "goal_ranks": goal_ranks,
         "agents": agents,
@@ -1321,25 +1317,20 @@ def _load_chunks_memory_efficient(chunk_metadata):
         for chunk_idx in range(num_chunks):
             chunk_path = os.path.join(chunk_dir, f"chunk_{chunk_idx:04d}.pt")
 
-            try:
-                chunk_data = torch.load(chunk_path, map_location="cpu")
+            chunk_data = torch.load(chunk_path, map_location="cpu")
 
-                for key in data_keys:
-                    if key in chunk_data:
-                        if key not in accumulated_data:
-                            accumulated_data[key] = []
-                        # Convert to numpy immediately to save memory
-                        accumulated_data[key].append(chunk_data[key].numpy())
+            for key in data_keys:
+                if key in chunk_data:
+                    if key not in accumulated_data:
+                        accumulated_data[key] = []
+                    # Convert to numpy immediately to save memory
+                    accumulated_data[key].append(chunk_data[key].numpy())
 
-                del chunk_data
-                gc.collect()
+            del chunk_data
+            gc.collect()
 
-                if chunk_idx % 5 == 0:
-                    print(f"  Loaded {chunk_idx + 1}/{num_chunks} chunks...")
-
-            except:
-                print(f"{chunk_path} end")
-                break
+            if chunk_idx % 5 == 0:
+                print(f"  Loaded {chunk_idx + 1}/{num_chunks} chunks...")
 
         # Final combination
         print("Combining all data...")
@@ -1366,8 +1357,8 @@ def _standard_chunk_loading(chunk_metadata):
     print(f"Loading {chunk_metadata['num_chunks']} chunks for training...")
 
     # Initialize lists to collect data
-    all_trajectories = []
-    all_actions = []
+    all_self_states = []
+    all_self_actions = []
     all_goals = []
     all_goal_ranks = []
     all_agents = []
@@ -1382,23 +1373,20 @@ def _standard_chunk_loading(chunk_metadata):
         )
         print(f"Loading chunk {chunk_idx} from {chunk_path}")
 
-        try:
-            chunk_data = torch.load(chunk_path, map_location="cpu")
+        chunk_data = torch.load(chunk_path, map_location="cpu")
 
-            # Append to lists
-            all_trajectories.append(chunk_data["trajectories"])
-            all_actions.append(chunk_data["actions"])
-            all_goals.append(chunk_data["goals"])
-            all_goal_ranks.append(chunk_data["goal_ranks"])
-            all_agents.append(chunk_data["agents"])
-            all_types.append(chunk_data["types"])
-            all_consumption_labels.append(chunk_data["consumption_labels"])
-            all_sr_labels.append(chunk_data["sr_labels"])
+        # Append to lists
+        all_self_states.append(chunk_data["trajectories"])
+        all_self_actions.append(chunk_data["actions"])
+        all_goals.append(chunk_data["goals"])
+        all_goal_ranks.append(chunk_data["goal_ranks"])
+        all_agents.append(chunk_data["agents"])
+        all_types.append(chunk_data["types"])
+        all_consumption_labels.append(chunk_data["consumption_labels"])
+        all_sr_labels.append(chunk_data["sr_labels"])
 
-            # Free memory
-            del chunk_data
-        except:
-            print(f"{chunk_path} end")
+        # Free memory
+        del chunk_data
 
     # Combine all data efficiently
     print("Combining all chunks...")
@@ -1407,8 +1395,8 @@ def _standard_chunk_loading(chunk_metadata):
 
     # Process each data type separately
     for key, data_list in [
-        ("trajectories", all_trajectories),
-        ("actions", all_actions),
+        ("trajectories", all_self_states),
+        ("actions", all_self_actions),
         ("goals", all_goals),
         ("goal_ranks", all_goal_ranks),
         ("agents", all_agents),
@@ -1609,6 +1597,36 @@ sys.path.append(
 )
 
 # All imports will be done dynamically to avoid circular imports
+
+
+def spatialize_action(action_indices: torch.Tensor, height: int, width: int, action_space: int = 7) -> torch.Tensor:
+    """
+    Convert action indices to spatial representation
+    
+    Args:
+        action_indices: (batch_size,) - action indices for each sample
+        height, width: spatial dimensions
+        action_space: Number of possible actions (default: 7)
+        
+    Returns:
+        Spatialized actions: (batch_size, 1, height, width)
+    """
+    batch_size = action_indices.size(0)
+    device = action_indices.device
+    
+    # Create spatial action maps
+    action_maps = torch.zeros(batch_size, 1, height, width, device=device, dtype=torch.float32)
+    
+    # Vectorized approach for better performance
+    if action_space > 1:
+        action_values = action_indices
+    else:
+        action_values = torch.zeros_like(action_indices, dtype=torch.float32)
+        
+    # Broadcast to spatial dimensions
+    action_maps[:, 0, :, :] = action_values.view(-1, 1, 1)
+    
+    return action_maps
 
 
 def set_seed(seed: int = 42):
@@ -1854,16 +1872,16 @@ def combine_all_combinations_data(all_data_dict):
     """
     import numpy as np
     
-    combined_trajectories = []
-    combined_actions = []
+    combined_self_states = []
+    combined_self_actions = []
     combined_goals = []
     combined_goal_ranks = []
     combined_agents = []
     combined_types = []
     combined_consumption_labels = []
     combined_sr_labels = []
-    combined_opponent_trajectories = []
-    combined_opponent_actions = []
+    combined_oppo_states = []
+    combined_oppo_actions = []
     
     print("Combining data from all achiever-blocker combinations...")
     
@@ -1878,8 +1896,8 @@ def combine_all_combinations_data(all_data_dict):
             raise ValueError(f"Data for combination {achiever_type}_{blocker_type} is not in expected format. Expected dictionary with 'trajectories' key.")
             
         # Add pre-processed arrays to combined lists
-        combined_trajectories.append(data["trajectories"])
-        combined_actions.append(data["actions"])
+        combined_self_states.append(data["trajectories"])
+        combined_self_actions.append(data["actions"])
         combined_goals.append(data["goals"])
         combined_goal_ranks.append(data["goal_ranks"])
         combined_agents.append(data["agents"])
@@ -1889,37 +1907,37 @@ def combine_all_combinations_data(all_data_dict):
         
         # Add opponent data if available
         if "opponent_trajectories" in data and data["opponent_trajectories"] is not None:
-            combined_opponent_trajectories.append(data["opponent_trajectories"])
+            combined_oppo_states.append(data["opponent_trajectories"])
         else:
-            # Create dummy opponent trajectories for consistency
-            dummy_opponent_trajectories = np.zeros_like(data["trajectories"])
-            combined_opponent_trajectories.append(dummy_opponent_trajectories)
+            # Create dummy opponent states for consistency
+            dummy_oppo_states = np.zeros_like(data["trajectories"])
+            combined_oppo_states.append(dummy_oppo_states)
             
         if "opponent_actions" in data and data["opponent_actions"] is not None:
-            combined_opponent_actions.append(data["opponent_actions"])
+            combined_oppo_actions.append(data["opponent_actions"])
         else:
             # Create dummy opponent actions for consistency
-            dummy_opponent_actions = np.zeros_like(data["actions"])
-            combined_opponent_actions.append(dummy_opponent_actions)
+            dummy_oppo_actions = np.zeros_like(data["actions"])
+            combined_oppo_actions.append(dummy_oppo_actions)
             
         print(f"    Added {data['trajectories'].shape[0]} samples")
     
     # Check if we have any data to concatenate
-    if not combined_trajectories:
+    if not combined_self_states:
         raise ValueError("No test data found for any combinations. Please generate test data first using --test_data flag.")
     
     # Concatenate all data
     combined_data = {
-        "trajectories": np.concatenate(combined_trajectories, axis=0),
-        "actions": np.concatenate(combined_actions, axis=0),
+        "trajectories": np.concatenate(combined_self_states, axis=0),
+        "actions": np.concatenate(combined_self_actions, axis=0),
         "goals": np.concatenate(combined_goals, axis=0),
         "goal_ranks": np.concatenate(combined_goal_ranks, axis=0),
         "agents": np.concatenate(combined_agents, axis=0),
         "types": np.concatenate(combined_types, axis=0),
         "consumption_labels": np.concatenate(combined_consumption_labels, axis=0),
         "sr_labels": np.concatenate(combined_sr_labels, axis=0),
-        "opponent_trajectories": np.concatenate(combined_opponent_trajectories, axis=0),
-        "opponent_actions": np.concatenate(combined_opponent_actions, axis=0),
+        "opponent_trajectories": np.concatenate(combined_oppo_states, axis=0),
+        "opponent_actions": np.concatenate(combined_oppo_actions, axis=0),
     }
     
     total_samples = combined_data["trajectories"].shape[0]
@@ -1995,8 +2013,8 @@ def load_chunked_data_for_training(
     print(f"Loading {chunk_metadata['num_chunks']} chunks for training...")
 
     # Initialize lists to collect data
-    all_trajectories = []
-    all_actions = []
+    all_self_states = []
+    all_self_actions = []
     all_goals = []
     all_goal_ranks = []
     all_agents = []
@@ -2009,8 +2027,8 @@ def load_chunked_data_for_training(
         print(f"Loading chunk {chunk_info['chunk_idx']} from {chunk_info['file_path']}")
         chunk_data = torch.load(chunk_info["file_path"])
 
-        all_trajectories.append(chunk_data["trajectories"])
-        all_actions.append(chunk_data["actions"])
+        all_self_states.append(chunk_data["trajectories"])
+        all_self_actions.append(chunk_data["actions"])
         all_goals.append(chunk_data["goals"])
         all_goal_ranks.append(chunk_data["goal_ranks"])
         all_agents.append(chunk_data["agents"])
@@ -2038,8 +2056,8 @@ def load_chunked_data_for_training(
 
     # Process each data type separately to reduce peak memory usage
     for key, data_list in [
-        ("trajectories", all_trajectories),
-        ("actions", all_actions),
+        ("trajectories", all_self_states),
+        ("actions", all_self_actions),
         ("goals", all_goals),
         ("goal_ranks", all_goal_ranks),
         ("agents", all_agents),
@@ -2079,7 +2097,7 @@ def load_chunked_data_for_training(
         available_memory = psutil.virtual_memory().available / (1024**3)
 
     # Clear all temporary lists
-    del all_trajectories, all_actions, all_goals, all_goal_ranks
+    del all_self_states, all_self_actions, all_goals, all_goal_ranks
     del all_agents, all_types, all_consumption_labels, all_sr_labels
     gc.collect()
 

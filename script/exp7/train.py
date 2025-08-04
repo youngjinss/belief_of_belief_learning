@@ -4,10 +4,7 @@ import sys
 
 import torch
 
-try:
-    from torch.amp import autocast
-except ImportError:
-    from torch.cuda.amp import autocast
+from torch.cuda.amp import autocast
 
 # Add current directory to path
 sys.path.append(os.path.dirname(__file__))
@@ -36,18 +33,18 @@ Adapted from ToMnetF experiment5 for KeyDoor environment
 
 
 def train_epoch(
-    model,
-    train_loader,
-    optimizer,
-    loss_fn,
-    device,
-    max_n_past=5,
-    data_config=None,
-    training_process_config=None,
-    model_config=None,
-    scaler=None,
-    gradient_accumulation_steps=1,
-):
+    model: torch.nn.Module,
+    train_loader: torch.utils.data.DataLoader,
+    optimizer: torch.optim.Optimizer,
+    loss_fn: torch.nn.Module,
+    device: torch.device,
+    max_n_past: int = 5,
+    data_config: dict = None,
+    training_process_config: dict = None,
+    model_config: dict = None,
+    scaler: torch.cuda.amp.GradScaler = None,
+    gradient_accumulation_steps: int = 1,
+) -> dict:
     """
     Train for one epoch
 
@@ -98,34 +95,34 @@ def train_epoch(
     for batch_idx, batch in enumerate(train_loader):
         # Unpack multi-agent data
         (
-            trajectories,
-            actions,
+            self_states,
+            self_actions,
             goals,
             goal_ranks,
             agents,
             types,
             consumption_labels,
             sr_labels,
-            opponent_trajectories,
-            opponent_actions,
+            oppo_states,
+            oppo_actions,
         ) = batch
 
-        trajectories = trajectories.to(device)
-        actions = actions.to(device)
-        goals = goals.to(device)
-        goal_ranks = goal_ranks.to(device)
-        agents = agents.to(device)
-        types = types.to(device)
-        consumption_labels = consumption_labels.to(device)
-        sr_labels = sr_labels.to(device)
-        opponent_trajectories = opponent_trajectories.to(device)
-        opponent_actions = opponent_actions.to(device)
+        self_states = self_states.to(device, non_blocking=True)
+        self_actions = self_actions.to(device, non_blocking=True)
+        goals = goals.to(device, non_blocking=True)
+        goal_ranks = goal_ranks.to(device, non_blocking=True)
+        agents = agents.to(device, non_blocking=True)
+        types = types.to(device, non_blocking=True)
+        consumption_labels = consumption_labels.to(device, non_blocking=True)
+        sr_labels = sr_labels.to(device, non_blocking=True)
+        oppo_states = oppo_states.to(device, non_blocking=True)
+        oppo_actions = oppo_actions.to(device, non_blocking=True)
 
-        batch_size = trajectories.size(0)
+        batch_size = self_states.size(0)
 
         # Generate past episodes from batch
         past_episodes = generate_past_episodes_from_batch(
-            trajectories,
+            self_states,
             goal_ranks,
             agents,
             batch_size,
@@ -135,13 +132,13 @@ def train_epoch(
             rank_threshold=data_config.get("rank_threshold", 1),
         )
 
-        # With trajectory slicing, we use dynamic timesteps
+        # With self states slicing, we use dynamic timesteps
         # Each sample has a different effective length
-        batch_size = trajectories.size(0)
-        seq_len = trajectories.size(1)  # Fixed sequence length
+        batch_size = self_states.size(0)
+        seq_len = self_states.size(1)  # Fixed sequence length
 
         # Concatenate current and past episodes
-        combined_episodes = torch.cat([trajectories.unsqueeze(1), past_episodes], dim=1)
+        combined_episodes = torch.cat([self_states.unsqueeze(1), past_episodes], dim=1)
 
         # Prepare inputs for ToMnet
         # Split combined_episodes into past_trajectories and recent_trajectory
@@ -154,12 +151,11 @@ def train_epoch(
         current_state = recent_trajectory[:, -1]  # Last timestep of recent trajectory
 
         if scaler is not None:
-            device_type = "cuda" if torch.cuda.is_available() else "cpu"
+            device_type = "cuda" if device.type == "cuda" else "cpu"
             with autocast(device_type):
                 # Forward pass
-                outputs = model(past_trajectories, recent_trajectory, current_state, 
-                              opponent_recent_trajectory=opponent_trajectories, 
-                              opponent_recent_actions=opponent_actions)
+                outputs = model(past_trajectories, self_states, self_actions, 
+                              current_state, oppo_states=oppo_states, oppo_actions=oppo_actions)
 
                 # Compute loss
                 loss_dict = loss_fn(
@@ -169,7 +165,7 @@ def train_epoch(
                     outputs["type_logits"],
                     outputs["consumption_logits"],
                     outputs["sr_pred"],
-                    actions[:, 0],  # Get action target (first element)
+                    self_actions[:, 0],  # Get action target (first element)
                     torch.argmax(goals, dim=1),  # Convert one-hot to class indices
                     agents,
                     types,
@@ -178,17 +174,12 @@ def train_epoch(
                 )
 
                 loss = loss_dict["loss"]
-
-                # Scale loss for gradient accumulation
                 loss = loss / gradient_accumulation_steps
-
-                # Accumulate gradients
                 accumulation_loss += loss.item()
         else:
             # Forward pass without mixed precision
-            outputs = model(past_trajectories, recent_trajectory, current_state, 
-                          opponent_recent_trajectory=opponent_trajectories, 
-                          opponent_recent_actions=opponent_actions)
+            outputs = model(past_trajectories, self_states, self_actions, 
+                          current_state, oppo_states=oppo_states, oppo_actions=oppo_actions)
 
             # Compute loss
             loss_dict = loss_fn(
@@ -198,7 +189,7 @@ def train_epoch(
                 outputs["type_logits"],
                 outputs["consumption_logits"],
                 outputs["sr_pred"],
-                actions[:, 0],  # Get action target (first element)
+                self_actions[:, 0],  # Get action target (first element)
                 torch.argmax(goals, dim=1),  # Convert one-hot to class indices
                 agents,
                 types,
@@ -250,12 +241,12 @@ def train_epoch(
         # Convert goals to class indices (they are one-hot encoded)
         goals_indices = torch.argmax(goals, dim=1)
 
-        # Mask padded actions (-1) for accuracy calculation
-        action_mask = actions[:, 0] != -1
+        # Mask padded self actions (-1) for accuracy calculation
+        action_mask = self_actions[:, 0] != -1
         valid_action_samples = action_mask.sum().item()
         
         if valid_action_samples > 0:
-            correct_actions += (action_preds[action_mask] == actions[action_mask, 0]).sum().item()
+            correct_actions += (action_preds[action_mask] == self_actions[action_mask, 0]).sum().item()
             # Update total samples to only count valid actions
             total_samples += valid_action_samples
         else:
@@ -274,7 +265,7 @@ def train_epoch(
         blocker_valid_mask = blocker_mask & action_mask
 
         achiever_correct_actions += (
-            (action_preds[achiever_valid_mask] == actions[achiever_valid_mask, 0]).sum().item()
+            (action_preds[achiever_valid_mask] == self_actions[achiever_valid_mask, 0]).sum().item()
         )
         achiever_correct_goals += (
             (goal_preds[achiever_mask] == goals_indices[achiever_mask]).sum().item()
@@ -282,7 +273,7 @@ def train_epoch(
         achiever_total_samples += achiever_valid_mask.sum().item()
 
         blocker_correct_actions += (
-            (action_preds[blocker_valid_mask] == actions[blocker_valid_mask, 0]).sum().item()
+            (action_preds[blocker_valid_mask] == self_actions[blocker_valid_mask, 0]).sum().item()
         )
         blocker_correct_goals += (
             (goal_preds[blocker_mask] == goals_indices[blocker_mask]).sum().item()
@@ -411,15 +402,15 @@ def train_epoch(
 
 
 def validate_epoch(
-    model,
-    val_loader,
-    loss_fn,
-    device,
-    max_n_past=5,
-    data_config=None,
-    model_config=None,
-    scaler=None,
-):
+    model: torch.nn.Module,
+    val_loader: torch.utils.data.DataLoader,
+    loss_fn: torch.nn.Module,
+    device: torch.device,
+    max_n_past: int = 5,
+    data_config: dict = None,
+    model_config: dict = None,
+    scaler: torch.cuda.amp.GradScaler = None,
+) -> dict:
     """
     Validate for one epoch
 
@@ -469,34 +460,34 @@ def validate_epoch(
         for batch in val_loader:
             # Unpack multi-agent data
             (
-                trajectories,
-                actions,
+                self_states,
+                self_actions,
                 goals,
                 goal_ranks,
                 agents,
                 types,
                 consumption_labels,
                 sr_labels,
-                opponent_trajectories,
-                opponent_actions,
+                oppo_states,
+                oppo_actions,
             ) = batch
 
-            trajectories = trajectories.to(device)
-            actions = actions.to(device)
-            goals = goals.to(device)
-            goal_ranks = goal_ranks.to(device)
-            agents = agents.to(device)
-            types = types.to(device)
-            consumption_labels = consumption_labels.to(device)
-            sr_labels = sr_labels.to(device)
-            opponent_trajectories = opponent_trajectories.to(device)
-            opponent_actions = opponent_actions.to(device)
+            self_states = self_states.to(device, non_blocking=True)
+            self_actions = self_actions.to(device, non_blocking=True)
+            goals = goals.to(device, non_blocking=True)
+            goal_ranks = goal_ranks.to(device, non_blocking=True)
+            agents = agents.to(device, non_blocking=True)
+            types = types.to(device, non_blocking=True)
+            consumption_labels = consumption_labels.to(device, non_blocking=True)
+            sr_labels = sr_labels.to(device, non_blocking=True)
+            oppo_states = oppo_states.to(device, non_blocking=True)
+            oppo_actions = oppo_actions.to(device, non_blocking=True)
 
-            batch_size = trajectories.size(0)
+            batch_size = self_states.size(0)
 
             # Generate past episodes from batch
             past_episodes = generate_past_episodes_from_batch(
-                trajectories,
+                self_states,
                 goal_ranks,
                 agents,
                 batch_size,
@@ -506,12 +497,12 @@ def validate_epoch(
                 rank_threshold=data_config.get("rank_threshold", 1),
             )
 
-            # With trajectory slicing, we use dynamic timesteps
+            # With self states slicing, we use dynamic timesteps
             # Each sample has a different effective length
 
             # Concatenate current and past episodes
             combined_episodes = torch.cat(
-                [trajectories.unsqueeze(1), past_episodes], dim=1
+                [self_states.unsqueeze(1), past_episodes], dim=1
             )
 
             # Prepare inputs for ToMnet
@@ -528,11 +519,10 @@ def validate_epoch(
 
             # Forward pass
             if scaler is not None:
-                device_type = "cuda" if torch.cuda.is_available() else "cpu"
+                device_type = "cuda" if device.type == "cuda" else "cpu"
                 with autocast(device_type):
-                    outputs = model(past_trajectories, recent_trajectory, current_state, 
-                                  opponent_recent_trajectory=opponent_trajectories, 
-                                  opponent_recent_actions=opponent_actions)
+                    outputs = model(past_trajectories, self_states, self_actions, 
+                                  current_state, oppo_states=oppo_states, oppo_actions=oppo_actions)
                     loss_dict = loss_fn(
                         outputs["action_logits"],
                         outputs["goal_logits"],
@@ -540,7 +530,7 @@ def validate_epoch(
                         outputs["type_logits"],
                         outputs["consumption_logits"],
                         outputs["sr_pred"],
-                        actions[:, 0],  # Get action target (first element)
+                        self_actions[:, 0],  # Get action target (first element)
                         torch.argmax(goals, dim=1),  # Convert one-hot to class indices
                         agents,
                         types,
@@ -548,9 +538,8 @@ def validate_epoch(
                         sr_labels,
                     )
             else:
-                outputs = model(past_trajectories, recent_trajectory, current_state, 
-                              opponent_recent_trajectory=opponent_trajectories, 
-                              opponent_recent_actions=opponent_actions)
+                outputs = model(past_trajectories, self_states, self_actions, 
+                              current_state, oppo_states=oppo_states, oppo_actions=oppo_actions)
                 loss_dict = loss_fn(
                     outputs["action_logits"],
                     outputs["goal_logits"],
@@ -558,7 +547,7 @@ def validate_epoch(
                     outputs["type_logits"],
                     outputs["consumption_logits"],
                     outputs["sr_pred"],
-                    actions[:, 0],  # Get action target (first element)
+                    self_actions[:, 0],  # Get action target (first element)
                     torch.argmax(goals, dim=1),  # Convert one-hot to class indices
                     agents,
                     types,
@@ -584,12 +573,12 @@ def validate_epoch(
             # Convert goals to class indices (they are one-hot encoded)
             goals_indices = torch.argmax(goals, dim=1)
 
-            # Mask padded actions (-1) for accuracy calculation
-            action_mask = actions[:, 0] != -1
+            # Mask padded self actions (-1) for accuracy calculation
+            action_mask = self_actions[:, 0] != -1
             valid_action_samples = action_mask.sum().item()
             
             if valid_action_samples > 0:
-                correct_actions += (action_preds[action_mask] == actions[action_mask, 0]).sum().item()
+                correct_actions += (action_preds[action_mask] == self_actions[action_mask, 0]).sum().item()
                 total_samples += valid_action_samples
             else:
                 total_samples += batch_size
@@ -607,7 +596,7 @@ def validate_epoch(
             blocker_valid_mask = blocker_mask & action_mask
 
             achiever_correct_actions += (
-                (action_preds[achiever_valid_mask] == actions[achiever_valid_mask, 0]).sum().item()
+                (action_preds[achiever_valid_mask] == self_actions[achiever_valid_mask, 0]).sum().item()
             )
             achiever_correct_goals += (
                 (goal_preds[achiever_mask] == goals_indices[achiever_mask]).sum().item()
@@ -615,7 +604,7 @@ def validate_epoch(
             achiever_total_samples += achiever_valid_mask.sum().item()
 
             blocker_correct_actions += (
-                (action_preds[blocker_valid_mask] == actions[blocker_valid_mask, 0]).sum().item()
+                (action_preds[blocker_valid_mask] == self_actions[blocker_valid_mask, 0]).sum().item()
             )
             blocker_correct_goals += (
                 (goal_preds[blocker_mask] == goals_indices[blocker_mask]).sum().item()
@@ -1019,10 +1008,10 @@ def run_training_loop(
 
 
 def train_tomnet(
-    data_dir=None,
-    save_dir="./results/exp7/combined",
-    config=None,
-):
+    data_dir: str = None,
+    save_dir: str = "./results/exp7/combined",
+    config = None,
+) -> dict:
     """
     Main training function for KeyDoor ToMnet
     Trains on data from all achiever-blocker combinations in a single training process
@@ -1086,6 +1075,10 @@ def train_tomnet(
     ) = setup_training_environment(
         config, training_kwargs, training_config, device_setting
     )
+    
+    # Ensure device is a torch.device object
+    if isinstance(device, str):
+        device = torch.device(device)
 
     pin_memory = other_configs["pin_memory"]
     num_workers = other_configs["num_workers"]

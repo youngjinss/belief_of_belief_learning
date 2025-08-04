@@ -2,8 +2,6 @@ import sys
 import json
 import os
 import pickle
-import warnings
-
 from sklearn.metrics import (
     accuracy_score,
     precision_recall_fscore_support,
@@ -13,9 +11,6 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
-
-# Suppress sklearn warnings
-warnings.filterwarnings("ignore", category=UserWarning, module="sklearn")
 
 sys.path.append(os.path.dirname(__file__))
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -42,30 +37,30 @@ Adapted from ToMnetF experiment5 for multi-agent AchieverBlocker environment
 # Data loading functions moved to utils.py
 
 
-def _calculate_trajectory_lengths(trajectories):
+def _calculate_trajectory_lengths(self_states):
     """
-    Optimized calculation of effective trajectory lengths
+    Optimized calculation of effective self states lengths
 
     Args:
-        trajectories: Tensor of shape [batch_size, seq_len, channels, height, width]
+        self_states: Tensor of shape [batch_size, seq_len, channels, height, width]
 
     Returns:
         list: Effective lengths for each sample in batch
     """
-    batch_size = trajectories.size(0)
+    batch_size = self_states.size(0)
 
     # Vectorized calculation: sum over spatial dimensions for each timestep
-    traj_sums = trajectories.sum(dim=(2, 3, 4))  # [batch_size, seq_len]
+    traj_sums = self_states.sum(dim=(2, 3, 4))  # [batch_size, seq_len]
 
     # Find last non-zero timestep for each batch sample
     non_zero_mask = traj_sums > 0
 
     # Use efficient masking to find last valid timestep
-    seq_indices = torch.arange(trajectories.size(1), device=trajectories.device).expand(
+    seq_indices = torch.arange(self_states.size(1), device=self_states.device).expand(
         batch_size, -1
     )
     masked_indices = torch.where(
-        non_zero_mask, seq_indices, torch.tensor(-1, device=trajectories.device)
+        non_zero_mask, seq_indices, torch.tensor(-1, device=self_states.device)
     )
     effective_lengths = masked_indices.max(dim=1)[0].clamp(min=0)
 
@@ -109,9 +104,6 @@ def load_model(model_path, device, model_kwargs):
                         "n_ement": model_config.get("n_ement", 64),
                         "out_channels": model_config.get("out_channels", 32),
                         "channels_in": model_config.get("channels_in", 10),
-                        "current_state_channels": model_config.get(
-                            "current_state_channels", 8
-                        ),
                         "time_step": model_kwargs.get("time_step", 500),
                         "action_space": model_config.get("action_space", 7),
                         "goal_space": model_config.get("goal_space", 4),
@@ -188,22 +180,22 @@ def evaluate_model_with_n_past(
                 if len(batch) == 10:
                     # New format with opponent data
                     (
-                        trajectories,
-                        actions,
+                        self_states,
+                        self_actions,
                         goals,
                         goal_ranks,
                         agents,
                         types,
                         consumption_labels,
                         sr_labels,
-                        opponent_trajectories,
-                        opponent_actions,
+                        oppo_states,
+                        oppo_actions,
                     ) = batch
                 elif len(batch) == 8:
                     # Old format without opponent data
                     (
-                        trajectories,
-                        actions,
+                        self_states,
+                        self_actions,
                         goals,
                         goal_ranks,
                         agents,
@@ -212,24 +204,24 @@ def evaluate_model_with_n_past(
                         sr_labels,
                     ) = batch
                     # Create dummy opponent data
-                    opponent_trajectories = torch.zeros_like(trajectories)
-                    opponent_actions = torch.zeros_like(actions)
+                    oppo_states = torch.zeros_like(self_states)
+                    oppo_actions = torch.zeros_like(self_actions)
                 else:
                     raise ValueError(f"Unexpected batch format with {len(batch)} fields. Expected 8 (old format) or 10 (new format).")
-                trajectories = trajectories.to(device)
-                actions = actions.to(device)
+                self_states = self_states.to(device)
+                self_actions = self_actions.to(device)
                 goals = goals.to(device)
                 goal_ranks = goal_ranks.to(device)
                 agents = agents.to(device)
                 types = types.to(device)
-                opponent_trajectories = opponent_trajectories.to(device)
-                opponent_actions = opponent_actions.to(device)
+                oppo_states = oppo_states.to(device)
+                oppo_actions = oppo_actions.to(device)
 
-                batch_size = trajectories.size(0)
+                batch_size = self_states.size(0)
 
                 # Generate past episodes with fixed n_past using goal_ranks
                 past_episodes = generate_past_episodes_from_batch(
-                    trajectories,
+                    self_states,
                     goal_ranks,  # Use goal_ranks to match training
                     agents,
                     batch_size,
@@ -243,41 +235,37 @@ def evaluate_model_with_n_past(
 
                 # Use dynamic trajectory slicing (same as training/main evaluation)
                 # Find the effective length for each sample
-                traj_sums = trajectories.sum(dim=(2, 3, 4))
+                traj_sums = self_states.sum(dim=(2, 3, 4))
                 non_zero_mask = traj_sums > 0
                 seq_indices = (
-                    torch.arange(trajectories.size(1), device=trajectories.device)
+                    torch.arange(self_states.size(1), device=self_states.device)
                     .unsqueeze(0)
                     .expand(batch_size, -1)
                 )
                 masked_indices = torch.where(
                     non_zero_mask,
                     seq_indices,
-                    torch.tensor(-1, device=trajectories.device),
+                    torch.tensor(-1, device=self_states.device),
                 )
                 effective_lengths = masked_indices.max(dim=1)[0].clamp(min=0)
 
-                # Use trajectory without heading for MentalNet
-                current_state_channels = (
-                    data_config.get("current_state_channels", 8) if data_config else 8
-                )
-                recent_trajectory = trajectories[:, :, :current_state_channels]
+                # Use full trajectory (all channels)
+                recent_trajectory = self_states
 
                 # Extract current state using advanced indexing
-                batch_indices = torch.arange(batch_size, device=trajectories.device)
-                current_state = trajectories[
-                    batch_indices, effective_lengths, :current_state_channels
+                batch_indices = torch.arange(batch_size, device=self_states.device)
+                current_state = self_states[
+                    batch_indices, effective_lengths, :
                 ]
 
                 # Get action targets - use actions[:, 0] for trajectory slicing
-                action_targets = actions[
+                action_targets = self_actions[
                     :, 0
                 ]  # Target action for each sliced trajectory
 
                 # Model forward pass (model returns dictionary)
-                outputs = model(past_episodes, recent_trajectory, current_state, 
-                              opponent_recent_trajectory=opponent_trajectories, 
-                              opponent_recent_actions=opponent_actions)
+                outputs = model(past_episodes, recent_trajectory, self_actions, current_state, 
+                              oppo_states=oppo_states, oppo_actions=oppo_actions)
                 action_logits = outputs["action_logits"]
 
                 # Get predictions
@@ -356,22 +344,22 @@ def evaluate_model(
                 if len(batch) == 10:
                     # New format with opponent data
                     (
-                        trajectories,
-                        actions,
+                        self_states,
+                        self_actions,
                         goals,
                         goal_ranks,
                         agents,
                         types,
                         consumption_labels,
                         sr_labels,
-                        opponent_trajectories,
-                        opponent_actions,
+                        oppo_states,
+                        oppo_actions,
                     ) = batch
                 elif len(batch) == 8:
                     # Old format without opponent data
                     (
-                        trajectories,
-                        actions,
+                        self_states,
+                        self_actions,
                         goals,
                         goal_ranks,
                         agents,
@@ -380,25 +368,25 @@ def evaluate_model(
                         sr_labels,
                     ) = batch
                     # Create dummy opponent data
-                    opponent_trajectories = torch.zeros_like(trajectories)
-                    opponent_actions = torch.zeros_like(actions)
+                    oppo_states = torch.zeros_like(self_states)
+                    oppo_actions = torch.zeros_like(self_actions)
                 else:
                     raise ValueError(f"Unexpected batch format with {len(batch)} fields. Expected 8 (old format) or 10 (new format).")
 
-                batch_size = trajectories.size(0)
+                batch_size = self_states.size(0)
 
                 # Optimized GPU transfers with non_blocking for better performance
-                trajectories = trajectories.to(device, non_blocking=True)
-                actions = actions.to(device, non_blocking=True)
+                self_states = self_states.to(device, non_blocking=True)
+                self_actions = self_actions.to(device, non_blocking=True)
                 goals = goals.to(device, non_blocking=True)
                 goal_ranks = goal_ranks.to(device, non_blocking=True)
                 agents = agents.to(device, non_blocking=True)
-                opponent_trajectories = opponent_trajectories.to(device, non_blocking=True)
-                opponent_actions = opponent_actions.to(device, non_blocking=True)
+                oppo_states = oppo_states.to(device, non_blocking=True)
+                oppo_actions = oppo_actions.to(device, non_blocking=True)
 
                 # Generate past episodes using goal_ranks (same as training)
                 past_episodes = generate_past_episodes_from_batch(
-                    trajectories,
+                    self_states,
                     goal_ranks,  # Use goal_ranks instead of goals to match training
                     agents,
                     batch_size,
@@ -414,46 +402,40 @@ def evaluate_model(
                 # Each sample has a different effective length, stored in actions[:,0]
 
                 # For trajectory slicing, use the action at index 0 (the target action for this slice)
-                action_targets = actions[
+                action_targets = self_actions[
                     :, 0
                 ]  # Target action for each sliced trajectory
 
                 # Optimized trajectory length calculation
-                effective_lengths = _calculate_trajectory_lengths(trajectories)
+                effective_lengths = _calculate_trajectory_lengths(self_states)
 
-                # Use trajectory without heading direction for MentalNet (first 8 channels only)
-                current_state_channels = (
-                    data_config.get("current_state_channels", 8) if data_config else 8
-                )
-                recent_trajectory = trajectories[
-                    :, :, :current_state_channels
-                ]  # [batch_size, seq_len, 8, height, width]
+                # Use full trajectory (all channels)
+                recent_trajectory = self_states  # [batch_size, seq_len, channels_in, height, width]
 
                 # Extract current state for PredNet (last non-padded timestep)
                 current_state = torch.zeros(
                     batch_size,
-                    current_state_channels,
-                    trajectories.size(3),
-                    trajectories.size(4),
+                    self_states.size(2),  # Use full channels
+                    self_states.size(3),
+                    self_states.size(4),
                     device=device,
                 )
 
                 # Vectorized: Extract current state using advanced indexing on the same device
-                batch_indices = torch.arange(batch_size, device=trajectories.device)
+                batch_indices = torch.arange(batch_size, device=self_states.device)
                 last_timesteps = torch.tensor(
                     [max(0, length - 1) for length in effective_lengths],
-                    device=trajectories.device,
+                    device=self_states.device,
                 )
 
                 # Extract current state using advanced indexing
-                current_state = trajectories[
-                    batch_indices, last_timesteps, :current_state_channels
+                current_state = self_states[
+                    batch_indices, last_timesteps, :
                 ]
 
                 # Model forward pass (model returns dictionary)
-                outputs = model(past_episodes, recent_trajectory, current_state, 
-                              opponent_recent_trajectory=opponent_trajectories, 
-                              opponent_recent_actions=opponent_actions)
+                outputs = model(past_episodes, recent_trajectory, self_actions, current_state, 
+                              oppo_states=oppo_states, oppo_actions=oppo_actions)
                 action_logits = outputs["action_logits"]
                 # Get predictions
                 probabilities = F.softmax(action_logits, dim=1)
@@ -885,22 +867,22 @@ def analyze_action_likelihood(
             if len(batch) == 10:
                 # New format with opponent data
                 (
-                    trajectories,
-                    actions,
+                    self_states,
+                    self_actions,
                     goals,
                     goal_ranks,
                     agents,
                     types,
                     consumption_labels,
                     sr_labels,
-                    opponent_trajectories,
-                    opponent_actions,
+                    oppo_states,
+                    oppo_actions,
                 ) = batch
             elif len(batch) == 8:
                 # Old format without opponent data
                 (
-                    trajectories,
-                    actions,
+                    self_states,
+                    self_actions,
                     goals,
                     goal_ranks,
                     agents,
@@ -909,24 +891,24 @@ def analyze_action_likelihood(
                     sr_labels,
                 ) = batch
                 # Create dummy opponent data
-                opponent_trajectories = torch.zeros_like(trajectories)
-                opponent_actions = torch.zeros_like(actions)
+                oppo_states = torch.zeros_like(self_states)
+                oppo_actions = torch.zeros_like(self_actions)
             else:
                 raise ValueError(f"Unexpected batch format with {len(batch)} fields. Expected 8 (old format) or 10 (new format).")
                 
-            trajectories = trajectories.to(device)
-            actions = actions.to(device)
+            self_states = self_states.to(device)
+            self_actions = self_actions.to(device)
             goals = goals.to(device)
             goal_ranks = goal_ranks.to(device)
             agents = agents.to(device)
-            opponent_trajectories = opponent_trajectories.to(device)
-            opponent_actions = opponent_actions.to(device)
+            oppo_states = oppo_states.to(device)
+            oppo_actions = oppo_actions.to(device)
 
-            batch_size = trajectories.size(0)
+            batch_size = self_states.size(0)
 
             # Generate past episodes using goal_ranks
             past_episodes = generate_past_episodes_from_batch(
-                trajectories,
+                self_states,
                 goal_ranks,  # Use goal_ranks to match training
                 agents,
                 batch_size,
@@ -938,37 +920,36 @@ def analyze_action_likelihood(
 
             # Use dynamic trajectory slicing (same as training)
             # Find the effective length for each sample
-            traj_sums = trajectories.sum(dim=(2, 3, 4))
+            traj_sums = self_states.sum(dim=(2, 3, 4))
             non_zero_mask = traj_sums > 0
             seq_indices = (
-                torch.arange(trajectories.size(1), device=trajectories.device)
+                torch.arange(self_states.size(1), device=self_states.device)
                 .unsqueeze(0)
                 .expand(batch_size, -1)
             )
             masked_indices = torch.where(
                 non_zero_mask,
                 seq_indices,
-                torch.tensor(-1, device=trajectories.device),
+                torch.tensor(-1, device=self_states.device),
             )
             effective_lengths = masked_indices.max(dim=1)[0].clamp(min=0)
 
-            # Use trajectory without heading for MentalNet
-            current_state_channels = data_config.get("current_state_channels", 8)
-            recent_trajectory = trajectories[:, :, :current_state_channels]
+            # Use full trajectory (all channels)
+            recent_trajectory = self_states
 
             # Extract current state using advanced indexing
-            batch_indices = torch.arange(batch_size, device=trajectories.device)
-            current_state = trajectories[
-                batch_indices, effective_lengths, :current_state_channels
+            batch_indices = torch.arange(batch_size, device=self_states.device)
+            current_state = self_states[
+                batch_indices, effective_lengths, :
             ]
 
             # Get action targets - use actions[:, 0] for trajectory slicing
-            action_targets = actions[:, 0]  # Target action for each sliced trajectory
+            action_targets = self_actions[:, 0]  # Target action for each sliced trajectory
 
-            # Model forward pass (model returns 7 outputs)
-            action_logits, _, _, _, _, _, _, _ = model(
-                past_episodes, recent_trajectory, current_state
-            )
+            # Model forward pass (model returns dictionary)
+            outputs = model(past_episodes, recent_trajectory, self_actions, current_state,
+                          oppo_states=oppo_states, oppo_actions=oppo_actions)
+            action_logits = outputs["action_logits"]
             probabilities = F.softmax(action_logits, dim=1)
 
             for i in range(len(action_targets)):

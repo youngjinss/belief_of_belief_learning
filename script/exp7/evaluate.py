@@ -184,22 +184,46 @@ def evaluate_model_with_n_past(
         with torch.no_grad():
             for _, batch in enumerate(test_loader):
                 # Unpack all data including goal_ranks and types
-                (
-                    trajectories,
-                    actions,
-                    goals,
-                    goal_ranks,
-                    agents,
-                    types,
-                    consumption_labels,
-                    sr_labels,
-                ) = batch
+                # Handle both old format (8 fields) and new format (10 fields)
+                if len(batch) == 10:
+                    # New format with opponent data
+                    (
+                        trajectories,
+                        actions,
+                        goals,
+                        goal_ranks,
+                        agents,
+                        types,
+                        consumption_labels,
+                        sr_labels,
+                        opponent_trajectories,
+                        opponent_actions,
+                    ) = batch
+                elif len(batch) == 8:
+                    # Old format without opponent data
+                    (
+                        trajectories,
+                        actions,
+                        goals,
+                        goal_ranks,
+                        agents,
+                        types,
+                        consumption_labels,
+                        sr_labels,
+                    ) = batch
+                    # Create dummy opponent data
+                    opponent_trajectories = torch.zeros_like(trajectories)
+                    opponent_actions = torch.zeros_like(actions)
+                else:
+                    raise ValueError(f"Unexpected batch format with {len(batch)} fields. Expected 8 (old format) or 10 (new format).")
                 trajectories = trajectories.to(device)
                 actions = actions.to(device)
                 goals = goals.to(device)
                 goal_ranks = goal_ranks.to(device)
                 agents = agents.to(device)
                 types = types.to(device)
+                opponent_trajectories = opponent_trajectories.to(device)
+                opponent_actions = opponent_actions.to(device)
 
                 batch_size = trajectories.size(0)
 
@@ -251,7 +275,9 @@ def evaluate_model_with_n_past(
                 ]  # Target action for each sliced trajectory
 
                 # Model forward pass (model returns dictionary)
-                outputs = model(past_episodes, recent_trajectory, current_state)
+                outputs = model(past_episodes, recent_trajectory, current_state, 
+                              opponent_recent_trajectory=opponent_trajectories, 
+                              opponent_recent_actions=opponent_actions)
                 action_logits = outputs["action_logits"]
 
                 # Get predictions
@@ -326,16 +352,38 @@ def evaluate_model(
             for _, batch in enumerate(test_loader):
 
                 # Unpack all data including goal_ranks and types
-                (
-                    trajectories,
-                    actions,
-                    goals,
-                    goal_ranks,
-                    agents,
-                    types,
-                    consumption_labels,
-                    sr_labels,
-                ) = batch
+                # Handle both old format (8 fields) and new format (10 fields)
+                if len(batch) == 10:
+                    # New format with opponent data
+                    (
+                        trajectories,
+                        actions,
+                        goals,
+                        goal_ranks,
+                        agents,
+                        types,
+                        consumption_labels,
+                        sr_labels,
+                        opponent_trajectories,
+                        opponent_actions,
+                    ) = batch
+                elif len(batch) == 8:
+                    # Old format without opponent data
+                    (
+                        trajectories,
+                        actions,
+                        goals,
+                        goal_ranks,
+                        agents,
+                        types,
+                        consumption_labels,
+                        sr_labels,
+                    ) = batch
+                    # Create dummy opponent data
+                    opponent_trajectories = torch.zeros_like(trajectories)
+                    opponent_actions = torch.zeros_like(actions)
+                else:
+                    raise ValueError(f"Unexpected batch format with {len(batch)} fields. Expected 8 (old format) or 10 (new format).")
 
                 batch_size = trajectories.size(0)
 
@@ -345,6 +393,8 @@ def evaluate_model(
                 goals = goals.to(device, non_blocking=True)
                 goal_ranks = goal_ranks.to(device, non_blocking=True)
                 agents = agents.to(device, non_blocking=True)
+                opponent_trajectories = opponent_trajectories.to(device, non_blocking=True)
+                opponent_actions = opponent_actions.to(device, non_blocking=True)
 
                 # Generate past episodes using goal_ranks (same as training)
                 past_episodes = generate_past_episodes_from_batch(
@@ -401,7 +451,9 @@ def evaluate_model(
                 ]
 
                 # Model forward pass (model returns dictionary)
-                outputs = model(past_episodes, recent_trajectory, current_state)
+                outputs = model(past_episodes, recent_trajectory, current_state, 
+                              opponent_recent_trajectory=opponent_trajectories, 
+                              opponent_recent_actions=opponent_actions)
                 action_logits = outputs["action_logits"]
                 # Get predictions
                 probabilities = F.softmax(action_logits, dim=1)
@@ -829,21 +881,46 @@ def analyze_action_likelihood(
                 break
 
             # Unpack all data including goal_ranks and types
-            (
-                trajectories,
-                actions,
-                goals,
-                goal_ranks,
-                agents,
-                types,
-                consumption_labels,
-                sr_labels,
-            ) = batch
+            # Handle both old format (8 fields) and new format (10 fields)
+            if len(batch) == 10:
+                # New format with opponent data
+                (
+                    trajectories,
+                    actions,
+                    goals,
+                    goal_ranks,
+                    agents,
+                    types,
+                    consumption_labels,
+                    sr_labels,
+                    opponent_trajectories,
+                    opponent_actions,
+                ) = batch
+            elif len(batch) == 8:
+                # Old format without opponent data
+                (
+                    trajectories,
+                    actions,
+                    goals,
+                    goal_ranks,
+                    agents,
+                    types,
+                    consumption_labels,
+                    sr_labels,
+                ) = batch
+                # Create dummy opponent data
+                opponent_trajectories = torch.zeros_like(trajectories)
+                opponent_actions = torch.zeros_like(actions)
+            else:
+                raise ValueError(f"Unexpected batch format with {len(batch)} fields. Expected 8 (old format) or 10 (new format).")
+                
             trajectories = trajectories.to(device)
             actions = actions.to(device)
             goals = goals.to(device)
             goal_ranks = goal_ranks.to(device)
             agents = agents.to(device)
+            opponent_trajectories = opponent_trajectories.to(device)
+            opponent_actions = opponent_actions.to(device)
 
             batch_size = trajectories.size(0)
 

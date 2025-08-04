@@ -448,6 +448,19 @@ class DataGenerator:
             parsed_data["trajectory_length"],
         )
 
+        # Create opponent trajectory tensor (perspective from opponent's view)
+        opponent_trajectory_tensor = None
+        opponent_actions = None
+        if not parsed_data.get("is_single_agent", False):
+            opponent_trajectory_tensor = self._create_trajectory_tensor(
+                parsed_data["maze"],
+                parsed_data["trajectory_steps"],
+                "blocker",  # Opponent is blocker
+                parsed_data["trajectory_length"],
+            )
+            # Extract opponent actions
+            opponent_actions = [step["blocker_action"] for step in parsed_data["trajectory_steps"] if step["blocker_action"] is not None]
+
         # Create goal tensor (one-hot encoding of intended goal)
         goal_tensor = self._create_goal_tensor(intended_goal)
 
@@ -473,6 +486,8 @@ class DataGenerator:
             "type": achiever_type,
             "sr_data_per_timestep": sr_data_per_timestep,
             "filename": parsed_data["filename"],
+            "opponent_trajectory": opponent_trajectory_tensor,
+            "opponent_actions": opponent_actions,
         }
 
     def create_blocker_sample(self, parsed_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -530,6 +545,19 @@ class DataGenerator:
             parsed_data["trajectory_length"],
         )
 
+        # Create opponent trajectory tensor (perspective from opponent's view)
+        opponent_trajectory_tensor = None
+        opponent_actions = None
+        if not parsed_data.get("is_single_agent", False):
+            opponent_trajectory_tensor = self._create_trajectory_tensor(
+                parsed_data["maze"],
+                parsed_data["trajectory_steps"],
+                "achiever",  # Opponent is achiever
+                parsed_data["trajectory_length"],
+            )
+            # Extract opponent actions
+            opponent_actions = [step["achiever_action"] for step in parsed_data["trajectory_steps"] if step["achiever_action"] is not None]
+
         # Create goal tensor (one-hot encoding of inferred goal)
         goal_tensor = self._create_goal_tensor(inferred_goal_letter)
 
@@ -553,6 +581,8 @@ class DataGenerator:
             "sr_data_per_timestep": sr_data_per_timestep,
             "inferred_goal_vector": inferred_goal_vector,
             "filename": parsed_data["filename"],
+            "opponent_trajectory": opponent_trajectory_tensor,
+            "opponent_actions": opponent_actions,
         }
 
     def _create_trajectory_tensor(

@@ -106,6 +106,8 @@ def train_epoch(
             types,
             consumption_labels,
             sr_labels,
+            opponent_trajectories,
+            opponent_actions,
         ) = batch
 
         trajectories = trajectories.to(device)
@@ -116,6 +118,8 @@ def train_epoch(
         types = types.to(device)
         consumption_labels = consumption_labels.to(device)
         sr_labels = sr_labels.to(device)
+        opponent_trajectories = opponent_trajectories.to(device)
+        opponent_actions = opponent_actions.to(device)
 
         batch_size = trajectories.size(0)
 
@@ -153,7 +157,9 @@ def train_epoch(
             device_type = "cuda" if torch.cuda.is_available() else "cpu"
             with autocast(device_type):
                 # Forward pass
-                outputs = model(past_trajectories, recent_trajectory, current_state)
+                outputs = model(past_trajectories, recent_trajectory, current_state, 
+                              opponent_recent_trajectory=opponent_trajectories, 
+                              opponent_recent_actions=opponent_actions)
 
                 # Compute loss
                 loss_dict = loss_fn(
@@ -180,7 +186,9 @@ def train_epoch(
                 accumulation_loss += loss.item()
         else:
             # Forward pass without mixed precision
-            outputs = model(past_trajectories, recent_trajectory, current_state)
+            outputs = model(past_trajectories, recent_trajectory, current_state, 
+                          opponent_recent_trajectory=opponent_trajectories, 
+                          opponent_recent_actions=opponent_actions)
 
             # Compute loss
             loss_dict = loss_fn(
@@ -469,6 +477,8 @@ def validate_epoch(
                 types,
                 consumption_labels,
                 sr_labels,
+                opponent_trajectories,
+                opponent_actions,
             ) = batch
 
             trajectories = trajectories.to(device)
@@ -479,6 +489,8 @@ def validate_epoch(
             types = types.to(device)
             consumption_labels = consumption_labels.to(device)
             sr_labels = sr_labels.to(device)
+            opponent_trajectories = opponent_trajectories.to(device)
+            opponent_actions = opponent_actions.to(device)
 
             batch_size = trajectories.size(0)
 
@@ -518,7 +530,9 @@ def validate_epoch(
             if scaler is not None:
                 device_type = "cuda" if torch.cuda.is_available() else "cpu"
                 with autocast(device_type):
-                    outputs = model(past_trajectories, recent_trajectory, current_state)
+                    outputs = model(past_trajectories, recent_trajectory, current_state, 
+                                  opponent_recent_trajectory=opponent_trajectories, 
+                                  opponent_recent_actions=opponent_actions)
                     loss_dict = loss_fn(
                         outputs["action_logits"],
                         outputs["goal_logits"],
@@ -534,7 +548,9 @@ def validate_epoch(
                         sr_labels,
                     )
             else:
-                outputs = model(past_trajectories, recent_trajectory, current_state)
+                outputs = model(past_trajectories, recent_trajectory, current_state, 
+                              opponent_recent_trajectory=opponent_trajectories, 
+                              opponent_recent_actions=opponent_actions)
                 loss_dict = loss_fn(
                     outputs["action_logits"],
                     outputs["goal_logits"],

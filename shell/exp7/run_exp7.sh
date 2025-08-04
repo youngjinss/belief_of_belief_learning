@@ -1,6 +1,6 @@
 #!/bin/bash
 # nohup bash shell/exp7/run_exp7.sh all > exp7.log 2>&1 &
-# Complete workflow automation for AchieverBlocker experiment 6 with ToMnet training and Type prediction
+# Complete workflow automation for AchieverBlocker experiment 7 with ToMnet training, Type prediction, and SecondBeliefNet
 # Usage: bash run_exp7.sh [data_generation|train|evaluate|visualize|all]
 
 set -e  # Exit on error
@@ -443,6 +443,11 @@ case $COMMAND in
         log_step "All logs will be saved to: $RUN_LOG_DIR/"
         export DEBUG_MODE="true"
         enable_debug_mode
+        # In debug mode, calculate expected validation games based on debug settings
+        # Debug mode uses 50 games per type with 0.1 test proportion per combination
+        # With 2 achiever types and 2 blocker types = 4 combinations
+        VALIDATION_GAMES=$((4 * 4))  # 4 test files per combination * 4 combinations = 16 files
+        log_step "Debug mode: expecting approximately $VALIDATION_GAMES validation games total"
         check_exp7_implementation
         run_data_generation
         run_test_data_generation

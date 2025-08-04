@@ -1411,6 +1411,12 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    # Check for DEBUG_MODE environment variable and enable debug mode if set
+    import os
+    if os.environ.get('DEBUG_MODE') == 'true':
+        print("Debug mode detected from environment variable")
+        config.enable_debug_mode()
+
     # Override config with command line arguments if specified
     if args.config_override:
         config.update_from_args(args)

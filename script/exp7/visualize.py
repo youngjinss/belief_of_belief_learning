@@ -2,6 +2,7 @@ import os
 import json
 import pickle
 import warnings
+from typing import Optional, Dict, Any, Tuple, List
 
 # Set matplotlib backend before importing pyplot to avoid display issues
 import matplotlib
@@ -2207,6 +2208,391 @@ def _plot_mental_type_based_embeddings_for_achiever(
     plt.close()
 
 
+def extract_second_belief_embeddings_from_batch(
+    model, 
+    trajectories: torch.Tensor, 
+    actions: torch.Tensor, 
+    agents: torch.Tensor, 
+    goal_ranks: torch.Tensor, 
+    opponent_trajectories: torch.Tensor, 
+    opponent_actions: torch.Tensor, 
+    device: torch.device, 
+    config, 
+    batch_size: int = 32
+) -> np.ndarray:
+    """
+    Extract second belief embeddings (e_opp2) from test data batches using the SecondBeliefNet.
+    
+    This function processes test data in batches to extract second-order belief embeddings,
+    which represent what the agent believes about others' beliefs. The embeddings are
+    extracted using the trained SecondBeliefNet component of the ToMnet model.
+    
+    Args:
+        model: Trained ToMnet model with SecondBeliefNet capability
+        trajectories: Trajectory tensor (batch_size, seq_len, channels, height, width)
+        actions: Action tensor (batch_size, seq_len) - agent actions at each timestep
+        agents: Agent tensor (batch_size,) - agent type identifiers
+        goal_ranks: Goal rank tensor (batch_size,) - goal preference rankings
+        opponent_trajectories: Opponent trajectory tensor for multi-agent scenarios
+        opponent_actions: Opponent action tensor for multi-agent scenarios
+        device: Computing device (CPU or CUDA)
+        config: Configuration object containing model and data parameters
+        batch_size: Batch size for processing to manage memory usage
+        
+    Returns:
+        numpy.ndarray: Second belief embeddings as vectors (n_samples, embedding_dim)
+                      Returns None if extraction fails or model doesn't support second beliefs
+        
+    Raises:
+        RuntimeError: If model forward pass fails
+        ValueError: If input tensors have incompatible shapes
+    """
+    # Validate model capabilities
+    if not hasattr(model, 'second_belief_net') or not model.use_second_belief:
+        print("Warning: Model does not use SecondBeliefNet. Cannot extract second belief embeddings.")
+        return None
+    
+    # Validate input tensors
+    if trajectories is None or len(trajectories) == 0:
+        raise ValueError("Trajectories tensor is empty or None")
+    
+    if actions is None or len(actions) == 0:
+        raise ValueError("Actions tensor is empty or None")
+    
+    # Check tensor compatibility
+    if trajectories.size(0) != actions.size(0):
+        raise ValueError(f"Batch size mismatch: trajectories({trajectories.size(0)}) vs actions({actions.size(0)})")
+        
+    model.eval()
+    embeddings = []
+    
+    print(f"Extracting second belief embeddings from {len(trajectories)} samples...")
+    
+    with torch.no_grad():
+        for start_idx in range(0, len(trajectories), batch_size):
+            end_idx = min(start_idx + batch_size, len(trajectories))
+            current_batch_size = end_idx - start_idx
+            
+            if start_idx % (batch_size * 10) == 0:
+                print(f"Processing batch {start_idx//batch_size + 1}/{(len(trajectories) + batch_size - 1)//batch_size}")
+            
+            try:
+                # Get batch tensors with proper error handling
+                batch_trajectories = trajectories[start_idx:end_idx].to(device, non_blocking=True)
+                batch_actions = actions[start_idx:end_idx].to(device, non_blocking=True)
+                batch_agents = agents[start_idx:end_idx].to(device, non_blocking=True)
+                batch_goal_ranks = goal_ranks[start_idx:end_idx].to(device, non_blocking=True)
+                
+                # Handle opponent trajectories with validation
+                if opponent_trajectories is not None and len(opponent_trajectories) > 0:
+                    if start_idx < len(opponent_trajectories):
+                        batch_opponent_trajectories = opponent_trajectories[start_idx:end_idx].to(device, non_blocking=True)
+                        if opponent_actions is not None and start_idx < len(opponent_actions):
+                            batch_opponent_actions = opponent_actions[start_idx:end_idx].to(device, non_blocking=True)
+                        else:
+                            batch_opponent_actions = None
+                    else:
+                        batch_opponent_trajectories = None
+                        batch_opponent_actions = None
+                else:
+                    batch_opponent_trajectories = None
+                    batch_opponent_actions = None
+                
+                # Generate past episodes for character embeddings with error handling
+                try:
+                    past_episodes = generate_past_episodes_from_batch(
+                        trajectories=batch_trajectories,
+                        goal_ranks=batch_goal_ranks,
+                        agents=batch_agents,
+                        batch_size=current_batch_size
+                    )
+                except Exception as past_ep_error:
+                    print(f"Warning: Failed to generate past episodes for batch {start_idx//batch_size + 1}: {past_ep_error}")
+                    # Use None for past episodes if generation fails
+                    past_episodes = None
+                
+                # Create current state (last timestep) with proper channel selection
+                data_config = config.get_data_config() if hasattr(config, 'get_data_config') else {}
+                current_state_channels = data_config.get("current_state_channels", 8)
+                current_state = batch_trajectories[:, -1, :current_state_channels]
+                
+                # Ensure current_state has correct dimensions
+                if current_state.dim() == 3:  # Missing height/width dimensions
+                    # Reshape to proper spatial dimensions if needed
+                    height = width = int(np.sqrt(current_state.size(-1))) if current_state.size(-1) > current_state_channels else 9
+                    if height * width == current_state.size(-1) // current_state_channels:
+                        current_state = current_state.view(current_state.size(0), current_state_channels, height, width)
+                
+                # Forward pass with improved error handling
+                try:
+                    outputs = model(
+                        past_trajectories=past_episodes, 
+                        recent_trajectory=batch_trajectories, 
+                        current_state=current_state,
+                        opponent_recent_trajectory=batch_opponent_trajectories,
+                        opponent_recent_actions=batch_opponent_actions
+                    )
+                    
+                    # Extract second belief embeddings with validation
+                    if isinstance(outputs, dict) and "second_belief" in outputs:
+                        second_belief_tensor = outputs["second_belief"]
+                        if second_belief_tensor is not None and second_belief_tensor.numel() > 0:
+                            batch_embeddings = second_belief_tensor.detach().cpu().numpy()
+                            embeddings.append(batch_embeddings)
+                        else:
+                            print(f"Warning: Empty second belief tensor in batch {start_idx//batch_size + 1}")
+                    else:
+                        print(f"Warning: No second_belief key in outputs for batch {start_idx//batch_size + 1}")
+                        if isinstance(outputs, dict):
+                            print(f"Available keys: {list(outputs.keys())}")
+                        
+                except RuntimeError as forward_error:
+                    print(f"RuntimeError in model forward pass for batch {start_idx//batch_size + 1}: {forward_error}")
+                    continue
+                
+            except (RuntimeError, ValueError, IndexError) as e:
+                print(f"Error processing batch {start_idx//batch_size + 1}: {type(e).__name__}: {e}")
+                continue
+            except Exception as e:
+                print(f"Unexpected error processing batch {start_idx//batch_size + 1}: {type(e).__name__}: {e}")
+                continue
+    
+    # Combine all embeddings with validation
+    if embeddings:
+        try:
+            combined_embeddings = np.vstack(embeddings)
+            print(f"Successfully extracted {combined_embeddings.shape[0]} second belief embeddings")
+            return combined_embeddings
+        except ValueError as stack_error:
+            print(f"Error combining embeddings: {stack_error}")
+            return None
+    else:
+        print("Warning: No second belief embeddings extracted")
+        return None
+
+
+def plot_second_belief_embeddings(
+    model,
+    test_loader,
+    device,
+    output_dir: str,
+    config=None,
+    experiment_no: int = None,
+    n_samples: int = None,
+) -> bool:
+    """
+    Plot second belief embeddings (e_opp2) using PCA and t-SNE visualization.
+    
+    This function extracts second-order belief embeddings from a trained ToMnet model
+    and creates visualization plots showing how these embeddings cluster by agent type
+    and goal preferences. The visualizations help understand how the model represents
+    what agents believe about others' beliefs.
+    
+    Args:
+        model: Trained ToMnet model with SecondBeliefNet capability
+        test_loader: DataLoader for test data containing agent trajectories
+        device: Computing device (CPU or CUDA)
+        output_dir: Directory to save the generated plots
+        config: Configuration object containing model and visualization parameters
+        experiment_no: Experiment number for plot titles and filenames
+        n_samples: Maximum number of samples to use (None for all available)
+        
+    Returns:
+        bool: True if visualization was successful, False otherwise
+    """
+    if not hasattr(model, 'second_belief_net') or not model.use_second_belief:
+        print("Skipping second belief embedding visualization - SecondBeliefNet not available")
+        return False
+    
+    print("Extracting second belief embeddings for visualization...")
+    
+    # Extract test data with opponent trajectories
+    trajectories, actions, goals, agents, agent_labels, goal_labels, type_labels = [], [], [], [], [], [], []
+    opponent_trajectories, opponent_actions = [], []
+    
+    for batch_data in test_loader:
+        if len(trajectories) >= (n_samples or float('inf')):
+            break
+            
+        trajectories.append(batch_data['trajectory'])
+        actions.append(batch_data['actions'])
+        goals.append(batch_data['goal'])
+        agents.append(batch_data['agent'])
+        
+        # Extract opponent data if available
+        if 'opponent_recent_trajectory' in batch_data and batch_data['opponent_recent_trajectory'] is not None:
+            opponent_trajectories.append(batch_data['opponent_recent_trajectory'])
+            opponent_actions.append(batch_data['opponent_actions'])
+        else:
+            # Create placeholder for single-agent cases
+            opponent_trajectories.append(torch.zeros_like(batch_data['trajectory']))
+            opponent_actions.append(torch.zeros_like(batch_data['actions']))
+        
+        # Create labels
+        for i in range(len(batch_data['trajectory'])):
+            agent_type = batch_data['agent'][i].item()
+            agent_labels.append("Achiever" if agent_type == 0 else "Blocker")
+            
+            goal_tensor = batch_data['goal'][i]
+            goal_idx = torch.argmax(goal_tensor).item()
+            goal_labels.append(["Red", "Green", "Blue", "Yellow"][goal_idx])
+            
+            if 'type' in batch_data:
+                type_labels.append(batch_data['type'][i].item())
+            else:
+                type_labels.append(0)
+    
+    if not trajectories:
+        print("No test data available for second belief embedding visualization")
+        return
+    
+    # Stack all data
+    trajectories = torch.cat(trajectories, dim=0)
+    actions = torch.cat(actions, dim=0)
+    goals = torch.cat(goals, dim=0)
+    agents = torch.cat(agents, dim=0)
+    opponent_trajectories = torch.cat(opponent_trajectories, dim=0)
+    opponent_actions = torch.cat(opponent_actions, dim=0)
+    
+    # Limit samples if specified
+    if n_samples and len(trajectories) > n_samples:
+        indices = torch.randperm(len(trajectories))[:n_samples]
+        trajectories = trajectories[indices]
+        actions = actions[indices]
+        goals = goals[indices]
+        agents = agents[indices]
+        opponent_trajectories = opponent_trajectories[indices]
+        opponent_actions = opponent_actions[indices]
+        agent_labels = [agent_labels[i] for i in indices]
+        goal_labels = [goal_labels[i] for i in indices]
+        type_labels = [type_labels[i] for i in indices]
+    
+    # Extract second belief embeddings
+    goal_ranks = torch.ones(len(trajectories), 4)  # Dummy goal ranks
+    embeddings = extract_second_belief_embeddings_from_batch(
+        model, trajectories, actions, agents, goal_ranks, 
+        opponent_trajectories, opponent_actions, device, config
+    )
+    
+    if embeddings is None:
+        print("Failed to extract second belief embeddings")
+        return
+    
+    print(f"Second belief embeddings shape: {embeddings.shape}")
+    
+    # Create visualizations
+    plot_second_belief_embeddings_by_agent(embeddings, agent_labels, goal_labels, config, output_dir, experiment_no)
+    plot_second_belief_embeddings_by_goal(embeddings, agent_labels, goal_labels, config, output_dir, experiment_no)
+
+
+def plot_second_belief_embeddings_by_agent(embeddings, agent_labels, goal_labels, config, output_dir, experiment_no):
+    """Plot second belief embeddings colored by agent type"""
+    fig, axes = plt.subplots(1, 2, figsize=(20, 6))
+    
+    # PCA
+    pca = PCA(n_components=2, random_state=42)
+    embeddings_pca = pca.fit_transform(embeddings)
+    
+    agent_colors = ["blue", "orange"]
+    agent_names = ["Achiever", "Blocker"]
+    
+    for i, (agent_name, color) in enumerate(zip(agent_names, agent_colors)):
+        mask = [label == agent_name for label in agent_labels]
+        if any(mask):
+            axes[0].scatter(
+                embeddings_pca[mask, 0], embeddings_pca[mask, 1],
+                c=color, alpha=0.6, s=50, label=agent_name
+            )
+    
+    axes[0].set_xlabel(f'PC1 ({pca.explained_variance_ratio_[0]:.2%})')
+    axes[0].set_ylabel(f'PC2 ({pca.explained_variance_ratio_[1]:.2%})')
+    axes[0].set_title('Second Belief Embeddings - PCA')
+    axes[0].legend()
+    axes[0].grid(True, alpha=0.3)
+    
+    # t-SNE
+    tsne = TSNE(n_components=2, random_state=42, perplexity=min(30, len(embeddings)//4))
+    embeddings_tsne = tsne.fit_transform(embeddings)
+    
+    for i, (agent_name, color) in enumerate(zip(agent_names, agent_colors)):
+        mask = [label == agent_name for label in agent_labels]
+        if any(mask):
+            axes[1].scatter(
+                embeddings_tsne[mask, 0], embeddings_tsne[mask, 1],
+                c=color, alpha=0.6, s=50, label=agent_name
+            )
+    
+    axes[1].set_xlabel('t-SNE Component 1')
+    axes[1].set_ylabel('t-SNE Component 2')
+    axes[1].set_title('Second Belief Embeddings - t-SNE')
+    axes[1].legend()
+    axes[1].grid(True, alpha=0.3)
+    
+    plt.suptitle(f"Second Belief Embeddings by Agent Type (Experiment {experiment_no})", fontsize=16)
+    plt.tight_layout()
+    
+    plt.savefig(
+        os.path.join(output_dir, f"second_belief_embeddings_by_agent_exp{experiment_no}.png"),
+        dpi=300, bbox_inches="tight"
+    )
+    print(f"Second belief agent embedding plot saved to {output_dir}")
+    plt.close()
+
+
+def plot_second_belief_embeddings_by_goal(embeddings, agent_labels, goal_labels, config, output_dir, experiment_no):
+    """Plot second belief embeddings colored by goal type"""
+    fig, axes = plt.subplots(1, 2, figsize=(20, 6))
+    
+    # PCA
+    pca = PCA(n_components=2, random_state=42)
+    embeddings_pca = pca.fit_transform(embeddings)
+    
+    goal_colors = ["red", "green", "blue", "yellow"]
+    goal_names = ["Red", "Green", "Blue", "Yellow"]
+    
+    for i, (goal_name, color) in enumerate(zip(goal_names, goal_colors)):
+        mask = [label == goal_name for label in goal_labels]
+        if any(mask):
+            axes[0].scatter(
+                embeddings_pca[mask, 0], embeddings_pca[mask, 1],
+                c=color, alpha=0.6, s=50, label=goal_name
+            )
+    
+    axes[0].set_xlabel(f'PC1 ({pca.explained_variance_ratio_[0]:.2%})')
+    axes[0].set_ylabel(f'PC2 ({pca.explained_variance_ratio_[1]:.2%})')
+    axes[0].set_title('Second Belief Embeddings - PCA')
+    axes[0].legend()
+    axes[0].grid(True, alpha=0.3)
+    
+    # t-SNE
+    tsne = TSNE(n_components=2, random_state=42, perplexity=min(30, len(embeddings)//4))
+    embeddings_tsne = tsne.fit_transform(embeddings)
+    
+    for i, (goal_name, color) in enumerate(zip(goal_names, goal_colors)):
+        mask = [label == goal_name for label in goal_labels]
+        if any(mask):
+            axes[1].scatter(
+                embeddings_tsne[mask, 0], embeddings_tsne[mask, 1],
+                c=color, alpha=0.6, s=50, label=goal_name
+            )
+    
+    axes[1].set_xlabel('t-SNE Component 1')
+    axes[1].set_ylabel('t-SNE Component 2')
+    axes[1].set_title('Second Belief Embeddings - t-SNE')
+    axes[1].legend()
+    axes[1].grid(True, alpha=0.3)
+    
+    plt.suptitle(f"Second Belief Embeddings by Goal Type (Experiment {experiment_no})", fontsize=16)
+    plt.tight_layout()
+    
+    plt.savefig(
+        os.path.join(output_dir, f"second_belief_embeddings_by_goal_exp{experiment_no}.png"),
+        dpi=300, bbox_inches="tight"
+    )
+    print(f"Second belief goal embedding plot saved to {output_dir}")
+    plt.close()
+
+
 if __name__ == "__main__":
     import argparse
 
@@ -2226,7 +2612,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--plot_type",
         type=str,
-        choices=["training", "confusion", "likelihood", "embeddings", "mental_embeddings", "n_past", "all"],
+        choices=["training", "confusion", "likelihood", "embeddings", "mental_embeddings", "second_belief_embeddings", "n_past", "all"],
         default="all",
         help="Type of plot to create",
     )
@@ -2443,6 +2829,111 @@ if __name__ == "__main__":
                 print("Mental embedding visualization completed!")
             else:
                 print("No test games found for mental embedding visualization")
+        else:
+            print(f"Model file not found: {model_path}")
+
+    # Plot second belief embeddings
+    if args.plot_type in ["second_belief_embeddings", "embeddings", "all"]:
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        
+        # Find the best model
+        model_path = os.path.join(results_dir, "best_model.pth")
+        
+        if os.path.exists(model_path):
+            # Load model
+            from evaluate import load_model
+            model_kwargs = config.get_model_kwargs()
+            model = load_model(model_path, device, model_kwargs)
+            
+            # Load test data using the same multi-combination approach as evaluate.py
+            from utils import load_test_data_all_combinations, combine_all_combinations_data
+            
+            # Get base data directory from config
+            test_data_dir_base = os.path.join(config.save_dir, config.get_env_name())
+            
+            # Load test data for all combinations efficiently (same as evaluate.py)
+            try:
+                all_test_data = load_test_data_all_combinations(config, test_data_dir_base=test_data_dir_base)
+                # Combine data from all combinations
+                test_data = combine_all_combinations_data(all_test_data)
+                print(f"Successfully loaded test data from all combinations: {test_data['trajectories'].shape[0]} samples")
+            except Exception as e:
+                print(f"Failed to load test data from combinations: {e}")
+                test_data = None
+
+            if test_data:
+                # Convert numpy arrays to tensors for TensorDataset (same as evaluate.py fix)
+                test_tensors = {
+                    key: torch.from_numpy(data) if isinstance(data, np.ndarray) else torch.tensor(data)
+                    for key, data in test_data.items()
+                }
+                
+                # Create test dataset with opponent trajectory data if available
+                dataset_items = [
+                    test_tensors["trajectories"],
+                    test_tensors["actions"],
+                    test_tensors["goals"],
+                    test_tensors["goal_ranks"],
+                    test_tensors["agents"],
+                    test_tensors["types"],
+                    test_tensors["consumption_labels"],
+                    test_tensors["sr_labels"],
+                ]
+                
+                # Add opponent trajectory data if available
+                if "opponent_recent_trajectory" in test_tensors:
+                    dataset_items.extend([
+                        test_tensors["opponent_recent_trajectory"],
+                        test_tensors["opponent_actions"]
+                    ])
+                
+                test_dataset = TensorDataset(*dataset_items)
+                
+                # Create custom data loader that provides dictionary format
+                class SecondBeliefDataLoader:
+                    def __init__(self, dataset, batch_size=32):
+                        self.dataset = dataset
+                        self.batch_size = batch_size
+                        self.dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
+                    
+                    def __iter__(self):
+                        for batch in self.dataloader:
+                            batch_dict = {
+                                'trajectory': batch[0],
+                                'actions': batch[1],
+                                'goal': batch[2],
+                                'goal_ranks': batch[3],
+                                'agent': batch[4],
+                                'type': batch[5],
+                                'consumption_labels': batch[6],
+                                'sr_labels': batch[7],
+                            }
+                            
+                            # Add opponent data if available
+                            if len(batch) > 8:
+                                batch_dict['opponent_recent_trajectory'] = batch[8]
+                                batch_dict['opponent_actions'] = batch[9]
+                            else:
+                                batch_dict['opponent_recent_trajectory'] = None
+                                batch_dict['opponent_actions'] = None
+                            
+                            yield batch_dict
+
+                test_loader = SecondBeliefDataLoader(test_dataset, batch_size=32)
+
+                # Create second belief embeddings plot
+                plot_second_belief_embeddings(
+                    model,
+                    test_loader,
+                    device,
+                    plot_dir,
+                    config,
+                    experiment_no,
+                    n_samples=None,
+                )
+                print("Second belief embedding visualization completed!")
+            else:
+                print("No test games found for second belief embedding visualization")
         else:
             print(f"Model file not found: {model_path}")
 

@@ -286,6 +286,8 @@ def process_sample_batch(samples, grid_size, window_size):
         "types": [],
         "consumption_labels": [],
         "sr_labels": [],
+        "opponent_trajectories": [],
+        "opponent_actions": [],
     }
 
     for sample in samples:
@@ -338,6 +340,10 @@ def process_single_sample(sample, grid_size, window_size):
     # Get actions from sample data
     action_list = sample.get("actions", [])
     
+    # Get opponent data from sample
+    opponent_trajectory = sample.get("opponent_trajectory", None)
+    opponent_actions = sample.get("opponent_actions", [])
+    
     # Get sequence length
     seq_len = trajectory.shape[0]
 
@@ -350,6 +356,8 @@ def process_single_sample(sample, grid_size, window_size):
     sample_types = []
     sample_consumption_labels = []
     sample_sr_labels = []
+    sample_opponent_trajectories = []
+    sample_opponent_actions = []
 
     # WINDOW SLICING: Create multiple samples per trajectory using fixed window size
     
@@ -375,6 +383,24 @@ def process_single_sample(sample, grid_size, window_size):
             else:
                 sr_dense = np.zeros((3, grid_size, grid_size))
             
+            # Process opponent data for short trajectory
+            if opponent_trajectory is not None:
+                # Pad opponent trajectory similar to main trajectory
+                opponent_padding_shape = (padding_length, *opponent_trajectory.shape[1:])
+                opponent_padding = np.zeros(opponent_padding_shape, dtype=opponent_trajectory.dtype)
+                opponent_trajectory_padded = np.concatenate([opponent_padding, opponent_trajectory], axis=0)
+            else:
+                # Create dummy opponent trajectory
+                opponent_trajectory_padded = np.zeros_like(trajectory_padded)
+            
+            if opponent_actions and len(opponent_actions) > 0:
+                # Pad opponent actions - use last available action
+                opponent_action_target = opponent_actions[-1] if opponent_actions else 0
+                opponent_actions_padded = [opponent_action_target] + [-1] * (window_size - 1)
+            else:
+                # Create dummy opponent actions
+                opponent_actions_padded = [0] + [-1] * (window_size - 1)
+            
             # Add this single training sample
             sample_trajectories.append(trajectory_padded)
             sample_actions.append(
@@ -386,6 +412,8 @@ def process_single_sample(sample, grid_size, window_size):
             sample_types.append(type_label)
             sample_consumption_labels.append(consumption)
             sample_sr_labels.append(sr_dense)
+            sample_opponent_trajectories.append(opponent_trajectory_padded)
+            sample_opponent_actions.append(opponent_actions_padded)
     else:
         # Case 2: Trajectory longer than or equal to window size - vectorized sliding windows
         num_windows = seq_len - window_size + 1
@@ -430,6 +458,45 @@ def process_single_sample(sample, grid_size, window_size):
         types_repeated = np.full(num_windows, type_label)
         consumption_repeated = np.tile(consumption, (num_windows, 1))
         
+        # Process opponent data for each window
+        if opponent_trajectory is not None:
+            # Create windows for opponent trajectory
+            opponent_trajectory_windows = []
+            for i in range(num_windows):
+                start_idx = i
+                end_idx = start_idx + window_size
+                if end_idx <= seq_len:
+                    opponent_trajectory_windows.append(opponent_trajectory[start_idx:end_idx])
+                else:
+                    # Handle case where opponent trajectory is shorter
+                    window_data = opponent_trajectory[start_idx:]
+                    padding_shape = (window_size - window_data.shape[0], *window_data.shape[1:])
+                    padding = np.zeros(padding_shape, dtype=window_data.dtype)
+                    padded_window = np.concatenate([window_data, padding], axis=0)
+                    opponent_trajectory_windows.append(padded_window)
+        else:
+            # Create dummy opponent trajectories
+            opponent_trajectory_windows = [np.zeros_like(trajectory_windows[0]) for _ in range(num_windows)]
+        
+        # Process opponent actions for each window
+        if opponent_actions and len(opponent_actions) > 0:
+            opponent_action_windows = []
+            for i in range(num_windows):
+                start_idx = i
+                end_idx = start_idx + window_size
+                if end_idx <= len(opponent_actions):
+                    window_actions = opponent_actions[start_idx:end_idx]
+                else:
+                    # Handle case where opponent actions are shorter
+                    window_actions = opponent_actions[start_idx:] + [0] * (end_idx - len(opponent_actions))
+                # Pad to window_size with -1
+                action_padding = [-1] * (window_size - len(window_actions))
+                padded_window_actions = window_actions + action_padding
+                opponent_action_windows.append(padded_window_actions[:window_size])
+        else:
+            # Create dummy opponent actions
+            opponent_action_windows = [np.zeros(window_size, dtype=np.int32) for _ in range(num_windows)]
+        
         # Add all samples at once
         sample_trajectories.extend(trajectory_windows)
         sample_actions.extend(padded_actions.tolist())
@@ -439,6 +506,8 @@ def process_single_sample(sample, grid_size, window_size):
         sample_types.extend(types_repeated.tolist())
         sample_consumption_labels.extend(consumption_repeated.tolist())
         sample_sr_labels.extend(sr_dense_list)
+        sample_opponent_trajectories.extend(opponent_trajectory_windows)
+        sample_opponent_actions.extend(opponent_action_windows)
 
     return {
         "trajectories": sample_trajectories,
@@ -449,6 +518,8 @@ def process_single_sample(sample, grid_size, window_size):
         "types": sample_types,
         "consumption_labels": sample_consumption_labels,
         "sr_labels": sample_sr_labels,
+        "opponent_trajectories": sample_opponent_trajectories,
+        "opponent_actions": sample_opponent_actions,
     }
 
 
@@ -1408,6 +1479,8 @@ def setup_model_and_data(
     types = torch.from_numpy(data["types"]).long()
     consumption_labels = torch.from_numpy(data["consumption_labels"]).float()
     sr_labels = torch.from_numpy(data["sr_labels"]).float()
+    opponent_trajectories = torch.from_numpy(data["opponent_trajectories"]).float()
+    opponent_actions = torch.from_numpy(data["opponent_actions"]).long()
 
     # Create TensorDataset from the tensors
     dataset = TensorDataset(
@@ -1419,6 +1492,8 @@ def setup_model_and_data(
         types,
         consumption_labels,
         sr_labels,
+        opponent_trajectories,
+        opponent_actions,
     )
 
     # Split data
@@ -1787,6 +1862,8 @@ def combine_all_combinations_data(all_data_dict):
     combined_types = []
     combined_consumption_labels = []
     combined_sr_labels = []
+    combined_opponent_trajectories = []
+    combined_opponent_actions = []
     
     print("Combining data from all achiever-blocker combinations...")
     
@@ -1809,6 +1886,22 @@ def combine_all_combinations_data(all_data_dict):
         combined_types.append(data["types"])
         combined_consumption_labels.append(data["consumption_labels"])
         combined_sr_labels.append(data["sr_labels"])
+        
+        # Add opponent data if available
+        if "opponent_trajectories" in data and data["opponent_trajectories"] is not None:
+            combined_opponent_trajectories.append(data["opponent_trajectories"])
+        else:
+            # Create dummy opponent trajectories for consistency
+            dummy_opponent_trajectories = np.zeros_like(data["trajectories"])
+            combined_opponent_trajectories.append(dummy_opponent_trajectories)
+            
+        if "opponent_actions" in data and data["opponent_actions"] is not None:
+            combined_opponent_actions.append(data["opponent_actions"])
+        else:
+            # Create dummy opponent actions for consistency
+            dummy_opponent_actions = np.zeros_like(data["actions"])
+            combined_opponent_actions.append(dummy_opponent_actions)
+            
         print(f"    Added {data['trajectories'].shape[0]} samples")
     
     # Check if we have any data to concatenate
@@ -1825,6 +1918,8 @@ def combine_all_combinations_data(all_data_dict):
         "types": np.concatenate(combined_types, axis=0),
         "consumption_labels": np.concatenate(combined_consumption_labels, axis=0),
         "sr_labels": np.concatenate(combined_sr_labels, axis=0),
+        "opponent_trajectories": np.concatenate(combined_opponent_trajectories, axis=0),
+        "opponent_actions": np.concatenate(combined_opponent_actions, axis=0),
     }
     
     total_samples = combined_data["trajectories"].shape[0]

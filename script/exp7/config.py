@@ -14,14 +14,14 @@ class Config:
         self.seed = 42
 
         # Agent settings
-        self.n_games_per_type = 50000  # Number of games to generate for ToMnet data
+        self.n_games_per_type = 500  # Number of games to generate for ToMnet data
         self.achiever_types = {
             "lv0va": self.n_games_per_type,
-            # "lv1va": self.n_games_per_type,
+            "lv1va": self.n_games_per_type,
         }  # Options: "lv0va", "lv1va", "astar", "random", "value"
         self.blocker_types = {
-            # "lv0vb": self.n_games_per_type,
-            # "lv1vb": self.n_games_per_type,
+            "lv0vb": self.n_games_per_type,
+            "lv1vb": self.n_games_per_type,
         }  # Options: "lv0vb", "lv1vb", "random", "goal_direct", "randomly_selected", "rule_based"
         self.observability = "full"  # Options: "full", "partial"
         self.movement_prob = 0.8  # For random agent
@@ -238,14 +238,14 @@ class Config:
 
         # Training configuration
         self.training_config = {
-            "batch_size": 2048,
+            "batch_size": 128,
             "epochs": 300,
             "lr": 0.0001,
             "weight_decay": 0.001,
             "training_proportion": 0.9,
             "device": "cuda:3",
-            "device_ids": [3, 2],  # GPU IDs for parallel training
-            "use_parallel": True,  # Enable parallel GPU training
+            "device_ids": [3],  # GPU IDs for parallel training
+            "use_parallel": False,  # Enable parallel GPU training
             "use_amp": True,  # Automatic Mixed Precision for memory and speed
             "gradient_accumulation_steps": 2,  # Accumulate gradients over multiple batches
             "pin_memory": True,  # Pin memory for faster data transfer
@@ -256,9 +256,11 @@ class Config:
         # Model architecture
         self.model_config = {
             "use_mentalnet": True,  # False: experiment5-style (CharNet→PredNet), True: original 3-stage (CharNet→MentalNet→PredNet)
+            "use_second_belief": True,  # Enable second-order belief modeling (SecondBeliefNet)
             "residual_blocks": 5,
             "n_echar": 128,
             "n_ement": 128,
+            "n_eopp2": 128,  # Second belief embedding dimension
             "out_channels": 64,
             "channels_in": 10,  # 8 original channels + 1 self position + 1 opponent position
             "current_state_channels": 8,  # For MentalNet: 8 original channels (no position channels)
@@ -268,6 +270,9 @@ class Config:
             "env_width": self.width,
             "env_height": self.height,
             "hidden_size_lstm": 64,
+            "second_belief_hidden": 128,  # Hidden size for SecondBeliefNet
+            "attention_hidden": 256,  # Hidden dimension for cross-attention
+            "attention_heads": 8,  # Number of attention heads for cross-attention
             "fc_layer_sizes": [64, 32],
             "kernel_size": 3,
             "padding": 1,
@@ -279,7 +284,7 @@ class Config:
             "time_step": 10,  # Window size for trajectory slicing
             "max_n_past": 10,  # Maximum past episodes (matching experiment5)
             "n_past_min": 0,  # Minimum past episodes (matching experiment5)
-            "n_past_max": 5,  # Maximum past episodes for sampling (matching experiment5)
+            "n_past_max": 10,  # Maximum past episodes for sampling (matching experiment5)
             "rank_threshold": 4,  # How many top ranks to consider for matching (1=only highest, 2=top 2, etc.)
             "maze_width": self.width,
             "maze_height": self.height,
@@ -311,9 +316,9 @@ class Config:
 
         # N_past evaluation settings
         self.n_past_evaluation = {
-            "n_past_min": 1,
-            "n_past_max": 1,
-            "n_past_infer": 1,
+            "n_past_min": 0,
+            "n_past_max": 10,
+            "n_past_infer": 10,
         }
 
     def is_single_agent_mode(self):
@@ -581,7 +586,7 @@ class Config:
         self.debug_mode = True
 
         # Reduce data generation settings for faster testing
-        self.n_games_per_type = 500  # Reduced from 50000 for debug mode
+        self.n_games_per_type = 50  # Reduced from 50000 for debug mode (very small for testing)
         # Update achiever and blocker types with new counts
         for achiever_type in self.achiever_types:
             self.achiever_types[achiever_type] = self.n_games_per_type
@@ -591,7 +596,7 @@ class Config:
         # Reduce training settings for faster testing
         self.training_config.update(
             {
-                "batch_size": 64,  # Reduced from 1024
+                "batch_size": 16,  # Small batch size to work with 50 samples per epoch
                 "epochs": 2,  # Reduced from 200 (faster test)
                 "gradient_accumulation_steps": 1,  # Reduced from 2
             }
@@ -625,10 +630,12 @@ class Config:
         """Get model initialization parameters"""
         return {
             "use_mentalnet": self.model_config["use_mentalnet"],
+            "use_second_belief": self.model_config["use_second_belief"],
             "batch": self.training_config["batch_size"],
             "residual_blocks": self.model_config["residual_blocks"],
             "n_echar": self.model_config["n_echar"],
             "n_ement": self.model_config["n_ement"],
+            "n_eopp2": self.model_config["n_eopp2"],
             "out_channels": self.model_config["out_channels"],
             "channels_in": self.model_config["channels_in"],
             "current_state_channels": self.model_config["current_state_channels"],
@@ -643,6 +650,9 @@ class Config:
             "hidden_size_lstm": self.model_config["hidden_size_lstm"],
             "env_width": self.model_config["env_width"],
             "env_height": self.model_config["env_height"],
+            "second_belief_hidden": self.model_config["second_belief_hidden"],
+            "attention_hidden": self.model_config["attention_hidden"],
+            "attention_heads": self.model_config["attention_heads"],
         }
 
     def get_training_kwargs(self):

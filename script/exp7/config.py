@@ -263,7 +263,6 @@ class Config:
             "n_eopp2": 128,  # Second belief embedding dimension
             "out_channels": 64,
             "channels_in": 10,  # 8 original channels + 1 self position + 1 opponent position
-            "current_state_channels": 8,  # For MentalNet: 8 original channels (no position channels)
             "achiever_action_space": 7,  # up, right, down, left, stay, pickup, toggle
             "blocker_action_space": 6,  # up, right, down, left, stay, broken
             "goal_space": 4,
@@ -638,7 +637,6 @@ class Config:
             "n_eopp2": self.model_config["n_eopp2"],
             "out_channels": self.model_config["out_channels"],
             "channels_in": self.model_config["channels_in"],
-            "current_state_channels": self.model_config["current_state_channels"],
             "time_step": self.data_config["time_step"],
             "action_space": max(
                 self.model_config["achiever_action_space"],

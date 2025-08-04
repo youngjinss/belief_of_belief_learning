@@ -152,8 +152,12 @@ def train_epoch(
 
         if scaler is not None:
             with autocast():
+                # Create masked actions for temporal masking (mask target action at last position)
+                masked_self_actions = self_actions.clone()
+                masked_self_actions[:, -1] = -1  # Mask the target action so model can't see it
+                
                 # Forward pass
-                outputs = model(past_trajectories, self_states, self_actions, 
+                outputs = model(past_trajectories, self_states, masked_self_actions, 
                               current_state, oppo_states=oppo_states, oppo_actions=oppo_actions)
 
                 # Compute loss
@@ -164,7 +168,7 @@ def train_epoch(
                     outputs["type_logits"],
                     outputs["consumption_logits"],
                     outputs["sr_pred"],
-                    self_actions[:, 0],  # Get action target (first element)
+                    self_actions[:, -1],  # Get action target (last element)
                     torch.argmax(goals, dim=1),  # Convert one-hot to class indices
                     agents,
                     types,
@@ -176,8 +180,12 @@ def train_epoch(
                 loss = loss / gradient_accumulation_steps
                 accumulation_loss += loss.item()
         else:
+            # Create masked actions for temporal masking (mask target action at last position)
+            masked_self_actions = self_actions.clone()
+            masked_self_actions[:, -1] = -1  # Mask the target action so model can't see it
+            
             # Forward pass without mixed precision
-            outputs = model(past_trajectories, self_states, self_actions, 
+            outputs = model(past_trajectories, self_states, masked_self_actions, 
                           current_state, oppo_states=oppo_states, oppo_actions=oppo_actions)
 
             # Compute loss
@@ -188,7 +196,7 @@ def train_epoch(
                 outputs["type_logits"],
                 outputs["consumption_logits"],
                 outputs["sr_pred"],
-                self_actions[:, 0],  # Get action target (first element)
+                self_actions[:, -1],  # Get action target (last element)
                 torch.argmax(goals, dim=1),  # Convert one-hot to class indices
                 agents,
                 types,
@@ -241,11 +249,11 @@ def train_epoch(
         goals_indices = torch.argmax(goals, dim=1)
 
         # Mask padded self actions (-1) for accuracy calculation
-        action_mask = self_actions[:, 0] != -1
+        action_mask = self_actions[:, -1] != -1
         valid_action_samples = action_mask.sum().item()
         
         if valid_action_samples > 0:
-            correct_actions += (action_preds[action_mask] == self_actions[action_mask, 0]).sum().item()
+            correct_actions += (action_preds[action_mask] == self_actions[action_mask, -1]).sum().item()
             # Update total samples to only count valid actions
             total_samples += valid_action_samples
         else:
@@ -264,7 +272,7 @@ def train_epoch(
         blocker_valid_mask = blocker_mask & action_mask
 
         achiever_correct_actions += (
-            (action_preds[achiever_valid_mask] == self_actions[achiever_valid_mask, 0]).sum().item()
+            (action_preds[achiever_valid_mask] == self_actions[achiever_valid_mask, -1]).sum().item()
         )
         achiever_correct_goals += (
             (goal_preds[achiever_mask] == goals_indices[achiever_mask]).sum().item()
@@ -272,7 +280,7 @@ def train_epoch(
         achiever_total_samples += achiever_valid_mask.sum().item()
 
         blocker_correct_actions += (
-            (action_preds[blocker_valid_mask] == self_actions[blocker_valid_mask, 0]).sum().item()
+            (action_preds[blocker_valid_mask] == self_actions[blocker_valid_mask, -1]).sum().item()
         )
         blocker_correct_goals += (
             (goal_preds[blocker_mask] == goals_indices[blocker_mask]).sum().item()
@@ -516,10 +524,14 @@ def validate_epoch(
                 :, -1
             ]  # Last timestep of recent trajectory
 
+            # Create masked actions for temporal masking (mask target action at last position)
+            masked_self_actions = self_actions.clone()
+            masked_self_actions[:, -1] = -1  # Mask the target action so model can't see it
+            
             # Forward pass
             if scaler is not None:
                 with autocast():
-                    outputs = model(past_trajectories, self_states, self_actions, 
+                    outputs = model(past_trajectories, self_states, masked_self_actions, 
                                   current_state, oppo_states=oppo_states, oppo_actions=oppo_actions)
                     loss_dict = loss_fn(
                         outputs["action_logits"],
@@ -528,7 +540,7 @@ def validate_epoch(
                         outputs["type_logits"],
                         outputs["consumption_logits"],
                         outputs["sr_pred"],
-                        self_actions[:, 0],  # Get action target (first element)
+                        self_actions[:, -1],  # Get action target (last element)
                         torch.argmax(goals, dim=1),  # Convert one-hot to class indices
                         agents,
                         types,
@@ -536,7 +548,7 @@ def validate_epoch(
                         sr_labels,
                     )
             else:
-                outputs = model(past_trajectories, self_states, self_actions, 
+                outputs = model(past_trajectories, self_states, masked_self_actions, 
                               current_state, oppo_states=oppo_states, oppo_actions=oppo_actions)
                 loss_dict = loss_fn(
                     outputs["action_logits"],
@@ -545,7 +557,7 @@ def validate_epoch(
                     outputs["type_logits"],
                     outputs["consumption_logits"],
                     outputs["sr_pred"],
-                    self_actions[:, 0],  # Get action target (first element)
+                    self_actions[:, -1],  # Get action target (last element)
                     torch.argmax(goals, dim=1),  # Convert one-hot to class indices
                     agents,
                     types,
@@ -572,11 +584,11 @@ def validate_epoch(
             goals_indices = torch.argmax(goals, dim=1)
 
             # Mask padded self actions (-1) for accuracy calculation
-            action_mask = self_actions[:, 0] != -1
+            action_mask = self_actions[:, -1] != -1
             valid_action_samples = action_mask.sum().item()
             
             if valid_action_samples > 0:
-                correct_actions += (action_preds[action_mask] == self_actions[action_mask, 0]).sum().item()
+                correct_actions += (action_preds[action_mask] == self_actions[action_mask, -1]).sum().item()
                 total_samples += valid_action_samples
             else:
                 total_samples += batch_size
@@ -594,7 +606,7 @@ def validate_epoch(
             blocker_valid_mask = blocker_mask & action_mask
 
             achiever_correct_actions += (
-                (action_preds[achiever_valid_mask] == self_actions[achiever_valid_mask, 0]).sum().item()
+                (action_preds[achiever_valid_mask] == self_actions[achiever_valid_mask, -1]).sum().item()
             )
             achiever_correct_goals += (
                 (goal_preds[achiever_mask] == goals_indices[achiever_mask]).sum().item()
@@ -602,7 +614,7 @@ def validate_epoch(
             achiever_total_samples += achiever_valid_mask.sum().item()
 
             blocker_correct_actions += (
-                (action_preds[blocker_valid_mask] == self_actions[blocker_valid_mask, 0]).sum().item()
+                (action_preds[blocker_valid_mask] == self_actions[blocker_valid_mask, -1]).sum().item()
             )
             blocker_correct_goals += (
                 (goal_preds[blocker_mask] == goals_indices[blocker_mask]).sum().item()

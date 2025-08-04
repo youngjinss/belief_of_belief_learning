@@ -151,8 +151,7 @@ def train_epoch(
         current_state = recent_trajectory[:, -1]  # Last timestep of recent trajectory
 
         if scaler is not None:
-            device_type = "cuda" if device.type == "cuda" else "cpu"
-            with autocast(device_type=device_type):
+            with autocast():
                 # Forward pass
                 outputs = model(past_trajectories, self_states, self_actions, 
                               current_state, oppo_states=oppo_states, oppo_actions=oppo_actions)
@@ -519,8 +518,7 @@ def validate_epoch(
 
             # Forward pass
             if scaler is not None:
-                device_type = "cuda" if device.type == "cuda" else "cpu"
-                with autocast(device_type=device_type):
+                with autocast():
                     outputs = model(past_trajectories, self_states, self_actions, 
                                   current_state, oppo_states=oppo_states, oppo_actions=oppo_actions)
                     loss_dict = loss_fn(

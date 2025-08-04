@@ -238,14 +238,14 @@ class Config:
 
         # Training configuration
         self.training_config = {
-            "batch_size": 2048,
+            "batch_size": 512,
             "epochs": 300,
             "lr": 0.0001,
             "weight_decay": 0.001,
             "training_proportion": 0.9,
             "device": "cuda:3",
-            "device_ids": [3],  # GPU IDs for parallel training
-            "use_parallel": False,  # Enable parallel GPU training
+            "device_ids": [2, 3],  # GPU IDs for parallel training
+            "use_parallel": True,  # Enable parallel GPU training
             "use_amp": True,  # Automatic Mixed Precision for memory and speed
             "gradient_accumulation_steps": 2,  # Accumulate gradients over multiple batches
             "pin_memory": True,  # Pin memory for faster data transfer

@@ -274,7 +274,7 @@ def process_sample_batch(samples, grid_size, window_size):
 
     # Batch results
     batch_results = {
-        "trajectories": [],
+        "self_states": [],
         "actions": [],
         "goals": [],
         "goal_ranks": [],
@@ -282,8 +282,8 @@ def process_sample_batch(samples, grid_size, window_size):
         "types": [],
         "consumption_labels": [],
         "sr_labels": [],
-        "opponent_trajectories": [],
-        "opponent_actions": [],
+        "oppo_states": [],
+        "oppo_actions": [],
     }
 
     for sample in samples:
@@ -506,7 +506,7 @@ def process_single_sample(sample, grid_size, window_size):
         sample_oppo_actions.extend(oppo_action_windows)
 
     return {
-        "trajectories": sample_self_states,
+        "self_states": sample_self_states,
         "actions": sample_self_actions,
         "goals": sample_goals,
         "goal_ranks": sample_goal_ranks,
@@ -514,8 +514,8 @@ def process_single_sample(sample, grid_size, window_size):
         "types": sample_types,
         "consumption_labels": sample_consumption_labels,
         "sr_labels": sample_sr_labels,
-        "opponent_trajectories": sample_oppo_states,
-        "opponent_actions": sample_oppo_actions,
+        "oppo_states": sample_oppo_states,
+        "oppo_actions": sample_oppo_actions,
     }
 
 
@@ -585,26 +585,34 @@ def prepare_data_for_training(
         torch.save(chunk_data, chunk_file)
 
         # Record metadata
+        data_shapes = {
+            "self_states": chunk_data["self_states"].shape,
+            "actions": chunk_data["actions"].shape,
+            "goals": chunk_data["goals"].shape,
+            "goal_ranks": chunk_data["goal_ranks"].shape,
+            "agents": chunk_data["agents"].shape,
+            "types": chunk_data["types"].shape,
+            "consumption_labels": chunk_data["consumption_labels"].shape,
+            "sr_labels": chunk_data["sr_labels"].shape,
+        }
+        
+        # Add opponent data shapes if they exist
+        if "oppo_states" in chunk_data and hasattr(chunk_data["oppo_states"], 'shape'):
+            data_shapes["oppo_states"] = chunk_data["oppo_states"].shape
+        if "oppo_actions" in chunk_data and hasattr(chunk_data["oppo_actions"], 'shape'):
+            data_shapes["oppo_actions"] = chunk_data["oppo_actions"].shape
+            
         chunk_info = {
             "chunk_idx": chunk_idx,
             "file_path": chunk_file,
-            "num_samples": len(chunk_data["trajectories"]),
-            "data_shapes": {
-                "trajectories": chunk_data["trajectories"].shape,
-                "actions": chunk_data["actions"].shape,
-                "goals": chunk_data["goals"].shape,
-                "goal_ranks": chunk_data["goal_ranks"].shape,
-                "agents": chunk_data["agents"].shape,
-                "types": chunk_data["types"].shape,
-                "consumption_labels": chunk_data["consumption_labels"].shape,
-                "sr_labels": chunk_data["sr_labels"].shape,
-            },
+            "num_samples": len(chunk_data["self_states"]),
+            "data_shapes": data_shapes,
         }
         chunk_metadata.append(chunk_info)
-        total_samples += len(chunk_data["trajectories"])
+        total_samples += len(chunk_data["self_states"])
 
         print(
-            f"  Saved chunk {chunk_idx} with {len(chunk_data['trajectories'])} samples to {chunk_file}"
+            f"  Saved chunk {chunk_idx} with {len(chunk_data['self_states'])} samples to {chunk_file}"
         )
 
         # Free memory
@@ -697,9 +705,11 @@ def prepare_data_memory_efficient(
     types = []
     consumption_labels = []
     sr_labels = []
+    oppo_states = []
+    oppo_actions = []
 
     for result in results:
-        self_states.extend(result["trajectories"])
+        self_states.extend(result["self_states"])
         self_actions.extend(result["actions"])
         goals.extend(result["goals"])
         goal_ranks.extend(result["goal_ranks"])
@@ -707,6 +717,8 @@ def prepare_data_memory_efficient(
         types.extend(result["types"])
         consumption_labels.extend(result["consumption_labels"])
         sr_labels.extend(result["sr_labels"])
+        oppo_states.extend(result["oppo_states"])
+        oppo_actions.extend(result["oppo_actions"])
 
     # Convert to tensors (this is now done on smaller chunks)
     self_states = torch.tensor(np.array(self_states), dtype=torch.float32)
@@ -717,6 +729,8 @@ def prepare_data_memory_efficient(
     types = torch.tensor(np.array(types), dtype=torch.long)
     consumption_labels = torch.tensor(np.array(consumption_labels), dtype=torch.float32)
     sr_labels = torch.tensor(np.array(sr_labels), dtype=torch.float32)
+    oppo_states = torch.tensor(np.array(oppo_states), dtype=torch.float32)
+    oppo_actions = torch.tensor(np.array(oppo_actions), dtype=torch.long)
 
     print(f"Chunk data shapes:")
     print(f"  Self states: {self_states.shape}")
@@ -727,9 +741,11 @@ def prepare_data_memory_efficient(
     print(f"  Types: {types.shape}")
     print(f"  Consumption labels: {consumption_labels.shape}")
     print(f"  SR labels: {sr_labels.shape}")
+    print(f"  Opponent states: {oppo_states.shape}")
+    print(f"  Opponent actions: {oppo_actions.shape}")
 
     return {
-        "trajectories": self_states,
+        "self_states": self_states,
         "actions": self_actions,
         "goals": goals,
         "goal_ranks": goal_ranks,
@@ -737,6 +753,8 @@ def prepare_data_memory_efficient(
         "types": types,
         "consumption_labels": consumption_labels,
         "sr_labels": sr_labels,
+        "oppo_states": oppo_states,
+        "oppo_actions": oppo_actions,
     }
 
 
@@ -1376,7 +1394,7 @@ def _standard_chunk_loading(chunk_metadata):
         chunk_data = torch.load(chunk_path, map_location="cpu")
 
         # Append to lists
-        all_self_states.append(chunk_data["trajectories"])
+        all_self_states.append(chunk_data["self_states"])
         all_self_actions.append(chunk_data["actions"])
         all_goals.append(chunk_data["goals"])
         all_goal_ranks.append(chunk_data["goal_ranks"])
@@ -1395,7 +1413,7 @@ def _standard_chunk_loading(chunk_metadata):
 
     # Process each data type separately
     for key, data_list in [
-        ("trajectories", all_self_states),
+        ("self_states", all_self_states),
         ("actions", all_self_actions),
         ("goals", all_goals),
         ("goal_ranks", all_goal_ranks),
@@ -1459,7 +1477,7 @@ def setup_model_and_data(
     data = combine_all_combinations_data(all_training_data)
 
     # Convert numpy arrays to torch tensors
-    trajectories = torch.from_numpy(data["trajectories"]).float()
+    self_states = torch.from_numpy(data["self_states"]).float()
     actions = torch.from_numpy(data["actions"]).long()
     goals = torch.from_numpy(data["goals"]).float()
     goal_ranks = torch.from_numpy(data["goal_ranks"]).long()
@@ -1467,12 +1485,12 @@ def setup_model_and_data(
     types = torch.from_numpy(data["types"]).long()
     consumption_labels = torch.from_numpy(data["consumption_labels"]).float()
     sr_labels = torch.from_numpy(data["sr_labels"]).float()
-    opponent_trajectories = torch.from_numpy(data["opponent_trajectories"]).float()
-    opponent_actions = torch.from_numpy(data["opponent_actions"]).long()
+    oppo_states = torch.from_numpy(data["oppo_states"]).float()
+    oppo_actions = torch.from_numpy(data["oppo_actions"]).long()
 
     # Create TensorDataset from the tensors
     dataset = TensorDataset(
-        trajectories,
+        self_states,
         actions,
         goals,
         goal_ranks,
@@ -1480,8 +1498,8 @@ def setup_model_and_data(
         types,
         consumption_labels,
         sr_labels,
-        opponent_trajectories,
-        opponent_actions,
+        oppo_states,
+        oppo_actions,
     )
 
     # Split data
@@ -1892,11 +1910,11 @@ def combine_all_combinations_data(all_data_dict):
         data = _load_chunks_memory_efficient(chunk_metadata)
         
         # Data is expected to be in pre-processed numpy array format
-        if not (isinstance(data, dict) and "trajectories" in data):
-            raise ValueError(f"Data for combination {achiever_type}_{blocker_type} is not in expected format. Expected dictionary with 'trajectories' key.")
+        if not (isinstance(data, dict) and "self_states" in data):
+            raise ValueError(f"Data for combination {achiever_type}_{blocker_type} is not in expected format. Expected dictionary with 'self_states' key.")
             
         # Add pre-processed arrays to combined lists
-        combined_self_states.append(data["trajectories"])
+        combined_self_states.append(data["self_states"])
         combined_self_actions.append(data["actions"])
         combined_goals.append(data["goals"])
         combined_goal_ranks.append(data["goal_ranks"])
@@ -1906,21 +1924,21 @@ def combine_all_combinations_data(all_data_dict):
         combined_sr_labels.append(data["sr_labels"])
         
         # Add opponent data if available
-        if "opponent_trajectories" in data and data["opponent_trajectories"] is not None:
-            combined_oppo_states.append(data["opponent_trajectories"])
+        if "oppo_states" in data and data["oppo_states"] is not None:
+            combined_oppo_states.append(data["oppo_states"])
         else:
             # Create dummy opponent states for consistency
-            dummy_oppo_states = np.zeros_like(data["trajectories"])
+            dummy_oppo_states = np.zeros_like(data["self_states"])
             combined_oppo_states.append(dummy_oppo_states)
             
-        if "opponent_actions" in data and data["opponent_actions"] is not None:
-            combined_oppo_actions.append(data["opponent_actions"])
+        if "oppo_actions" in data and data["oppo_actions"] is not None:
+            combined_oppo_actions.append(data["oppo_actions"])
         else:
             # Create dummy opponent actions for consistency
             dummy_oppo_actions = np.zeros_like(data["actions"])
             combined_oppo_actions.append(dummy_oppo_actions)
             
-        print(f"    Added {data['trajectories'].shape[0]} samples")
+        print(f"    Added {data['self_states'].shape[0]} samples")
     
     # Check if we have any data to concatenate
     if not combined_self_states:
@@ -1928,7 +1946,7 @@ def combine_all_combinations_data(all_data_dict):
     
     # Concatenate all data
     combined_data = {
-        "trajectories": np.concatenate(combined_self_states, axis=0),
+        "self_states": np.concatenate(combined_self_states, axis=0),
         "actions": np.concatenate(combined_self_actions, axis=0),
         "goals": np.concatenate(combined_goals, axis=0),
         "goal_ranks": np.concatenate(combined_goal_ranks, axis=0),
@@ -1936,11 +1954,11 @@ def combine_all_combinations_data(all_data_dict):
         "types": np.concatenate(combined_types, axis=0),
         "consumption_labels": np.concatenate(combined_consumption_labels, axis=0),
         "sr_labels": np.concatenate(combined_sr_labels, axis=0),
-        "opponent_trajectories": np.concatenate(combined_oppo_states, axis=0),
-        "opponent_actions": np.concatenate(combined_oppo_actions, axis=0),
+        "oppo_states": np.concatenate(combined_oppo_states, axis=0),
+        "oppo_actions": np.concatenate(combined_oppo_actions, axis=0),
     }
     
-    total_samples = combined_data["trajectories"].shape[0]
+    total_samples = combined_data["self_states"].shape[0]
     print(f"Combined dataset contains {total_samples} total samples")
     
     # Print distribution statistics
@@ -2027,7 +2045,7 @@ def load_chunked_data_for_training(
         print(f"Loading chunk {chunk_info['chunk_idx']} from {chunk_info['file_path']}")
         chunk_data = torch.load(chunk_info["file_path"])
 
-        all_self_states.append(chunk_data["trajectories"])
+        all_self_states.append(chunk_data["self_states"])
         all_self_actions.append(chunk_data["actions"])
         all_goals.append(chunk_data["goals"])
         all_goal_ranks.append(chunk_data["goal_ranks"])
@@ -2056,7 +2074,7 @@ def load_chunked_data_for_training(
 
     # Process each data type separately to reduce peak memory usage
     for key, data_list in [
-        ("trajectories", all_self_states),
+        ("self_states", all_self_states),
         ("actions", all_self_actions),
         ("goals", all_goals),
         ("goal_ranks", all_goal_ranks),
@@ -2123,7 +2141,7 @@ def validate_data_shape(data, data_type="data"):
         raise ValueError(f"{data_type} must be a dictionary")
 
     required_keys = [
-        "trajectories",
+        "self_states",
         "actions",
         "goals",
         "goal_ranks",
@@ -2137,7 +2155,7 @@ def validate_data_shape(data, data_type="data"):
         if key not in data:
             raise ValueError(f"{data_type} missing required key: {key}")
 
-    total_samples = data["trajectories"].shape[0]
+    total_samples = data["self_states"].shape[0]
 
     print(f"{data_type} validation:")
     print(f"  Total samples: {total_samples}")

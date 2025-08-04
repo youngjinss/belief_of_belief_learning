@@ -586,7 +586,7 @@ def evaluate_achieverblocker_model(
     # Combine data from all combinations
     test_data = combine_all_combinations_data(all_test_data)
     
-    total_test_samples = test_data["trajectories"].shape[0]
+    total_test_samples = test_data["self_states"].shape[0]
 
     print(f"Test data usage:")
     print(f"  Using all test samples: {total_test_samples}")
@@ -598,7 +598,7 @@ def evaluate_achieverblocker_model(
 
     # Log test data shapes for verification
     print(f"Test data shapes:")
-    print(f"Trajectories: {test_data['trajectories'].shape}")
+    print(f"Self states: {test_data['self_states'].shape}")
     print(f"Actions: {test_data['actions'].shape}")
     print(f"Goals: {test_data['goals'].shape}")
     print(f"Goal ranks: {test_data['goal_ranks'].shape}")
@@ -613,7 +613,7 @@ def evaluate_achieverblocker_model(
     
     # Create test dataset and loader with all required data including goal_ranks
     test_dataset = TensorDataset(
-        test_tensors["trajectories"],
+        test_tensors["self_states"],
         test_tensors["actions"],
         test_tensors["goals"],
         test_tensors["goal_ranks"],
@@ -822,7 +822,7 @@ def analyze_action_likelihood(
         test_data = combine_all_combinations_data(all_test_data)
 
         # Use all available test data (no sampling)
-        total_test_samples = test_data["trajectories"].shape[0]
+        total_test_samples = test_data["self_states"].shape[0]
 
         print(f"Test data usage:")
         print(f"  Using all available test samples: {total_test_samples}")
@@ -833,7 +833,7 @@ def analyze_action_likelihood(
             )
 
         test_dataset = TensorDataset(
-            test_data["trajectories"],
+            test_data["self_states"],
             test_data["actions"],
             test_data["goals"],
             test_data["goal_ranks"],

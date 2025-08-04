@@ -222,7 +222,7 @@ def calculate_successor_representation(
 
 def calculate_sr_labels_for_trajectory(positions, grid_size=9, gammas=None):
     """
-    Calculate SR labels for each timestep in the trajectory
+    Calculate SR labels for each timestep in the self states sequence
 
     Args:
         positions: List of positions visited in the episode
@@ -1347,10 +1347,7 @@ def generate_trajectories_for_combination(
 
 if __name__ == "__main__":
     # Set multiprocessing start method to avoid issues
-    try:
-        mp.set_start_method("spawn")
-    except RuntimeError:
-        pass  # Already set
+    mp.set_start_method("spawn")
 
     import argparse
 

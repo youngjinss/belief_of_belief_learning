@@ -336,18 +336,26 @@ class BaseEmbeddingExtractor:
         # Prepare current state (last timestep) - use full channels
         current_state = batch_trajectories[:, -1, :]
         
+        # Apply temporal masking to actions (mask target action at last position)
+        masked_actions = batch_actions.clone()
+        masked_actions[:, -1] = -1  # Mask the target action so model can't see it
+        
         # Call ToMnet.forward() to get all embeddings
         forward_kwargs = {
             "past_trajectories": past_episodes,
             "self_states": batch_trajectories,
-            "self_actions": batch_actions,
+            "self_actions": masked_actions,
             "current_state": current_state
         }
         
         # Add opponent data for second belief
         if embedding_type == "second_belief" and batch_opponent_trajectories is not None:
             forward_kwargs["oppo_states"] = batch_opponent_trajectories
-            forward_kwargs["oppo_actions"] = batch_opponent_actions
+            # Apply temporal masking to opponent actions as well
+            if batch_opponent_actions is not None:
+                masked_opponent_actions = batch_opponent_actions.clone()
+                masked_opponent_actions[:, -1] = -1  # Mask opponent target action
+                forward_kwargs["oppo_actions"] = masked_opponent_actions
         
         outputs = self.model.forward(**forward_kwargs)
         

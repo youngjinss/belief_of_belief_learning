@@ -943,11 +943,15 @@ def analyze_action_likelihood(
                 batch_indices, effective_lengths, :
             ]
 
-            # Get action targets - use actions[:, 0] for trajectory slicing
-            action_targets = self_actions[:, 0]  # Target action for each sliced trajectory
+            # Get action targets - use actions[:, -1] for trajectory slicing
+            action_targets = self_actions[:, -1].clone()  # Target action for each sliced trajectory
+            
+            # Create masked actions for temporal masking (mask target action at last position)
+            masked_self_actions = self_actions.clone()
+            masked_self_actions[:, -1] = -1  # Mask the target action so model can't see it
 
             # Model forward pass (model returns dictionary)
-            outputs = model(past_episodes, recent_trajectory, self_actions, current_state,
+            outputs = model(past_episodes, recent_trajectory, masked_self_actions, current_state,
                           oppo_states=oppo_states, oppo_actions=oppo_actions)
             action_logits = outputs["action_logits"]
             probabilities = F.softmax(action_logits, dim=1)

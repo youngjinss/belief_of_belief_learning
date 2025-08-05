@@ -1217,12 +1217,13 @@ def setup_training_environment(
     gradient_accumulation_steps = training_config.get("gradient_accumulation_steps", 1)
     # Disable pin_memory for MPS and CPU to avoid warnings
     pin_memory = training_config.get("pin_memory", True) and torch.cuda.is_available()
-    num_workers = training_config.get("num_workers", 4)
+    num_workers = training_config.get("num_workers", 2)
 
-    # Auto-detect CPU count if num_workers is 0
+    # Auto-detect CPU count if num_workers is 0, but cap it to prevent thread exhaustion
     if num_workers == 0:
-        num_workers = mp.cpu_count()
-        print(f"Auto-detected {num_workers} CPU cores for data loading")
+        detected_cores = mp.cpu_count()
+        num_workers = min(detected_cores, 4)  # Cap at 4 workers to prevent thread exhaustion
+        print(f"Auto-detected {detected_cores} CPU cores, using {num_workers} workers for data loading")
 
     # Device setup
     if device_setting == "auto":
@@ -1549,7 +1550,7 @@ def setup_model_and_data(
         shuffle=False,
         pin_memory=pin_memory,
         num_workers=num_workers,
-        persistent_workers=True if num_workers > 0 else False,
+        persistent_workers=False,  # Disable to prevent thread exhaustion
     )
 
     # Create model
@@ -1977,7 +1978,7 @@ def combine_all_combinations_data(all_data_dict):
 
 
 def load_chunked_data_for_training(
-    train_data, batch_size, samples_per_epoch, pin_memory=True, num_workers=0
+    train_data, batch_size, samples_per_epoch, pin_memory=True, num_workers=2
 ):
     """
     Create a DataLoader for one epoch from training data
@@ -2018,7 +2019,7 @@ def load_chunked_data_for_training(
             shuffle=True,
             pin_memory=pin_memory,
             num_workers=num_workers,
-            persistent_workers=False,  # Disable to prevent file descriptor leaks
+            persistent_workers=False,  # Disable to prevent file descriptor leaks and thread exhaustion
             drop_last=True,
         )
 

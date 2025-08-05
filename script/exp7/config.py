@@ -249,7 +249,7 @@ class Config:
             "use_amp": True,  # Automatic Mixed Precision for memory and speed
             "gradient_accumulation_steps": 2,  # Accumulate gradients over multiple batches
             "pin_memory": True,  # Pin memory for faster data transfer
-            "num_workers": 0,  # Number of dataloader workers (0 = auto-detect CPU count)
+            "num_workers": 2,  # Number of dataloader workers (reduced to prevent thread exhaustion)
             "optimizer": "adam",
         }
 

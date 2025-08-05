@@ -381,6 +381,10 @@ def train_epoch(
     blocker_avg_consumption_loss = blocker_total_consumption_loss / num_batches
     blocker_avg_sr_loss = blocker_total_sr_loss / num_batches
 
+    # Clear GPU memory after training epoch
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
     return {
         "loss": avg_loss,
         "action_loss": avg_action_loss,
@@ -713,6 +717,11 @@ def validate_epoch(
     blocker_avg_consumption_loss = blocker_total_consumption_loss / num_batches
     blocker_avg_sr_loss = blocker_total_sr_loss / num_batches
 
+    # Clear GPU memory after validation epoch
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+
     return {
         "loss": avg_loss,
         "action_loss": avg_action_loss,
@@ -977,6 +986,9 @@ def run_training_loop(
         # Check early stopping
         if early_stopping(val_metrics["loss"], model):
             print(f"Early stopping triggered at epoch {epoch + 1}")
+            # Clear memory before breaking
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
             break
 
         # Save checkpoint every 10 epochs

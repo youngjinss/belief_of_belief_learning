@@ -269,7 +269,7 @@ class Config:
             "env_width": self.width,
             "env_height": self.height,
             "hidden_size_lstm": 64,
-            "second_belief_hidden": 128,  # Hidden size for SecondBeliefNet
+            "second_belief_hidden": 64,  # Hidden size for SecondBeliefNet
             "attention_hidden": 256,  # Hidden dimension for cross-attention
             "attention_heads": 8,  # Number of attention heads for cross-attention
             "fc_layer_sizes": [64, 32],

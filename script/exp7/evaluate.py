@@ -258,13 +258,18 @@ def evaluate_model_with_n_past(
                     batch_indices, effective_lengths, :
                 ]
 
-                # Get action targets - use actions[:, 0] for trajectory slicing
+                # Get action targets - use actions[:, -1] for trajectory slicing
                 action_targets = self_actions[
-                    :, 0
+                    :, -1
                 ]  # Target action for each sliced trajectory
 
+                # Create masked actions for temporal masking (mask target action at last position)
+                # This matches the training process
+                masked_self_actions = self_actions.clone()
+                masked_self_actions[:, -1] = -1  # Mask the target action so model can't see it
+
                 # Model forward pass (model returns dictionary)
-                outputs = model(past_episodes, recent_trajectory, self_actions, current_state, 
+                outputs = model(past_episodes, recent_trajectory, masked_self_actions, current_state, 
                               oppo_states=oppo_states, oppo_actions=oppo_actions)
                 action_logits = outputs["action_logits"]
 
@@ -333,11 +338,11 @@ def evaluate_model(
         all_predictions = np.empty(total_samples, dtype=np.int64)
         all_targets = np.empty(total_samples, dtype=np.int64)
         all_probabilities = np.empty((total_samples, action_space), dtype=np.float32)
-
+        
         sample_idx = 0
 
         with torch.no_grad():
-            for _, batch in enumerate(test_loader):
+            for batch_idx, batch in enumerate(test_loader):
 
                 # Unpack all data including goal_ranks and types
                 # Handle both old format (8 fields) and new format (10 fields)
@@ -401,9 +406,9 @@ def evaluate_model(
                 # With trajectory slicing, we use dynamic timesteps
                 # Each sample has a different effective length, stored in actions[:,0]
 
-                # For trajectory slicing, use the action at index 0 (the target action for this slice)
+                # For trajectory slicing, use the action at the last index (the target action for this slice)
                 action_targets = self_actions[
-                    :, 0
+                    :, -1
                 ]  # Target action for each sliced trajectory
 
                 # Optimized trajectory length calculation
@@ -433,26 +438,35 @@ def evaluate_model(
                     batch_indices, last_timesteps, :
                 ]
 
+                # Create masked actions for temporal masking (mask target action at last position)
+                # This matches the training process
+                masked_self_actions = self_actions.clone()
+                masked_self_actions[:, -1] = -1  # Mask the target action so model can't see it
+
                 # Model forward pass (model returns dictionary)
-                outputs = model(past_episodes, recent_trajectory, self_actions, current_state, 
-                              oppo_states=oppo_states, oppo_actions=oppo_actions)
+                outputs = model(past_episodes, recent_trajectory, masked_self_actions, current_state, 
+                                oppo_states=oppo_states, oppo_actions=oppo_actions)
                 action_logits = outputs["action_logits"]
+
                 # Get predictions
                 probabilities = F.softmax(action_logits, dim=1)
                 _, predicted = torch.max(action_logits, 1)
-
                 # Efficiently store predictions in pre-allocated arrays
                 batch_end = sample_idx + batch_size
-                all_predictions[sample_idx:batch_end] = predicted.cpu().numpy()
-                all_targets[sample_idx:batch_end] = action_targets.cpu().numpy()
-                all_probabilities[sample_idx:batch_end] = probabilities.cpu().numpy()
+                predicted_numpy = predicted.cpu().numpy()
+                targets_numpy = action_targets.cpu().numpy()
+                probabilities_numpy = probabilities.cpu().numpy()
+                
+                all_predictions[sample_idx:batch_end] = predicted_numpy
+                all_targets[sample_idx:batch_end] = targets_numpy
+                all_probabilities[sample_idx:batch_end] = probabilities_numpy
                 sample_idx = batch_end
 
         # Data is already in numpy arrays - no conversion needed
         predictions = all_predictions
         targets = all_targets
         probabilities = all_probabilities
-
+        
         # Calculate metrics
         accuracy = accuracy_score(targets, predictions)
         precision, recall, f1, _ = precision_recall_fscore_support(
@@ -460,15 +474,18 @@ def evaluate_model(
         )
 
         # Force confusion matrix to be for AchieverBlocker (actions vary by agent type)
-        # Get all unique actions that appear in either targets or predictions
-        unique_actions = sorted(set(np.concatenate([targets, predictions])))
+        # Determine max action from data to handle both achiever and blocker actions
+        max_action = max(np.max(targets), np.max(predictions)) + 1
+        # Only include labels that exist in the data to avoid confusion matrix errors
+        existing_labels = sorted(set(np.concatenate([targets, predictions])))
+        
         conf_matrix = confusion_matrix(
-            targets, predictions, labels=unique_actions
+            targets, predictions, labels=existing_labels
         )
 
         # Action-wise accuracy - AchieverBlocker has variable actions based on agent type
         action_accuracy = {}
-        for action in unique_actions:
+        for action in existing_labels:  # Use existing labels instead of range(max_action)
             mask = targets == action
             if np.sum(mask) > 0:
                 action_acc = accuracy_score(targets[mask], predictions[mask])

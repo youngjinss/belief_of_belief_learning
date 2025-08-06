@@ -426,6 +426,120 @@ def prepare_common_test_data(config, n_samples=None):
     return processed_data
 
 
+def load_model_and_data_once(results_dir, config):
+    """
+    Helper function to load model and test data once for reuse across embedding visualizations.
+    This reduces memory usage by avoiding duplicate loading.
+    
+    Args:
+        results_dir: Directory containing the model
+        config: Configuration object
+        
+    Returns:
+        tuple: (model, test_loader, test_loader_second_belief, device) or (None, None, None, None) if model not found
+    """
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model_path = os.path.join(results_dir, "best_model.pth")
+    
+    if not os.path.exists(model_path):
+        print(f"Model file not found: {model_path}")
+        return None, None, None, None
+    
+    print("Loading model and test data once for all embedding visualizations...")
+    
+    # Load model
+    from evaluate import load_model
+    model_kwargs = config.get_model_kwargs()
+    model = load_model(model_path, device, model_kwargs)
+    
+    # Load test data using the same multi-combination approach as evaluate.py
+    from utils import load_test_data_all_combinations, combine_all_combinations_data
+    
+    # Get base data directory from config
+    test_data_dir_base = os.path.join(config.save_dir, config.get_env_name())
+    
+    # Load test data for all combinations efficiently (same as evaluate.py)
+    all_test_data = load_test_data_all_combinations(config, test_data_dir_base=test_data_dir_base)
+    # Combine data from all combinations
+    test_data = combine_all_combinations_data(all_test_data)
+    print(f"Successfully loaded test data from all combinations: {test_data['self_states'].shape[0]} samples")
+    
+    # Convert numpy arrays to tensors for TensorDataset (same as evaluate.py fix)
+    test_tensors = {
+        key: torch.from_numpy(data) if isinstance(data, np.ndarray) else torch.tensor(data)
+        for key, data in test_data.items()
+    }
+    
+    # Create standard test dataset for character and mental embeddings
+    test_dataset = TensorDataset(
+        test_tensors["self_states"],
+        test_tensors["self_actions"],
+        test_tensors["goals"],
+        test_tensors["goal_ranks"],
+        test_tensors["agents"],
+        test_tensors["types"],
+        test_tensors["consumption_labels"],
+        test_tensors["sr_labels"],
+    )
+    test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
+    
+    # Create enhanced test dataset for second belief embeddings (with opponent data)
+    dataset_items = [
+        test_tensors["self_states"],
+        test_tensors["self_actions"],
+        test_tensors["goals"],
+        test_tensors["goal_ranks"],
+        test_tensors["agents"],
+        test_tensors["types"],
+        test_tensors["consumption_labels"],
+        test_tensors["sr_labels"],
+    ]
+    
+    # Add opponent trajectory data if available
+    if "opponent_recent_trajectory" in test_tensors:
+        dataset_items.extend([
+            test_tensors["opponent_recent_trajectory"],
+            test_tensors["oppo_actions"]
+        ])
+    
+    test_dataset_second_belief = TensorDataset(*dataset_items)
+    
+    # Create custom data loader that provides dictionary format for second belief
+    class SecondBeliefDataLoader:
+        def __init__(self, dataset, batch_size=32):
+            self.dataset = dataset
+            self.batch_size = batch_size
+            self.dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
+        
+        def __iter__(self):
+            for batch in self.dataloader:
+                batch_dict = {
+                    'self_states': batch[0],
+                    'self_actions': batch[1],
+                    'goal': batch[2],
+                    'goal_ranks': batch[3],
+                    'agent': batch[4],
+                    'type': batch[5],
+                    'consumption_labels': batch[6],
+                    'sr_labels': batch[7],
+                }
+                
+                # Add opponent data if available
+                if len(batch) > 8:
+                    batch_dict['opponent_recent_trajectory'] = batch[8]
+                    batch_dict['oppo_actions'] = batch[9]
+                else:
+                    batch_dict['opponent_recent_trajectory'] = None
+                    batch_dict['oppo_actions'] = None
+                
+                yield batch_dict
+
+    test_loader_second_belief = SecondBeliefDataLoader(test_dataset_second_belief, batch_size=32)
+    
+    print("Model and data loaded successfully!")
+    return model, test_loader, test_loader_second_belief, device
+
+
 def plot_accuracy_by_n_past(
     results_by_n_past,
     output_dir=None,
@@ -2649,216 +2763,68 @@ if __name__ == "__main__":
                     plot_action_likelihood(pred_file, plot_dir, config, experiment_no)
                     break
 
-    # Plot character embeddings
+    # Load model and data once for all embedding visualizations (reduces memory usage)
+    embedding_types_requested = []
     if args.plot_type in ["embeddings", "all"]:
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        
-        # Find the best model
-        model_path = os.path.join(results_dir, "best_model.pth")
-        
-        if os.path.exists(model_path):
-            # Load model
-            from evaluate import load_model
-            model_kwargs = config.get_model_kwargs()
-            model = load_model(model_path, device, model_kwargs)
-            
-            # Load test data using the same multi-combination approach as evaluate.py
-            from utils import load_test_data_all_combinations, combine_all_combinations_data
-            
-            # Get base data directory from config
-            test_data_dir_base = os.path.join(config.save_dir, config.get_env_name())
-            
-            # Load test data for all combinations efficiently (same as evaluate.py)
-            all_test_data = load_test_data_all_combinations(config, test_data_dir_base=test_data_dir_base)
-            # Combine data from all combinations
-            test_data = combine_all_combinations_data(all_test_data)
-            print(f"Successfully loaded test data from all combinations: {test_data['self_states'].shape[0]} samples")
-            # Convert numpy arrays to tensors for TensorDataset (same as evaluate.py fix)
-            test_tensors = {
-                key: torch.from_numpy(data) if isinstance(data, np.ndarray) else torch.tensor(data)
-                for key, data in test_data.items()
-            }
-            
-            # Create test dataset
-            test_dataset = TensorDataset(
-                test_tensors["self_states"],
-                test_tensors["self_actions"],
-                test_tensors["goals"],
-                test_tensors["goal_ranks"],
-                test_tensors["agents"],
-                test_tensors["types"],
-                test_tensors["consumption_labels"],
-                test_tensors["sr_labels"],
-            )
-            test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
-
-            # Create character embeddings plot
-            plot_character_embeddings(
-                model,
-                test_loader,
-                device,
-                plot_dir,
-                config,
-                experiment_no,
-                n_samples=None,
-            )
-            print("Character embedding visualization completed!")
-        else:
-            print(f"Model file not found: {model_path}")
-
-    # Plot mental embeddings
+        embedding_types_requested.append("character")
     if args.plot_type in ["mental_embeddings", "all"]:
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        
-        # Find the best model
-        model_path = os.path.join(results_dir, "best_model.pth")
-        
-        if os.path.exists(model_path):
-            # Load model
-            from evaluate import load_model
-            model_kwargs = config.get_model_kwargs()
-            model = load_model(model_path, device, model_kwargs)
-            
-            # Load test data using the same multi-combination approach as evaluate.py
-            from utils import load_test_data_all_combinations, combine_all_combinations_data
-            
-            # Get base data directory from config
-            test_data_dir_base = os.path.join(config.save_dir, config.get_env_name())
-            
-            # Load test data for all combinations efficiently (same as evaluate.py)
-            all_test_data = load_test_data_all_combinations(config, test_data_dir_base=test_data_dir_base)
-            # Combine data from all combinations
-            test_data = combine_all_combinations_data(all_test_data)
-            print(f"Successfully loaded test data from all combinations: {test_data['self_states'].shape[0]} samples")
-            # Convert numpy arrays to tensors for TensorDataset (same as evaluate.py fix)
-            test_tensors = {
-                key: torch.from_numpy(data) if isinstance(data, np.ndarray) else torch.tensor(data)
-                for key, data in test_data.items()
-            }
-            
-            # Create test dataset
-            test_dataset = TensorDataset(
-                test_tensors["self_states"],
-                test_tensors["self_actions"],
-                test_tensors["goals"],
-                test_tensors["goal_ranks"],
-                test_tensors["agents"],
-                test_tensors["types"],
-                test_tensors["consumption_labels"],
-                test_tensors["sr_labels"],
-            )
-            test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
-
-            # Create mental embeddings plot
-            plot_mental_embeddings(
-                model,
-                test_loader,
-                device,
-                plot_dir,
-                config,
-                experiment_no,
-                n_samples=None,
-            )
-            print("Mental embedding visualization completed!")
-        else:
-            print(f"Model file not found: {model_path}")
-
-    # Plot second belief embeddings
+        embedding_types_requested.append("mental")
     if args.plot_type in ["second_belief_embeddings", "all"]:
-        device = "cuda" if torch.cuda.is_available() else "cpu"
+        embedding_types_requested.append("second_belief")
+    
+    if embedding_types_requested:
+        # Load model and data once for all requested embedding types
+        model, test_loader, test_loader_second_belief, device = load_model_and_data_once(results_dir, config)
         
-        # Find the best model
-        model_path = os.path.join(results_dir, "best_model.pth")
-        
-        if os.path.exists(model_path):
-            # Load model
-            from evaluate import load_model
-            model_kwargs = config.get_model_kwargs()
-            model = load_model(model_path, device, model_kwargs)
+        if model is not None:
+            # Plot character embeddings
+            if "character" in embedding_types_requested:
+                print("Creating character embedding visualizations...")
+                plot_character_embeddings(
+                    model,
+                    test_loader,
+                    device,
+                    plot_dir,
+                    config,
+                    experiment_no,
+                    n_samples=None,
+                )
+                print("Character embedding visualization completed!")
             
-            # Load test data using the same multi-combination approach as evaluate.py
-            from utils import load_test_data_all_combinations, combine_all_combinations_data
+            # Plot mental embeddings  
+            if "mental" in embedding_types_requested:
+                print("Creating mental embedding visualizations...")
+                plot_mental_embeddings(
+                    model,
+                    test_loader,
+                    device,
+                    plot_dir,
+                    config,
+                    experiment_no,
+                    n_samples=None,
+                )
+                print("Mental embedding visualization completed!")
             
-            # Get base data directory from config
-            test_data_dir_base = os.path.join(config.save_dir, config.get_env_name())
+            # Plot second belief embeddings
+            if "second_belief" in embedding_types_requested:
+                print("Creating second belief embedding visualizations...")
+                plot_second_belief_embeddings(
+                    model,
+                    test_loader_second_belief,
+                    device,
+                    plot_dir,
+                    config,
+                    experiment_no,
+                    n_samples=None,
+                )
+                print("Second belief embedding visualization completed!")
             
-            # Load test data for all combinations efficiently (same as evaluate.py)
-            all_test_data = load_test_data_all_combinations(config, test_data_dir_base=test_data_dir_base)
-            # Combine data from all combinations
-            test_data = combine_all_combinations_data(all_test_data)
-            print(f"Successfully loaded test data from all combinations: {test_data['self_states'].shape[0]} samples")
-            # Convert numpy arrays to tensors for TensorDataset (same as evaluate.py fix)
-            test_tensors = {
-                key: torch.from_numpy(data) if isinstance(data, np.ndarray) else torch.tensor(data)
-                for key, data in test_data.items()
-            }
-            
-            # Create test dataset with opponent trajectory data if available
-            dataset_items = [
-                test_tensors["self_states"],
-                test_tensors["self_actions"],
-                test_tensors["goals"],
-                test_tensors["goal_ranks"],
-                test_tensors["agents"],
-                test_tensors["types"],
-                test_tensors["consumption_labels"],
-                test_tensors["sr_labels"],
-            ]
-            
-            # Add opponent trajectory data if available
-            if "opponent_recent_trajectory" in test_tensors:
-                dataset_items.extend([
-                    test_tensors["opponent_recent_trajectory"],
-                    test_tensors["oppo_actions"]
-                ])
-            
-            test_dataset = TensorDataset(*dataset_items)
-            
-            # Create custom data loader that provides dictionary format
-            class SecondBeliefDataLoader:
-                def __init__(self, dataset, batch_size=32):
-                    self.dataset = dataset
-                    self.batch_size = batch_size
-                    self.dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
-                
-                def __iter__(self):
-                    for batch in self.dataloader:
-                        batch_dict = {
-                            'self_states': batch[0],
-                            'self_actions': batch[1],
-                            'goal': batch[2],
-                            'goal_ranks': batch[3],
-                            'agent': batch[4],
-                            'type': batch[5],
-                            'consumption_labels': batch[6],
-                            'sr_labels': batch[7],
-                        }
-                        
-                        # Add opponent data if available
-                        if len(batch) > 8:
-                            batch_dict['opponent_recent_trajectory'] = batch[8]
-                            batch_dict['oppo_actions'] = batch[9]
-                        else:
-                            batch_dict['opponent_recent_trajectory'] = None
-                            batch_dict['oppo_actions'] = None
-                        
-                        yield batch_dict
-
-            test_loader = SecondBeliefDataLoader(test_dataset, batch_size=32)
-
-            # Create second belief embeddings plot
-            plot_second_belief_embeddings(
-                model,
-                test_loader,
-                device,
-                plot_dir,
-                config,
-                experiment_no,
-                n_samples=None,
-            )
-            print("Second belief embedding visualization completed!")
+            # Clean up memory by explicitly deleting large objects
+            del model, test_loader, test_loader_second_belief
+            import gc
+            gc.collect()
         else:
-            print(f"Model file not found: {model_path}")
+            print("Cannot create embedding visualizations: model loading failed.")
 
     print("Visualization completed!")
 

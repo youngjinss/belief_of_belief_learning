@@ -122,28 +122,28 @@ class BaseEmbeddingExtractor:
             dict: Prepared data tensors
         """
         # Validate required keys
-        required_keys = ["trajectories", "goals", "goal_ranks", "agents", "types"]
+        required_keys = ["self_states", "goals", "goal_ranks", "agents", "types"]
         for key in required_keys:
             if key not in processed_data:
                 raise KeyError(f"Missing required key in processed_data: {key}")
         
         # Handle both chunked and original tensor formats
-        if isinstance(processed_data["trajectories"], torch.Tensor):
+        if isinstance(processed_data["self_states"], torch.Tensor):
             # Original tensor format
-            trajectories_tensor = processed_data["trajectories"]
+            trajectories_tensor = processed_data["self_states"]
             goals_tensor = processed_data["goals"]
             goal_ranks_tensor = processed_data["goal_ranks"]
             agents_tensor = processed_data["agents"]
             types_tensor = processed_data["types"]
-            actions_tensor = processed_data.get("actions")  # May not exist for character embeddings
+            actions_tensor = processed_data.get("self_actions")  # May not exist for character embeddings
         else:
             # Chunked format (numpy arrays)
-            trajectories_tensor = torch.from_numpy(processed_data["trajectories"]).float()
+            trajectories_tensor = torch.from_numpy(processed_data["self_states"]).float()
             goals_tensor = torch.from_numpy(processed_data["goals"]).float()
             goal_ranks_tensor = torch.from_numpy(processed_data["goal_ranks"]).long()
             agents_tensor = torch.from_numpy(processed_data["agents"]).long()
             types_tensor = torch.from_numpy(processed_data["types"]).long()
-            actions_tensor = torch.from_numpy(processed_data["actions"]).long() if "actions" in processed_data else None
+            actions_tensor = torch.from_numpy(processed_data["self_actions"]).long() if "self_actions" in processed_data else None
         
         # Validate tensor shapes are consistent
         batch_size = len(agents_tensor)
@@ -163,14 +163,14 @@ class BaseEmbeddingExtractor:
                 actions_tensor = actions_tensor[indices]
         
         return {
-            "trajectories": trajectories_tensor,
+            "self_states": trajectories_tensor,
             "goals": goals_tensor,
             "goal_ranks": goal_ranks_tensor,
             "agents": agents_tensor,
             "types": types_tensor,
-            "actions": actions_tensor,
-            "opponent_trajectories": processed_data.get("opponent_trajectories"),
-            "opponent_actions": processed_data.get("opponent_actions")
+            "self_actions": actions_tensor,
+            "oppo_states": processed_data.get("oppo_states"),
+            "oppo_actions": processed_data.get("oppo_actions")
         }
     
     def _extract_labels(self, data_tensors):
@@ -227,10 +227,10 @@ class BaseEmbeddingExtractor:
         self.model.eval()
         embeddings = []
         
-        trajectories = data_tensors["trajectories"]
+        trajectories = data_tensors["self_states"]
         goal_ranks = data_tensors["goal_ranks"]
         agents = data_tensors["agents"]
-        actions = data_tensors["actions"]
+        actions = data_tensors["self_actions"]
         
         print(f"Extracting {embedding_type} embeddings for {len(trajectories)} samples...")
         
@@ -268,8 +268,8 @@ class BaseEmbeddingExtractor:
                     batch_opponent_trajectories = None
                     batch_opponent_actions = None
                     if embedding_type == "second_belief":
-                        opponent_trajectories = data_tensors.get("opponent_trajectories")
-                        opponent_actions = data_tensors.get("opponent_actions")
+                        opponent_trajectories = data_tensors.get("oppo_states")
+                        opponent_actions = data_tensors.get("oppo_actions")
                         if opponent_trajectories is not None and start_idx < len(opponent_trajectories):
                             batch_opp_traj = opponent_trajectories[start_idx:end_idx]
                             if isinstance(batch_opp_traj, np.ndarray):
@@ -416,7 +416,7 @@ def prepare_common_test_data(config, n_samples=None):
     # Combine data from all combinations
     processed_data = combine_all_combinations_data(all_test_data)
     
-    print(f"Loaded combined test data with {processed_data['trajectories'].shape[0]} samples")
+    print(f"Loaded combined test data with {processed_data['self_states'].shape[0]} samples")
     print(f"Achiever types: {list(config.achiever_types.keys())}")
     if config.is_single_agent_mode():
         print(f"Single-agent mode: No blockers")
@@ -2672,7 +2672,7 @@ if __name__ == "__main__":
             all_test_data = load_test_data_all_combinations(config, test_data_dir_base=test_data_dir_base)
             # Combine data from all combinations
             test_data = combine_all_combinations_data(all_test_data)
-            print(f"Successfully loaded test data from all combinations: {test_data['trajectories'].shape[0]} samples")
+            print(f"Successfully loaded test data from all combinations: {test_data['self_states'].shape[0]} samples")
             # Convert numpy arrays to tensors for TensorDataset (same as evaluate.py fix)
             test_tensors = {
                 key: torch.from_numpy(data) if isinstance(data, np.ndarray) else torch.tensor(data)
@@ -2681,8 +2681,8 @@ if __name__ == "__main__":
             
             # Create test dataset
             test_dataset = TensorDataset(
-                test_tensors["trajectories"],
-                test_tensors["actions"],
+                test_tensors["self_states"],
+                test_tensors["self_actions"],
                 test_tensors["goals"],
                 test_tensors["goal_ranks"],
                 test_tensors["agents"],
@@ -2729,7 +2729,7 @@ if __name__ == "__main__":
             all_test_data = load_test_data_all_combinations(config, test_data_dir_base=test_data_dir_base)
             # Combine data from all combinations
             test_data = combine_all_combinations_data(all_test_data)
-            print(f"Successfully loaded test data from all combinations: {test_data['trajectories'].shape[0]} samples")
+            print(f"Successfully loaded test data from all combinations: {test_data['self_states'].shape[0]} samples")
             # Convert numpy arrays to tensors for TensorDataset (same as evaluate.py fix)
             test_tensors = {
                 key: torch.from_numpy(data) if isinstance(data, np.ndarray) else torch.tensor(data)
@@ -2738,8 +2738,8 @@ if __name__ == "__main__":
             
             # Create test dataset
             test_dataset = TensorDataset(
-                test_tensors["trajectories"],
-                test_tensors["actions"],
+                test_tensors["self_states"],
+                test_tensors["self_actions"],
                 test_tensors["goals"],
                 test_tensors["goal_ranks"],
                 test_tensors["agents"],
@@ -2786,7 +2786,7 @@ if __name__ == "__main__":
             all_test_data = load_test_data_all_combinations(config, test_data_dir_base=test_data_dir_base)
             # Combine data from all combinations
             test_data = combine_all_combinations_data(all_test_data)
-            print(f"Successfully loaded test data from all combinations: {test_data['trajectories'].shape[0]} samples")
+            print(f"Successfully loaded test data from all combinations: {test_data['self_states'].shape[0]} samples")
             # Convert numpy arrays to tensors for TensorDataset (same as evaluate.py fix)
             test_tensors = {
                 key: torch.from_numpy(data) if isinstance(data, np.ndarray) else torch.tensor(data)
@@ -2795,8 +2795,8 @@ if __name__ == "__main__":
             
             # Create test dataset with opponent trajectory data if available
             dataset_items = [
-                test_tensors["trajectories"],
-                test_tensors["actions"],
+                test_tensors["self_states"],
+                test_tensors["self_actions"],
                 test_tensors["goals"],
                 test_tensors["goal_ranks"],
                 test_tensors["agents"],
@@ -2809,7 +2809,7 @@ if __name__ == "__main__":
             if "opponent_recent_trajectory" in test_tensors:
                 dataset_items.extend([
                     test_tensors["opponent_recent_trajectory"],
-                    test_tensors["opponent_actions"]
+                    test_tensors["oppo_actions"]
                 ])
             
             test_dataset = TensorDataset(*dataset_items)
@@ -2825,7 +2825,7 @@ if __name__ == "__main__":
                     for batch in self.dataloader:
                         batch_dict = {
                             'trajectory': batch[0],
-                            'actions': batch[1],
+                            'self_actions': batch[1],
                             'goal': batch[2],
                             'goal_ranks': batch[3],
                             'agent': batch[4],
@@ -2837,10 +2837,10 @@ if __name__ == "__main__":
                         # Add opponent data if available
                         if len(batch) > 8:
                             batch_dict['opponent_recent_trajectory'] = batch[8]
-                            batch_dict['opponent_actions'] = batch[9]
+                            batch_dict['oppo_actions'] = batch[9]
                         else:
                             batch_dict['opponent_recent_trajectory'] = None
-                            batch_dict['opponent_actions'] = None
+                            batch_dict['oppo_actions'] = None
                         
                         yield batch_dict
 

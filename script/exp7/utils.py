@@ -275,7 +275,7 @@ def process_sample_batch(samples, grid_size, window_size):
     # Batch results
     batch_results = {
         "self_states": [],
-        "actions": [],
+        "self_actions": [],
         "goals": [],
         "goal_ranks": [],
         "agents": [],
@@ -507,7 +507,7 @@ def process_single_sample(sample, grid_size, window_size):
 
     return {
         "self_states": sample_self_states,
-        "actions": sample_self_actions,
+        "self_actions": sample_self_actions,
         "goals": sample_goals,
         "goal_ranks": sample_goal_ranks,
         "agents": sample_agents,
@@ -587,7 +587,7 @@ def prepare_data_for_training(
         # Record metadata
         data_shapes = {
             "self_states": chunk_data["self_states"].shape,
-            "actions": chunk_data["actions"].shape,
+            "self_actions": chunk_data["self_actions"].shape,
             "goals": chunk_data["goals"].shape,
             "goal_ranks": chunk_data["goal_ranks"].shape,
             "agents": chunk_data["agents"].shape,
@@ -710,7 +710,7 @@ def prepare_data_memory_efficient(
 
     for result in results:
         self_states.extend(result["self_states"])
-        self_actions.extend(result["actions"])
+        self_actions.extend(result["self_actions"])
         goals.extend(result["goals"])
         goal_ranks.extend(result["goal_ranks"])
         agents.extend(result["agents"])
@@ -746,7 +746,7 @@ def prepare_data_memory_efficient(
 
     return {
         "self_states": self_states,
-        "actions": self_actions,
+        "self_actions": self_actions,
         "goals": goals,
         "goal_ranks": goal_ranks,
         "agents": agents,
@@ -1396,7 +1396,7 @@ def _standard_chunk_loading(chunk_metadata):
 
         # Append to lists
         all_self_states.append(chunk_data["self_states"])
-        all_self_actions.append(chunk_data["actions"])
+        all_self_actions.append(chunk_data["self_actions"])
         all_goals.append(chunk_data["goals"])
         all_goal_ranks.append(chunk_data["goal_ranks"])
         all_agents.append(chunk_data["agents"])
@@ -1415,7 +1415,7 @@ def _standard_chunk_loading(chunk_metadata):
     # Process each data type separately
     for key, data_list in [
         ("self_states", all_self_states),
-        ("actions", all_self_actions),
+        ("self_actions", all_self_actions),
         ("goals", all_goals),
         ("goal_ranks", all_goal_ranks),
         ("agents", all_agents),
@@ -1479,7 +1479,7 @@ def setup_model_and_data(
 
     # Convert numpy arrays to torch tensors
     self_states = torch.from_numpy(data["self_states"]).float()
-    actions = torch.from_numpy(data["actions"]).long()
+    actions = torch.from_numpy(data["self_actions"]).long()
     goals = torch.from_numpy(data["goals"]).float()
     goal_ranks = torch.from_numpy(data["goal_ranks"]).long()
     agents = torch.from_numpy(data["agents"]).long()
@@ -1916,7 +1916,7 @@ def combine_all_combinations_data(all_data_dict):
             
         # Add pre-processed arrays to combined lists
         combined_self_states.append(data["self_states"])
-        combined_self_actions.append(data["actions"])
+        combined_self_actions.append(data["self_actions"])
         combined_goals.append(data["goals"])
         combined_goal_ranks.append(data["goal_ranks"])
         combined_agents.append(data["agents"])
@@ -1936,7 +1936,7 @@ def combine_all_combinations_data(all_data_dict):
             combined_oppo_actions.append(data["oppo_actions"])
         else:
             # Create dummy opponent actions for consistency
-            dummy_oppo_actions = np.zeros_like(data["actions"])
+            dummy_oppo_actions = np.zeros_like(data["self_actions"])
             combined_oppo_actions.append(dummy_oppo_actions)
             
         print(f"    Added {data['self_states'].shape[0]} samples")
@@ -1948,7 +1948,7 @@ def combine_all_combinations_data(all_data_dict):
     # Concatenate all data
     combined_data = {
         "self_states": np.concatenate(combined_self_states, axis=0),
-        "actions": np.concatenate(combined_self_actions, axis=0),
+        "self_actions": np.concatenate(combined_self_actions, axis=0),
         "goals": np.concatenate(combined_goals, axis=0),
         "goal_ranks": np.concatenate(combined_goal_ranks, axis=0),
         "agents": np.concatenate(combined_agents, axis=0),
@@ -2047,7 +2047,7 @@ def load_chunked_data_for_training(
         chunk_data = torch.load(chunk_info["file_path"])
 
         all_self_states.append(chunk_data["self_states"])
-        all_self_actions.append(chunk_data["actions"])
+        all_self_actions.append(chunk_data["self_actions"])
         all_goals.append(chunk_data["goals"])
         all_goal_ranks.append(chunk_data["goal_ranks"])
         all_agents.append(chunk_data["agents"])
@@ -2076,7 +2076,7 @@ def load_chunked_data_for_training(
     # Process each data type separately to reduce peak memory usage
     for key, data_list in [
         ("self_states", all_self_states),
-        ("actions", all_self_actions),
+        ("self_actions", all_self_actions),
         ("goals", all_goals),
         ("goal_ranks", all_goal_ranks),
         ("agents", all_agents),
@@ -2143,7 +2143,7 @@ def validate_data_shape(data, data_type="data"):
 
     required_keys = [
         "self_states",
-        "actions",
+        "self_actions",
         "goals",
         "goal_ranks",
         "agents",

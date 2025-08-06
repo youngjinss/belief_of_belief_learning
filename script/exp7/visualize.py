@@ -2824,7 +2824,7 @@ if __name__ == "__main__":
                 def __iter__(self):
                     for batch in self.dataloader:
                         batch_dict = {
-                            'trajectory': batch[0],
+                            'self_states': batch[0],
                             'self_actions': batch[1],
                             'goal': batch[2],
                             'goal_ranks': batch[3],

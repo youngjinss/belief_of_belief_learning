@@ -2707,7 +2707,7 @@ if __name__ == "__main__":
             print(f"Model file not found: {model_path}")
 
     # Plot mental embeddings
-    if args.plot_type in ["mental_embeddings", "embeddings", "all"]:
+    if args.plot_type in ["mental_embeddings", "all"]:
         device = "cuda" if torch.cuda.is_available() else "cpu"
         
         # Find the best model
@@ -2764,7 +2764,7 @@ if __name__ == "__main__":
             print(f"Model file not found: {model_path}")
 
     # Plot second belief embeddings
-    if args.plot_type in ["second_belief_embeddings", "embeddings", "all"]:
+    if args.plot_type in ["second_belief_embeddings", "all"]:
         device = "cuda" if torch.cuda.is_available() else "cpu"
         
         # Find the best model

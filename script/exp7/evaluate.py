@@ -460,15 +460,15 @@ def evaluate_model(
         )
 
         # Force confusion matrix to be for AchieverBlocker (actions vary by agent type)
-        # Determine max action from data to handle both achiever and blocker actions
-        max_action = max(np.max(targets), np.max(predictions)) + 1
+        # Get all unique actions that appear in either targets or predictions
+        unique_actions = sorted(set(np.concatenate([targets, predictions])))
         conf_matrix = confusion_matrix(
-            targets, predictions, labels=list(range(max_action))
+            targets, predictions, labels=unique_actions
         )
 
         # Action-wise accuracy - AchieverBlocker has variable actions based on agent type
         action_accuracy = {}
-        for action in range(max_action):
+        for action in unique_actions:
             mask = targets == action
             if np.sum(mask) > 0:
                 action_acc = accuracy_score(targets[mask], predictions[mask])

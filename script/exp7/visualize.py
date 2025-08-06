@@ -426,51 +426,72 @@ def prepare_common_test_data(config, n_samples=None):
     return processed_data
 
 
-def load_model_and_data_once(results_dir, config):
+def load_model_for_visualization(results_dir, config):
     """
-    Helper function to load model and test data once for reuse across embedding visualizations.
-    This reduces memory usage by avoiding duplicate loading.
+    Load a trained model for visualization purposes.
     
     Args:
         results_dir: Directory containing the model
         config: Configuration object
         
     Returns:
-        tuple: (model, test_loader, test_loader_second_belief, device) or (None, None, None, None) if model not found
+        tuple: (model, device) or (None, None) if model not found
     """
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model_path = os.path.join(results_dir, "best_model.pth")
     
     if not os.path.exists(model_path):
         print(f"Model file not found: {model_path}")
-        return None, None, None, None
+        return None, None
     
-    print("Loading model and test data once for all embedding visualizations...")
-    
-    # Load model
+    print(f"Loading model from {model_path}...")
     from evaluate import load_model
     model_kwargs = config.get_model_kwargs()
     model = load_model(model_path, device, model_kwargs)
     
-    # Load test data using the same multi-combination approach as evaluate.py
+    return model, device
+
+
+def load_test_data_for_visualization(config):
+    """
+    Load and prepare test data for visualization.
+    
+    Args:
+        config: Configuration object
+        
+    Returns:
+        dict: Test data tensors ready for use
+    """
     from utils import load_test_data_all_combinations, combine_all_combinations_data
     
     # Get base data directory from config
     test_data_dir_base = os.path.join(config.save_dir, config.get_env_name())
     
-    # Load test data for all combinations efficiently (same as evaluate.py)
+    print("Loading test data from all combinations...")
     all_test_data = load_test_data_all_combinations(config, test_data_dir_base=test_data_dir_base)
-    # Combine data from all combinations
     test_data = combine_all_combinations_data(all_test_data)
-    print(f"Successfully loaded test data from all combinations: {test_data['self_states'].shape[0]} samples")
+    print(f"Successfully loaded test data: {test_data['self_states'].shape[0]} samples")
     
-    # Convert numpy arrays to tensors for TensorDataset (same as evaluate.py fix)
+    # Convert numpy arrays to tensors
     test_tensors = {
         key: torch.from_numpy(data) if isinstance(data, np.ndarray) else torch.tensor(data)
         for key, data in test_data.items()
     }
     
-    # Create standard test dataset for character and mental embeddings
+    return test_tensors
+
+
+def create_standard_dataloader(test_tensors, batch_size=32):
+    """
+    Create a standard DataLoader for character and mental embeddings.
+    
+    Args:
+        test_tensors: Dictionary of test data tensors
+        batch_size: Batch size for DataLoader
+        
+    Returns:
+        DataLoader: Standard test data loader
+    """
     test_dataset = TensorDataset(
         test_tensors["self_states"],
         test_tensors["self_actions"],
@@ -481,63 +502,81 @@ def load_model_and_data_once(results_dir, config):
         test_tensors["consumption_labels"],
         test_tensors["sr_labels"],
     )
-    test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
-    
-    # Create enhanced test dataset for second belief embeddings (with opponent data)
-    dataset_items = [
-        test_tensors["self_states"],
-        test_tensors["self_actions"],
-        test_tensors["goals"],
-        test_tensors["goal_ranks"],
-        test_tensors["agents"],
-        test_tensors["types"],
-        test_tensors["consumption_labels"],
-        test_tensors["sr_labels"],
-    ]
-    
-    # Add opponent trajectory data if available
-    if "opponent_recent_trajectory" in test_tensors:
-        dataset_items.extend([
-            test_tensors["opponent_recent_trajectory"],
-            test_tensors["oppo_actions"]
-        ])
-    
-    test_dataset_second_belief = TensorDataset(*dataset_items)
-    
-    # Create custom data loader that provides dictionary format for second belief
-    class SecondBeliefDataLoader:
-        def __init__(self, dataset, batch_size=32):
-            self.dataset = dataset
-            self.batch_size = batch_size
-            self.dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
-        
-        def __iter__(self):
-            for batch in self.dataloader:
-                batch_dict = {
-                    'self_states': batch[0],
-                    'self_actions': batch[1],
-                    'goal': batch[2],
-                    'goal_ranks': batch[3],
-                    'agent': batch[4],
-                    'type': batch[5],
-                    'consumption_labels': batch[6],
-                    'sr_labels': batch[7],
-                }
-                
-                # Add opponent data if available
-                if len(batch) > 8:
-                    batch_dict['opponent_recent_trajectory'] = batch[8]
-                    batch_dict['oppo_actions'] = batch[9]
-                else:
-                    batch_dict['opponent_recent_trajectory'] = None
-                    batch_dict['oppo_actions'] = None
-                
-                yield batch_dict
+    return DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
-    test_loader_second_belief = SecondBeliefDataLoader(test_dataset_second_belief, batch_size=32)
+
+class SecondBeliefDataLoader:
+    """
+    Custom DataLoader for second belief embeddings that provides dictionary format.
+    """
+    def __init__(self, test_tensors, batch_size=32):
+        """
+        Initialize the SecondBeliefDataLoader.
+        
+        Args:
+            test_tensors: Dictionary of test data tensors
+            batch_size: Batch size for DataLoader
+        """
+        dataset_items = [
+            test_tensors["self_states"],
+            test_tensors["self_actions"],
+            test_tensors["goals"],
+            test_tensors["goal_ranks"],
+            test_tensors["agents"],
+            test_tensors["types"],
+            test_tensors["consumption_labels"],
+            test_tensors["sr_labels"],
+        ]
+        
+        # Add opponent data if available
+        self.has_opponent_data = "opponent_recent_trajectory" in test_tensors
+        if self.has_opponent_data:
+            dataset_items.extend([
+                test_tensors["opponent_recent_trajectory"],
+                test_tensors["oppo_actions"]
+            ])
+        
+        self.dataset = TensorDataset(*dataset_items)
+        self.batch_size = batch_size
+        self.dataloader = DataLoader(self.dataset, batch_size=batch_size, shuffle=False)
     
-    print("Model and data loaded successfully!")
-    return model, test_loader, test_loader_second_belief, device
+    def __iter__(self):
+        """Iterate through batches and convert to dictionary format."""
+        for batch in self.dataloader:
+            batch_dict = {
+                'self_states': batch[0],
+                'self_actions': batch[1],
+                'goal': batch[2],
+                'goal_ranks': batch[3],
+                'agent': batch[4],
+                'type': batch[5],
+                'consumption_labels': batch[6],
+                'sr_labels': batch[7],
+            }
+            
+            # Add opponent data if available
+            if self.has_opponent_data and len(batch) > 8:
+                batch_dict['opponent_recent_trajectory'] = batch[8]
+                batch_dict['oppo_actions'] = batch[9]
+            else:
+                batch_dict['opponent_recent_trajectory'] = None
+                batch_dict['oppo_actions'] = None
+            
+            yield batch_dict
+
+
+def create_second_belief_dataloader(test_tensors, batch_size=32):
+    """
+    Create a DataLoader for second belief embeddings.
+    
+    Args:
+        test_tensors: Dictionary of test data tensors
+        batch_size: Batch size for DataLoader
+        
+    Returns:
+        SecondBeliefDataLoader: Custom dataloader for second belief
+    """
+    return SecondBeliefDataLoader(test_tensors, batch_size=batch_size)
 
 
 def plot_accuracy_by_n_past(
@@ -2763,7 +2802,7 @@ if __name__ == "__main__":
                     plot_action_likelihood(pred_file, plot_dir, config, experiment_no)
                     break
 
-    # Load model and data once for all embedding visualizations (reduces memory usage)
+    # Determine which embedding visualizations are requested
     embedding_types_requested = []
     if args.plot_type in ["embeddings", "all"]:
         embedding_types_requested.append("character")
@@ -2773,10 +2812,25 @@ if __name__ == "__main__":
         embedding_types_requested.append("second_belief")
     
     if embedding_types_requested:
-        # Load model and data once for all requested embedding types
-        model, test_loader, test_loader_second_belief, device = load_model_and_data_once(results_dir, config)
+        # Load model once
+        model, device = load_model_for_visualization(results_dir, config)
         
         if model is not None:
+            # Load test data once
+            test_tensors = load_test_data_for_visualization(config)
+            
+            # Create appropriate dataloaders based on what's needed
+            test_loader = None
+            test_loader_second_belief = None
+            
+            # Create standard dataloader if needed for character or mental embeddings
+            if "character" in embedding_types_requested or "mental" in embedding_types_requested:
+                test_loader = create_standard_dataloader(test_tensors)
+            
+            # Create second belief dataloader if needed
+            if "second_belief" in embedding_types_requested:
+                test_loader_second_belief = create_second_belief_dataloader(test_tensors)
+            
             # Plot character embeddings
             if "character" in embedding_types_requested:
                 print("Creating character embedding visualizations...")
@@ -2819,8 +2873,13 @@ if __name__ == "__main__":
                 )
                 print("Second belief embedding visualization completed!")
             
-            # Clean up memory by explicitly deleting large objects
-            del model, test_loader, test_loader_second_belief
+            # Clean up memory
+            del model
+            if test_loader is not None:
+                del test_loader
+            if test_loader_second_belief is not None:
+                del test_loader_second_belief
+            del test_tensors
             import gc
             gc.collect()
         else:

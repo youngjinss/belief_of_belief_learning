@@ -631,7 +631,7 @@ def evaluate_achieverblocker_model(
     # Create test dataset and loader with all required data including goal_ranks
     test_dataset = TensorDataset(
         test_tensors["self_states"],
-        test_tensors["actions"],
+        test_tensors["self_actions"],
         test_tensors["goals"],
         test_tensors["goal_ranks"],
         test_tensors["agents"],
@@ -851,7 +851,7 @@ def analyze_action_likelihood(
 
         test_dataset = TensorDataset(
             test_data["self_states"],
-            test_data["actions"],
+            test_data["self_actions"],
             test_data["goals"],
             test_data["goal_ranks"],
             test_data["agents"],

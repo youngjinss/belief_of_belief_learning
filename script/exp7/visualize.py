@@ -416,7 +416,7 @@ def prepare_common_test_data(config, n_samples=None):
     # Combine data from all combinations
     processed_data = combine_all_combinations_data(all_test_data)
     
-    print(f"Loaded combined test data with {processed_data['trajectories'].shape[0]} samples")
+    print(f"Loaded combined test data with {processed_data['self_states'].shape[0]} samples")
     print(f"Achiever types: {list(config.achiever_types.keys())}")
     if config.is_single_agent_mode():
         print(f"Single-agent mode: No blockers")
@@ -2672,7 +2672,7 @@ if __name__ == "__main__":
             all_test_data = load_test_data_all_combinations(config, test_data_dir_base=test_data_dir_base)
             # Combine data from all combinations
             test_data = combine_all_combinations_data(all_test_data)
-            print(f"Successfully loaded test data from all combinations: {test_data['trajectories'].shape[0]} samples")
+            print(f"Successfully loaded test data from all combinations: {test_data['self_states'].shape[0]} samples")
             # Convert numpy arrays to tensors for TensorDataset (same as evaluate.py fix)
             test_tensors = {
                 key: torch.from_numpy(data) if isinstance(data, np.ndarray) else torch.tensor(data)
@@ -2729,7 +2729,7 @@ if __name__ == "__main__":
             all_test_data = load_test_data_all_combinations(config, test_data_dir_base=test_data_dir_base)
             # Combine data from all combinations
             test_data = combine_all_combinations_data(all_test_data)
-            print(f"Successfully loaded test data from all combinations: {test_data['trajectories'].shape[0]} samples")
+            print(f"Successfully loaded test data from all combinations: {test_data['self_states'].shape[0]} samples")
             # Convert numpy arrays to tensors for TensorDataset (same as evaluate.py fix)
             test_tensors = {
                 key: torch.from_numpy(data) if isinstance(data, np.ndarray) else torch.tensor(data)
@@ -2786,7 +2786,7 @@ if __name__ == "__main__":
             all_test_data = load_test_data_all_combinations(config, test_data_dir_base=test_data_dir_base)
             # Combine data from all combinations
             test_data = combine_all_combinations_data(all_test_data)
-            print(f"Successfully loaded test data from all combinations: {test_data['trajectories'].shape[0]} samples")
+            print(f"Successfully loaded test data from all combinations: {test_data['self_states'].shape[0]} samples")
             # Convert numpy arrays to tensors for TensorDataset (same as evaluate.py fix)
             test_tensors = {
                 key: torch.from_numpy(data) if isinstance(data, np.ndarray) else torch.tensor(data)

@@ -616,7 +616,7 @@ def evaluate_achieverblocker_model(
     # Log test data shapes for verification
     print(f"Test data shapes:")
     print(f"Self states: {test_data['self_states'].shape}")
-    print(f"Actions: {test_data['actions'].shape}")
+    print(f"Self actions: {test_data['self_actions'].shape}")
     print(f"Goals: {test_data['goals'].shape}")
     print(f"Goal ranks: {test_data['goal_ranks'].shape}")
     print(f"Consumption labels: {test_data['consumption_labels'].shape}")

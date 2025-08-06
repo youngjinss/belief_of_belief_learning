@@ -1412,6 +1412,11 @@ def _plot_agent_based_embeddings(
     # PCA visualization
     if embeddings.shape[1] > 2:
         print("Computing PCA...")
+        # Check for NaN or infinite values
+        if np.any(np.isnan(embeddings)) or np.any(np.isinf(embeddings)):
+            print("Warning: Found NaN or infinite values in embeddings. Cleaning...")
+            # Replace NaN with 0 and clip infinite values
+            embeddings = np.nan_to_num(embeddings, nan=0.0, posinf=1e10, neginf=-1e10)
         pca = PCA(n_components=2)
         embeddings_pca = pca.fit_transform(embeddings)
 
@@ -1509,6 +1514,11 @@ def _plot_goal_based_embeddings(
     # PCA visualization
     if embeddings.shape[1] > 2:
         print("Computing PCA...")
+        # Check for NaN or infinite values
+        if np.any(np.isnan(embeddings)) or np.any(np.isinf(embeddings)):
+            print("Warning: Found NaN or infinite values in embeddings. Cleaning...")
+            # Replace NaN with 0 and clip infinite values
+            embeddings = np.nan_to_num(embeddings, nan=0.0, posinf=1e10, neginf=-1e10)
         pca = PCA(n_components=2)
         embeddings_pca = pca.fit_transform(embeddings)
 
@@ -1623,6 +1633,11 @@ def _plot_separate_agent_goal_embeddings(
         # PCA for this agent
         ax_pca = axes[agent_idx, 0]
         if agent_embeddings.shape[1] > 2:
+            # Check for NaN or infinite values
+            if np.any(np.isnan(agent_embeddings)) or np.any(np.isinf(agent_embeddings)):
+                print("Warning: Found NaN or infinite values in agent embeddings. Cleaning...")
+                # Replace NaN with 0 and clip infinite values
+                agent_embeddings = np.nan_to_num(agent_embeddings, nan=0.0, posinf=1e10, neginf=-1e10)
             pca = PCA(n_components=2)
             agent_embeddings_pca = pca.fit_transform(agent_embeddings)
 
@@ -1745,6 +1760,11 @@ def _plot_type_based_embeddings_for_blockers(
     # PCA visualization
     if blocker_embeddings.shape[1] > 2:
         print("Computing PCA for blocker types...")
+        # Check for NaN or infinite values
+        if np.any(np.isnan(blocker_embeddings)) or np.any(np.isinf(blocker_embeddings)):
+            print("Warning: Found NaN or infinite values in blocker embeddings. Cleaning...")
+            # Replace NaN with 0 and clip infinite values
+            blocker_embeddings = np.nan_to_num(blocker_embeddings, nan=0.0, posinf=1e10, neginf=-1e10)
         pca = PCA(n_components=2)
         embeddings_pca = pca.fit_transform(blocker_embeddings)
 
@@ -1859,6 +1879,11 @@ def _plot_type_based_embeddings_for_achiever(
     # PCA visualization
     if achiever_embeddings.shape[1] > 2:
         print("Computing PCA for achiever types...")
+        # Check for NaN or infinite values
+        if np.any(np.isnan(achiever_embeddings)) or np.any(np.isinf(achiever_embeddings)):
+            print("Warning: Found NaN or infinite values in achiever embeddings. Cleaning...")
+            # Replace NaN with 0 and clip infinite values
+            achiever_embeddings = np.nan_to_num(achiever_embeddings, nan=0.0, posinf=1e10, neginf=-1e10)
         pca = PCA(n_components=2)
         embeddings_pca = pca.fit_transform(achiever_embeddings)
 
@@ -2038,6 +2063,11 @@ def _plot_mental_agent_based_embeddings(
     # PCA visualization
     if embeddings.shape[1] > 2:
         print("Computing PCA for mental embeddings...")
+        # Check for NaN or infinite values
+        if np.any(np.isnan(embeddings)) or np.any(np.isinf(embeddings)):
+            print("Warning: Found NaN or infinite values in embeddings. Cleaning...")
+            # Replace NaN with 0 and clip infinite values
+            embeddings = np.nan_to_num(embeddings, nan=0.0, posinf=1e10, neginf=-1e10)
         pca = PCA(n_components=2)
         embeddings_pca = pca.fit_transform(embeddings)
 
@@ -2129,6 +2159,11 @@ def _plot_mental_goal_based_embeddings(
     # PCA visualization
     if embeddings.shape[1] > 2:
         print("Computing PCA for mental embeddings...")
+        # Check for NaN or infinite values
+        if np.any(np.isnan(embeddings)) or np.any(np.isinf(embeddings)):
+            print("Warning: Found NaN or infinite values in embeddings. Cleaning...")
+            # Replace NaN with 0 and clip infinite values
+            embeddings = np.nan_to_num(embeddings, nan=0.0, posinf=1e10, neginf=-1e10)
         pca = PCA(n_components=2)
         embeddings_pca = pca.fit_transform(embeddings)
 
@@ -2234,6 +2269,11 @@ def _plot_mental_separate_agent_goal_embeddings(
         # PCA for this agent
         ax_pca = axes[agent_idx, 0]
         if agent_embeddings.shape[1] > 2:
+            # Check for NaN or infinite values
+            if np.any(np.isnan(agent_embeddings)) or np.any(np.isinf(agent_embeddings)):
+                print("Warning: Found NaN or infinite values in agent embeddings. Cleaning...")
+                # Replace NaN with 0 and clip infinite values
+                agent_embeddings = np.nan_to_num(agent_embeddings, nan=0.0, posinf=1e10, neginf=-1e10)
             pca = PCA(n_components=2)
             agent_embeddings_pca = pca.fit_transform(agent_embeddings)
 
@@ -2350,6 +2390,11 @@ def _plot_mental_type_based_embeddings_for_blockers(
     # PCA visualization
     if blocker_embeddings.shape[1] > 2:
         print("Computing PCA for blocker mental types...")
+        # Check for NaN or infinite values
+        if np.any(np.isnan(blocker_embeddings)) or np.any(np.isinf(blocker_embeddings)):
+            print("Warning: Found NaN or infinite values in blocker embeddings. Cleaning...")
+            # Replace NaN with 0 and clip infinite values
+            blocker_embeddings = np.nan_to_num(blocker_embeddings, nan=0.0, posinf=1e10, neginf=-1e10)
         pca = PCA(n_components=2)
         embeddings_pca = pca.fit_transform(blocker_embeddings)
 
@@ -2458,6 +2503,11 @@ def _plot_mental_type_based_embeddings_for_achiever(
     # PCA visualization
     if achiever_embeddings.shape[1] > 2:
         print("Computing PCA for achiever mental types...")
+        # Check for NaN or infinite values
+        if np.any(np.isnan(achiever_embeddings)) or np.any(np.isinf(achiever_embeddings)):
+            print("Warning: Found NaN or infinite values in achiever embeddings. Cleaning...")
+            # Replace NaN with 0 and clip infinite values
+            achiever_embeddings = np.nan_to_num(achiever_embeddings, nan=0.0, posinf=1e10, neginf=-1e10)
         pca = PCA(n_components=2)
         embeddings_pca = pca.fit_transform(achiever_embeddings)
 
@@ -2590,6 +2640,11 @@ def plot_second_belief_embeddings_by_agent(embeddings, agent_labels, goal_labels
     fig, axes = plt.subplots(1, 2, figsize=(20, 6))
     
     # PCA
+    # Check for NaN or infinite values
+    if np.any(np.isnan(embeddings)) or np.any(np.isinf(embeddings)):
+        print("Warning: Found NaN or infinite values in embeddings. Cleaning...")
+        # Replace NaN with 0 and clip infinite values
+        embeddings = np.nan_to_num(embeddings, nan=0.0, posinf=1e10, neginf=-1e10)
     pca = PCA(n_components=2, random_state=42)
     embeddings_pca = pca.fit_transform(embeddings)
     
@@ -2644,6 +2699,11 @@ def plot_second_belief_embeddings_by_goal(embeddings, agent_labels, goal_labels,
     fig, axes = plt.subplots(1, 2, figsize=(20, 6))
     
     # PCA
+    # Check for NaN or infinite values
+    if np.any(np.isnan(embeddings)) or np.any(np.isinf(embeddings)):
+        print("Warning: Found NaN or infinite values in embeddings. Cleaning...")
+        # Replace NaN with 0 and clip infinite values
+        embeddings = np.nan_to_num(embeddings, nan=0.0, posinf=1e10, neginf=-1e10)
     pca = PCA(n_components=2, random_state=42)
     embeddings_pca = pca.fit_transform(embeddings)
     
@@ -2873,15 +2933,32 @@ if __name__ == "__main__":
                 )
                 print("Second belief embedding visualization completed!")
             
-            # Clean up memory
-            del model
-            if test_loader is not None:
-                del test_loader
+            # Clean up memory safely
+            # Move model to CPU before deletion to avoid CUDA memory issues
+            if hasattr(model, 'cpu'):
+                model = model.cpu()
+            
+            # Clear CUDA cache if available
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            
+            # Delete objects in safe order
             if test_loader_second_belief is not None:
                 del test_loader_second_belief
+            if test_loader is not None:
+                del test_loader
             del test_tensors
+            
+            # Delete model last after moving to CPU
+            del model
+            
+            # Garbage collection without forcing
             import gc
             gc.collect()
+            
+            # Final CUDA cleanup
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
         else:
             print("Cannot create embedding visualizations: model loading failed.")
 

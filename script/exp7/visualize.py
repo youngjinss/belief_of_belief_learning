@@ -2630,6 +2630,21 @@ def plot_second_belief_embeddings(
     
     print(f"Second belief embeddings shape: {embeddings.shape}")
     
+    # Debug embeddings quality
+    print(f"Embeddings stats:")
+    print(f"  Mean: {np.mean(embeddings):.6f}")
+    print(f"  Std: {np.std(embeddings):.6f}")
+    print(f"  Min: {np.min(embeddings):.6f}")
+    print(f"  Max: {np.max(embeddings):.6f}")
+    print(f"  NaN count: {np.sum(np.isnan(embeddings))}")
+    print(f"  Inf count: {np.sum(np.isinf(embeddings))}")
+    
+    # Check if embeddings have sufficient variance for visualization
+    if np.std(embeddings) < 1e-8:
+        print("Warning: Second belief embeddings have very low variance. Visualization may not be meaningful.")
+        print("This might indicate that the model's SecondBeliefNet is not properly trained or activated.")
+        return False
+    
     # Create visualizations
     plot_second_belief_embeddings_by_agent(embeddings, agent_labels, goal_labels, config, output_dir, experiment_no)
     plot_second_belief_embeddings_by_goal(embeddings, agent_labels, goal_labels, config, output_dir, experiment_no)
@@ -2645,42 +2660,65 @@ def plot_second_belief_embeddings_by_agent(embeddings, agent_labels, goal_labels
         print("Warning: Found NaN or infinite values in embeddings. Cleaning...")
         # Replace NaN with 0 and clip infinite values
         embeddings = np.nan_to_num(embeddings, nan=0.0, posinf=1e10, neginf=-1e10)
+    
+    # Check variance before PCA
+    if np.var(embeddings) < 1e-10:
+        print("Warning: Embeddings have near-zero variance. PCA may not be meaningful.")
+        # Add small amount of noise to prevent PCA issues
+        embeddings = embeddings + np.random.normal(0, 1e-6, embeddings.shape)
+    
     pca = PCA(n_components=2, random_state=42)
     embeddings_pca = pca.fit_transform(embeddings)
     
     agent_colors = ["blue", "orange"]
     agent_names = ["Achiever", "Blocker"]
     
+    legend_handles = []
     for i, (agent_name, color) in enumerate(zip(agent_names, agent_colors)):
         mask = [label == agent_name for label in agent_labels]
         if any(mask):
-            axes[0].scatter(
+            scatter = axes[0].scatter(
                 embeddings_pca[mask, 0], embeddings_pca[mask, 1],
                 c=color, alpha=0.6, s=50, label=agent_name
             )
+            legend_handles.append(scatter)
     
-    axes[0].set_xlabel(f'PC1 ({pca.explained_variance_ratio_[0]:.2%})')
-    axes[0].set_ylabel(f'PC2 ({pca.explained_variance_ratio_[1]:.2%})')
+    # Safely handle explained variance (might be NaN)
+    var1 = pca.explained_variance_ratio_[0]
+    var2 = pca.explained_variance_ratio_[1]
+    var1_str = f'{var1:.2%}' if not np.isnan(var1) else 'N/A'
+    var2_str = f'{var2:.2%}' if not np.isnan(var2) else 'N/A'
+    
+    axes[0].set_xlabel(f'PC1 ({var1_str})')
+    axes[0].set_ylabel(f'PC2 ({var2_str})')
     axes[0].set_title('Second Belief Embeddings - PCA')
-    axes[0].legend()
+    
+    # Only add legend if we have legend handles
+    if legend_handles:
+        axes[0].legend()
     axes[0].grid(True, alpha=0.3)
     
     # t-SNE
     tsne = TSNE(n_components=2, random_state=42, perplexity=min(30, len(embeddings)//4))
     embeddings_tsne = tsne.fit_transform(embeddings)
     
+    tsne_legend_handles = []
     for i, (agent_name, color) in enumerate(zip(agent_names, agent_colors)):
         mask = [label == agent_name for label in agent_labels]
         if any(mask):
-            axes[1].scatter(
+            scatter = axes[1].scatter(
                 embeddings_tsne[mask, 0], embeddings_tsne[mask, 1],
                 c=color, alpha=0.6, s=50, label=agent_name
             )
+            tsne_legend_handles.append(scatter)
     
     axes[1].set_xlabel('t-SNE Component 1')
     axes[1].set_ylabel('t-SNE Component 2')
     axes[1].set_title('Second Belief Embeddings - t-SNE')
-    axes[1].legend()
+    
+    # Only add legend if we have legend handles
+    if tsne_legend_handles:
+        axes[1].legend()
     axes[1].grid(True, alpha=0.3)
     
     plt.suptitle(f"Second Belief Embeddings by Agent Type (Experiment {experiment_no})", fontsize=16)
@@ -2704,42 +2742,65 @@ def plot_second_belief_embeddings_by_goal(embeddings, agent_labels, goal_labels,
         print("Warning: Found NaN or infinite values in embeddings. Cleaning...")
         # Replace NaN with 0 and clip infinite values
         embeddings = np.nan_to_num(embeddings, nan=0.0, posinf=1e10, neginf=-1e10)
+    
+    # Check variance before PCA
+    if np.var(embeddings) < 1e-10:
+        print("Warning: Embeddings have near-zero variance. PCA may not be meaningful.")
+        # Add small amount of noise to prevent PCA issues
+        embeddings = embeddings + np.random.normal(0, 1e-6, embeddings.shape)
+    
     pca = PCA(n_components=2, random_state=42)
     embeddings_pca = pca.fit_transform(embeddings)
     
     goal_colors = ["red", "green", "blue", "yellow"]
     goal_names = ["Red", "Green", "Blue", "Yellow"]
     
+    legend_handles = []
     for i, (goal_name, color) in enumerate(zip(goal_names, goal_colors)):
         mask = [label == goal_name for label in goal_labels]
         if any(mask):
-            axes[0].scatter(
+            scatter = axes[0].scatter(
                 embeddings_pca[mask, 0], embeddings_pca[mask, 1],
                 c=color, alpha=0.6, s=50, label=goal_name
             )
+            legend_handles.append(scatter)
     
-    axes[0].set_xlabel(f'PC1 ({pca.explained_variance_ratio_[0]:.2%})')
-    axes[0].set_ylabel(f'PC2 ({pca.explained_variance_ratio_[1]:.2%})')
+    # Safely handle explained variance (might be NaN)
+    var1 = pca.explained_variance_ratio_[0]
+    var2 = pca.explained_variance_ratio_[1]
+    var1_str = f'{var1:.2%}' if not np.isnan(var1) else 'N/A'
+    var2_str = f'{var2:.2%}' if not np.isnan(var2) else 'N/A'
+    
+    axes[0].set_xlabel(f'PC1 ({var1_str})')
+    axes[0].set_ylabel(f'PC2 ({var2_str})')
     axes[0].set_title('Second Belief Embeddings - PCA')
-    axes[0].legend()
+    
+    # Only add legend if we have legend handles
+    if legend_handles:
+        axes[0].legend()
     axes[0].grid(True, alpha=0.3)
     
     # t-SNE
     tsne = TSNE(n_components=2, random_state=42, perplexity=min(30, len(embeddings)//4))
     embeddings_tsne = tsne.fit_transform(embeddings)
     
+    tsne_legend_handles = []
     for i, (goal_name, color) in enumerate(zip(goal_names, goal_colors)):
         mask = [label == goal_name for label in goal_labels]
         if any(mask):
-            axes[1].scatter(
+            scatter = axes[1].scatter(
                 embeddings_tsne[mask, 0], embeddings_tsne[mask, 1],
                 c=color, alpha=0.6, s=50, label=goal_name
             )
+            tsne_legend_handles.append(scatter)
     
     axes[1].set_xlabel('t-SNE Component 1')
     axes[1].set_ylabel('t-SNE Component 2')
     axes[1].set_title('Second Belief Embeddings - t-SNE')
-    axes[1].legend()
+    
+    # Only add legend if we have legend handles
+    if tsne_legend_handles:
+        axes[1].legend()
     axes[1].grid(True, alpha=0.3)
     
     plt.suptitle(f"Second Belief Embeddings by Goal Type (Experiment {experiment_no})", fontsize=16)

@@ -1,11 +1,12 @@
 from ..minigrid import *
 from ..register import register
+from .base_v2 import BaseEnvV2
 import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
 
 
-class AchieverBlockerEnvV2(MiniGridEnv):
+class AchieverBlockerEnvV2(BaseEnvV2):
     """
     2-agent environment with achiever and blocker agents.
     Version 2: Adds support for partial observation mode.
@@ -20,8 +21,6 @@ class AchieverBlockerEnvV2(MiniGridEnv):
                  observability="full", partial_view_size=7):
         self.size = size
         self.max_keys = max_keys
-        self.observability = observability
-        self.partial_view_size = partial_view_size
 
         # Default preference and cost if not provided
         if preference is None:
@@ -62,19 +61,12 @@ class AchieverBlockerEnvV2(MiniGridEnv):
         if max_steps is None:
             max_steps = 4 * size**2
 
-        # Set observation parameters based on observability mode
-        if observability == "partial":
-            see_through_walls = False
-            agent_view_size = partial_view_size
-        else:  # full
-            see_through_walls = True
-            agent_view_size = size
-
+        # Call base class with observation parameters
         super().__init__(
             grid_size=size,
             max_steps=max_steps,
-            see_through_walls=see_through_walls,
-            agent_view_size=agent_view_size,
+            observability=observability,
+            partial_view_size=partial_view_size
         )
 
         # Separate action spaces for achiever and blocker
@@ -199,25 +191,28 @@ class AchieverBlockerEnvV2(MiniGridEnv):
         self.mission = f"achiever: collect {self.target_door_color} key and open {self.target_door_color} door"
 
     def _place_door_on_wall(self, color, existing_doors):
-        """Place a door on a wall position"""
-        walls = []
-        for x in range(1, self.width - 1):
-            walls.append((x, 0))  # Top wall
-            walls.append((x, self.height - 1))  # Bottom wall
-        for y in range(1, self.height - 1):
-            walls.append((0, y))  # Left wall
-            walls.append((self.width - 1, y))  # Right wall
-        
-        # Filter out positions with existing doors
-        available_walls = [w for w in walls if w not in existing_doors]
-        
-        # Randomly select a wall position
-        door_pos = available_walls[self._rand_int(0, len(available_walls))]
-        
+        """Place door at the center of a wall (same as V1)"""
+        width, height = self.grid.width, self.grid.height
+
+        # Calculate center positions for each wall
+        center_positions = [
+            (width // 2, 0),           # Top wall center
+            (width // 2, height - 1),  # Bottom wall center
+            (0, height // 2),          # Left wall center
+            (width - 1, height // 2),  # Right wall center
+        ]
+
+        # Filter out existing positions
+        available_positions = [
+            pos for pos in center_positions if pos not in existing_doors
+        ]
+
+        # Choose random position from available centers
+        door_pos = self._rand_elem(available_positions)
+
         # Place door
-        door = Door(color, is_locked=True)
-        self.grid.set(*door_pos, door)
-        
+        self.grid.set(*door_pos, Door(color, is_locked=True))
+
         return door_pos
 
     def step(self, actions):
@@ -419,12 +414,6 @@ class AchieverBlockerEnvV2(MiniGridEnv):
                     wall_positions.append((x, y))
         return wall_positions
 
-    def _get_observations(self):
-        """Generate observations for both agents"""
-        if self.observability == "partial":
-            return self._get_partial_observations()
-        else:
-            return self._get_full_observations()
     
     def _get_full_observations(self):
         """Generate full observations for both agents (original implementation)"""

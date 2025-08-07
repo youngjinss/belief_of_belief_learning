@@ -1,9 +1,10 @@
 from ..minigrid import *
 from ..register import register
+from .base_v2 import BaseEnvV2
 import numpy as np
 
 
-class KeyDoorEnvV2(MiniGridEnv):
+class KeyDoorEnvV2(BaseEnvV2):
     """
     Environment with 4 keys and 4 doors where agent must collect keys to open doors.
     Agent has preferences and costs for different colored doors.
@@ -14,8 +15,6 @@ class KeyDoorEnvV2(MiniGridEnv):
                  observability="full", partial_view_size=7):
         self.size = size
         self.max_keys = max_keys
-        self.observability = observability
-        self.partial_view_size = partial_view_size
 
         # Default preference and cost if not provided
         if preference is None:
@@ -33,6 +32,10 @@ class KeyDoorEnvV2(MiniGridEnv):
         self.agent_keys = []
         self.target_door_color = None
         
+        # Storage for efficient position lookup (like AchieverBlocker)
+        self.door_positions = {}  # color -> (x, y) position
+        self.key_positions = {}   # color -> (x, y) position (None if consumed)
+        
         # Track state changes for compatibility with AchieverBlocker
         self.last_door_opened = None  # color of last door opened
         self.last_key_consumed = None  # color of last key consumed
@@ -41,19 +44,12 @@ class KeyDoorEnvV2(MiniGridEnv):
         if max_steps is None:
             max_steps = 4 * size**2
 
-        # Set observation parameters based on observability mode
-        if observability == "partial":
-            see_through_walls = False
-            agent_view_size = partial_view_size
-        else:  # full
-            see_through_walls = True
-            agent_view_size = size
-
+        # Call base class with observation parameters
         super().__init__(
             grid_size=size,
             max_steps=max_steps,
-            see_through_walls=see_through_walls,
-            agent_view_size=agent_view_size,
+            observability=observability,
+            partial_view_size=partial_view_size
         )
 
         # Use standard MiniGrid actions: up=0, right=1, down=2, left=3, stay=4, pickup=5, toggle=6
@@ -71,6 +67,8 @@ class KeyDoorEnvV2(MiniGridEnv):
         self.agent_keys = []
         self.last_door_opened = None
         self.last_key_consumed = None
+        self.door_positions = {}
+        self.key_positions = {}
 
         # Generate 4 keys and 4 doors with matching colors
         key_positions = []
@@ -86,10 +84,16 @@ class KeyDoorEnvV2(MiniGridEnv):
                 key, reject_fn=lambda env, pos: tuple(pos) in key_positions
             )
             key_positions.append(tuple(key_pos))
+            
+            # Store key position for efficient lookup
+            self.key_positions[color] = tuple(key_pos)
 
             # Place door on walls
             door_pos = self._place_door_on_wall(color, door_positions)
             door_positions.append(door_pos)
+            
+            # Store door position for efficient lookup
+            self.door_positions[color] = door_pos
             
             # Make doors overlappable if agent has the key
             door = self.grid.get(*door_pos)
@@ -111,25 +115,28 @@ class KeyDoorEnvV2(MiniGridEnv):
         self.mission = f"collect {self.target_door_color} key and open {self.target_door_color} door"
 
     def _place_door_on_wall(self, color, existing_doors):
-        """Place a door on a wall position"""
-        walls = []
-        for x in range(1, self.width - 1):
-            walls.append((x, 0))  # Top wall
-            walls.append((x, self.height - 1))  # Bottom wall
-        for y in range(1, self.height - 1):
-            walls.append((0, y))  # Left wall
-            walls.append((self.width - 1, y))  # Right wall
-        
-        # Filter out positions with existing doors
-        available_walls = [w for w in walls if w not in existing_doors]
-        
-        # Randomly select a wall position
-        door_pos = available_walls[self._rand_int(0, len(available_walls))]
-        
+        """Place door at the center of a wall (same as V1)"""
+        width, height = self.grid.width, self.grid.height
+
+        # Calculate center positions for each wall
+        center_positions = [
+            (width // 2, 0),           # Top wall center
+            (width // 2, height - 1),  # Bottom wall center
+            (0, height // 2),          # Left wall center
+            (width - 1, height // 2),  # Right wall center
+        ]
+
+        # Filter out existing positions
+        available_positions = [
+            pos for pos in center_positions if pos not in existing_doors
+        ]
+
+        # Choose random position from available centers
+        door_pos = self._rand_elem(available_positions)
+
         # Place door
-        door = Door(color, is_locked=True)
-        self.grid.set(*door_pos, door)
-        
+        self.grid.set(*door_pos, Door(color, is_locked=True))
+
         return door_pos
 
     def reset(self, **kwargs):
@@ -159,11 +166,11 @@ class KeyDoorEnvV2(MiniGridEnv):
         obs, reward, done, stuck, _ = super().step(action)
         
         # Handle auto pickup of keys when stepping on them
-        key_reward = self._auto_pickup_key(self.agent_pos)
+        key_reward = self._auto_pickup_key()
         reward += key_reward
         
         # Handle auto open door when stepping on it with key
-        door_reward = self._auto_open_door(self.agent_pos)
+        door_reward = self._auto_open_door()
         reward += door_reward
         
         # Check termination
@@ -181,9 +188,9 @@ class KeyDoorEnvV2(MiniGridEnv):
         
         return obs_dict, reward, terminated, truncated, info
 
-    def _auto_pickup_key(self, agent_pos):
+    def _auto_pickup_key(self):
         """Auto pickup key when stepping on it"""
-        obj = self.grid.get(*agent_pos)
+        obj = self.grid.get(*self.agent_pos)
         if isinstance(obj, Key):
             if len(self.agent_keys) < self.max_keys:
                 key_color = obj.color
@@ -192,6 +199,8 @@ class KeyDoorEnvV2(MiniGridEnv):
                 
                 # Track state change
                 self.last_key_consumed = key_color
+                # Update stored position (mark as consumed)
+                self.key_positions[key_color] = None
                 
                 if key_color == self.target_door_color:
                     return 0.5
@@ -199,9 +208,9 @@ class KeyDoorEnvV2(MiniGridEnv):
                     return -self.cost[key_color]
         return 0
 
-    def _auto_open_door(self, agent_pos):
+    def _auto_open_door(self):
         """Auto open door when stepping on it and having the key"""
-        obj = self.grid.get(*agent_pos)
+        obj = self.grid.get(*self.agent_pos)
 
         if isinstance(obj, Door) and obj.is_locked:
             door_color = obj.color
@@ -221,34 +230,17 @@ class KeyDoorEnvV2(MiniGridEnv):
         return 0
 
     def _get_key_positions(self):
-        """Get key positions with their colors"""
-        key_positions = {}
-        for x in range(self.grid.width):
-            for y in range(self.grid.height):
-                obj = self.grid.get(x, y)
-                if obj is not None and obj.type == "key":
-                    key_positions[obj.color] = (x, y)
-        return key_positions
+        """Get key positions with their colors (optimized with stored positions)"""
+        # Return only non-consumed keys
+        return {color: pos for color, pos in self.key_positions.items() if pos is not None}
 
     def _get_door_positions_with_colors(self):
-        """Get door positions with their colors"""
-        door_positions = {}
-        for x in range(self.grid.width):
-            for y in range(self.grid.height):
-                obj = self.grid.get(x, y)
-                if obj is not None and obj.type == "door":
-                    door_positions[obj.color] = (x, y)
-        return door_positions
+        """Get door positions with their colors (optimized with stored positions)"""
+        return self.door_positions.copy()
     
     def _get_door_positions(self):
-        """Get all door positions"""
-        door_positions = []
-        for x in range(self.grid.width):
-            for y in range(self.grid.height):
-                obj = self.grid.get(x, y)
-                if obj is not None and obj.type == "door":
-                    door_positions.append((x, y))
-        return door_positions
+        """Get all door positions (optimized with stored positions)"""
+        return list(self.door_positions.values())
 
     def _get_wall_positions(self):
         """Get all wall positions"""
@@ -260,12 +252,6 @@ class KeyDoorEnvV2(MiniGridEnv):
                     wall_positions.append((x, y))
         return wall_positions
 
-    def _get_observations(self):
-        """Generate observations based on observability mode"""
-        if self.observability == "partial":
-            return self._get_partial_observations()
-        else:
-            return self._get_full_observations()
     
     def _get_full_observations(self):
         """Generate full observations (original implementation)"""

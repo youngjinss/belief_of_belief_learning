@@ -302,6 +302,70 @@ python script/exp8/evaluate.py --compare_models baseline enhanced
 - Study computational requirements of second-order belief modeling
 - Investigate scalability to higher-order beliefs (third-order, etc.)
 
+## V2 Environment Integration and Optimization
+
+### Environment Version Compatibility Analysis
+
+During exp8 integration, a comprehensive analysis was performed to ensure V2 environments (`achiever_blocker_v2.py`, `keydoor_v2.py`) are logically identical to V1 versions except for partial observation capabilities.
+
+#### Issues Identified and Fixed
+
+**1. Door Placement Algorithm Inconsistency**
+- **Problem**: V2 environments used different door placement logic than V1
+  - V1: Places doors only at 4 fixed wall center positions
+  - V2: Places doors at any available wall position (much more randomization)
+- **Impact**: Different game difficulty and training data distribution
+- **Solution**: ✅ Updated both V2 environments to use V1's center-only placement algorithm
+
+**2. Method Signature Inconsistency (KeyDoor only)**
+- **Problem**: KeyDoor V1 vs V2 had incompatible method signatures
+  - V1: `_auto_pickup_key()`, `_auto_open_door()` - use `self.agent_pos`
+  - V2: `_auto_pickup_key(agent_pos)`, `_auto_open_door(agent_pos)` - take position parameter
+- **Impact**: Environments not drop-in compatible
+- **Solution**: ✅ Updated KeyDoor V2 to match V1 signatures (AchieverBlocker was already consistent)
+
+**3. Performance Optimization Opportunities**
+- **Problem**: KeyDoor V2 used inefficient grid scanning for position lookups
+- **Solution**: ✅ Added position storage (`self.door_positions`, `self.key_positions`) like AchieverBlocker
+
+#### Implemented Optimizations
+
+**1. Shared Base Class Architecture**
+```python
+# Created BaseEnvV2 for code reuse
+class BaseEnvV2(MiniGridEnv):
+    def _get_observations(self):
+        if self.observability == "partial":
+            return self._get_partial_observations()
+        else:
+            # Skip visibility computation in full mode
+            return self._get_full_observations()
+```
+
+**2. Position Storage Optimization**
+```python
+# Added to KeyDoor V2 (AchieverBlocker already had this)
+self.door_positions = {}  # color -> (x, y) position
+self.key_positions = {}   # color -> (x, y) position (None if consumed)
+
+def _get_key_positions(self):
+    # Efficient lookup instead of grid scanning
+    return {color: pos for color, pos in self.key_positions.items() if pos is not None}
+```
+
+**3. Optimized Observation Routing**
+- Full observation mode skips unnecessary visibility computation
+- Partial observation mode uses shared filtering logic from base class
+
+#### Final V2 Environment State
+
+✅ **Logical Compatibility**: V1 and V2 are now identical except for partial observation  
+✅ **Performance**: V2 includes optimized position storage and observation routing  
+✅ **Code Organization**: Shared BaseEnvV2 eliminates duplication  
+✅ **Drop-in Replacement**: V2 can replace V1 with added partial observation capability  
+
+The V2 environments are now ready for integration into exp8 scripts with full backward compatibility and enhanced partial observation support.
+
 ## Acknowledgments
 
 Built upon the exp6 unified single/multi-agent framework, extending it to include second-order belief modeling for enhanced theory of mind capabilities in competitive multi-agent environments.

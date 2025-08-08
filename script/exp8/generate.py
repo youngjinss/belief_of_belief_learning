@@ -37,20 +37,16 @@ from lib.env.gym_minigrid.envs.keydoor_v2 import (
     KeyDoor9x9EnvV2,
     KeyDoor11x11EnvV2,
 )
-from script.exp8.achievers import (
-    AStarAgent,
-    RandomAgent as AchieverRandomAgent,
-    Level0ValueAchiever,
-    Level1ValueAchiever,
-)
-from script.exp8.blockers import (
-    RandomAgent as BlockerRandomAgent,
-    GoalDirectAgent as BlockerGoalDirectAgent,
-    RandomlySelectedAgent as BlockerRandomlySelectedAgent,
-    RuleBasedAgent as BlockerRuleBasedAgent,
-    Level0ValueBlocker,
-    Level1ValueBlocker,
-)
+from script.exp8.agents.achiever.astar import AStarAgent
+from script.exp8.agents.achiever.random import RandomAgent as AchieverRandomAgent
+from script.exp8.agents.achiever.level0value import Level0ValueAchiever
+from script.exp8.agents.achiever.level1value import Level1ValueAchiever
+from script.exp8.agents.blocker.random import RandomAgent as BlockerRandomAgent
+from script.exp8.agents.blocker.goaldirected import GoalDirectAgent as BlockerGoalDirectAgent
+from script.exp8.agents.blocker.randomlyselect import RandomlySelectedAgent as BlockerRandomlySelectedAgent
+from script.exp8.agents.blocker.rulebased import RuleBasedAgent as BlockerRuleBasedAgent
+from script.exp8.agents.blocker.level0value import Level0ValueBlocker
+from script.exp8.agents.blocker.level1value import Level1ValueBlocker
 from script.exp8.config import Config
 
 # Set seed using Config default value

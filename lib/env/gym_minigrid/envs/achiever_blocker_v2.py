@@ -52,6 +52,8 @@ class AchieverBlockerEnvV2(BaseEnvV2):
         self.keys_by_color = {}   # color -> key_obj (None if consumed)
         self.door_positions = {}  # color -> (x, y) position
         self.key_positions = {}   # color -> (x, y) position (None if consumed)
+        self.wall_positions = []  # Cached wall positions
+        self.position_to_door_color = {}  # (x, y) -> door_color for fast lookup
         
         # Track state changes
         self.last_door_opened = None  # color of last door opened
@@ -143,6 +145,8 @@ class AchieverBlockerEnvV2(BaseEnvV2):
         self.keys_by_color = {}
         self.door_positions = {}
         self.key_positions = {}
+        self.wall_positions = []
+        self.position_to_door_color = {}
 
         # Generate 4 keys and 4 doors with matching colors
         key_positions = []
@@ -171,6 +175,7 @@ class AchieverBlockerEnvV2(BaseEnvV2):
             door = self.grid.get(*door_pos)
             self.doors_by_color[color] = door
             self.door_positions[color] = door_pos
+            self.position_to_door_color[tuple(door_pos)] = color  # Add reverse lookup with tuple conversion
             
             # Make doors overlappable for achiever if they have the key
             if isinstance(door, Door):
@@ -186,6 +191,9 @@ class AchieverBlockerEnvV2(BaseEnvV2):
 
         # Set target door based on highest preference
         self.target_door_color = max(self.preference, key=self.preference.get)
+        
+        # Cache wall positions after grid generation
+        self._cache_wall_positions()
 
         # Generate mission
         self.mission = f"achiever: collect {self.target_door_color} key and open {self.target_door_color} door"
@@ -214,6 +222,15 @@ class AchieverBlockerEnvV2(BaseEnvV2):
         self.grid.set(*door_pos, Door(color, is_locked=True))
 
         return door_pos
+    
+    def _cache_wall_positions(self):
+        """Cache wall positions during grid generation to avoid repeated scanning"""
+        self.wall_positions = []
+        for x in range(self.grid.width):
+            for y in range(self.grid.height):
+                obj = self.grid.get(x, y)
+                if obj is not None and obj.type == "wall":
+                    self.wall_positions.append((x, y))
 
     def step(self, actions):
         """Execute actions for both agents simultaneously"""
@@ -253,13 +270,24 @@ class AchieverBlockerEnvV2(BaseEnvV2):
         door_reward = self._auto_open_door(self.achiever_pos)
         achiever_reward += door_reward
         
-        # Blocker reward (positive for blocking achiever from target door)
+        # Handle blocker breaking doors (action 5)
+        blocker_broke_door = False
         blocker_reward = 0
-        if np.array_equal(self.blocker_pos, self.door_positions.get(self.target_door_color, [-1, -1])):
-            blocker_reward = 0.1  # Small reward for blocking target door
+        if blocker_action == 5:
+            # Check if blocker is at a door position using fast lookup
+            blocker_pos_tuple = tuple(self.blocker_pos)
+            door_color = self.position_to_door_color.get(blocker_pos_tuple)
+            if door_color is not None:
+                # Blocker successfully breaks the door
+                blocker_broke_door = True
+                blocker_reward = 1.0  # Large reward for breaking door
+        else:
+            # Regular blocker reward (positive for blocking achiever from target door)
+            if np.array_equal(self.blocker_pos, self.door_positions.get(self.target_door_color, [-1, -1])):
+                blocker_reward = 0.1  # Small reward for blocking target door
         
-        # Check termination - only end when target door is opened
-        terminated = (door_reward > 0 and self.last_door_opened == self.target_door_color)
+        # Check termination - end when target door is opened OR blocker breaks any door
+        terminated = (door_reward > 0 and self.last_door_opened == self.target_door_color) or blocker_broke_door
         truncated = False
         
         # Update step count
@@ -406,14 +434,8 @@ class AchieverBlockerEnvV2(BaseEnvV2):
         return self.door_positions.get(self.target_door_color, None)
     
     def _get_wall_positions(self):
-        """Get all wall positions"""
-        wall_positions = []
-        for x in range(self.grid.width):
-            for y in range(self.grid.height):
-                obj = self.grid.get(x, y)
-                if obj is not None and obj.type == "wall":
-                    wall_positions.append((x, y))
-        return wall_positions
+        """Get all wall positions (optimized with caching)"""
+        return self.wall_positions
 
     
     def _get_full_observations(self):

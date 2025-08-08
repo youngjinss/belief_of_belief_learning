@@ -304,8 +304,85 @@ python script/exp8/evaluate.py --compare_models baseline enhanced
     - **Strategy**: "If located at any door when having an inferred target, break it" - simplified approach as requested
   - **BaseValueAgent Exploration Improvements**: Enhanced clockwise exploration to handle edge cases
     - Fixed `_get_clockwise_direction()` to verify new direction is walkable before returning it
-    - Fixed `_find_preferred_targets()` to properly consider already collected keys in target selection
+    - **Fixed `_find_preferred_targets()` to properly consider already collected keys in target selection
   - **Debug Infrastructure Cleanup**: Removed all debug print statements from script/exp8/*.py files while preserving functional prints in generate.py
+- **v2.4** (2025-08-08): Major codebase refactoring - Agent architecture reorganization
+  - **Agent Code Reorganization**: Refactored monolithic agent files into organized directory structure for better maintainability and modularity
+    - **Old Structure**: `script/exp8/{achievers.py, blockers.py, value_agent.py}`
+    - **New Structure**: `script/exp8/agents/{achiever/, blocker/, value_agent.py}`
+  - **Achiever Agents Separated**:
+    - `agents/achiever/astar.py` - AStarAgent implementation
+    - `agents/achiever/random.py` - RandomAgent implementation  
+    - `agents/achiever/level0value.py` - Level0ValueAchiever implementation
+    - `agents/achiever/level1value.py` - Level1ValueAchiever implementation
+  - **Blocker Agents Separated**:
+    - `agents/blocker/random.py` - RandomAgent implementation
+    - `agents/blocker/randomlyselect.py` - RandomlySelectedAgent implementation
+    - `agents/blocker/goaldirected.py` - GoalDirectAgent implementation
+    - `agents/blocker/rulebased.py` - RuleBasedAgent implementation
+    - `agents/blocker/level0value.py` - Level0ValueBlocker implementation
+    - `agents/blocker/level1value.py` - Level1ValueBlocker implementation
+  - **Centralized Base Class**: Moved `value_agent.py` to `agents/` directory as shared base class for all value-based agents
+  - **Updated Import Paths**: All imports in `generate.py` and other scripts updated to use new modular structure
+  - **Backward Compatibility**: All agent functionality remains identical - only organizational improvements
+  - **Testing Verification**: ✅ Confirmed refactored code works correctly with 9x9 partial observation test run
+
+## Agent Architecture (v2.4)
+
+The exp8 codebase has been refactored into a modular agent architecture for better maintainability and organization:
+
+### Directory Structure
+```
+script/exp8/
+├── agents/
+│   ├── __init__.py
+│   ├── value_agent.py              # BaseValueAgent - shared base class
+│   ├── achiever/
+│   │   ├── __init__.py
+│   │   ├── astar.py               # AStarAgent - A* pathfinding
+│   │   ├── random.py              # RandomAgent - random exploration
+│   │   ├── level0value.py         # Level0ValueAchiever - value iteration
+│   │   └── level1value.py         # Level1ValueAchiever - value iteration + deception
+│   └── blocker/
+│       ├── __init__.py
+│       ├── random.py              # RandomAgent - random actions
+│       ├── randomlyselect.py      # RandomlySelectedAgent - random door selection
+│       ├── goaldirected.py        # GoalDirectAgent - key observation based
+│       ├── rulebased.py           # RuleBasedAgent - multi-phase strategy
+│       ├── level0value.py         # Level0ValueBlocker - random selection + inference
+│       └── level1value.py         # Level1ValueBlocker - observation + inference
+├── generate.py                     # Updated with new import paths
+├── train.py                        # Neural network training
+├── config.py                       # Configuration settings
+└── README.md                       # This documentation
+```
+
+### Import Structure
+All agent imports have been updated in `generate.py` to use the new modular structure:
+
+```python
+# Achiever agents
+from script.exp8.agents.achiever.astar import AStarAgent
+from script.exp8.agents.achiever.random import RandomAgent as AchieverRandomAgent
+from script.exp8.agents.achiever.level0value import Level0ValueAchiever
+from script.exp8.agents.achiever.level1value import Level1ValueAchiever
+
+# Blocker agents
+from script.exp8.agents.blocker.random import RandomAgent as BlockerRandomAgent
+from script.exp8.agents.blocker.goaldirected import GoalDirectAgent as BlockerGoalDirectAgent
+from script.exp8.agents.blocker.randomlyselect import RandomlySelectedAgent as BlockerRandomlySelectedAgent
+from script.exp8.agents.blocker.rulebased import RuleBasedAgent as BlockerRuleBasedAgent
+from script.exp8.agents.blocker.level0value import Level0ValueBlocker
+from script.exp8.agents.blocker.level1value import Level1ValueBlocker
+```
+
+### Benefits of Refactored Architecture
+- **Modularity**: Each agent is in its own file for easier maintenance
+- **Organization**: Clear separation between achiever and blocker agents
+- **Scalability**: Easy to add new agent types without cluttering existing files
+- **Code Reuse**: Shared BaseValueAgent provides common functionality
+- **Maintainability**: Smaller files are easier to understand and modify
+- **Testing**: Individual agent components can be tested in isolation
 
 ## Agent Strategies for Partial Observation
 

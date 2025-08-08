@@ -579,13 +579,14 @@ class Level0ValueBlocker(BaseValueAgent):
     """
     Level-0 Value-based Blocker Agent for AchieverBlocker environment.
 
-    Strategy (Multi-attempt):
-    1. Select the target color randomly from remaining doors
-    2. Navigate to target door using value iteration planning
-    3. Use break action (5) to attempt breaking
-    4. If game continues (wrong door), select from remaining doors and repeat
+    Strategy (Random Selection with Inference Correction):
+    1. Randomly select target door from discovered doors in memory
+    2. Navigate to target door using value iteration planning  
+    3. Use break action (5) to attempt breaking when at door position
+    4. If game continues (wrong door), try to infer correct target from achiever's keys
+    5. If inference fails, select randomly from remaining untried doors and repeat
 
-    Uses BaseValueAgent planning approach but with RandomlySelectedAgent strategy.
+    Uses BaseValueAgent planning with random door selection and inference-based correction after failures.
     """
 
     def __init__(
@@ -601,7 +602,7 @@ class Level0ValueBlocker(BaseValueAgent):
         """
         Initialize Level-0 value-based blocker agent.
         """
-        # Initialize base class
+        # Initialize base class with blocker role
         super().__init__(
             observability=observability,
             movement_cost=movement_cost,
@@ -610,6 +611,7 @@ class Level0ValueBlocker(BaseValueAgent):
             gamma=gamma,
             temperature=temperature,
             q_value_clip=q_value_clip,
+            role="blocker",
         )
 
         # Blocker-specific attributes
@@ -656,78 +658,124 @@ class Level0ValueBlocker(BaseValueAgent):
         # Update blocker-specific state
         self.blocker_pos = self.agent_pos
         self.achiever_pos = self._get_opponent_position(obs)
+        # Set opponent_pos for base class target finding
+        self.opponent_pos = self.achiever_pos
 
     def get_action(self, obs):
         """
-        Level0ValueBlocker with inference-based strategy:
+        Level0ValueBlocker with random selection strategy:
         
-        1. If blocker is at inferred target door, choose "broken" action (exploration_mode = False)
-        2. If game doesn't end after break attempt, randomly select another color:
-           2-1. If selected color is not in obs/memory, exploration_mode = True  
-           2-2. If selected color is in obs/memory, use value iteration
-        3. If game ends, done
+        - Randomly select doors from discovered doors
+        - Navigate to selected door and attempt break action  
+        - After failed attempt, infer correct target from achiever's keys
+        - Mark failed doors and never retry them
         """
         if obs is None:
             return 4  # Stay if no observation
 
-        # Update internal state from observations
+        # Update internal state from observations  
         self.update_observation(obs)
 
         # Check if we just attempted to break and game is still continuing
         if self.just_attempted_break:
             # Game didn't end, so we broke the wrong door
-            # Mark current target as tried and select new target
+            # Mark current target as tried
             if self.target_inferred_color:
                 self.tried_doors.add(self.target_inferred_color)
-            self._reset_for_new_attempt()
+            
+            # After failed attempt, try to infer correct target from achiever's keys
+            inferred_target = self._infer_achiever_target(obs)
+            if inferred_target and inferred_target not in self.tried_doors:
+                # Use inference to correct our target selection
+                self.target_inferred_color = inferred_target
+                if inferred_target in self.memory['door_positions']:
+                    self.target_door_pos = self.memory['door_positions'][inferred_target]
+                    self.target_selected = True
+                    if os.getenv('DEBUG_MODE'):
+                        print(f"DEBUG: After failed attempt, inferred correct target: {inferred_target}")
+                else:
+                    self._reset_for_new_attempt()
+            else:
+                # No valid inference available, select randomly from remaining doors
+                self._reset_for_new_attempt()
+            
             self.just_attempted_break = False
 
-        # Step 1: Try to infer target from achiever's behavior first
-        inferred_target = self._infer_achiever_target(obs)
-        
-        # Select target door (inference-based with fallback to random)
-        if not self.target_selected:
-            self._select_target_door_with_inference(inferred_target)
+        # DEBUG: Print relevant info
+        if os.getenv('DEBUG_MODE'):
+            obs_blocker_pos = obs.get('blocker_pos', None) if obs else None
+            print(f"DEBUG: Level0ValueBlocker self.blocker_pos={tuple(self.blocker_pos) if self.blocker_pos else None}, obs_blocker_pos={obs_blocker_pos}")
+            if obs and "achiever_keys" in obs:
+                print(f"DEBUG: achiever_keys = {obs['achiever_keys']}")
 
-        # If no target selected and no doors discovered, explore
-        if not self.target_selected:
-            discovered_doors = set(self.memory['door_positions'].keys())
-            if not discovered_doors:
-                return self._explore_action()
+        # Check if we're at a door position and should break it
+        should_check_door_breaking = True  # Level0 always checks door breaking when at door position
+        
+        if should_check_door_breaking:
+            # Use position from obs to be accurate
+            if obs and "blocker_pos" in obs:
+                current_pos = tuple(obs["blocker_pos"])
             else:
-                # Select from discovered doors as fallback
-                self._select_random_target_from_discovered(discovered_doors)
-
-        # If still no target, explore more
-        if not self.target_selected:
-            return self._explore_action()
-
-        # Step 1: If we're at the INFERRED TARGET door, break it (exploration_mode = False)
-        inferred_target = self._infer_achiever_target(obs)
-        
-        # Check if we're at a door position that matches the inferred target
-        if inferred_target:
-            current_pos = tuple(self.blocker_pos)
-            door_positions = self.memory.get('door_positions', {})
+                current_pos = tuple(self.blocker_pos) if self.blocker_pos else None
             
-            # Simple approach: if we infer a target and we're at ANY door position, break it
-            # This matches user request: "if located in target door, then choose broken (5)"
-            for color, door_pos in door_positions.items():
-                if current_pos == tuple(door_pos):
-                    # We're at a door! Break it regardless of color match
-                    self.just_attempted_break = True
-                    self.last_action = 5
-                    return 5  # Break action
+            if current_pos and os.getenv('DEBUG_MODE'):
+                print(f"DEBUG: Checking door at position {current_pos}")
+            
+            # Check if we're standing on a door directly by examining door positions from observations
+            env_door_positions = None
+            if obs and "door_positions" in obs:
+                # Full observation mode
+                env_door_positions = obs["door_positions"]
+                if os.getenv('DEBUG_MODE'):
+                    print(f"DEBUG: Using full obs door_positions = {env_door_positions}")
+            elif obs and "blocker_visible_doors" in obs:
+                # Partial observation mode - use visible doors
+                env_door_positions = obs["blocker_visible_doors"]
+                if os.getenv('DEBUG_MODE'):
+                    print(f"DEBUG: Using partial obs blocker_visible_doors = {env_door_positions}")
+            
+            if env_door_positions and current_pos:
+                # Check if current position matches any door position
+                for color, door_pos in env_door_positions.items():
+                    if os.getenv('DEBUG_MODE'):
+                        print(f"DEBUG: Checking if {current_pos} == {tuple(door_pos)} (color {color})")
+                    if current_pos == tuple(door_pos):
+                        # We're standing on a door! Break it (random selection strategy)
+                        if os.getenv('DEBUG_MODE'):
+                            print(f"DEBUG: *** BREAKING DOOR *** at {current_pos} color {color} (random selection)")
+                        self.just_attempted_break = True
+                        self.last_action = 5
+                        return 5  # Break action
+            else:
+                if os.getenv('DEBUG_MODE'):
+                    print(f"DEBUG: No door positions available in observations")
+            
+            # Fallback: check memory-based door positions
+            door_positions = self.memory.get('door_positions', {})
+            if os.getenv('DEBUG_MODE'):
+                print(f"DEBUG: Fallback memory door_positions = {door_positions}")
+            if current_pos:
+                for color, door_pos in door_positions.items():
+                    if current_pos == tuple(door_pos):
+                        # We're at a door position in memory! Break it  
+                        if os.getenv('DEBUG_MODE'):
+                            print(f"DEBUG: *** BREAKING DOOR (fallback) *** at {current_pos} color {color} (random selection)")
+                        self.just_attempted_break = True
+                        self.last_action = 5
+                        return 5  # Break action
 
-        # Step 2-1 & 2-2: Navigate to target door using value iteration or explore
-        if self.target_inferred_color and self.target_inferred_color in self.memory['door_positions']:
-            # Target door is in memory, use value iteration (exploration_mode = False)
-            action = self._navigate_with_value_iteration(self.target_door_pos, obs)
-            self.last_action = action
-            return action
-        else:
-            # Target door not in memory, exploration_mode = True
-            return self._explore_action()
+        # Select target door (random selection with inference correction after failure) AFTER door breaking check
+        if not self.target_selected:
+            self._select_target_door_randomly(obs)
+
+        # Set preferred door color for base class target finding
+        if self.target_inferred_color:
+            self._preferred_door_color = self.target_inferred_color
+
+        # Use base class act method for strategy coordination and clockwise exploration
+        action = self.act(obs)
+        self.last_action = action
+        return action
         
     def _infer_achiever_target(self, obs):
         """
@@ -760,85 +808,40 @@ class Level0ValueBlocker(BaseValueAgent):
         
         return None
     
-    def _select_target_door_with_inference(self, inferred_target):
-        """
-        Select target door based on inference first, with fallback to random selection.
-        Implements the strategy: use inference if available, otherwise random.
-        """
-        # Priority 1: Use inference if available and not already tried
-        if (inferred_target and 
-            inferred_target not in self.tried_doors and
-            inferred_target in self.memory['door_positions']):
-            self.target_inferred_color = inferred_target
-            self.target_door_pos = self.memory['door_positions'][inferred_target]
-            self.target_selected = True
-            return
-        
-        # Priority 2: Fallback to random selection from discovered doors
-        discovered_doors = set(self.memory['door_positions'].keys())
-        remaining_doors = list(discovered_doors - self.tried_doors)
-        
-        if remaining_doors:
-            self.target_inferred_color = np.random.choice(remaining_doors)
-            if self.target_inferred_color in self.memory['door_positions']:
-                self.target_door_pos = self.memory['door_positions'][self.target_inferred_color]
-                self.target_selected = True
-        else:
-            self.target_selected = False
 
-    def _select_random_target_from_discovered(self, discovered_doors):
-        """Select target door from discovered doors that haven't been tried"""
-        # Robust checking of input parameters
-        if not isinstance(discovered_doors, set) or not discovered_doors:
-            self.target_selected = False
-            return
-            
-        # Get remaining doors that haven't been tried from discovered doors
+    def _select_target_door_randomly(self, obs):
+        """Select target door color randomly from discovered doors in memory."""
+        # Get doors discovered in memory
+        discovered_doors = set(self.memory['door_positions'].keys())
+        
+        # Get remaining doors that haven't been tried
         remaining_doors = list(discovered_doors - self.tried_doors)
         
         if not remaining_doors:
-            # All discovered doors have been tried, no target can be selected
-            self.target_selected = False
-            return
-            
-        # Randomly select a door color from remaining discovered doors
-        if len(remaining_doors) > 0:
+            # All discovered doors have been tried
+            if len(self.tried_doors) > 0:
+                # Reset tried doors and start over with discovered doors
+                self.tried_doors.clear()
+                remaining_doors = list(discovered_doors)
+            else:
+                # No doors discovered yet, cannot select target
+                self.target_selected = False
+                return
+
+        if remaining_doors:
+            # Randomly select a door color from remaining doors
             self.target_inferred_color = np.random.choice(remaining_doors)
-        else:
-            self.target_selected = False
-            return
-        
-        # Get the position from memory (robust checking)
-        if (self.target_inferred_color in self.memory['door_positions'] and
-            self.memory['door_positions'][self.target_inferred_color] is not None):
             self.target_door_pos = self.memory['door_positions'][self.target_inferred_color]
-            # Mark target as selected
             self.target_selected = True
+            
+            if os.getenv('DEBUG_MODE'):
+                print(f"DEBUG: Randomly selected target door: {self.target_inferred_color} at {self.target_door_pos}")
         else:
-            # Position not available, cannot select target
             self.target_selected = False
 
     def _select_random_target_door(self, obs):
-        """Select target door color randomly from remaining untried doors."""
-        # Get remaining doors that haven't been tried
-        remaining_doors = list(self.available_doors - self.tried_doors)
-
-        if not remaining_doors:
-            # All doors have been tried, reset and start over
-            self.tried_doors.clear()
-            remaining_doors = list(self.available_doors)
-
-        # Randomly select a door color from remaining doors
-        self.target_inferred_color = np.random.choice(remaining_doors)
-
-        # Find the position of the selected door
-        self.target_door_pos = self._find_door_position_from_obs(
-            self.target_inferred_color, obs
-        )
-
-        # Mark target as selected if position is found
-        if self.target_door_pos:
-            self.target_selected = True
+        """Legacy method - redirect to new random selection method."""
+        return self._select_target_door_randomly(obs)
 
     def _reset_for_new_attempt(self):
         """Reset targeting state for a new attempt."""
@@ -928,7 +931,7 @@ class Level1ValueBlocker(BaseValueAgent):
         q_value_clip=100,
     ):
         """Initialize Level-1 value-based blocker agent."""
-        # Initialize base class
+        # Initialize base class with blocker role
         super().__init__(
             observability=observability,
             movement_cost=movement_cost,
@@ -937,6 +940,7 @@ class Level1ValueBlocker(BaseValueAgent):
             gamma=gamma,
             temperature=temperature,
             q_value_clip=q_value_clip,
+            role="blocker",
         )
 
         # Inferred target
@@ -986,6 +990,8 @@ class Level1ValueBlocker(BaseValueAgent):
         # Update blocker-specific state
         self.blocker_pos = self.agent_pos
         self.achiever_pos = self._get_opponent_position(obs)
+        # Set opponent_pos for base class target finding
+        self.opponent_pos = self.achiever_pos
 
     @property
     def target_door_color(self):
@@ -1121,7 +1127,28 @@ class Level1ValueBlocker(BaseValueAgent):
             
         # Check if we have the door position for inferred target
         if self.target_color and self.target_color not in self.memory['door_positions']:
-            # Door not found in memory, switch to exploration mode to identify door positions
+            # Door not found in memory, but check if we're standing on a door first
+            current_pos = tuple(self.blocker_pos)
+            
+            # Check if we're standing on a door directly by examining door positions from observations  
+            # Handle both full observation (door_positions) and partial observation (blocker_visible_doors)
+            env_door_positions = None
+            if obs and "door_positions" in obs:
+                # Full observation mode
+                env_door_positions = obs["door_positions"]
+            elif obs and "blocker_visible_doors" in obs:
+                # Partial observation mode - use visible doors
+                env_door_positions = obs["blocker_visible_doors"]
+            
+            if env_door_positions:
+                # Check if current position matches any door position
+                for color, door_pos in env_door_positions.items():
+                    if current_pos == tuple(door_pos):
+                        # We're standing on a door! Break it when we have an inferred target
+                        self.phase = 3
+                        return 5  # Break action
+            
+            # Door not found in memory and not standing on one, switch to exploration mode
             return self._clockwise_exploration()
             
         # Ensure we have a valid target before proceeding
@@ -1130,7 +1157,28 @@ class Level1ValueBlocker(BaseValueAgent):
             if self.target_color in self.memory['door_positions']:
                 self.target_pos = self.memory['door_positions'][self.target_color]
             else:
-                # Door position not in memory, explore more
+                # Door position not in memory, but check if we're standing on a door
+                current_pos = tuple(self.blocker_pos)
+                
+                # Check if we're standing on a door directly by examining door positions from observations  
+                # Handle both full observation (door_positions) and partial observation (blocker_visible_doors)
+                env_door_positions = None
+                if obs and "door_positions" in obs:
+                    # Full observation mode
+                    env_door_positions = obs["door_positions"]
+                elif obs and "blocker_visible_doors" in obs:
+                    # Partial observation mode - use visible doors
+                    env_door_positions = obs["blocker_visible_doors"]
+                
+                if env_door_positions:
+                    # Check if current position matches any door position
+                    for color, door_pos in env_door_positions.items():
+                        if current_pos == tuple(door_pos):
+                            # We're standing on a door! Break it when we have an inferred target
+                            self.phase = 3
+                            return 5  # Break action
+                
+                # Door position not in memory and not standing on one, explore more
                 return self._clockwise_exploration()
                 
         if self.target_pos is None:

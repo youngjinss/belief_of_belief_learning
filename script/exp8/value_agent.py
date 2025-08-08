@@ -126,6 +126,19 @@ class BaseValueAgent:
         # 2. Find preferred targets
         preferred_targets = self._find_preferred_targets()
         
+        # DEBUG: Print what's happening with Level0ValueAchiever (limit output)  
+        if os.getenv('DEBUG_MODE') and self.role == "achiever":
+            if hasattr(self, 'collected_keys'):
+                if not hasattr(self, '_act_debug_counter'):
+                    self._act_debug_counter = 0
+                self._act_debug_counter += 1
+                if self._act_debug_counter <= 3 or self.collected_keys:  # Print first 3 times or when keys collected
+                    print(f"DEBUG act(): Agent at {agent_pos}, collected_keys={self.collected_keys}, preferred_targets={preferred_targets}")
+                    if self._preferred_door_color:
+                        door_in_memory = self.memory['door_positions'].get(self._preferred_door_color)
+                        print(f"DEBUG act(): Preferred door color={self._preferred_door_color}, door in memory={door_in_memory}")
+                        print(f"DEBUG act(): All doors in memory: {self.memory['door_positions']}")
+        
         # 3. Decide strategy based on preferred targets
         if preferred_targets:
             # Found preferred targets - use value iteration
@@ -138,6 +151,8 @@ class BaseValueAgent:
                 return action
             else:
                 # Value iteration failed, fall back to exploration
+                if os.getenv('DEBUG_MODE') and self.role == "achiever":
+                    print(f"DEBUG act(): Value iteration FAILED for target {target_pos}, falling back to exploration")
                 self.exploration_mode = True
                 return self._explore_action()
         else:
@@ -154,19 +169,32 @@ class BaseValueAgent:
         
         # Check for keys and doors in memory based on agent role and strategy
         if self.role == "achiever":
-            # Achiever strategy: find keys first, then doors
+            # Achiever strategy: prioritize doors when key collected, otherwise target keys
             if hasattr(self, '_preferred_door_color') and self._preferred_door_color:
-                # Look for preferred key first (only if not already collected)
-                key_pos = self.memory['key_positions'].get(self._preferred_door_color)
-                if (key_pos is not None and 
-                    hasattr(self, 'collected_keys') and 
-                    self._preferred_door_color not in self.collected_keys):
-                    preferred_targets.append(key_pos)
+                # Check if target key is already collected
+                has_target_key = (hasattr(self, 'collected_keys') and 
+                                self._preferred_door_color in self.collected_keys)
+                
+                if has_target_key:
+                    # PRIORITY: Target door when key is collected
+                    door_pos = self.memory['door_positions'].get(self._preferred_door_color)
+                    if door_pos is not None:
+                        preferred_targets.append(door_pos)
+                        if os.getenv('DEBUG_MODE'):
+                            print(f"DEBUG _find_preferred_targets: PRIORITY TARGET = door {self._preferred_door_color} at {door_pos} (key collected)")
+                else:
+                    # Target key first when not yet collected
+                    key_pos = self.memory['key_positions'].get(self._preferred_door_color)
+                    if key_pos is not None:
+                        preferred_targets.append(key_pos)
+                        if os.getenv('DEBUG_MODE'):
+                            print(f"DEBUG _find_preferred_targets: targeting key {self._preferred_door_color} at {key_pos}")
                     
-                # Look for preferred door (prioritize if key already collected)
-                door_pos = self.memory['door_positions'].get(self._preferred_door_color)
-                if door_pos is not None:
-                    preferred_targets.append(door_pos)
+                # Add door as fallback target even if key not collected (for exploration)
+                if not preferred_targets:
+                    door_pos = self.memory['door_positions'].get(self._preferred_door_color)
+                    if door_pos is not None:
+                        preferred_targets.append(door_pos)
             else:
                 # Look for any keys/doors if no specific preference
                 for color, pos in self.memory['key_positions'].items():
@@ -226,15 +254,44 @@ class BaseValueAgent:
             
         # Parse structured observation data (for achiever)
         if self.role == "achiever":
+            # DEBUG: Print what observation keys we have (limit output)
+            if os.getenv('DEBUG_MODE'):
+                if not hasattr(self, '_debug_counter'):
+                    self._debug_counter = 0
+                self._debug_counter += 1
+                if self._debug_counter <= 3:  # Only print first 3 times
+                    visible_keys = obs.get('achiever_visible_keys', {})
+                    visible_doors = obs.get('achiever_visible_doors', {})
+                    print(f"DEBUG _update_memory: achiever_visible_keys={visible_keys}, achiever_visible_doors={visible_doors}")
+                
             if 'achiever_visible_keys' in obs and obs['achiever_visible_keys']:
                 for color, pos in obs['achiever_visible_keys'].items():
                     if pos is not None:
                         self.memory['key_positions'][color] = tuple(pos)
+                        if os.getenv('DEBUG_MODE'):
+                            print(f"DEBUG _update_memory: *** SAW KEY {color} at {pos} ***")
                         
             if 'achiever_visible_doors' in obs and obs['achiever_visible_doors']:
                 for color, pos in obs['achiever_visible_doors'].items():
                     if pos is not None:
                         self.memory['door_positions'][color] = tuple(pos)
+                        if os.getenv('DEBUG_MODE'):
+                            print(f"DEBUG _update_memory: *** SAW DOOR {color} at {pos} ***")
+            
+            # Try alternative observation formats
+            if 'key_positions' in obs and obs['key_positions']:
+                for color, pos in obs['key_positions'].items():
+                    if pos is not None:
+                        self.memory['key_positions'][color] = tuple(pos)
+                        if os.getenv('DEBUG_MODE'):
+                            print(f"DEBUG _update_memory: Found key {color} at {pos} via key_positions")
+                            
+            if 'door_positions' in obs and obs['door_positions']:
+                for color, pos in obs['door_positions'].items():
+                    if pos is not None:
+                        self.memory['door_positions'][color] = tuple(pos)
+                        if os.getenv('DEBUG_MODE'):
+                            print(f"DEBUG _update_memory: Found door {color} at {pos} via door_positions")
         
         # Parse structured observation data (for blocker) 
         elif self.role == "blocker":
@@ -276,8 +333,69 @@ class BaseValueAgent:
                     if pos is not None and len(pos) >= 2:
                         self.memory['wall_positions'].add(tuple(pos[:2]))
             
+        # Parse grid-based observations for partial observability (critical fix)
+        if self.observability == "partial" and self.grid is not None:
+            self._parse_grid_observation(agent_pos)
+            
         # Update walkability memory from current grid observation
         self._update_walkability_memory()
+
+    def _parse_grid_observation(self, agent_pos):
+        """Parse current grid observation to extract keys and doors (CRITICAL FIX)"""
+        if self.grid is None or agent_pos is None:
+            return
+            
+        # Get partial view dimensions
+        if hasattr(self.grid, 'width') and hasattr(self.grid, 'height'):
+            grid_width = self.grid.width
+            grid_height = self.grid.height
+        else:
+            # Default partial view size
+            grid_width = grid_height = 5
+            
+        # Calculate world coordinate offset
+        center_x, center_y = agent_pos
+        half_width = grid_width // 2  
+        half_height = grid_height // 2
+        
+        # Scan visible grid for keys and doors
+        for local_x in range(grid_width):
+            for local_y in range(grid_height):
+                # Convert to world coordinates
+                world_x = center_x - half_width + local_x
+                world_y = center_y - half_height + local_y
+                
+                # Skip out of bounds
+                if (self.width is not None and self.height is not None and
+                    (world_x < 0 or world_x >= self.width or world_y < 0 or world_y >= self.height)):
+                    continue
+                    
+                # Get cell from grid
+                cell = self.grid.get(local_x, local_y)
+                if cell is None:
+                    continue
+                    
+                world_pos = (world_x, world_y)
+                
+                # Extract keys and doors
+                if isinstance(cell, Key):
+                    self.memory['key_positions'][cell.color] = world_pos
+                    self.memory['walkable_positions'].add(world_pos)
+                    if os.getenv('DEBUG_MODE'):
+                        print(f"DEBUG _parse_grid_observation: *** FOUND KEY {cell.color} at {world_pos} ***")
+                        
+                elif isinstance(cell, Door):
+                    self.memory['door_positions'][cell.color] = world_pos
+                    self.memory['walkable_positions'].add(world_pos)
+                    if os.getenv('DEBUG_MODE'):
+                        print(f"DEBUG _parse_grid_observation: *** FOUND DOOR {cell.color} at {world_pos} ***")
+                        
+                elif isinstance(cell, Wall):
+                    self.memory['wall_positions'].add(world_pos)
+                    self.memory['unwalkable_positions'].add(world_pos)
+                else:
+                    # Empty or other walkable space
+                    self.memory['walkable_positions'].add(world_pos)
 
     def _parse_partial_observation(self, image, agent_pos):
         """Parse partial observation image to extract keys and doors"""
@@ -421,14 +539,14 @@ class BaseValueAgent:
                             self.memory['unwalkable_positions'].discard(pos_tuple)
     
     def _get_memory_augmented_obs(self, obs):
-        """Combine current observation with memory for complete view"""
+        """Combine current observation with memory for complete view (ENHANCED)"""
         if obs is None:
             return None
             
         # Start with current observation
         augmented_obs = obs.copy()
         
-        # Merge memory data
+        # Ensure required fields exist
         if 'door_positions' not in augmented_obs:
             augmented_obs['door_positions'] = {}
         if 'key_positions' not in augmented_obs:
@@ -436,19 +554,31 @@ class BaseValueAgent:
         if 'wall_positions' not in augmented_obs:
             augmented_obs['wall_positions'] = []
             
-        # Add memory data that's not already in observation
+        # Merge memory data (memory always overrides current observation)
+        memory_doors_added = 0
+        memory_keys_added = 0
+        
         for color, pos in self.memory['door_positions'].items():
-            if color not in augmented_obs['door_positions']:
+            if pos is not None:
                 augmented_obs['door_positions'][color] = pos
+                memory_doors_added += 1
                 
         for color, pos in self.memory['key_positions'].items():
-            if color not in augmented_obs['key_positions']:
-                augmented_obs['key_positions'][color] = pos
+            if pos is not None:
+                augmented_obs['key_positions'][color] = pos  
+                memory_keys_added += 1
                 
         # Add wall positions from memory
         current_walls = set(tuple(pos) for pos in augmented_obs['wall_positions']) if augmented_obs['wall_positions'] else set()
         all_walls = current_walls.union(self.memory['wall_positions'])
         augmented_obs['wall_positions'] = list(all_walls)
+        
+        # Debug output for memory integration
+        if os.getenv('DEBUG_MODE') and (memory_doors_added > 0 or memory_keys_added > 0):
+            print(f"DEBUG _get_memory_augmented_obs: Added {memory_doors_added} doors, {memory_keys_added} keys from memory")
+            if self._preferred_door_color and self._preferred_door_color in augmented_obs['door_positions']:
+                door_pos = augmented_obs['door_positions'][self._preferred_door_color]
+                print(f"DEBUG _get_memory_augmented_obs: Target door {self._preferred_door_color} available at {door_pos}")
         
         return augmented_obs
     
@@ -505,7 +635,7 @@ class BaseValueAgent:
         return 1  # right
         
     def _get_blocked_directions(self):
-        """Get list of directions that are blocked by walls or boundaries"""
+        """Get list of directions that are blocked by walls, doors (in exploration mode), or boundaries"""
         if self.agent_pos is None or self.width is None or self.height is None:
             return []
             
@@ -535,6 +665,26 @@ class BaseValueAgent:
             # Check unwalkable positions
             if tuple(next_pos) in self.memory['unwalkable_positions']:
                 blocked.append(direction)
+                continue
+                
+            # In exploration mode, treat doors the same as walls for clockwise rotation
+            if self.exploration_mode:
+                # Check if there's a door at this position in memory
+                door_at_position = False
+                for color, door_pos in self.memory['door_positions'].items():
+                    if door_pos is not None and tuple(next_pos) == tuple(door_pos):
+                        door_at_position = True
+                        break
+                        
+                if door_at_position:
+                    blocked.append(direction)
+                    continue
+                    
+                # Also check current grid observation for doors
+                if self.grid is not None:
+                    cell = self.grid.get(next_pos[0], next_pos[1])
+                    if cell is not None and isinstance(cell, Door):
+                        blocked.append(direction)
                 
         return blocked
 
@@ -543,7 +693,7 @@ class BaseValueAgent:
         if self.agent_pos is None or self.width is None or self.height is None:
             return False
             
-        # Change direction if hit wall or boundary
+        # Change direction if hit wall, door (in exploration mode), or boundary
         next_pos = self._get_next_position(self.agent_pos, self.exploration_direction)
         
         # Check boundaries
@@ -558,6 +708,19 @@ class BaseValueAgent:
         # Check unwalkable positions
         if tuple(next_pos) in self.memory['unwalkable_positions']:
             return True
+            
+        # In exploration mode, change direction when facing doors (treat same as walls)
+        if self.exploration_mode:
+            # Check if there's a door at this position in memory
+            for color, door_pos in self.memory['door_positions'].items():
+                if door_pos is not None and tuple(next_pos) == tuple(door_pos):
+                    return True
+                    
+            # Also check current grid observation for doors
+            if self.grid is not None:
+                cell = self.grid.get(next_pos[0], next_pos[1])
+                if cell is not None and isinstance(cell, Door):
+                    return True
             
         # Change direction after too many steps
         return self.exploration_steps > 5
@@ -597,6 +760,10 @@ class BaseValueAgent:
         # Handle None target position
         if target_pos is None:
             return 4  # Stay action
+            
+        # DEBUG: Log when value iteration is called
+        if os.getenv('DEBUG_MODE') and self.role == "achiever":
+            print(f"DEBUG _plan_value_iteration: Planning path from {self.agent_pos} to {target_pos}")
             
         # Use memory-augmented observations for partial observability
         if self.observability == "partial":
@@ -672,10 +839,21 @@ class BaseValueAgent:
 
         # Get optimal action for current position using vectorized evaluation
         if self.agent_pos is None:
+            if os.getenv('DEBUG_MODE') and self.role == "achiever":
+                print(f"DEBUG _plan_value_iteration: FAILED - agent_pos is None")
             return None
 
         # Always try to compute action - let the Q-value computation handle obstacles
-        return self._select_action_vectorized(value_function, target_pos, opponent_pos)
+        action = self._select_action_vectorized(value_function, target_pos, opponent_pos)
+        
+        # DEBUG: Log the result
+        if os.getenv('DEBUG_MODE') and self.role == "achiever":
+            if action is None:
+                print(f"DEBUG _plan_value_iteration: FAILED - _select_action_vectorized returned None")
+            else:
+                print(f"DEBUG _plan_value_iteration: SUCCESS - returning action {action}")
+        
+        return action
 
     def _compute_walkability_mask(self, width, height):
         """Compute walkability mask using current observation + memory"""
@@ -689,14 +867,44 @@ class BaseValueAgent:
         
         # Apply current observation data if available
         if self.grid is not None:
-            for x in range(width):
-                for y in range(height):
-                    cell = self.grid.get(x, y)
-                    if cell is not None and isinstance(cell, Wall):
-                        walkable_mask[x, y] = False
-                        self.memory['unwalkable_positions'].add((x, y))
-                    elif cell is not None:  # Non-wall object
-                        self.memory['walkable_positions'].add((x, y))
+            # In partial observation, self.grid is only the visible area (e.g., 5x5)
+            # We need to handle this correctly
+            if self.observability == "partial":
+                # Get the partial view size (typically 5x5)
+                grid_width = self.grid.width if hasattr(self.grid, 'width') else 5
+                grid_height = self.grid.height if hasattr(self.grid, 'height') else 5
+                
+                # Calculate the offset from agent position to grid center
+                if self.agent_pos is not None:
+                    center_x, center_y = self.agent_pos
+                    half_width = grid_width // 2
+                    half_height = grid_height // 2
+                    
+                    # Process only the visible grid area
+                    for local_x in range(grid_width):
+                        for local_y in range(grid_height):
+                            # Convert local grid coordinates to global coordinates
+                            global_x = center_x - half_width + local_x
+                            global_y = center_y - half_height + local_y
+                            
+                            # Check bounds
+                            if 0 <= global_x < width and 0 <= global_y < height:
+                                cell = self.grid.get(local_x, local_y)
+                                if cell is not None and isinstance(cell, Wall):
+                                    walkable_mask[global_x, global_y] = False
+                                    self.memory['unwalkable_positions'].add((global_x, global_y))
+                                elif cell is not None:  # Non-wall object
+                                    self.memory['walkable_positions'].add((global_x, global_y))
+            else:
+                # Full observation mode - grid covers entire environment
+                for x in range(width):
+                    for y in range(height):
+                        cell = self.grid.get(x, y)
+                        if cell is not None and isinstance(cell, Wall):
+                            walkable_mask[x, y] = False
+                            self.memory['unwalkable_positions'].add((x, y))
+                        elif cell is not None:  # Non-wall object
+                            self.memory['walkable_positions'].add((x, y))
         
         return walkable_mask
 
@@ -706,10 +914,31 @@ class BaseValueAgent:
             return np.zeros((width, height), dtype=np.float32)
 
         consumption_mask = np.zeros((width, height), dtype=np.float32)
-        for x in range(width):
-            for y in range(height):
-                if self._is_non_preferred_key_at_position((x, y)):
-                    consumption_mask[x, y] = self.consumption_penalty
+        
+        if self.observability == "partial":
+            # In partial observation, only check visible area
+            if self.agent_pos is not None:
+                grid_width = self.grid.width if hasattr(self.grid, 'width') else 5
+                grid_height = self.grid.height if hasattr(self.grid, 'height') else 5
+                center_x, center_y = self.agent_pos
+                half_width = grid_width // 2
+                half_height = grid_height // 2
+                
+                for local_x in range(grid_width):
+                    for local_y in range(grid_height):
+                        global_x = center_x - half_width + local_x
+                        global_y = center_y - half_height + local_y
+                        
+                        if 0 <= global_x < width and 0 <= global_y < height:
+                            if self._is_non_preferred_key_at_position((global_x, global_y)):
+                                consumption_mask[global_x, global_y] = self.consumption_penalty
+        else:
+            # Full observation mode
+            for x in range(width):
+                for y in range(height):
+                    if self._is_non_preferred_key_at_position((x, y)):
+                        consumption_mask[x, y] = self.consumption_penalty
+        
         return consumption_mask
 
     def _compute_q_values_vectorized(
@@ -976,10 +1205,34 @@ class BaseValueAgent:
         # Check if there's a key at this position
         from gym_minigrid.minigrid import Key
 
-        cell = self.grid.get(pos[0], pos[1])
-        if isinstance(cell, Key):
-            # Return True if it's NOT the preferred key color
-            return cell.color != self._preferred_door_color
+        # Handle partial observation correctly
+        if self.observability == "partial":
+            # Convert global position to local grid coordinates
+            if self.agent_pos is None:
+                return False
+            
+            grid_width = self.grid.width if hasattr(self.grid, 'width') else 5
+            grid_height = self.grid.height if hasattr(self.grid, 'height') else 5
+            center_x, center_y = self.agent_pos
+            half_width = grid_width // 2
+            half_height = grid_height // 2
+            
+            # Convert global position to local grid position
+            local_x = pos[0] - (center_x - half_width)
+            local_y = pos[1] - (center_y - half_height)
+            
+            # Check if position is within visible area
+            if 0 <= local_x < grid_width and 0 <= local_y < grid_height:
+                cell = self.grid.get(local_x, local_y)
+                if isinstance(cell, Key):
+                    # Return True if it's NOT the preferred key color
+                    return cell.color != self._preferred_door_color
+        else:
+            # Full observation mode
+            cell = self.grid.get(pos[0], pos[1])
+            if isinstance(cell, Key):
+                # Return True if it's NOT the preferred key color
+                return cell.color != self._preferred_door_color
 
         return False
 

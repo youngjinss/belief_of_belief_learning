@@ -160,6 +160,8 @@ class AStarAgent:
         """Infer target door color from observations."""
         # Use target door color from observations if available
         if obs and "target_door_color" in obs:
+            if os.getenv('DEBUG_MODE'):
+                print(f"DEBUG _infer_target_door_color: obs target_door_color = {obs['target_door_color']}")
             return obs["target_door_color"]
 
         # Fallback: use first available door color
@@ -484,29 +486,23 @@ class Level0ValueAchiever(BaseValueAgent):
 
     def get_action(self, obs):
         """
-        Get the next action for Level0ValueAchiever following exploration strategy:
+        Level0ValueAchiever with clockwise exploration strategy:
         
-        Strategy for partial observation:
-        - Exploration mode: Select random direction and keep moving until hitting wall
-        - Store discovered key/door positions in memory upon detection  
-        - If target key not found: Continue exploration mode
-        - If target key found but not reached: Navigate using value iteration
-        - If target door not found: Continue exploration mode even after collecting key
-        - If entire map observed: Compute value iteration based on obs + memory as in full observation
+        Uses base class act() method for proper strategy coordination and clockwise exploration
         """
-        self.update_observation(obs)
-
-        # Infer target door color from observations
+        # Infer target door color from observations (only once)
         if self.target_door_color is None:
             self.target_door_color = self._infer_target_door_color(obs)
             if self.target_door_color:
                 # Set target door color in base class for consumption penalty
                 self.set_target_door_color(self.target_door_color)
+                if os.getenv('DEBUG_MODE'):
+                    print(f"DEBUG Level0ValueAchiever: FIXED target door color to {self.target_door_color}")
                 
         # Set preferred door color for base class target finding
         self._preferred_door_color = self.target_door_color
         
-        # Use base class act method for strategy coordination
+        # Use base class act method for strategy coordination and clockwise exploration
         return self.act(obs)
 
     def _collect_target_key_with_exploration(self, target_key_color, obs=None):
@@ -613,6 +609,8 @@ class Level0ValueAchiever(BaseValueAgent):
         """Infer target door color from observations."""
         # Use target door color from observations if available
         if obs and "target_door_color" in obs:
+            if os.getenv('DEBUG_MODE'):
+                print(f"DEBUG _infer_target_door_color: obs target_door_color = {obs['target_door_color']}")
             return obs["target_door_color"]
 
         # Fallback: use first available door color
@@ -1010,6 +1008,8 @@ class Level1ValueAchiever(BaseValueAgent):
         """Infer target door color from observations."""
         # Use target door color from observations if available
         if obs and "target_door_color" in obs:
+            if os.getenv('DEBUG_MODE'):
+                print(f"DEBUG _infer_target_door_color: obs target_door_color = {obs['target_door_color']}")
             return obs["target_door_color"]
 
         # Fallback: use first available door color

@@ -32,7 +32,17 @@ from lib.env.gym_minigrid.envs.achiever_blocker import (
     AchieverBlocker9x9Env,
     AchieverBlocker11x11Env,
 )
+from lib.env.gym_minigrid.envs.achiever_blocker_v2 import (
+    AchieverBlocker5x5EnvV2,
+    AchieverBlocker9x9EnvV2,
+    AchieverBlocker11x11EnvV2,
+)
 from lib.env.gym_minigrid.envs.keydoor import KeyDoorEnv
+from lib.env.gym_minigrid.envs.keydoor_v2 import (
+    KeyDoor5x5EnvV2,
+    KeyDoor9x9EnvV2,
+    KeyDoor11x11EnvV2,
+)
 from script.exp8.achievers import (
     AStarAgent,
     RandomAgent as AchieverRandomAgent,
@@ -815,32 +825,80 @@ def run_single_game(game_id, config_dict, save_dir, blocker_type=None):
     
     if is_single_agent:
         # Create KeyDoor environment for single-agent mode
-        size_map = {"5x5": 5, "9x9": 9, "11x11": 11}
-        if env_size not in size_map:
-            raise ValueError(f"Unknown environment size: {env_size}")
+        observability = config_dict.get("observability", "full")
+        partial_view_size = config_dict.get("partial_view_size", 7)
         
-        env = KeyDoorEnv(
-            size=size_map[env_size],
-            preference=goal_rewards, 
-            cost=game_costs, 
-            max_steps=config_dict["max_steps"]
-        )
+        if observability == "partial":
+            # Use V2 environment for partial observation
+            if env_size == "5x5":
+                env = KeyDoor5x5EnvV2(
+                    preference=goal_rewards, cost=game_costs, max_steps=config_dict["max_steps"],
+                    observability=observability, partial_view_size=partial_view_size
+                )
+            elif env_size == "9x9":
+                env = KeyDoor9x9EnvV2(
+                    preference=goal_rewards, cost=game_costs, max_steps=config_dict["max_steps"],
+                    observability=observability, partial_view_size=partial_view_size
+                )
+            elif env_size == "11x11":
+                env = KeyDoor11x11EnvV2(
+                    preference=goal_rewards, cost=game_costs, max_steps=config_dict["max_steps"],
+                    observability=observability, partial_view_size=partial_view_size
+                )
+            else:
+                raise ValueError(f"Unknown environment size: {env_size}")
+        else:
+            # Use V1 environment for full observation (backward compatibility)
+            size_map = {"5x5": 5, "9x9": 9, "11x11": 11}
+            if env_size not in size_map:
+                raise ValueError(f"Unknown environment size: {env_size}")
+            
+            env = KeyDoorEnv(
+                size=size_map[env_size],
+                preference=goal_rewards, 
+                cost=game_costs, 
+                max_steps=config_dict["max_steps"]
+            )
     else:
         # Create AchieverBlocker environment for multi-agent mode
-        if env_size == "5x5":
-            env = AchieverBlocker5x5Env(
-                preference=goal_rewards, cost=game_costs, max_steps=config_dict["max_steps"]
-            )
-        elif env_size == "9x9":
-            env = AchieverBlocker9x9Env(
-                preference=goal_rewards, cost=game_costs, max_steps=config_dict["max_steps"]
-            )
-        elif env_size == "11x11":
-            env = AchieverBlocker11x11Env(
-                preference=goal_rewards, cost=game_costs, max_steps=config_dict["max_steps"]
-            )
+        observability = config_dict.get("observability", "full")
+        partial_view_size = config_dict.get("partial_view_size", 7)
+        
+        if observability == "partial":
+            # Use V2 environment for partial observation
+            if env_size == "5x5":
+                env = AchieverBlocker5x5EnvV2(
+                    preference=goal_rewards, cost=game_costs, max_steps=config_dict["max_steps"],
+                    observability=observability, partial_view_size=partial_view_size
+                )
+            elif env_size == "9x9":
+                env = AchieverBlocker9x9EnvV2(
+                    preference=goal_rewards, cost=game_costs, max_steps=config_dict["max_steps"],
+                    observability=observability, partial_view_size=partial_view_size
+                )
+            elif env_size == "11x11":
+                env = AchieverBlocker11x11EnvV2(
+                    preference=goal_rewards, cost=game_costs, max_steps=config_dict["max_steps"],
+                    observability=observability, partial_view_size=partial_view_size
+                )
+            else:
+                raise ValueError(f"Unknown environment size: {env_size}")
         else:
-            raise ValueError(f"Unknown environment size: {env_size}")
+            # Use V1 environment for full observation (backward compatibility)
+            if env_size == "5x5":
+                env = AchieverBlocker5x5Env(
+                    preference=goal_rewards, cost=game_costs, max_steps=config_dict["max_steps"]
+                )
+            elif env_size == "9x9":
+                env = AchieverBlocker9x9Env(
+                    preference=goal_rewards, cost=game_costs, max_steps=config_dict["max_steps"]
+                )
+            elif env_size == "11x11":
+                env = AchieverBlocker11x11Env(
+                    preference=goal_rewards, cost=game_costs, max_steps=config_dict["max_steps"]
+                )
+            else:
+                raise ValueError(f"Unknown environment size: {env_size}")
 
     # Seed environment before reset (following exp3 pattern)
     env.seed(config_dict["base_random_seed"] + game_id)
@@ -1002,6 +1060,8 @@ def run_single_game(game_id, config_dict, save_dir, blocker_type=None):
             obs, rewards, terminated, truncated, info = env.step(action_pair)
 
         done = terminated or truncated
+
+        # Debug output for early termination detection
 
         # Always record actions and positions - this ensures final actions are captured
         achiever_actions.append(achiever_action)
@@ -1285,6 +1345,7 @@ def generate_trajectories_for_combination(
         "env_size": config.env_size,
         "max_steps": config.max_steps,
         "observability": config.observability,
+        "partial_view_size": config.get_partial_view_size(),
         "achiever_type": achiever_type,
         "blocker_types": [blocker_type],  # Only use the specific blocker type
         "base_random_seed": random_seed,
@@ -1399,6 +1460,19 @@ if __name__ == "__main__":
         type=int,
         default=None,
         help="Number of parallel processes (default: CPU count - 1)",
+    )
+    parser.add_argument(
+        "--observability",
+        type=str,
+        choices=["full", "partial"],
+        default=None,
+        help="Observation mode: full or partial",
+    )
+    parser.add_argument(
+        "--partial_view_size",
+        type=int,
+        default=None,
+        help="Size of partial observation window (only used when observability=partial)",
     )
     parser.add_argument(
         "--test_data",

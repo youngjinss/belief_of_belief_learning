@@ -20,3 +20,5 @@ from .dynamicobstacles import *
 from .distshift import *
 from .keydoor import *
 from .achiever_blocker import *
+from .keydoor_v2 import *
+from .achiever_blocker_v2 import *

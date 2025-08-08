@@ -14,7 +14,7 @@ class Config:
         self.seed = 42
 
         # Agent settings
-        self.n_games_per_type = 12500  # Number of games to generate for ToMnet data
+        self.n_games_per_type = 30  # Number of games to generate for ToMnet data
         self.achiever_types = {
             "lv0va": self.n_games_per_type,
             "lv1va": self.n_games_per_type,
@@ -23,7 +23,7 @@ class Config:
             "lv0vb": self.n_games_per_type,
             "lv1vb": self.n_games_per_type,
         }  # Options: "lv0vb", "lv1vb", "random", "goal_direct", "randomly_selected", "rule_based"
-        self.observability = "full"  # Options: "full", "partial"
+        self.observability = "partial"  # Options: "full", "partial"
         self.movement_prob = 0.8  # For random agent
 
         # Visualization settings
@@ -60,10 +60,10 @@ class Config:
 
         # Environment variants
         self.env_variants = {
-            "3x3": {"grid_size": 3, "max_steps": 100},
-            "5x5": {"grid_size": 5, "max_steps": 100},
-            "9x9": {"grid_size": 9, "max_steps": 100},
-            "11x11": {"grid_size": 11, "max_steps": 100},
+            "3x3": {"grid_size": 3, "max_steps": 100, "partial_view_size": 2},
+            "5x5": {"grid_size": 5, "max_steps": 100, "partial_view_size": 3},
+            "9x9": {"grid_size": 9, "max_steps": 100, "partial_view_size": 5},
+            "11x11": {"grid_size": 11, "max_steps": 100, "partial_view_size": 7},
         }
 
         # Set max_steps based on current env_size
@@ -328,14 +328,21 @@ class Config:
         """Get test data proportion (1 - training_proportion)"""
         return 1.0 - self.training_config["training_proportion"]
 
+    def get_partial_view_size(self):
+        """Get partial view size based on current environment size"""
+        return self.env_variants[self.env_size]["partial_view_size"]
+
     def get_env_name(self):
-        """Get full environment name based on agent configuration"""
+        """Get full environment name based on agent configuration and observability"""
+        # Choose version based on observability mode
+        version = "v2" if self.observability == "partial" else "v1"
+        
         if self.is_single_agent_mode():
             # Use KeyDoor environment for single-agent mode
-            return f"MiniGrid-KeyDoor-{self.env_size}-v1"
+            return f"MiniGrid-KeyDoor-{self.env_size}-{version}"
         else:
             # Use AchieverBlocker environment for multi-agent mode
-            return self.env_name.format(size=self.env_size)
+            return f"MiniGrid-AchieverBlocker-{self.env_size}-{version}"
 
     def get_agent_pair_name(self, achiever_type, blocker_type=None):
         """Get agent pair name for directory structure"""
@@ -713,6 +720,10 @@ class Config:
                 self.height = 11
         if hasattr(args, "observability") and args.observability is not None:
             self.observability = args.observability
+        if hasattr(args, "partial_view_size") and args.partial_view_size is not None:
+            # Update the env_variants to use the specified partial_view_size
+            for env_size in self.env_variants:
+                self.env_variants[env_size]["partial_view_size"] = args.partial_view_size
         if hasattr(args, "gif") and args.gif is not None:
             self.gif_output = args.gif
         if hasattr(args, "debug") and args.debug is not None:

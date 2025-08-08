@@ -438,22 +438,26 @@ class DataGenerator:
             consumed_goal = intended_goal
 
         # Create self states tensor
-        self_states_tensor = self._create_trajectory_tensor(
+        self_states_tensor = self._create_state_tensor(
             parsed_data["maze"],
             parsed_data["trajectory_steps"],
             "achiever",
             parsed_data["trajectory_length"],
+            observability=self.config.observability,
+            partial_view_size=self.config.get_partial_view_size(),
         )
 
         # Create opponent states tensor (perspective from opponent's view)
         oppo_states_tensor = None
         oppo_actions = None
         if not parsed_data.get("is_single_agent", False):
-            oppo_states_tensor = self._create_trajectory_tensor(
+            oppo_states_tensor = self._create_state_tensor(
                 parsed_data["maze"],
                 parsed_data["trajectory_steps"],
                 "blocker",  # Opponent is blocker
                 parsed_data["trajectory_length"],
+                observability=self.config.observability,
+                partial_view_size=self.config.get_partial_view_size(),
             )
             # Extract opponent actions
             oppo_actions = [step["blocker_action"] for step in parsed_data["trajectory_steps"] if step["blocker_action"] is not None]
@@ -535,22 +539,26 @@ class DataGenerator:
         # Note: Blocker may not have a consumed goal if no door interactions occurred
 
         # Create self states tensor
-        self_states_tensor = self._create_trajectory_tensor(
+        self_states_tensor = self._create_state_tensor(
             parsed_data["maze"],
             parsed_data["trajectory_steps"],
             "blocker",
             parsed_data["trajectory_length"],
+            observability=self.config.observability,
+            partial_view_size=self.config.get_partial_view_size(),
         )
 
         # Create opponent states tensor (perspective from opponent's view)
         oppo_states_tensor = None
         oppo_actions = None
         if not parsed_data.get("is_single_agent", False):
-            oppo_states_tensor = self._create_trajectory_tensor(
+            oppo_states_tensor = self._create_state_tensor(
                 parsed_data["maze"],
                 parsed_data["trajectory_steps"],
                 "achiever",  # Opponent is achiever
                 parsed_data["trajectory_length"],
+                observability=self.config.observability,
+                partial_view_size=self.config.get_partial_view_size(),
             )
             # Extract opponent actions
             oppo_actions = [step["achiever_action"] for step in parsed_data["trajectory_steps"] if step["achiever_action"] is not None]
@@ -582,12 +590,14 @@ class DataGenerator:
             "oppo_actions": oppo_actions,
         }
 
-    def _create_trajectory_tensor(
+    def _create_state_tensor(
         self,
         maze: np.ndarray,
         trajectory_steps: List[Dict],
         agent_type: str,
         trajectory_length: int,
+        observability: str = "full",
+        partial_view_size: int = 7,
     ) -> np.ndarray:
         """Create self states tensor for specified agent using vectorized operations
         
@@ -695,7 +705,64 @@ class DataGenerator:
                     # Set opponent position in channel 9
                     self_states[valid_times, 9, valid_pos[:, 1], valid_pos[:, 0]] = 1
 
+        # Apply partial observation masking if needed
+        if observability == "partial":
+            self_states = self._apply_partial_observation_masking(
+                self_states, self_positions, agent_type, partial_view_size
+            )
+
         return self_states
+
+    def _apply_partial_observation_masking(
+        self,
+        self_states: np.ndarray,
+        self_positions: np.ndarray,
+        agent_type: str,
+        partial_view_size: int,
+    ) -> np.ndarray:
+        """
+        Apply partial observation masking to the state tensor.
+        
+        Args:
+            self_states: Full state tensor (seq_len, channels, height, width)
+            self_positions: Agent positions for each timestep (seq_len, 2)
+            agent_type: Type of agent ("achiever" or "blocker")
+            partial_view_size: Size of partial observation window
+            
+        Returns:
+            Masked state tensor with only visible areas preserved
+        """
+        seq_len, channels, height, width = self_states.shape
+        masked_states = np.zeros_like(self_states)
+        
+        # Calculate view radius (how far agent can see in each direction)
+        view_radius = partial_view_size // 2
+        
+        for t in range(seq_len):
+            if t < len(self_positions):
+                agent_pos = self_positions[t]
+                
+                # Skip invalid positions
+                if agent_pos[0] < 0 or agent_pos[1] < 0:
+                    continue
+                
+                agent_x, agent_y = int(agent_pos[0]), int(agent_pos[1])
+                
+                # Calculate visible area bounds
+                x_min = max(0, agent_x - view_radius)
+                x_max = min(width, agent_x + view_radius + 1)
+                y_min = max(0, agent_y - view_radius)
+                y_max = min(height, agent_y + view_radius + 1)
+                
+                # Copy visible area from original state
+                masked_states[t, :, y_min:y_max, x_min:x_max] = \
+                    self_states[t, :, y_min:y_max, x_min:x_max]
+                
+                # Always keep agent's own position visible (channel 8)
+                if 0 <= agent_y < height and 0 <= agent_x < width:
+                    masked_states[t, 8, agent_y, agent_x] = 1.0
+        
+        return masked_states
 
     def _create_goal_tensor(self, goal_letter: str) -> np.ndarray:
         """Create goal tensor (one-hot encoded)"""

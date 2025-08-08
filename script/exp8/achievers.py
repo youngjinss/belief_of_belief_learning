@@ -484,32 +484,76 @@ class Level0ValueAchiever(BaseValueAgent):
 
     def get_action(self, obs):
         """
-        Get the next action for the agent using value iteration
+        Get the next action for Level0ValueAchiever following exploration strategy:
+        
+        Strategy for partial observation:
+        - Exploration mode: Select random direction and keep moving until hitting wall
+        - Store discovered key/door positions in memory upon detection  
+        - If target key not found: Continue exploration mode
+        - If target key found but not reached: Navigate using value iteration
+        - If target door not found: Continue exploration mode even after collecting key
+        - If entire map observed: Compute value iteration based on obs + memory as in full observation
         """
         self.update_observation(obs)
 
         # Infer target door color from observations
         if self.target_door_color is None:
             self.target_door_color = self._infer_target_door_color(obs)
-            # Set target door color in base class for consumption penalty
-            self.set_target_door_color(self.target_door_color)
+            if self.target_door_color:
+                # Set target door color in base class for consumption penalty
+                self.set_target_door_color(self.target_door_color)
+                
+        # Set preferred door color for base class target finding
+        self._preferred_door_color = self.target_door_color
+        
+        # Use base class act method for strategy coordination
+        return self.act(obs)
 
-        target_key_color = self.target_door_color
-
-        if self.strategy_phase == "collect_key":
-            # Check if we already have the target key
-            if target_key_color in self.collected_keys:
-                self.strategy_phase = "open_door"
-            else:
-                # Find and collect the target key
-                return self._collect_target_key(target_key_color, obs)
-
-        elif self.strategy_phase == "open_door":
-            # Go to target door and open it
-            return self._open_target_door(target_key_color, obs)
-
-        # Better fallback: try random movement instead of staying stuck
-        return np.random.choice([0, 1, 2, 3])  # random movement
+    def _collect_target_key_with_exploration(self, target_key_color, obs=None):
+        """Collect target key using exploration strategy"""
+        if target_key_color is None:
+            # No target identified yet, continue exploring
+            return self._explore_action()
+            
+        # Check memory first, then current observation
+        target_key_pos = None
+        if target_key_color in self.memory['key_positions']:
+            target_key_pos = self.memory['key_positions'][target_key_color]
+        else:
+            target_key_pos = self._find_object_position(Key, target_key_color, obs)
+            
+        if target_key_pos is None:
+            # Target key not found, continue exploration
+            return self._explore_action()
+            
+        # Target key found, navigate to it using value iteration
+        if self.agent_pos == target_key_pos:
+            return 4  # Stay - key pickup is automatic
+            
+        return self._navigate_with_value_iteration(target_key_pos, obs)
+        
+    def _open_target_door_with_exploration(self, target_door_color, obs=None):
+        """Open target door using exploration strategy"""
+        if target_door_color is None:
+            # No target identified, continue exploring
+            return self._explore_action()
+            
+        # Check memory first, then current observation  
+        target_door_pos = None
+        if target_door_color in self.memory['door_positions']:
+            target_door_pos = self.memory['door_positions'][target_door_color]
+        else:
+            target_door_pos = self._find_object_position(Door, target_door_color, obs)
+            
+        if target_door_pos is None:
+            # Target door not found, continue exploration even after collecting key
+            return self._explore_action()
+            
+        # Target door found, navigate to it
+        if self.agent_pos == target_door_pos:
+            return 4  # Stay - door opening is automatic
+            
+        return self._navigate_with_value_iteration(target_door_pos, obs)
 
     def _collect_target_key(self, target_key_color, obs=None):
         """Strategy to collect the target key using value iteration"""
@@ -702,47 +746,198 @@ class Level1ValueAchiever(BaseValueAgent):
 
     def get_action(self, obs):
         """
-        Get the next action for the agent using value iteration with deceptive strategy
+        Level1ValueAchiever with enhanced deception strategy for partial observation:
+        
+        Uses base class act() method for strategy coordination
         """
-        self.update_observation(obs)
-
         # Infer target door color from observations
         if self.target_door_color is None:
             self.target_door_color = self._infer_target_door_color(obs)
-            # Set target door color in base class for consumption penalty
-            self.set_target_door_color(self.target_door_color)
-
-        # Select decoy key color if not already selected
-        if self.decoy_key_color is None:
-            self._select_decoy_key_color(obs)
-
-        # Phase 1: Collect decoy key first, or observe blocker going to door
+            if self.target_door_color:
+                self.set_target_door_color(self.target_door_color)
+                
+        # Set preferred door color for base class target finding
+        self._preferred_door_color = self.target_door_color
+        
+        # Use base class act method for strategy coordination
+        return self.act(obs)
+        
+    def _is_blocker_visible(self, obs):
+        """Check if blocker is visible in current observation"""
+        return obs and "blocker_pos" in obs and obs["blocker_pos"] is not None
+        
+    def _is_blocker_nearby(self, obs, distance_threshold=3):
+        """Check if blocker is nearby (within threshold distance)"""
+        if not self._is_blocker_visible(obs) or self.agent_pos is None:
+            return False
+        blocker_pos = obs["blocker_pos"]
+        distance = abs(self.agent_pos[0] - blocker_pos[0]) + abs(self.agent_pos[1] - blocker_pos[1])
+        return distance <= distance_threshold
+        
+    def _has_seen_blocker(self, obs):
+        """Check if blocker has been seen at any point"""
+        return self.previous_blocker_pos is not None or self._is_blocker_visible(obs)
+        
+    def _level0_behavior(self, obs):
+        """Behave like Level0ValueAchiever when no blocker seen"""
+        # Use the same logic as Level0ValueAchiever
+        if self.target_door_color is None:
+            return self._explore_action()
+            
         if self.strategy_phase == "collect_decoy_key":
-            # Switch to target key collection if either:
-            # 1. Decoy key collected, OR
-            # 2. Blocker observed at any door (correct or incorrect)
-            if (
-                self.decoy_key_color in self.collected_keys
-                or self.blocker_at_door_observed
-            ):
-                self.decoy_key_collected = True
-                self.strategy_phase = "collect_target_key"
-            else:
-                return self._collect_key(self.decoy_key_color, obs)
-
-        # Phase 2: Collect target key
-        elif self.strategy_phase == "collect_target_key":
+            self.strategy_phase = "collect_target_key"  # Skip decoy phase
+            
+        if self.strategy_phase == "collect_target_key":
             if self.target_door_color in self.collected_keys:
                 self.strategy_phase = "open_door"
+                return self._open_target_door_with_exploration(self.target_door_color, obs)
             else:
-                return self._collect_key(self.target_door_color, obs)
-
-        # Phase 3: Open target door
-        elif self.strategy_phase == "open_door":
-            return self._open_target_door(self.target_door_color, obs)
-
-        # Better fallback: try random movement instead of staying stuck
-        return np.random.choice([0, 1, 2, 3])  # random movement
+                return self._collect_target_key_with_exploration(self.target_door_color, obs)
+                
+        return self._explore_action()
+        
+    def _select_decoy_key_color_from_discovered(self, obs):
+        """Select decoy key from discovered keys, or explore to find one"""
+        available_keys = set(self.memory['key_positions'].keys())
+        if self.target_door_color:
+            available_keys.discard(self.target_door_color)
+            
+        if available_keys:
+            self.decoy_key_color = np.random.choice(list(available_keys))
+        else:
+            # No keys discovered yet, pick any color different from target
+            all_colors = ["red", "green", "blue", "yellow"]
+            available_colors = [c for c in all_colors if c != self.target_door_color]
+            if available_colors:
+                self.decoy_key_color = np.random.choice(available_colors)
+                
+    def _collect_decoy_key_with_deception(self, obs, blocker_visible, blocker_nearby):
+        """Collect decoy key with deception behavior"""
+        if self.decoy_key_color is None:
+            return self._explore_action()
+            
+        # Check memory first, then observation
+        decoy_key_pos = None
+        if self.decoy_key_color in self.memory['key_positions']:
+            decoy_key_pos = self.memory['key_positions'][self.decoy_key_color]
+        else:
+            decoy_key_pos = self._find_object_position(Key, self.decoy_key_color, obs)
+            
+        if decoy_key_pos is None:
+            # Decoy key not found, explore
+            return self._explore_action()
+            
+        # Only pretend to move towards decoy when blocker is observing
+        if blocker_visible and blocker_nearby:
+            # Move towards decoy to confuse blocker
+            if self.agent_pos == decoy_key_pos:
+                return 4  # Stay at decoy key
+            return self._navigate_with_value_iteration(decoy_key_pos, obs)
+        else:
+            # Blocker not watching, explore for target key instead
+            return self._explore_action()
+            
+    def _collect_target_key_with_deception(self, obs, blocker_visible, blocker_nearby):
+        """Collect target key with deception behavior"""
+        if self.target_door_color is None:
+            return self._explore_action()
+            
+        # Check memory first, then observation
+        target_key_pos = None
+        if self.target_door_color in self.memory['key_positions']:
+            target_key_pos = self.memory['key_positions'][self.target_door_color]
+        else:
+            target_key_pos = self._find_object_position(Key, self.target_door_color, obs)
+            
+        if target_key_pos is None:
+            # Target key not found
+            if blocker_nearby:
+                # Move to misleading locations when blocker nearby  
+                return self._move_misleadingly(obs)
+            else:
+                # Actively explore when blocker far/not visible
+                return self._explore_action()
+        else:
+            # Target key found
+            if blocker_nearby:
+                # Move misleadingly instead of directly to target
+                return self._move_misleadingly(obs)
+            else:
+                # Navigate to target when blocker not watching
+                if self.agent_pos == target_key_pos:
+                    return 4  # Stay - pickup automatic
+                return self._navigate_with_value_iteration(target_key_pos, obs)
+                
+    def _move_misleadingly(self, obs):
+        """Move to misleading locations when blocker is nearby"""
+        # Find a position that's not the target key/door
+        misleading_positions = []
+        
+        # Add discovered key positions (except target) as misleading locations
+        for color, pos in self.memory['key_positions'].items():
+            if color != self.target_door_color and pos:
+                misleading_positions.append(pos)
+                
+        # Add discovered door positions (except target) as misleading locations  
+        for color, pos in self.memory['door_positions'].items():
+            if color != self.target_door_color and pos:
+                misleading_positions.append(pos)
+                
+        if misleading_positions:
+            misleading_target = np.random.choice(misleading_positions)
+            return self._navigate_with_value_iteration(misleading_target, obs)
+        else:
+            # No misleading locations found, just explore
+            return self._explore_action()
+            
+    def _deceptive_exploration(self, blocker_visible, blocker_nearby):
+        """Exploration with deception considerations"""
+        if blocker_nearby:
+            # Move misleadingly when blocker is watching
+            return self._move_misleadingly(None)
+        else:
+            # Normal exploration when blocker not nearby
+            return self._explore_action()
+            
+    def _collect_target_key_with_exploration(self, target_key_color, obs=None):
+        """Collect target key using exploration strategy (for Level0 behavior)"""
+        if target_key_color is None:
+            return self._explore_action()
+            
+        # Check memory first, then current observation
+        target_key_pos = None
+        if target_key_color in self.memory['key_positions']:
+            target_key_pos = self.memory['key_positions'][target_key_color]
+        else:
+            target_key_pos = self._find_object_position(Key, target_key_color, obs)
+            
+        if target_key_pos is None:
+            return self._explore_action()
+            
+        if self.agent_pos == target_key_pos:
+            return 4  # Stay - key pickup is automatic
+            
+        return self._navigate_with_value_iteration(target_key_pos, obs)
+        
+    def _open_target_door_with_exploration(self, target_door_color, obs=None):
+        """Open target door using exploration strategy"""  
+        if target_door_color is None:
+            return self._explore_action()
+            
+        # Check memory first, then current observation
+        target_door_pos = None
+        if target_door_color in self.memory['door_positions']:
+            target_door_pos = self.memory['door_positions'][target_door_color]
+        else:
+            target_door_pos = self._find_object_position(Door, target_door_color, obs)
+            
+        if target_door_pos is None:
+            return self._explore_action()
+            
+        if self.agent_pos == target_door_pos:
+            return 4  # Stay - door opening is automatic
+            
+        return self._navigate_with_value_iteration(target_door_pos, obs)
 
     def _select_decoy_key_color(self, obs):
         """Select a decoy key color that is different from target door color"""

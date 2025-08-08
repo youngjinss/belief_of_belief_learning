@@ -258,14 +258,15 @@ class AchieverBlockerEnvV2(BaseEnvV2):
         if np.array_equal(self.blocker_pos, self.door_positions.get(self.target_door_color, [-1, -1])):
             blocker_reward = 0.1  # Small reward for blocking target door
         
-        # Check termination
-        terminated = door_reward > 0  # Episode ends when any door is opened
+        # Check termination - only end when target door is opened
+        terminated = (door_reward > 0 and self.last_door_opened == self.target_door_color)
         truncated = False
         
         # Update step count
         self.step_count += 1
         if self.step_count >= self.max_steps:
             truncated = True
+        
         
         # Generate observations
         obs = self._get_observations()

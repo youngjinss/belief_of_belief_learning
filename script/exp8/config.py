@@ -630,7 +630,6 @@ class Config:
             }
         )
 
-        print("Debug mode enabled: Using smaller scale settings for testing")
 
     def get_model_kwargs(self):
         """Get model initialization parameters"""

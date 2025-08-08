@@ -34,7 +34,6 @@ sys.path.insert(0, gym_minigrid_path)
 # Import the gym_minigrid environments
 import gym_minigrid
 
-print("Successfully imported gym_minigrid")
 
 
 def env_to_maze_format(env, achiever_pos, blocker_pos):
@@ -462,13 +461,6 @@ class GameSimulation:
 
     def visualize_trajectory(self, save_gif=False, pause_time=0.5):
         """Visualize the two-agent trajectory using native MiniGrid rendering"""
-        print("=== AchieverBlocker Game Simulation ===")
-        print(f"Mission: Replay two-agent trajectory from data file")
-        print(f"Trajectory length: {self.trajectory_length}")
-        print(f"Goal rank: {self.goal_rank}")
-        if self.blocker_infer_goal:
-            print(f"Blocker inferred goal: {self.blocker_infer_goal}")
-
         # Create environment
         env = self.create_minigrid_env()
 
@@ -493,11 +485,7 @@ class GameSimulation:
         # Display initial state
         env.render()
 
-        print(f"Initial achiever position: {env.achiever_pos}")
-        print(f"Initial blocker position: {env.blocker_pos}")
-        print(f"Initial achiever keys: {env.achiever_keys}")
 
-        print("\nReplaying trajectory...")
 
         # Replay each step
         for step in range(min(len(self.achiever_actions), self.trajectory_length)):
@@ -527,20 +515,6 @@ class GameSimulation:
                 if blocker_action < len(self.blocker_action_names)
                 else f"action_{blocker_action}"
             )
-
-            print(f"Step {step + 1}:")
-            print(
-                f"  Achiever: {achiever_action_name} at {achiever_position} -> {achiever_interaction}"
-            )
-            print(
-                f"  Blocker:  {blocker_action_name} at {blocker_position} -> {blocker_interaction}"
-            )
-
-            if hasattr(env, "achiever_keys") and env.achiever_keys:
-                print(f"  Achiever inventory: {env.achiever_keys}")
-            if hasattr(env, "blocker_keys") and env.blocker_keys:
-                print(f"  Blocker inventory: {env.blocker_keys}")
-
             # Update agent positions and directions for visualization
             # Update agent directions based on actions (for visualization)
             action_to_direction = {
@@ -601,7 +575,6 @@ class GameSimulation:
         # Save GIF if requested
         if save_gif and frames:
             gif_path = "achiever_blocker_trajectory.gif"
-            print(f"Saving {len(frames)} frames to {gif_path}")
             frames[0].save(
                 gif_path,
                 save_all=True,
@@ -609,12 +582,10 @@ class GameSimulation:
                 duration=500,  # 500ms per frame
                 loop=0,
             )
-            print(f"GIF saved to {gif_path}")
 
         # Close environment
         env.close()
 
-        print("\nSimulation completed!")
 
     def print_summary(self):
         """Print summary of the simulation data"""
@@ -643,7 +614,6 @@ class GameSimulation:
         print(f"\nFirst 3 Blocker SR data entries:")
         for i in range(min(3, len(self.blocker_sr_data))):
             print(f"  Timestep {i}: {self.blocker_sr_data.get(i, {})}")
-
 
 def main():
     parser = argparse.ArgumentParser(description="Simulate game from data file")

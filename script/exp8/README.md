@@ -293,6 +293,19 @@ python script/exp8/evaluate.py --compare_models baseline enhanced
   - Updated all Level*Value* agents to use clockwise exploration instead of random
   - Significantly improved exploration efficiency in partial observation environments
   - Reduced average trajectory lengths from 100+ steps to ~30 steps in test scenarios
+- **v2.3** (2025-08-08): Critical agent behavior fixes for partial observation
+  - **Level0ValueAchiever Memory Management Fix**: Fixed critical bug where Level0ValueAchiever bypassed base class `act()` method, preventing proper memory management for discovered objects in partial observation mode
+    - **Problem**: Agent couldn't find visible green key B from starting position despite being in 5x5 view radius
+    - **Root Cause**: `get_action()` method directly returned actions without calling base class `act()` which handles memory updates
+    - **Solution**: Modified Level0ValueAchiever to use base class `act()` method like Level1ValueAchiever (script/exp8/achievers.py:105-113)
+  - **Level0ValueBlocker Door Breaking Logic**: Implemented simple door breaking strategy for blockers with target inference
+    - **Problem**: Blocker at door position [4,8] wasn't using action 5 (break) despite correctly inferring yellow as target
+    - **Solution**: Added logic to break ANY door when at door position with valid inferred target (script/exp8/blockers.py:705-720)
+    - **Strategy**: "If located at any door when having an inferred target, break it" - simplified approach as requested
+  - **BaseValueAgent Exploration Improvements**: Enhanced clockwise exploration to handle edge cases
+    - Fixed `_get_clockwise_direction()` to verify new direction is walkable before returning it
+    - Fixed `_find_preferred_targets()` to properly consider already collected keys in target selection
+  - **Debug Infrastructure Cleanup**: Removed all debug print statements from script/exp8/*.py files while preserving functional prints in generate.py
 
 ## Agent Strategies for Partial Observation
 

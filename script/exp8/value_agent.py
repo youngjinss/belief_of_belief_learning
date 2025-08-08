@@ -126,19 +126,6 @@ class BaseValueAgent:
         # 2. Find preferred targets
         preferred_targets = self._find_preferred_targets()
         
-        # Debug print
-        if hasattr(self, '_debug_step_count'):
-            self._debug_step_count += 1
-        else:
-            self._debug_step_count = 1
-            
-        if self._debug_step_count % 20 == 0:  # Print every 20 steps
-            print(f"DEBUG: Step {self._debug_step_count}, Role: {getattr(self, 'role', 'unknown')}")
-            print(f"  Memory keys: {self.memory['key_positions']}")
-            print(f"  Memory doors: {self.memory['door_positions']}")
-            print(f"  Preferred targets: {preferred_targets}")
-            print(f"  Exploration mode: {self.exploration_mode}")
-        
         # 3. Decide strategy based on preferred targets
         if preferred_targets:
             # Found preferred targets - use value iteration
@@ -243,13 +230,11 @@ class BaseValueAgent:
                 for color, pos in obs['achiever_visible_keys'].items():
                     if pos is not None:
                         self.memory['key_positions'][color] = tuple(pos)
-                        print(f"DEBUG: Found {color} key at {pos}")
                         
             if 'achiever_visible_doors' in obs and obs['achiever_visible_doors']:
                 for color, pos in obs['achiever_visible_doors'].items():
                     if pos is not None:
                         self.memory['door_positions'][color] = tuple(pos)
-                        print(f"DEBUG: Found {color} door at {pos}")
         
         # Parse structured observation data (for blocker) 
         elif self.role == "blocker":
@@ -330,11 +315,9 @@ class BaseValueAgent:
                     if obj_type == 'key':
                         self.memory['key_positions'][color] = world_pos
                         self.memory['walkable_positions'].add(world_pos)
-                        print(f"DEBUG: Found {color} key at {world_pos}")
                     elif obj_type == 'door':
                         self.memory['door_positions'][color] = world_pos
                         self.memory['walkable_positions'].add(world_pos)  # Doors are walkable in MiniGrid
-                        print(f"DEBUG: Found {color} door at {world_pos}")
                     elif obj_type == 'wall':
                         self.memory['wall_positions'].add(world_pos)
                         self.memory['unwalkable_positions'].add(world_pos)
@@ -966,19 +949,10 @@ class BaseValueAgent:
 
     def _navigate_with_value_iteration(self, target_pos, obs=None):
         """Navigate using value iteration and convert to MiniGrid actions"""
-        import os
-        
-        if os.getenv('DEBUG_MODE') == 'true':
-            print(f"DEBUG: Navigate to {target_pos}, agent at {self.agent_pos}")
-            print(f"DEBUG: Memory has {len(self.memory['walkable_positions'])} walkable, "
-                  f"{len(self.memory['unwalkable_positions'])} unwalkable positions")
-        
         # Run value iteration to get optimal action
         optimal_action = self._plan_value_iteration(target_pos, obs)
 
         if optimal_action is None:
-            if os.getenv('DEBUG_MODE') == 'true':
-                print(f"DEBUG: Value iteration failed, falling back to exploration")
             return self._explore_action()  # Fallback to exploration instead of staying
 
         # Convert value iteration action to MiniGrid action

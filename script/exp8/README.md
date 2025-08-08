@@ -519,6 +519,151 @@ def _get_key_positions(self):
 
 The V2 environments are now ready for integration into exp8 scripts with full backward compatibility and enhanced partial observation support.
 
+## Version Analysis: Current vs Previous Implementation
+
+### Architecture Improvements (v2.4)
+
+#### ✅ **Code Organization Enhancement**
+**Previous Structure:**
+- Monolithic files: `achievers.py`, `blockers.py`, `value_agent.py`
+- All agent implementations in single files (difficult maintenance)
+
+**Current Structure:**
+```
+script/exp8/agents/
+├── value_agent.py (shared base class)
+├── achiever/level0value.py, level1value.py
+└── blocker/level0value.py, level1value.py
+```
+**Benefits:** Better modularity, easier testing, cleaner separation of concerns
+
+#### ✅ **Enhanced Agent Strategies**
+- **Clockwise Wall-Following (v2.2):** Systematic exploration reducing trajectory lengths from 100+ to ~30 steps
+- **Sophisticated Deception (Level1ValueAchiever):** Three-phase strategy with proximity-based blocker tracking
+- **Enhanced Inference (Level1ValueBlocker):** Advanced achiever tracking and target inference
+- **Critical Bug Fixes (v2.3):** Fixed memory management and door breaking logic
+
+#### ✅ **Improved Documentation**
+- Comprehensive README.md with detailed strategy descriptions
+- Complete version history and change tracking
+- Clear usage instructions and configuration examples
+
+### Critical Functionality Regressions
+
+#### ❌ **Severely Reduced BaseValueAgent Functionality**
+**Previous Version (1,246 lines):**
+```python
+# Comprehensive memory system
+self.memory = {
+    'door_positions': {},     # color -> (x, y)
+    'key_positions': {},      # color -> (x, y)
+    'wall_positions': set(),  # Set of wall positions
+    'walkable_positions': set(),
+    'unwalkable_positions': set(),
+    'visited_positions': set()
+}
+
+# Advanced exploration coordination
+def act(self, obs):
+    # 1. Update memory from observation
+    # 2. Find preferred targets  
+    # 3. Decide exploration vs value iteration with fallbacks
+```
+
+**Current Version (627 lines):**
+```python
+# Simplified memory system - MAJOR LOSS
+self.memory = {}  # Only basic dictionary
+self.discovered_positions = set()
+
+# Minimal coordination - REGRESSION
+def act(self, obs):
+    self.update_observation(obs)
+    self._update_memory(obs, self.agent_pos)
+    return self.get_action(obs)  # Delegates everything
+```
+
+#### ❌ **Lost Memory Management Capabilities**
+**Previous Had:**
+- Multi-format observation parsing (structured data, grid-based, alternative formats)
+- Comprehensive walkability tracking and spatial memory
+- Memory-augmented observations: `_get_memory_augmented_obs()`
+- Advanced memory persistence across episodes
+
+**Current Missing:**
+- No comprehensive observation format handling
+- No walkability memory management  
+- No memory augmentation capabilities
+- Limited to basic grid scanning only
+
+#### ❌ **Lost Strategic Coordination**
+**Previous Had:**
+```python
+def _find_preferred_targets(self):
+    # Complex target finding with strategy-aware prioritization
+    # Automatic fallback mechanisms
+    # Debug infrastructure for troubleshooting
+```
+
+**Current Missing:**
+- No automatic strategy switching logic
+- No sophisticated fallback coordination
+- Removed debug infrastructure (harder to troubleshoot)
+
+#### ❌ **Reduced Observation Parsing Robustness**
+**Previous Handled:**
+```python
+# Multiple observation formats
+if 'achiever_visible_keys' in obs:
+    # Parse structured achiever observations
+if 'blocker_visible_keys' in obs:
+    # Parse structured blocker observations  
+if 'key_positions' in obs:
+    # Handle alternative formats
+self._parse_grid_observation(agent_pos)  # Grid-based parsing
+```
+
+**Current Limited:**
+```python
+# Only basic formats - MAJOR REGRESSION
+if "key_positions" in obs:
+    # Simple storage only
+if "door_positions" in obs:
+    # Simple storage only
+# NO comprehensive format handling
+```
+
+### Performance and Reliability Impact
+
+#### ⚠️ **Stability Concerns**
+1. **Reduced Error Handling:** Less robust to unexpected inputs and edge cases
+2. **Lost Advanced Exploration:** Simplified exploration state may miss complex scenarios  
+3. **Memory Persistence Issues:** Lost comprehensive spatial knowledge retention
+4. **Observation Format Brittleness:** May break with different observation formats
+
+#### ⚠️ **Debugging Challenges**
+- **Removed Debug Infrastructure:** Lost extensive debug printing and troubleshooting capabilities
+- **Simplified State Tracking:** Harder to understand agent decision-making process
+- **Less Diagnostic Information:** Reduced ability to identify performance issues
+
+### Recommendation
+
+**The current version represents a trade-off:**
+- **✅ Gains:** Better code organization, enhanced agent strategies, improved documentation
+- **❌ Losses:** Significant functionality regression, reduced robustness, lost debugging capabilities
+
+**Critical Missing Functionality:**
+1. Comprehensive memory management system
+2. Multi-format observation parsing robustness  
+3. Advanced exploration coordination with fallbacks
+4. Debug infrastructure for troubleshooting
+5. Memory-augmented observation capabilities
+
+**For production use, consider:**
+1. **Hybrid Approach:** Combine current modular organization with previous comprehensive functionality
+2. **Incremental Restoration:** Gradually restore critical missing capabilities
+3. **Testing Priority:** Focus testing on edge cases that previous version handled robustly
+
 ## Acknowledgments
 
 Built upon the exp6 unified single/multi-agent framework, extending it to include second-order belief modeling for enhanced theory of mind capabilities in competitive multi-agent environments.

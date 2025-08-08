@@ -90,7 +90,6 @@ class BaseValueAgent:
         # Exploration state for clockwise wall-following
         self.last_direction = None  # Last attempted direction
         self.exploration_mode = True
-        self.stuck_counter = 0  # Counter for stuck detection
         
         # Direction mapping for clockwise rotation: up�right�down�left�up
         self.directions = [0, 1, 2, 3]  # up, right, down, left
@@ -286,37 +285,45 @@ class BaseValueAgent:
         Returns True if agent should change direction due to obstacles or being stuck.
         """
         if self.agent_pos is None or self.last_direction is None:
+            print(f"DEBUG: _should_change_direction = True (pos={self.agent_pos}, dir={self.last_direction})")
             return True
             
         # Check if current direction is blocked
         dx, dy = self.direction_deltas[self.last_direction]
         next_pos = (self.agent_pos[0] + dx, self.agent_pos[1] + dy)
         
+        print(f"DEBUG: Checking direction {self.last_direction} from {self.agent_pos} to {next_pos}")
+        
         # Check boundaries and walkability
-        if (next_pos[0] < 0 or next_pos[0] >= (self.width or 9) or 
-            next_pos[1] < 0 or next_pos[1] >= (self.height or 9) or
+        if (next_pos[0] <= 0 or next_pos[0] >= self.width-1 or 
+            next_pos[1] <= 0 or next_pos[1] >= self.height-1 or
             not self._is_walkable(next_pos)):
+            print(f"DEBUG: _should_change_direction = True (blocked/boundary)")
             return True
             
+        print(f"DEBUG: _should_change_direction = False (path clear)")
         return False
 
     def _explore_with_clockwise_pattern(self):
         """
-        Enhanced clockwise exploration with stuck detection and recovery
+        Enhanced clockwise exploration with direction change detection
         
-        Uses systematic clockwise wall-following: up�right�down�left�up
+        Uses systematic clockwise wall-following: up→right→down→left→up
         """
-        if self._should_change_direction():
-            self.last_direction = self._get_clockwise_direction(self.last_direction)
-            self.stuck_counter = 0
-        else:
-            # Continue in current direction but check for being stuck
-            self.stuck_counter += 1
-            if self.stuck_counter > 3:  # If stuck for too long
-                self.last_direction = self._get_clockwise_direction(self.last_direction)
-                self.stuck_counter = 0
+        print(f"DEBUG: _explore_with_clockwise_pattern at pos {self.agent_pos}")
+        print(f"DEBUG: last_direction={self.last_direction}")
         
-        return self.last_direction if self.last_direction is not None else 0
+        should_change = self._should_change_direction()
+        print(f"DEBUG: _should_change_direction() = {should_change}")
+        
+        if should_change:
+            old_direction = self.last_direction
+            self.last_direction = self._get_clockwise_direction(self.last_direction)
+            print(f"DEBUG: Changed direction from {old_direction} to {self.last_direction}")
+        
+        final_action = self.last_direction if self.last_direction is not None else 0
+        print(f"DEBUG: Returning action {final_action}")
+        return final_action
 
     def _plan_value_iteration(
         self, target_pos, obs=None, max_iterations=100, convergence_threshold=0.01
@@ -624,4 +631,3 @@ class BaseValueAgent:
         self.discovered_positions = set()
         self.last_direction = None
         self.exploration_mode = True
-        self.stuck_counter = 0

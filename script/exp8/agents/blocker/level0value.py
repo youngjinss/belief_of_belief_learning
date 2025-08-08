@@ -73,7 +73,9 @@ class Level0ValueBlocker(BaseValueAgent):
 
     def _update_grid_reference(self, obs):
         """Update grid reference from observations"""
-        self.grid = obs.get("blocker")
+        if "blocker" in obs and obs["blocker"] and "image" in obs["blocker"]:
+            from gym_minigrid.minigrid import Grid
+            self.grid = Grid.decode(obs["blocker"]["image"])
 
     def _get_opponent_position(self, obs):
         """Get achiever position for conflict penalty"""
@@ -90,6 +92,7 @@ class Level0ValueBlocker(BaseValueAgent):
 
         # Update internal state from observations
         self.update_observation(obs)
+        self._update_memory(obs, self.agent_pos)
 
         # Check if we just attempted to break and game is still continuing
         if self.just_attempted_break:

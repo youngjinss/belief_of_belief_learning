@@ -824,102 +824,65 @@ def run_single_game(game_id, config_dict, save_dir, blocker_type=None):
         observability = config_dict.get("observability", "full")
         partial_view_size = config_dict.get("partial_view_size", 7)
 
-        if observability == "partial":
-            # Use V2 environment for partial observation
-            if env_size == "5x5":
-                env = KeyDoor5x5EnvV2(
-                    preference=goal_rewards,
-                    cost=game_costs,
-                    max_steps=config_dict["max_steps"],
-                    observability=observability,
-                    partial_view_size=partial_view_size,
-                )
-            elif env_size == "9x9":
-                env = KeyDoor9x9EnvV2(
-                    preference=goal_rewards,
-                    cost=game_costs,
-                    max_steps=config_dict["max_steps"],
-                    observability=observability,
-                    partial_view_size=partial_view_size,
-                )
-            elif env_size == "11x11":
-                env = KeyDoor11x11EnvV2(
-                    preference=goal_rewards,
-                    cost=game_costs,
-                    max_steps=config_dict["max_steps"],
-                    observability=observability,
-                    partial_view_size=partial_view_size,
-                )
-            else:
-                raise ValueError(f"Unknown environment size: {env_size}")
-        else:
-            # Use V1 environment for full observation (backward compatibility)
-            size_map = {"5x5": 5, "9x9": 9, "11x11": 11}
-            if env_size not in size_map:
-                raise ValueError(f"Unknown environment size: {env_size}")
-
-            env = KeyDoorEnv(
-                size=size_map[env_size],
+        if env_size == "5x5":
+            env = KeyDoor5x5EnvV2(
                 preference=goal_rewards,
                 cost=game_costs,
                 max_steps=config_dict["max_steps"],
+                observability=observability,
+                partial_view_size=partial_view_size,
             )
+        elif env_size == "9x9":
+            env = KeyDoor9x9EnvV2(
+                preference=goal_rewards,
+                cost=game_costs,
+                max_steps=config_dict["max_steps"],
+                observability=observability,
+                partial_view_size=partial_view_size,
+            )
+        elif env_size == "11x11":
+            env = KeyDoor11x11EnvV2(
+                preference=goal_rewards,
+                cost=game_costs,
+                max_steps=config_dict["max_steps"],
+                observability=observability,
+                partial_view_size=partial_view_size,
+                )
+        else:
+            raise ValueError(f"Unknown environment size: {env_size}")
     else:
         # Create AchieverBlocker environment for multi-agent mode
         observability = config_dict.get("observability", "full")
         partial_view_size = config_dict.get("partial_view_size", 7)
 
-        if observability == "partial":
-            # Use V2 environment for partial observation
-            if env_size == "5x5":
-                env = AchieverBlocker5x5EnvV2(
-                    preference=goal_rewards,
-                    cost=game_costs,
-                    max_steps=config_dict["max_steps"],
-                    observability=observability,
-                    partial_view_size=partial_view_size,
-                )
-            elif env_size == "9x9":
-                env = AchieverBlocker9x9EnvV2(
-                    preference=goal_rewards,
-                    cost=game_costs,
-                    max_steps=config_dict["max_steps"],
-                    observability=observability,
-                    partial_view_size=partial_view_size,
-                )
-            elif env_size == "11x11":
-                env = AchieverBlocker11x11EnvV2(
-                    preference=goal_rewards,
-                    cost=game_costs,
-                    max_steps=config_dict["max_steps"],
-                    observability=observability,
-                    partial_view_size=partial_view_size,
-                )
-            else:
-                raise ValueError(f"Unknown environment size: {env_size}")
+        # Use V2 environment for partial observation
+        if env_size == "5x5":
+            env = AchieverBlocker5x5EnvV2(
+                preference=goal_rewards,
+                cost=game_costs,
+                max_steps=config_dict["max_steps"],
+                observability=observability,
+                partial_view_size=partial_view_size,
+            )
+        elif env_size == "9x9":
+            env = AchieverBlocker9x9EnvV2(
+                preference=goal_rewards,
+                cost=game_costs,
+                max_steps=config_dict["max_steps"],
+                observability=observability,
+                partial_view_size=partial_view_size,
+            )
+        elif env_size == "11x11":
+            env = AchieverBlocker11x11EnvV2(
+                preference=goal_rewards,
+                cost=game_costs,
+                max_steps=config_dict["max_steps"],
+                observability=observability,
+                partial_view_size=partial_view_size,
+            )
         else:
-            # Use V1 environment for full observation (backward compatibility)
-            if env_size == "5x5":
-                env = AchieverBlocker5x5Env(
-                    preference=goal_rewards,
-                    cost=game_costs,
-                    max_steps=config_dict["max_steps"],
-                )
-            elif env_size == "9x9":
-                env = AchieverBlocker9x9Env(
-                    preference=goal_rewards,
-                    cost=game_costs,
-                    max_steps=config_dict["max_steps"],
-                )
-            elif env_size == "11x11":
-                env = AchieverBlocker11x11Env(
-                    preference=goal_rewards,
-                    cost=game_costs,
-                    max_steps=config_dict["max_steps"],
-                )
-            else:
-                raise ValueError(f"Unknown environment size: {env_size}")
-
+            raise ValueError(f"Unknown environment size: {env_size}")
+        
     # Seed environment before reset (following exp3 pattern)
     env.seed(config_dict["base_random_seed"] + game_id)
 
@@ -946,6 +909,7 @@ def run_single_game(game_id, config_dict, save_dir, blocker_type=None):
             gamma=agent_config.get("gamma", 0.99),
             temperature=agent_config.get("temperature", 0.1),
             q_value_clip=agent_config.get("q_value_clip", 100),
+            goal_rewards=goal_rewards,
         )
     elif achiever_type == "lv1va":
         agent_config = config_dict.get("achiever_configs", {}).get("lv1va", {})
@@ -969,6 +933,7 @@ def run_single_game(game_id, config_dict, save_dir, blocker_type=None):
             gamma=agent_config.get("gamma", 0.99),
             temperature=agent_config.get("temperature", 0.1),
             q_value_clip=agent_config.get("q_value_clip", 100),
+            goal_rewards=goal_rewards,
         )
     elif achiever_type == "random":
         achiever_agent = AchieverRandomAgent(

@@ -326,6 +326,20 @@ python script/exp8/evaluate.py --compare_models baseline enhanced
   - **Updated Import Paths**: All imports in `generate.py` and other scripts updated to use new modular structure
   - **Backward Compatibility**: All agent functionality remains identical - only organizational improvements
   - **Testing Verification**: ✅ Confirmed refactored code works correctly with 9x9 partial observation test run
+- **v2.5** (2025-08-08): Critical agent logic fixes for partial observation
+  - **Fixed target_door_color initialization bug**: Agent's `reset()` method was incorrectly setting `target_door_color = None`, preventing target key identification
+    - **Root Cause**: `reset()` method overwrote game-specific target color with `None`
+    - **Solution**: Removed `target_door_color = None` from reset method to preserve initialization from `goal_rewards`
+  - **Fixed observation structure mismatch**: Agent was looking for `key_positions` in partial observability mode but environment provides `achiever_visible_keys`
+    - **Problem**: Partial observation uses different field names than full observation
+    - **Solution**: Updated `update_observation()` and helper methods to handle both observation formats
+  - **Fixed None action bug**: Agent's `get_action()` method was returning `None` in specific edge cases during key collection phase
+    - **Root Cause**: Missing return statement when transitioning from "collect_key" to "open_door" strategy phase
+    - **Problem**: After collecting key and changing strategy phase, method reached end without returning action
+    - **Solution**: Added proper return statement and comprehensive fallbacks to ensure valid actions always returned
+  - **Enhanced door discovery logic**: Agent now properly switches exploration modes based on key collection and door visibility
+    - **Strategy**: After collecting target key, agent explores to find target door; switches to value iteration when door discovered
+    - **Implementation**: Added door discovery checks in `update_observation()` with proper exploration mode management
 
 ## Agent Architecture (v2.4)
 
@@ -663,6 +677,36 @@ if "door_positions" in obs:
 1. **Hybrid Approach:** Combine current modular organization with previous comprehensive functionality
 2. **Incremental Restoration:** Gradually restore critical missing capabilities
 3. **Testing Priority:** Focus testing on edge cases that previous version handled robustly
+
+## Critical Bug Fixes (2025-08-08)
+
+### Memory Management and Strategy Phase Transitions
+
+**Issue Analysis**: Investigation of partial observation behavior revealed agents not directly navigating to target doors after collecting required keys, despite having both key and door information available.
+
+**Root Cause**: Multiple logic flow issues in Level0ValueAchiever:
+- **Memory Reset Bug**: Duplicate `update_observation()` and `_update_memory()` calls in `get_action()` method conflicted with base class `act()` method, causing memory loss between timesteps
+- **Door Discovery Gap**: Partial observation memory updates only used grid scanning, missing observation-based door discovery
+- **Infinite Recursion**: Direction selection algorithm had unbounded recursion when all directions blocked
+
+**Fixes Applied**:
+1. **Enhanced Memory Persistence** (`value_agent.py:153-163`)
+   - Added dual-method memory updates: observation data primary, grid scanning backup
+   - Comprehensive debug logging for memory operations
+
+2. **Fixed Strategy Phase Logic** (`level0value.py:197-201`)  
+   - Removed duplicate memory calls that caused conflicts with base class
+   - Enhanced strategy phase transition debugging
+
+3. **Improved Memory-First Navigation** (`level0value.py:276`)
+   - Verified door opening logic correctly prioritizes memory over observations
+   - Added comprehensive debug logging for door discovery and navigation
+
+4. **Fixed Infinite Recursion** (`value_agent.py:251-273`)
+   - Replaced recursive direction selection with iterative approach
+   - Added proper fallback for blocked movement scenarios
+
+**Result**: Agents now correctly transition from key collection to target door navigation, with persistent memory enabling efficient value iteration-based pathfinding in partial observation environments.
 
 ## Acknowledgments
 

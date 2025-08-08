@@ -149,8 +149,22 @@ class BaseValueAgent:
         if obs is None or agent_pos is None:
             return
             
-        # In partial observation, scan the visible area around agent
+        # In partial observation, use both grid scanning AND observation data
         if self.observability == "partial":
+            # Method 1: Use observation data for visible objects (more reliable)
+            if "achiever_visible_keys" in obs:
+                for color, pos in obs["achiever_visible_keys"].items():
+                    if pos is not None:
+                        self.memory[f"key_{color}"] = tuple(pos)
+                        
+            if "achiever_visible_doors" in obs:
+                for color, pos in obs["achiever_visible_doors"].items():
+                    if pos is not None:
+                        self.memory[f"door_{color}"] = tuple(pos)
+                        if os.getenv("DEBUG_MODE"):
+                            print(f"DEBUG: Saved door_{color} at {tuple(pos)} to memory")
+            
+            # Method 2: Grid scanning as backup (in case obs data is not available)
             partial_view_size = 5  # Standard 5x5 view
             half_size = partial_view_size // 2
             
@@ -182,6 +196,8 @@ class BaseValueAgent:
                             elif isinstance(cell, Door):
                                 door_color = cell.color
                                 self.memory[f"door_{door_color}"] = pos
+                                if os.getenv("DEBUG_MODE"):
+                                    print(f"DEBUG: Grid scan saved door_{door_color} at {pos} to memory")
         else:
             # In full observation, use observation data directly
             if "key_positions" in obs:
@@ -234,26 +250,27 @@ class BaseValueAgent:
 
     def _get_clockwise_direction(self, current_direction):
         """
-        Get next direction in clockwise rotation: up�right�down�left�up
+        Get next direction in clockwise rotation: up→right→down→left→up
         
         Includes validation to ensure the new direction is walkable.
         """
         if current_direction is None:
             return 0  # Start with up
             
-        # Get next direction clockwise
-        next_dir = (current_direction + 1) % 4
-        
-        # Verify the new direction is walkable
-        if self.agent_pos is not None:
-            dx, dy = self.direction_deltas[next_dir]
-            new_pos = (self.agent_pos[0] + dx, self.agent_pos[1] + dy)
+        # Try all directions clockwise to avoid infinite recursion
+        for i in range(4):
+            next_dir = (current_direction + 1 + i) % 4
             
-            if self._is_walkable(new_pos):
-                return next_dir
+            # Verify the new direction is walkable
+            if self.agent_pos is not None:
+                dx, dy = self.direction_deltas[next_dir]
+                new_pos = (self.agent_pos[0] + dx, self.agent_pos[1] + dy)
+                
+                if self._is_walkable(new_pos):
+                    return next_dir
         
-        # If not walkable, continue rotating
-        return self._get_clockwise_direction(next_dir)
+        # If all directions blocked, return stay action (will be handled by caller)
+        return 4  # Stay action
 
     def _get_blocked_directions(self):
         """Get list of directions that are blocked (walls, boundaries, obstacles)"""
@@ -322,6 +339,12 @@ class BaseValueAgent:
             print(f"DEBUG: Changed direction from {old_direction} to {self.last_direction}")
         
         final_action = self.last_direction if self.last_direction is not None else 0
+        
+        # Handle stay action case (all directions blocked)
+        if final_action == 4:
+            final_action = 4  # Stay action
+            print(f"DEBUG: All directions blocked - returning stay action")
+        
         print(f"DEBUG: Returning action {final_action}")
         return final_action
 

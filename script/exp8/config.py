@@ -62,7 +62,7 @@ class Config:
         self.env_variants = {
             "3x3": {"grid_size": 3, "max_steps": 100, "partial_view_size": 2},
             "5x5": {"grid_size": 5, "max_steps": 100, "partial_view_size": 3},
-            "9x9": {"grid_size": 9, "max_steps": 100, "partial_view_size": 5},
+            "9x9": {"grid_size": 9, "max_steps": 100, "partial_view_size": 6},
             "11x11": {"grid_size": 11, "max_steps": 100, "partial_view_size": 7},
         }
 

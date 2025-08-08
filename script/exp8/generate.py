@@ -27,17 +27,11 @@ sys.path.append(
 # Import seed utility
 from script.exp8.utils import set_seed
 
-from lib.env.gym_minigrid.envs.achiever_blocker import (
-    AchieverBlocker5x5Env,
-    AchieverBlocker9x9Env,
-    AchieverBlocker11x11Env,
-)
 from lib.env.gym_minigrid.envs.achiever_blocker_v2 import (
     AchieverBlocker5x5EnvV2,
     AchieverBlocker9x9EnvV2,
     AchieverBlocker11x11EnvV2,
 )
-from lib.env.gym_minigrid.envs.keydoor import KeyDoorEnv
 from lib.env.gym_minigrid.envs.keydoor_v2 import (
     KeyDoor5x5EnvV2,
     KeyDoor9x9EnvV2,

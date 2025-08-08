@@ -18,7 +18,7 @@ class InteractionAnalyzer:
     def __init__(self, base_dir):
         self.base_dir = base_dir
         self.data_dir = os.path.join(
-            base_dir, "data", "MiniGrid-AchieverBlocker-9x9-v1"
+            base_dir, "data", "MiniGrid-AchieverBlocker-9x9-v2"
         )
 
         # Define interaction types (updated for new door color format)

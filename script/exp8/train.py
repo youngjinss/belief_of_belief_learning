@@ -154,11 +154,19 @@ def train_epoch(
             with autocast():
                 # Create masked actions for temporal masking (mask target action at last position)
                 masked_self_actions = self_actions.clone()
-                masked_self_actions[:, -1] = -1  # Mask the target action so model can't see it
-                
+                masked_self_actions[:, -1] = (
+                    -1
+                )  # Mask the target action so model can't see it
+
                 # Forward pass
-                outputs = model(past_trajectories, self_states, masked_self_actions, 
-                              current_state, oppo_states=oppo_states, oppo_actions=oppo_actions)
+                outputs = model(
+                    past_trajectories,
+                    self_states,
+                    masked_self_actions,
+                    current_state,
+                    oppo_states=oppo_states,
+                    oppo_actions=oppo_actions,
+                )
 
                 # Compute loss
                 loss_dict = loss_fn(
@@ -182,11 +190,19 @@ def train_epoch(
         else:
             # Create masked actions for temporal masking (mask target action at last position)
             masked_self_actions = self_actions.clone()
-            masked_self_actions[:, -1] = -1  # Mask the target action so model can't see it
-            
+            masked_self_actions[:, -1] = (
+                -1
+            )  # Mask the target action so model can't see it
+
             # Forward pass without mixed precision
-            outputs = model(past_trajectories, self_states, masked_self_actions, 
-                          current_state, oppo_states=oppo_states, oppo_actions=oppo_actions)
+            outputs = model(
+                past_trajectories,
+                self_states,
+                masked_self_actions,
+                current_state,
+                oppo_states=oppo_states,
+                oppo_actions=oppo_actions,
+            )
 
             # Compute loss
             loss_dict = loss_fn(
@@ -251,14 +267,18 @@ def train_epoch(
         # Mask padded self actions (-1) for accuracy calculation
         action_mask = self_actions[:, -1] != -1
         valid_action_samples = action_mask.sum().item()
-        
+
         if valid_action_samples > 0:
-            correct_actions += (action_preds[action_mask] == self_actions[action_mask, -1]).sum().item()
+            correct_actions += (
+                (action_preds[action_mask] == self_actions[action_mask, -1])
+                .sum()
+                .item()
+            )
             # Update total samples to only count valid actions
             total_samples += valid_action_samples
         else:
             total_samples += batch_size
-        
+
         correct_goals += (goal_preds == goals_indices).sum().item()
         correct_agents += (agent_preds == agents).sum().item()
         correct_types += (type_preds == types).sum().item()
@@ -272,7 +292,9 @@ def train_epoch(
         blocker_valid_mask = blocker_mask & action_mask
 
         achiever_correct_actions += (
-            (action_preds[achiever_valid_mask] == self_actions[achiever_valid_mask, -1]).sum().item()
+            (action_preds[achiever_valid_mask] == self_actions[achiever_valid_mask, -1])
+            .sum()
+            .item()
         )
         achiever_correct_goals += (
             (goal_preds[achiever_mask] == goals_indices[achiever_mask]).sum().item()
@@ -280,7 +302,9 @@ def train_epoch(
         achiever_total_samples += achiever_valid_mask.sum().item()
 
         blocker_correct_actions += (
-            (action_preds[blocker_valid_mask] == self_actions[blocker_valid_mask, -1]).sum().item()
+            (action_preds[blocker_valid_mask] == self_actions[blocker_valid_mask, -1])
+            .sum()
+            .item()
         )
         blocker_correct_goals += (
             (goal_preds[blocker_mask] == goals_indices[blocker_mask]).sum().item()
@@ -530,13 +554,21 @@ def validate_epoch(
 
             # Create masked actions for temporal masking (mask target action at last position)
             masked_self_actions = self_actions.clone()
-            masked_self_actions[:, -1] = -1  # Mask the target action so model can't see it
-            
+            masked_self_actions[:, -1] = (
+                -1
+            )  # Mask the target action so model can't see it
+
             # Forward pass
             if scaler is not None:
                 with autocast():
-                    outputs = model(past_trajectories, self_states, masked_self_actions, 
-                                  current_state, oppo_states=oppo_states, oppo_actions=oppo_actions)
+                    outputs = model(
+                        past_trajectories,
+                        self_states,
+                        masked_self_actions,
+                        current_state,
+                        oppo_states=oppo_states,
+                        oppo_actions=oppo_actions,
+                    )
                     loss_dict = loss_fn(
                         outputs["action_logits"],
                         outputs["goal_logits"],
@@ -552,8 +584,14 @@ def validate_epoch(
                         sr_labels,
                     )
             else:
-                outputs = model(past_trajectories, self_states, masked_self_actions, 
-                              current_state, oppo_states=oppo_states, oppo_actions=oppo_actions)
+                outputs = model(
+                    past_trajectories,
+                    self_states,
+                    masked_self_actions,
+                    current_state,
+                    oppo_states=oppo_states,
+                    oppo_actions=oppo_actions,
+                )
                 loss_dict = loss_fn(
                     outputs["action_logits"],
                     outputs["goal_logits"],
@@ -590,9 +628,13 @@ def validate_epoch(
             # Mask padded self actions (-1) for accuracy calculation
             action_mask = self_actions[:, -1] != -1
             valid_action_samples = action_mask.sum().item()
-            
+
             if valid_action_samples > 0:
-                correct_actions += (action_preds[action_mask] == self_actions[action_mask, -1]).sum().item()
+                correct_actions += (
+                    (action_preds[action_mask] == self_actions[action_mask, -1])
+                    .sum()
+                    .item()
+                )
                 total_samples += valid_action_samples
             else:
                 total_samples += batch_size
@@ -610,7 +652,12 @@ def validate_epoch(
             blocker_valid_mask = blocker_mask & action_mask
 
             achiever_correct_actions += (
-                (action_preds[achiever_valid_mask] == self_actions[achiever_valid_mask, -1]).sum().item()
+                (
+                    action_preds[achiever_valid_mask]
+                    == self_actions[achiever_valid_mask, -1]
+                )
+                .sum()
+                .item()
             )
             achiever_correct_goals += (
                 (goal_preds[achiever_mask] == goals_indices[achiever_mask]).sum().item()
@@ -618,7 +665,12 @@ def validate_epoch(
             achiever_total_samples += achiever_valid_mask.sum().item()
 
             blocker_correct_actions += (
-                (action_preds[blocker_valid_mask] == self_actions[blocker_valid_mask, -1]).sum().item()
+                (
+                    action_preds[blocker_valid_mask]
+                    == self_actions[blocker_valid_mask, -1]
+                )
+                .sum()
+                .item()
             )
             blocker_correct_goals += (
                 (goal_preds[blocker_mask] == goals_indices[blocker_mask]).sum().item()
@@ -720,7 +772,6 @@ def validate_epoch(
     # Clear GPU memory after validation epoch
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
-
 
     return {
         "loss": avg_loss,
@@ -1032,7 +1083,7 @@ def run_training_loop(
 def train_tomnet(
     data_dir: str = None,
     save_dir: str = "./results/exp8/combined",
-    config = None,
+    config=None,
 ) -> dict:
     """
     Main training function for KeyDoor ToMnet
@@ -1097,7 +1148,7 @@ def train_tomnet(
     ) = setup_training_environment(
         config, training_kwargs, training_config, device_setting
     )
-    
+
     # Ensure device is a torch.device object
     if isinstance(device, str):
         device = torch.device(device)
@@ -1214,8 +1265,6 @@ def train_tomnet(
         history["best_val_loss"] = float("inf")
 
     return history
-
-
 
 
 if __name__ == "__main__":
@@ -1336,7 +1385,9 @@ if __name__ == "__main__":
     print(f"Training on combined data from all achiever-blocker combinations")
     print(f"Achiever types: {list(config.achiever_types.keys())}")
     print(f"Blocker types: {list(config.blocker_types.keys())}")
-    print(f"Total combinations: {len(config.achiever_types)} x {len(config.blocker_types)} = {len(config.achiever_types) * len(config.blocker_types)}")
+    print(
+        f"Total combinations: {len(config.achiever_types)} x {len(config.blocker_types)} = {len(config.achiever_types) * len(config.blocker_types)}"
+    )
     print(f"{'='*60}")
 
     # Run combined training

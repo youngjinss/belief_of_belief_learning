@@ -4,6 +4,7 @@ import os
 import argparse
 import time
 from PIL import Image
+
 # Add lib to path for imports
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from utils import set_seed
@@ -33,7 +34,6 @@ sys.path.insert(0, gym_minigrid_path)
 
 # Import the gym_minigrid environments
 import gym_minigrid
-
 
 
 def env_to_maze_format(env, achiever_pos, blocker_pos):
@@ -485,8 +485,6 @@ class GameSimulation:
         # Display initial state
         env.render()
 
-
-
         # Replay each step
         for step in range(min(len(self.achiever_actions), self.trajectory_length)):
             achiever_action = self.achiever_actions[step]
@@ -562,9 +560,7 @@ class GameSimulation:
             # Check if episode is done
             if done:
                 print(f"Episode ended at step {step + 1} with rewards: {rewards}")
-                print(
-                    f"Environment says episode is done, but trajectory continues..."
-                )
+                print(f"Environment says episode is done, but trajectory continues...")
                 print(f"Terminated: {terminated}, Truncated: {truncated}")
                 # Don't break here - continue with the trajectory regardless of environment state
 
@@ -585,7 +581,6 @@ class GameSimulation:
 
         # Close environment
         env.close()
-
 
     def print_summary(self):
         """Print summary of the simulation data"""
@@ -614,6 +609,7 @@ class GameSimulation:
         print(f"\nFirst 3 Blocker SR data entries:")
         for i in range(min(3, len(self.blocker_sr_data))):
             print(f"  Timestep {i}: {self.blocker_sr_data.get(i, {})}")
+
 
 def main():
     parser = argparse.ArgumentParser(description="Simulate game from data file")

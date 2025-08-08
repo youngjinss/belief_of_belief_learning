@@ -19,13 +19,14 @@ sys.path.append(
 )
 
 from script.exp8.config import Config
+
 config = Config()
 
 
 def process_file_batch_worker(file_batch_and_config: tuple) -> List[Dict[str, Any]]:
     """Standalone worker function for multiprocessing"""
     file_batch, is_single_agent, config = file_batch_and_config
-    
+
     # Create a DataGenerator instance for this worker
     generator = DataGenerator(config=config)
     batch_samples = []
@@ -103,7 +104,7 @@ class DataGenerator:
 
         # Store config for single-agent mode detection
         self.config = config
-        
+
         # Action spaces from config
         if config is not None:
             self.ACHIEVER_ACTION_SPACE = config.model_config["achiever_action_space"]
@@ -406,8 +407,7 @@ class DataGenerator:
 
         # Extract all achiever interactions at once
         achiever_interactions = [
-            step["achiever_interaction"]
-            for step in parsed_data["trajectory_steps"]
+            step["achiever_interaction"] for step in parsed_data["trajectory_steps"]
         ]
 
         # Vectorized consumption tracking - accumulate all interactions throughout the trajectory
@@ -460,13 +460,19 @@ class DataGenerator:
                 partial_view_size=self.config.get_partial_view_size(),
             )
             # Extract opponent actions
-            oppo_actions = [step["blocker_action"] for step in parsed_data["trajectory_steps"] if step["blocker_action"] is not None]
+            oppo_actions = [
+                step["blocker_action"]
+                for step in parsed_data["trajectory_steps"]
+                if step["blocker_action"] is not None
+            ]
 
         # Create goal tensor (one-hot encoding of intended goal)
         goal_tensor = self._create_goal_tensor(intended_goal)
 
         # Extract self actions for achiever
-        self_actions = [step["achiever_action"] for step in parsed_data["trajectory_steps"]]
+        self_actions = [
+            step["achiever_action"] for step in parsed_data["trajectory_steps"]
+        ]
 
         # Get SR data if available
         sr_data_per_timestep = parsed_data["achiever_data"].get(
@@ -515,8 +521,7 @@ class DataGenerator:
 
         # Extract all blocker interactions at once
         blocker_interactions = [
-            step["blocker_interaction"]
-            for step in parsed_data["trajectory_steps"]
+            step["blocker_interaction"] for step in parsed_data["trajectory_steps"]
         ]
 
         # Vectorized consumption tracking - accumulate all interactions throughout the trajectory
@@ -561,13 +566,19 @@ class DataGenerator:
                 partial_view_size=self.config.get_partial_view_size(),
             )
             # Extract opponent actions
-            oppo_actions = [step["achiever_action"] for step in parsed_data["trajectory_steps"] if step["achiever_action"] is not None]
+            oppo_actions = [
+                step["achiever_action"]
+                for step in parsed_data["trajectory_steps"]
+                if step["achiever_action"] is not None
+            ]
 
         # Create goal tensor (one-hot encoding of inferred goal)
         goal_tensor = self._create_goal_tensor(inferred_goal_letter)
 
         # Extract self actions for blocker
-        self_actions = [step["blocker_action"] for step in parsed_data["trajectory_steps"]]
+        self_actions = [
+            step["blocker_action"] for step in parsed_data["trajectory_steps"]
+        ]
 
         # Get SR data if available
         sr_data_per_timestep = parsed_data["blocker_data"].get(
@@ -600,7 +611,7 @@ class DataGenerator:
         partial_view_size: int = 7,
     ) -> np.ndarray:
         """Create self states tensor for specified agent using vectorized operations
-        
+
         Channel structure (10 channels total):
         - Channel 0: Wall positions
         - Channel 1: Empty space
@@ -630,7 +641,7 @@ class DataGenerator:
         green_mask = np.isin(maze, [3, 7]).astype(np.float32)
         blue_mask = np.isin(maze, [4, 8]).astype(np.float32)
         yellow_mask = np.isin(maze, [5, 9]).astype(np.float32)
-        
+
         # Initialize position masks for self and opponent
         self_mask = np.zeros((self.MAZE_HEIGHT, self.MAZE_WIDTH), dtype=np.float32)
         opponent_mask = np.zeros((self.MAZE_HEIGHT, self.MAZE_WIDTH), dtype=np.float32)
@@ -653,16 +664,20 @@ class DataGenerator:
             # Extract positions for both agents
             achiever_positions = []
             blocker_positions = []
-            
+
             for step in trajectory_steps[:steps_to_process]:
                 achiever_pos = step["achiever_pos"]
                 blocker_pos = step["blocker_pos"]
-                achiever_positions.append(achiever_pos if achiever_pos is not None else [-1, -1])
-                blocker_positions.append(blocker_pos if blocker_pos is not None else [-1, -1])
-            
+                achiever_positions.append(
+                    achiever_pos if achiever_pos is not None else [-1, -1]
+                )
+                blocker_positions.append(
+                    blocker_pos if blocker_pos is not None else [-1, -1]
+                )
+
             achiever_positions = np.array(achiever_positions)
             blocker_positions = np.array(blocker_positions)
-            
+
             # Determine self and opponent positions based on agent type
             if agent_type == "achiever":
                 self_positions = achiever_positions
@@ -678,17 +693,17 @@ class DataGenerator:
                 & (self_positions[:, 1] >= 0)
                 & (self_positions[:, 1] < self.MAZE_HEIGHT)
             )
-            
+
             if np.any(valid_self):
                 valid_times = np.arange(steps_to_process)[valid_self]
                 valid_pos = self_positions[valid_self]
-                
+
                 # Set self position in channel 8
                 self_states[valid_times, 8, valid_pos[:, 1], valid_pos[:, 0]] = 1
-                
+
                 # Also maintain the agent in empty space layer for compatibility
                 self_states[valid_times, 1, valid_pos[:, 1], valid_pos[:, 0]] = 1
-            
+
             # Process opponent positions (only in multi-agent mode)
             if not self.is_single_agent_mode:
                 valid_opponent = (
@@ -697,11 +712,11 @@ class DataGenerator:
                     & (opponent_positions[:, 1] >= 0)
                     & (opponent_positions[:, 1] < self.MAZE_HEIGHT)
                 )
-                
+
                 if np.any(valid_opponent):
                     valid_times = np.arange(steps_to_process)[valid_opponent]
                     valid_pos = opponent_positions[valid_opponent]
-                    
+
                     # Set opponent position in channel 9
                     self_states[valid_times, 9, valid_pos[:, 1], valid_pos[:, 0]] = 1
 
@@ -722,46 +737,47 @@ class DataGenerator:
     ) -> np.ndarray:
         """
         Apply partial observation masking to the state tensor.
-        
+
         Args:
             self_states: Full state tensor (seq_len, channels, height, width)
             self_positions: Agent positions for each timestep (seq_len, 2)
             agent_type: Type of agent ("achiever" or "blocker")
             partial_view_size: Size of partial observation window
-            
+
         Returns:
             Masked state tensor with only visible areas preserved
         """
         seq_len, channels, height, width = self_states.shape
         masked_states = np.zeros_like(self_states)
-        
+
         # Calculate view radius (how far agent can see in each direction)
         view_radius = partial_view_size // 2
-        
+
         for t in range(seq_len):
             if t < len(self_positions):
                 agent_pos = self_positions[t]
-                
+
                 # Skip invalid positions
                 if agent_pos[0] < 0 or agent_pos[1] < 0:
                     continue
-                
+
                 agent_x, agent_y = int(agent_pos[0]), int(agent_pos[1])
-                
+
                 # Calculate visible area bounds
                 x_min = max(0, agent_x - view_radius)
                 x_max = min(width, agent_x + view_radius + 1)
                 y_min = max(0, agent_y - view_radius)
                 y_max = min(height, agent_y + view_radius + 1)
-                
+
                 # Copy visible area from original state
-                masked_states[t, :, y_min:y_max, x_min:x_max] = \
-                    self_states[t, :, y_min:y_max, x_min:x_max]
-                
+                masked_states[t, :, y_min:y_max, x_min:x_max] = self_states[
+                    t, :, y_min:y_max, x_min:x_max
+                ]
+
                 # Always keep agent's own position visible (channel 8)
                 if 0 <= agent_y < height and 0 <= agent_x < width:
                     masked_states[t, 8, agent_y, agent_x] = 1.0
-        
+
         return masked_states
 
     def _create_goal_tensor(self, goal_letter: str) -> np.ndarray:
@@ -824,12 +840,16 @@ class DataGenerator:
                 all_samples.append(achiever_sample)
 
                 # Create blocker sample only in multi-agent mode
-                if not (hasattr(self, 'is_single_agent_mode') and self.is_single_agent_mode) and not parsed_data.get("is_single_agent", False):
+                if not (
+                    hasattr(self, "is_single_agent_mode") and self.is_single_agent_mode
+                ) and not parsed_data.get("is_single_agent", False):
                     blocker_sample = self.create_blocker_sample(parsed_data)
                     all_samples.append(blocker_sample)
 
                 # Clean up after each file processing
-                if not (hasattr(self, 'is_single_agent_mode') and self.is_single_agent_mode) and not parsed_data.get("is_single_agent", False):
+                if not (
+                    hasattr(self, "is_single_agent_mode") and self.is_single_agent_mode
+                ) and not parsed_data.get("is_single_agent", False):
                     del parsed_data, achiever_sample, blocker_sample
                 else:
                     del parsed_data, achiever_sample
@@ -849,10 +869,18 @@ class DataGenerator:
                 test_files[i : i + batch_size]
                 for i in range(0, len(test_files), batch_size)
             ]
-            
+
             # Add single-agent flag and config to each batch
             file_batches_with_config = [
-                (batch, self.is_single_agent_mode if hasattr(self, 'is_single_agent_mode') else False, self.config)
+                (
+                    batch,
+                    (
+                        self.is_single_agent_mode
+                        if hasattr(self, "is_single_agent_mode")
+                        else False
+                    ),
+                    self.config,
+                )
                 for batch in file_batches
             ]
 
@@ -879,11 +907,15 @@ class DataGenerator:
         # Count achiever and blocker samples
         achiever_count = sum(1 for s in all_samples if s.get("agent") == "achiever")
         blocker_count = sum(1 for s in all_samples if s.get("agent") == "blocker")
-        
-        if hasattr(self, 'is_single_agent_mode') and self.is_single_agent_mode:
-            print(f"Generated {len(all_samples)} samples ({achiever_count} achiever samples in single-agent mode)")
+
+        if hasattr(self, "is_single_agent_mode") and self.is_single_agent_mode:
+            print(
+                f"Generated {len(all_samples)} samples ({achiever_count} achiever samples in single-agent mode)"
+            )
         else:
-            print(f"Generated {len(all_samples)} samples ({achiever_count} achiever + {blocker_count} blocker)")
+            print(
+                f"Generated {len(all_samples)} samples ({achiever_count} achiever + {blocker_count} blocker)"
+            )
         return all_samples
 
     def save_processed_data(self, samples: List[Dict[str, Any]], output_path: str):
@@ -975,7 +1007,7 @@ if __name__ == "__main__":
     # Override config with command line arguments if specified
     if args.config_override:
         config.update_from_args(args)
-    
+
     # Initialize data generator
     generator = DataGenerator(
         time_step=args.time_step,

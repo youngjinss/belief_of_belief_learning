@@ -42,8 +42,12 @@ from script.exp8.agents.achiever.random import RandomAgent as AchieverRandomAgen
 from script.exp8.agents.achiever.level0value import Level0ValueAchiever
 from script.exp8.agents.achiever.level1value import Level1ValueAchiever
 from script.exp8.agents.blocker.random import RandomAgent as BlockerRandomAgent
-from script.exp8.agents.blocker.goaldirected import GoalDirectAgent as BlockerGoalDirectAgent
-from script.exp8.agents.blocker.randomlyselect import RandomlySelectedAgent as BlockerRandomlySelectedAgent
+from script.exp8.agents.blocker.goaldirected import (
+    GoalDirectAgent as BlockerGoalDirectAgent,
+)
+from script.exp8.agents.blocker.randomlyselect import (
+    RandomlySelectedAgent as BlockerRandomlySelectedAgent,
+)
 from script.exp8.agents.blocker.rulebased import RuleBasedAgent as BlockerRuleBasedAgent
 from script.exp8.agents.blocker.level0value import Level0ValueBlocker
 from script.exp8.agents.blocker.level1value import Level1ValueBlocker
@@ -521,7 +525,7 @@ def save_game_with_labels(
         for i in range(len(trajectory_data["achiever_actions"])):
             achiever_pos = trajectory_data["achiever_positions"][i]
             achiever_action = trajectory_data["achiever_actions"][i]
-            
+
             if blocker_agent is not None:
                 blocker_pos = trajectory_data["blocker_positions"][i]
                 blocker_action = trajectory_data["blocker_actions"][i]
@@ -809,31 +813,42 @@ def run_single_game(game_id, config_dict, save_dir, blocker_type=None):
 
     # Create environment based on single-agent or multi-agent mode
     env_size = config_dict["env_size"]
-    
+
     # Check if this is single-agent mode (no blocker or blocker_type is None)
-    is_single_agent = blocker_type is None or len(config_dict.get("blocker_types", {})) == 0
-    
+    is_single_agent = (
+        blocker_type is None or len(config_dict.get("blocker_types", {})) == 0
+    )
+
     if is_single_agent:
         # Create KeyDoor environment for single-agent mode
         observability = config_dict.get("observability", "full")
         partial_view_size = config_dict.get("partial_view_size", 7)
-        
+
         if observability == "partial":
             # Use V2 environment for partial observation
             if env_size == "5x5":
                 env = KeyDoor5x5EnvV2(
-                    preference=goal_rewards, cost=game_costs, max_steps=config_dict["max_steps"],
-                    observability=observability, partial_view_size=partial_view_size
+                    preference=goal_rewards,
+                    cost=game_costs,
+                    max_steps=config_dict["max_steps"],
+                    observability=observability,
+                    partial_view_size=partial_view_size,
                 )
             elif env_size == "9x9":
                 env = KeyDoor9x9EnvV2(
-                    preference=goal_rewards, cost=game_costs, max_steps=config_dict["max_steps"],
-                    observability=observability, partial_view_size=partial_view_size
+                    preference=goal_rewards,
+                    cost=game_costs,
+                    max_steps=config_dict["max_steps"],
+                    observability=observability,
+                    partial_view_size=partial_view_size,
                 )
             elif env_size == "11x11":
                 env = KeyDoor11x11EnvV2(
-                    preference=goal_rewards, cost=game_costs, max_steps=config_dict["max_steps"],
-                    observability=observability, partial_view_size=partial_view_size
+                    preference=goal_rewards,
+                    cost=game_costs,
+                    max_steps=config_dict["max_steps"],
+                    observability=observability,
+                    partial_view_size=partial_view_size,
                 )
             else:
                 raise ValueError(f"Unknown environment size: {env_size}")
@@ -842,34 +857,43 @@ def run_single_game(game_id, config_dict, save_dir, blocker_type=None):
             size_map = {"5x5": 5, "9x9": 9, "11x11": 11}
             if env_size not in size_map:
                 raise ValueError(f"Unknown environment size: {env_size}")
-            
+
             env = KeyDoorEnv(
                 size=size_map[env_size],
-                preference=goal_rewards, 
-                cost=game_costs, 
-                max_steps=config_dict["max_steps"]
+                preference=goal_rewards,
+                cost=game_costs,
+                max_steps=config_dict["max_steps"],
             )
     else:
         # Create AchieverBlocker environment for multi-agent mode
         observability = config_dict.get("observability", "full")
         partial_view_size = config_dict.get("partial_view_size", 7)
-        
+
         if observability == "partial":
             # Use V2 environment for partial observation
             if env_size == "5x5":
                 env = AchieverBlocker5x5EnvV2(
-                    preference=goal_rewards, cost=game_costs, max_steps=config_dict["max_steps"],
-                    observability=observability, partial_view_size=partial_view_size
+                    preference=goal_rewards,
+                    cost=game_costs,
+                    max_steps=config_dict["max_steps"],
+                    observability=observability,
+                    partial_view_size=partial_view_size,
                 )
             elif env_size == "9x9":
                 env = AchieverBlocker9x9EnvV2(
-                    preference=goal_rewards, cost=game_costs, max_steps=config_dict["max_steps"],
-                    observability=observability, partial_view_size=partial_view_size
+                    preference=goal_rewards,
+                    cost=game_costs,
+                    max_steps=config_dict["max_steps"],
+                    observability=observability,
+                    partial_view_size=partial_view_size,
                 )
             elif env_size == "11x11":
                 env = AchieverBlocker11x11EnvV2(
-                    preference=goal_rewards, cost=game_costs, max_steps=config_dict["max_steps"],
-                    observability=observability, partial_view_size=partial_view_size
+                    preference=goal_rewards,
+                    cost=game_costs,
+                    max_steps=config_dict["max_steps"],
+                    observability=observability,
+                    partial_view_size=partial_view_size,
                 )
             else:
                 raise ValueError(f"Unknown environment size: {env_size}")
@@ -877,15 +901,21 @@ def run_single_game(game_id, config_dict, save_dir, blocker_type=None):
             # Use V1 environment for full observation (backward compatibility)
             if env_size == "5x5":
                 env = AchieverBlocker5x5Env(
-                    preference=goal_rewards, cost=game_costs, max_steps=config_dict["max_steps"]
+                    preference=goal_rewards,
+                    cost=game_costs,
+                    max_steps=config_dict["max_steps"],
                 )
             elif env_size == "9x9":
                 env = AchieverBlocker9x9Env(
-                    preference=goal_rewards, cost=game_costs, max_steps=config_dict["max_steps"]
+                    preference=goal_rewards,
+                    cost=game_costs,
+                    max_steps=config_dict["max_steps"],
                 )
             elif env_size == "11x11":
                 env = AchieverBlocker11x11Env(
-                    preference=goal_rewards, cost=game_costs, max_steps=config_dict["max_steps"]
+                    preference=goal_rewards,
+                    cost=game_costs,
+                    max_steps=config_dict["max_steps"],
                 )
             else:
                 raise ValueError(f"Unknown environment size: {env_size}")
@@ -953,7 +983,9 @@ def run_single_game(game_id, config_dict, save_dir, blocker_type=None):
     if not is_single_agent:
         # Use passed blocker_type if provided, otherwise use config default
         current_blocker_type = (
-            blocker_type if blocker_type else list(config_dict["blocker_types"].keys())[0]
+            blocker_type
+            if blocker_type
+            else list(config_dict["blocker_types"].keys())[0]
         )
         if current_blocker_type == "random":
             blocker_agent = BlockerRandomAgent()
@@ -984,9 +1016,13 @@ def run_single_game(game_id, config_dict, save_dir, blocker_type=None):
                 "randomly_selected", {}
             )
             stay_probability = blocker_config.get("stay_probability", 0.7)
-            blocker_agent = BlockerRandomlySelectedAgent(stay_probability=stay_probability)
+            blocker_agent = BlockerRandomlySelectedAgent(
+                stay_probability=stay_probability
+            )
         elif current_blocker_type == "rule_based":
-            blocker_config = config_dict.get("blocker_configs", {}).get("rule_based", {})
+            blocker_config = config_dict.get("blocker_configs", {}).get(
+                "rule_based", {}
+            )
             stay_probability = blocker_config.get("stay_probability", 0.7)
             blocker_agent = BlockerRuleBasedAgent(stay_probability=stay_probability)
         else:
@@ -1037,7 +1073,7 @@ def run_single_game(game_id, config_dict, save_dir, blocker_type=None):
     while step_count < max_steps:
         # Get actions from agents
         achiever_action = achiever_agent.get_action(obs)
-        
+
         if is_single_agent:
             # Single-agent mode: only achiever acts
             obs, reward, terminated, truncated, info = env.step(achiever_action)
@@ -1081,8 +1117,10 @@ def run_single_game(game_id, config_dict, save_dir, blocker_type=None):
         if is_single_agent:
             current_keys = list(env.agent_keys) if hasattr(env, "agent_keys") else []
         else:
-            current_keys = list(env.achiever_keys) if hasattr(env, "achiever_keys") else []
-        
+            current_keys = (
+                list(env.achiever_keys) if hasattr(env, "achiever_keys") else []
+            )
+
         # Check if new keys were collected (for both single and multi-agent)
         if len(current_keys) > len(keys_collected):
             new_key = [k for k in current_keys if k not in keys_collected][0]
@@ -1110,9 +1148,9 @@ def run_single_game(game_id, config_dict, save_dir, blocker_type=None):
 
     # Calculate SR labels for agents
     sr_gammas = config_dict.get("sr_gammas", [0.5, 0.9, 0.99])
-    
+
     # Get grid size from environment (handle different env types)
-    grid_size = env.grid.width if hasattr(env, 'grid') else env.width
+    grid_size = env.grid.width if hasattr(env, "grid") else env.width
 
     # Batch SR calculation for achiever
     achiever_sr_labels_per_timestep = calculate_sr_labels_for_trajectory(
@@ -1158,7 +1196,9 @@ def run_single_game(game_id, config_dict, save_dir, blocker_type=None):
         blocker_agent=blocker_agent,
         env=env,
         achiever_sr_labels_per_timestep=achiever_sr_labels_per_timestep,
-        blocker_sr_labels_per_timestep=blocker_sr_labels_per_timestep if not is_single_agent else None,
+        blocker_sr_labels_per_timestep=(
+            blocker_sr_labels_per_timestep if not is_single_agent else None
+        ),
         consumption_labels=consumption_labels,
         key_door_rank=key_door_rank,
         name="",
@@ -1178,7 +1218,12 @@ def run_single_game(game_id, config_dict, save_dir, blocker_type=None):
     del env, achiever_agent, trajectory_data
     del achiever_positions, achiever_actions, achiever_sr_labels_per_timestep
     if blocker_agent is not None:
-        del blocker_agent, blocker_positions, blocker_actions, blocker_sr_labels_per_timestep
+        del (
+            blocker_agent,
+            blocker_positions,
+            blocker_actions,
+            blocker_sr_labels_per_timestep,
+        )
     gc.collect()
 
     return game_id
@@ -1217,29 +1262,31 @@ def generate_trajectories(
 
     # Check if single-agent mode
     is_single_agent = config.is_single_agent_mode()
-    
+
     if is_single_agent:
-        print(f"Generating KeyDoor (single-agent) trajectories with random seed: {random_seed}")
+        print(
+            f"Generating KeyDoor (single-agent) trajectories with random seed: {random_seed}"
+        )
         print(f"Achiever types: {', '.join(config.achiever_types.keys())}")
         print(f"Environment size: {config.env_size}")
-        
+
         # Generate data for each achiever type (no blockers)
         for achiever_type in config.achiever_types.keys():
-            print(f"\nGenerating data for {achiever_type} achiever (single-agent mode)...")
-            
-            # Create save directory for this achiever type
-            save_dir = config.get_data_path(
-                achiever_type, None, is_test=test_data
+            print(
+                f"\nGenerating data for {achiever_type} achiever (single-agent mode)..."
             )
+
+            # Create save directory for this achiever type
+            save_dir = config.get_data_path(achiever_type, None, is_test=test_data)
             os.makedirs(save_dir, exist_ok=True)
-            
+
             # Generate trajectories for single-agent mode
             num_games = config.achiever_types[achiever_type]
-            
+
             # If generating test data, use test proportion of games
             if test_data:
                 num_games = int(num_games * config.get_test_data_proportion())
-            
+
             generate_trajectories_for_combination(
                 config=config,
                 achiever_type=achiever_type,
@@ -1250,7 +1297,9 @@ def generate_trajectories(
                 n_processes=n_processes,
             )
     else:
-        print(f"Generating AchieverBlocker (multi-agent) trajectories with random seed: {random_seed}")
+        print(
+            f"Generating AchieverBlocker (multi-agent) trajectories with random seed: {random_seed}"
+        )
         print(f"Achiever types: {', '.join(config.achiever_types.keys())}")
         print(f"Blocker types: {', '.join(config.blocker_types.keys())}")
         print(f"Environment size: {config.env_size}")
@@ -1293,7 +1342,9 @@ def generate_trajectories(
 
                 # If generating test data, use test proportion of games
                 if test_data:
-                    combination_games = int(combination_games * config.get_test_data_proportion())
+                    combination_games = int(
+                        combination_games * config.get_test_data_proportion()
+                    )
 
                 generate_trajectories_for_combination(
                     config=config,
@@ -1307,7 +1358,9 @@ def generate_trajectories(
 
     # Final summary
     if is_single_agent:
-        print(f"Generated data for all {len(config.achiever_types)} achiever types (single-agent mode)")
+        print(
+            f"Generated data for all {len(config.achiever_types)} achiever types (single-agent mode)"
+        )
         print(f"Total combinations: {len(config.achiever_types)}")
     else:
         print(
@@ -1474,7 +1527,8 @@ if __name__ == "__main__":
 
     # Check for DEBUG_MODE environment variable and enable debug mode if set
     import os
-    if os.environ.get('DEBUG_MODE') == 'true':
+
+    if os.environ.get("DEBUG_MODE") == "true":
         print("Debug mode detected from environment variable")
         config.enable_debug_mode()
 

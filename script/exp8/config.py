@@ -323,7 +323,7 @@ class Config:
     def is_single_agent_mode(self):
         """Check if running in single-agent mode (no blockers)"""
         return not self.blocker_types or len(self.blocker_types) == 0
-    
+
     def get_test_data_proportion(self):
         """Get test data proportion (1 - training_proportion)"""
         return 1.0 - self.training_config["training_proportion"]
@@ -336,7 +336,7 @@ class Config:
         """Get full environment name based on agent configuration and observability"""
         # Choose version based on observability mode
         version = "v2" if self.observability == "partial" else "v1"
-        
+
         if self.is_single_agent_mode():
             # Use KeyDoor environment for single-agent mode
             return f"MiniGrid-KeyDoor-{self.env_size}-{version}"
@@ -363,7 +363,7 @@ class Config:
             is_test (bool): If True, returns path for test data with /test suffix
 
         Returns:
-            str: Data path in format ./data/{env_name}/{achiever_type}/ for single-agent or 
+            str: Data path in format ./data/{env_name}/{achiever_type}/ for single-agent or
                  ./data/{env_name}/{achiever_type}_{blocker_type}/ for multi-agent
         """
         import os
@@ -592,7 +592,9 @@ class Config:
         self.debug_mode = True
 
         # Reduce data generation settings for faster testing
-        self.n_games_per_type = 50  # Reduced from 50000 for debug mode (very small for testing)
+        self.n_games_per_type = (
+            50  # Reduced from 50000 for debug mode (very small for testing)
+        )
         # Update achiever and blocker types with new counts
         for achiever_type in self.achiever_types:
             self.achiever_types[achiever_type] = self.n_games_per_type
@@ -629,7 +631,6 @@ class Config:
                 "n_ement": 16,  # Reduced from 128
             }
         )
-
 
     def get_model_kwargs(self):
         """Get model initialization parameters"""
@@ -722,7 +723,9 @@ class Config:
         if hasattr(args, "partial_view_size") and args.partial_view_size is not None:
             # Update the env_variants to use the specified partial_view_size
             for env_size in self.env_variants:
-                self.env_variants[env_size]["partial_view_size"] = args.partial_view_size
+                self.env_variants[env_size][
+                    "partial_view_size"
+                ] = args.partial_view_size
         if hasattr(args, "gif") and args.gif is not None:
             self.gif_output = args.gif
         if hasattr(args, "debug") and args.debug is not None:

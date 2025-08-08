@@ -207,7 +207,9 @@ def evaluate_model_with_n_past(
                     oppo_states = torch.zeros_like(self_states)
                     oppo_actions = torch.zeros_like(self_actions)
                 else:
-                    raise ValueError(f"Unexpected batch format with {len(batch)} fields. Expected 8 (old format) or 10 (new format).")
+                    raise ValueError(
+                        f"Unexpected batch format with {len(batch)} fields. Expected 8 (old format) or 10 (new format)."
+                    )
                 self_states = self_states.to(device)
                 self_actions = self_actions.to(device)
                 goals = goals.to(device)
@@ -254,9 +256,7 @@ def evaluate_model_with_n_past(
 
                 # Extract current state using advanced indexing
                 batch_indices = torch.arange(batch_size, device=self_states.device)
-                current_state = self_states[
-                    batch_indices, effective_lengths, :
-                ]
+                current_state = self_states[batch_indices, effective_lengths, :]
 
                 # Get action targets - use actions[:, -1] for trajectory slicing
                 action_targets = self_actions[
@@ -266,11 +266,19 @@ def evaluate_model_with_n_past(
                 # Create masked actions for temporal masking (mask target action at last position)
                 # This matches the training process
                 masked_self_actions = self_actions.clone()
-                masked_self_actions[:, -1] = -1  # Mask the target action so model can't see it
+                masked_self_actions[:, -1] = (
+                    -1
+                )  # Mask the target action so model can't see it
 
                 # Model forward pass (model returns dictionary)
-                outputs = model(past_episodes, recent_trajectory, masked_self_actions, current_state, 
-                              oppo_states=oppo_states, oppo_actions=oppo_actions)
+                outputs = model(
+                    past_episodes,
+                    recent_trajectory,
+                    masked_self_actions,
+                    current_state,
+                    oppo_states=oppo_states,
+                    oppo_actions=oppo_actions,
+                )
                 action_logits = outputs["action_logits"]
 
                 # Get predictions
@@ -338,7 +346,7 @@ def evaluate_model(
         all_predictions = np.empty(total_samples, dtype=np.int64)
         all_targets = np.empty(total_samples, dtype=np.int64)
         all_probabilities = np.empty((total_samples, action_space), dtype=np.float32)
-        
+
         sample_idx = 0
 
         with torch.no_grad():
@@ -376,7 +384,9 @@ def evaluate_model(
                     oppo_states = torch.zeros_like(self_states)
                     oppo_actions = torch.zeros_like(self_actions)
                 else:
-                    raise ValueError(f"Unexpected batch format with {len(batch)} fields. Expected 8 (old format) or 10 (new format).")
+                    raise ValueError(
+                        f"Unexpected batch format with {len(batch)} fields. Expected 8 (old format) or 10 (new format)."
+                    )
 
                 batch_size = self_states.size(0)
 
@@ -415,7 +425,9 @@ def evaluate_model(
                 effective_lengths = _calculate_trajectory_lengths(self_states)
 
                 # Use full trajectory (all channels)
-                recent_trajectory = self_states  # [batch_size, seq_len, channels_in, height, width]
+                recent_trajectory = (
+                    self_states  # [batch_size, seq_len, channels_in, height, width]
+                )
 
                 # Extract current state for PredNet (last non-padded timestep)
                 current_state = torch.zeros(
@@ -434,18 +446,24 @@ def evaluate_model(
                 )
 
                 # Extract current state using advanced indexing
-                current_state = self_states[
-                    batch_indices, last_timesteps, :
-                ]
+                current_state = self_states[batch_indices, last_timesteps, :]
 
                 # Create masked actions for temporal masking (mask target action at last position)
                 # This matches the training process
                 masked_self_actions = self_actions.clone()
-                masked_self_actions[:, -1] = -1  # Mask the target action so model can't see it
+                masked_self_actions[:, -1] = (
+                    -1
+                )  # Mask the target action so model can't see it
 
                 # Model forward pass (model returns dictionary)
-                outputs = model(past_episodes, recent_trajectory, masked_self_actions, current_state, 
-                                oppo_states=oppo_states, oppo_actions=oppo_actions)
+                outputs = model(
+                    past_episodes,
+                    recent_trajectory,
+                    masked_self_actions,
+                    current_state,
+                    oppo_states=oppo_states,
+                    oppo_actions=oppo_actions,
+                )
                 action_logits = outputs["action_logits"]
 
                 # Get predictions
@@ -456,7 +474,7 @@ def evaluate_model(
                 predicted_numpy = predicted.cpu().numpy()
                 targets_numpy = action_targets.cpu().numpy()
                 probabilities_numpy = probabilities.cpu().numpy()
-                
+
                 all_predictions[sample_idx:batch_end] = predicted_numpy
                 all_targets[sample_idx:batch_end] = targets_numpy
                 all_probabilities[sample_idx:batch_end] = probabilities_numpy
@@ -466,7 +484,7 @@ def evaluate_model(
         predictions = all_predictions
         targets = all_targets
         probabilities = all_probabilities
-        
+
         # Calculate metrics
         accuracy = accuracy_score(targets, predictions)
         precision, recall, f1, _ = precision_recall_fscore_support(
@@ -478,14 +496,14 @@ def evaluate_model(
         max_action = max(np.max(targets), np.max(predictions)) + 1
         # Only include labels that exist in the data to avoid confusion matrix errors
         existing_labels = sorted(set(np.concatenate([targets, predictions])))
-        
-        conf_matrix = confusion_matrix(
-            targets, predictions, labels=existing_labels
-        )
+
+        conf_matrix = confusion_matrix(targets, predictions, labels=existing_labels)
 
         # Action-wise accuracy - AchieverBlocker has variable actions based on agent type
         action_accuracy = {}
-        for action in existing_labels:  # Use existing labels instead of range(max_action)
+        for (
+            action
+        ) in existing_labels:  # Use existing labels instead of range(max_action)
             mask = targets == action
             if np.sum(mask) > 0:
                 action_acc = accuracy_score(targets[mask], predictions[mask])
@@ -589,7 +607,9 @@ def evaluate_achieverblocker_model(
         print(f"Total achiever types: {len(config.achiever_types)}")
     else:
         print(f"Blocker types: {list(config.blocker_types.keys())}")
-        print(f"Total combinations: {len(config.achiever_types)} x {len(config.blocker_types)} = {len(config.achiever_types) * len(config.blocker_types)}")
+        print(
+            f"Total combinations: {len(config.achiever_types)} x {len(config.blocker_types)} = {len(config.achiever_types) * len(config.blocker_types)}"
+        )
     print("-" * 60)
 
     # Load model ONCE
@@ -598,11 +618,13 @@ def evaluate_achieverblocker_model(
     print(f"Model loaded successfully")
 
     # Load test data for all combinations efficiently
-    all_test_data = load_test_data_all_combinations(config, test_data_dir_base=test_data_dir)
+    all_test_data = load_test_data_all_combinations(
+        config, test_data_dir_base=test_data_dir
+    )
 
     # Combine data from all combinations
     test_data = combine_all_combinations_data(all_test_data)
-    
+
     total_test_samples = test_data["self_states"].shape[0]
 
     print(f"Test data usage:")
@@ -624,10 +646,14 @@ def evaluate_achieverblocker_model(
 
     # Convert numpy arrays to tensors for TensorDataset
     test_tensors = {
-        key: torch.from_numpy(data) if isinstance(data, np.ndarray) else torch.tensor(data)
+        key: (
+            torch.from_numpy(data)
+            if isinstance(data, np.ndarray)
+            else torch.tensor(data)
+        )
         for key, data in test_data.items()
     }
-    
+
     # Create test dataset and loader with all required data including goal_ranks
     test_dataset = TensorDataset(
         test_tensors["self_states"],
@@ -824,16 +850,20 @@ def analyze_action_likelihood(
     if test_loader is None:
         # Load test data - combine all combinations based on single-agent vs multi-agent mode
         if config.is_single_agent_mode():
-            # For single-agent mode, use the first achiever type's test directory  
+            # For single-agent mode, use the first achiever type's test directory
             achiever_type = list(config.achiever_types.keys())[0]
-            test_data_dir_default = os.path.dirname(config.get_training_data_path(achiever_type, None, is_test=True))
+            test_data_dir_default = os.path.dirname(
+                config.get_training_data_path(achiever_type, None, is_test=True)
+            )
         else:
             # For multi-agent mode, use environment base path
             env_name = config.get_env_name()
             test_data_dir_default = f"./data/{env_name}"
 
         # Load test data for all combinations efficiently
-        all_test_data = load_test_data_all_combinations(config, test_data_dir_base=test_data_dir_default)
+        all_test_data = load_test_data_all_combinations(
+            config, test_data_dir_base=test_data_dir_default
+        )
 
         # Combine data from all combinations
         test_data = combine_all_combinations_data(all_test_data)
@@ -870,7 +900,9 @@ def analyze_action_likelihood(
     if config.is_single_agent_mode():
         max_action = 7  # KeyDoor single-agent actions (0-6)
     else:
-        max_action = 8  # AchieverBlocker multi-agent (7 achiever + 6 blocker actions max)
+        max_action = (
+            8  # AchieverBlocker multi-agent (7 achiever + 6 blocker actions max)
+        )
     action_likelihoods = {i: [] for i in range(max_action)}
 
     sample_count = 0
@@ -911,8 +943,10 @@ def analyze_action_likelihood(
                 oppo_states = torch.zeros_like(self_states)
                 oppo_actions = torch.zeros_like(self_actions)
             else:
-                raise ValueError(f"Unexpected batch format with {len(batch)} fields. Expected 8 (old format) or 10 (new format).")
-                
+                raise ValueError(
+                    f"Unexpected batch format with {len(batch)} fields. Expected 8 (old format) or 10 (new format)."
+                )
+
             self_states = self_states.to(device)
             self_actions = self_actions.to(device)
             goals = goals.to(device)
@@ -956,20 +990,28 @@ def analyze_action_likelihood(
 
             # Extract current state using advanced indexing
             batch_indices = torch.arange(batch_size, device=self_states.device)
-            current_state = self_states[
-                batch_indices, effective_lengths, :
-            ]
+            current_state = self_states[batch_indices, effective_lengths, :]
 
             # Get action targets - use actions[:, -1] for trajectory slicing
-            action_targets = self_actions[:, -1].clone()  # Target action for each sliced trajectory
-            
+            action_targets = self_actions[
+                :, -1
+            ].clone()  # Target action for each sliced trajectory
+
             # Create masked actions for temporal masking (mask target action at last position)
             masked_self_actions = self_actions.clone()
-            masked_self_actions[:, -1] = -1  # Mask the target action so model can't see it
+            masked_self_actions[:, -1] = (
+                -1
+            )  # Mask the target action so model can't see it
 
             # Model forward pass (model returns dictionary)
-            outputs = model(past_episodes, recent_trajectory, masked_self_actions, current_state,
-                          oppo_states=oppo_states, oppo_actions=oppo_actions)
+            outputs = model(
+                past_episodes,
+                recent_trajectory,
+                masked_self_actions,
+                current_state,
+                oppo_states=oppo_states,
+                oppo_actions=oppo_actions,
+            )
             action_logits = outputs["action_logits"]
             probabilities = F.softmax(action_logits, dim=1)
 

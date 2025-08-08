@@ -287,9 +287,7 @@ def process_sample_batch(samples, grid_size, window_size):
     }
 
     for sample in samples:
-        sample_result = process_single_sample(
-            sample, grid_size, window_size
-        )
+        sample_result = process_single_sample(sample, grid_size, window_size)
 
         # Combine results
         for key in batch_results:
@@ -301,12 +299,12 @@ def process_sample_batch(samples, grid_size, window_size):
 def process_single_sample(sample, grid_size, window_size):
     """
     Process a single sample for multiprocessing using window slicing
-    
+
     Args:
         sample: Single sample from DataGenerator
         grid_size: Size of the grid (e.g., 9 for 9x9)
         window_size: Window size for self states slicing (time_step from config)
-    
+
     Returns:
         Dictionary with lists of processed samples using window slicing
     """
@@ -335,11 +333,11 @@ def process_single_sample(sample, grid_size, window_size):
 
     # Get self actions from sample data
     self_action_list = sample.get("self_actions", [])
-    
+
     # Get opponent data from sample
     oppo_states = sample.get("oppo_states", None)
     oppo_actions = sample.get("oppo_actions", [])
-    
+
     # Get sequence length
     seq_len = self_states.shape[0]
 
@@ -356,7 +354,7 @@ def process_single_sample(sample, grid_size, window_size):
     sample_oppo_actions = []
 
     # WINDOW SLICING: Create multiple samples per self states using fixed window size
-    
+
     if seq_len < window_size:
         # Case 1: Self states shorter than window size - front-pad with -1
         # Create padding for self states (use -1 for all channels to indicate padding)
@@ -364,12 +362,12 @@ def process_single_sample(sample, grid_size, window_size):
         padding_shape = (padding_length, *self_states.shape[1:])
         padding = np.full(padding_shape, -1, dtype=self_states.dtype)
         self_states_padded = np.concatenate([padding, self_states], axis=0)
-        
+
         # The last action is what we predict
         if len(self_action_list) > 0:
             self_action_target = self_action_list[-1]
             current_timestep = seq_len - 1
-            
+
             # Process SR data for the last timestep
             if current_timestep in sr_data_per_timestep:
                 sr_data_timestep = sr_data_per_timestep[current_timestep]
@@ -378,7 +376,7 @@ def process_single_sample(sample, grid_size, window_size):
                 )
             else:
                 sr_dense = np.zeros((3, grid_size, grid_size))
-            
+
             # Process opponent data for short self states
             if oppo_states is not None:
                 # Pad opponent states similar to main self states
@@ -388,7 +386,7 @@ def process_single_sample(sample, grid_size, window_size):
             else:
                 # Create dummy opponent states
                 oppo_states_padded = np.zeros_like(self_states_padded)
-            
+
             if oppo_actions and len(oppo_actions) > 0:
                 # Pad opponent actions - use last available action
                 oppo_action_target = oppo_actions[-1] if oppo_actions else 0
@@ -396,12 +394,10 @@ def process_single_sample(sample, grid_size, window_size):
             else:
                 # Create dummy opponent actions
                 oppo_actions_padded = [0] + [-1] * (window_size - 1)
-            
+
             # Add this single training sample
             sample_self_states.append(self_states_padded)
-            sample_self_actions.append(
-                [-1] * (window_size - 1) + [self_action_target]
-            )
+            sample_self_actions.append([-1] * (window_size - 1) + [self_action_target])
             sample_goals.append(goal_tensor)
             sample_goal_ranks.append(goal_rank)
             sample_agents.append(agent_label)
@@ -413,27 +409,33 @@ def process_single_sample(sample, grid_size, window_size):
     else:
         # Case 2: Self states longer than or equal to window size - vectorized sliding windows
         num_windows = seq_len - window_size + 1
-        
+
         # Vectorized creation of all windows using numpy stride tricks for maximum efficiency
         from numpy.lib.stride_tricks import sliding_window_view
-        
+
         # Create sliding windows along the time dimension
         # self_states shape: [seq_len, channels, height, width]
         # sliding_window_view will create: [num_windows, window_size, channels, height, width]
-        self_states_windows = sliding_window_view(self_states, window_shape=window_size, axis=0)
-        
+        self_states_windows = sliding_window_view(
+            self_states, window_shape=window_size, axis=0
+        )
+
         # sliding_window_view creates shape [num_windows, channels, height, width, window_size]
         # We need to move the window_size dimension to position 1: [num_windows, window_size, channels, height, width]
         self_states_windows = np.moveaxis(self_states_windows, -1, 1)
-        
+
         # Extract all self action targets at once (actions at the end of each window)
         # For windows starting at positions 0, 1, 2, ..., we want actions at positions window_size-1, window_size, window_size+1, ...
-        self_action_targets = np.array(self_action_list[window_size - 1:window_size - 1 + num_windows])
-        
+        self_action_targets = np.array(
+            self_action_list[window_size - 1 : window_size - 1 + num_windows]
+        )
+
         # Process SR data vectorized
         sr_dense_list = []
         for window_idx in range(num_windows):
-            current_timestep = window_size - 1 + window_idx  # The last timestep in each window
+            current_timestep = (
+                window_size - 1 + window_idx
+            )  # The last timestep in each window
             if current_timestep in sr_data_per_timestep:
                 sr_data_timestep = sr_data_per_timestep[current_timestep]
                 sr_dense = convert_sparse_sr_to_dense(
@@ -442,18 +444,20 @@ def process_single_sample(sample, grid_size, window_size):
             else:
                 sr_dense = np.zeros((3, grid_size, grid_size))
             sr_dense_list.append(sr_dense)
-        
+
         # Vectorized creation of padded self actions
         self_action_padding = np.full((num_windows, window_size - 1), -1)
-        padded_self_actions = np.column_stack([self_action_padding, self_action_targets[:, np.newaxis]])
-        
+        padded_self_actions = np.column_stack(
+            [self_action_padding, self_action_targets[:, np.newaxis]]
+        )
+
         # Vectorized replication of metadata for all windows
         goals_repeated = np.tile(goal_tensor, (num_windows, 1))
         goal_ranks_repeated = np.tile(goal_rank, (num_windows, 1))
         agents_repeated = np.full(num_windows, agent_label)
         types_repeated = np.full(num_windows, type_label)
         consumption_repeated = np.tile(consumption, (num_windows, 1))
-        
+
         # Process opponent data for each window
         if oppo_states is not None:
             # Create windows for opponent states
@@ -466,14 +470,19 @@ def process_single_sample(sample, grid_size, window_size):
                 else:
                     # Handle case where opponent states is shorter
                     window_data = oppo_states[start_idx:]
-                    padding_shape = (window_size - window_data.shape[0], *window_data.shape[1:])
+                    padding_shape = (
+                        window_size - window_data.shape[0],
+                        *window_data.shape[1:],
+                    )
                     padding = np.zeros(padding_shape, dtype=window_data.dtype)
                     padded_window = np.concatenate([window_data, padding], axis=0)
                     oppo_states_windows.append(padded_window)
         else:
             # Create dummy opponent states
-            oppo_states_windows = [np.zeros_like(self_states_windows[0]) for _ in range(num_windows)]
-        
+            oppo_states_windows = [
+                np.zeros_like(self_states_windows[0]) for _ in range(num_windows)
+            ]
+
         # Process opponent actions for each window
         if oppo_actions and len(oppo_actions) > 0:
             oppo_action_windows = []
@@ -484,15 +493,19 @@ def process_single_sample(sample, grid_size, window_size):
                     window_actions = oppo_actions[start_idx:end_idx]
                 else:
                     # Handle case where opponent actions are shorter
-                    window_actions = oppo_actions[start_idx:] + [0] * (end_idx - len(oppo_actions))
+                    window_actions = oppo_actions[start_idx:] + [0] * (
+                        end_idx - len(oppo_actions)
+                    )
                 # Pad to window_size with -1
                 action_padding = [-1] * (window_size - len(window_actions))
                 padded_window_actions = window_actions + action_padding
                 oppo_action_windows.append(padded_window_actions[:window_size])
         else:
             # Create dummy opponent actions
-            oppo_action_windows = [np.zeros(window_size, dtype=np.int32) for _ in range(num_windows)]
-        
+            oppo_action_windows = [
+                np.zeros(window_size, dtype=np.int32) for _ in range(num_windows)
+            ]
+
         # Add all samples at once
         sample_self_states.extend(self_states_windows)
         sample_self_actions.extend(padded_self_actions.tolist())
@@ -595,13 +608,15 @@ def prepare_data_for_training(
             "consumption_labels": chunk_data["consumption_labels"].shape,
             "sr_labels": chunk_data["sr_labels"].shape,
         }
-        
+
         # Add opponent data shapes if they exist
-        if "oppo_states" in chunk_data and hasattr(chunk_data["oppo_states"], 'shape'):
+        if "oppo_states" in chunk_data and hasattr(chunk_data["oppo_states"], "shape"):
             data_shapes["oppo_states"] = chunk_data["oppo_states"].shape
-        if "oppo_actions" in chunk_data and hasattr(chunk_data["oppo_actions"], 'shape'):
+        if "oppo_actions" in chunk_data and hasattr(
+            chunk_data["oppo_actions"], "shape"
+        ):
             data_shapes["oppo_actions"] = chunk_data["oppo_actions"].shape
-            
+
         chunk_info = {
             "chunk_idx": chunk_idx,
             "file_path": chunk_file,
@@ -1222,8 +1237,12 @@ def setup_training_environment(
     # Auto-detect CPU count if num_workers is 0, but cap it to prevent thread exhaustion
     if num_workers == 0:
         detected_cores = mp.cpu_count()
-        num_workers = min(detected_cores, 4)  # Cap at 4 workers to prevent thread exhaustion
-        print(f"Auto-detected {detected_cores} CPU cores, using {num_workers} workers for data loading")
+        num_workers = min(
+            detected_cores, 4
+        )  # Cap at 4 workers to prevent thread exhaustion
+        print(
+            f"Auto-detected {detected_cores} CPU cores, using {num_workers} workers for data loading"
+        )
 
     # Device setup
     if device_setting == "auto":
@@ -1431,8 +1450,6 @@ def _standard_chunk_loading(chunk_metadata):
     return combined_data
 
 
-
-
 def setup_model_and_data(
     config,
     model_kwargs,
@@ -1512,8 +1529,10 @@ def setup_model_and_data(
     else:
         # Multi-agent mode: calculate based on combinations
         total_combinations = len(config.achiever_types) * len(config.blocker_types)
-        val_size = int(config.n_games_per_type * total_combinations * (1 - training_proportion))
-    
+        val_size = int(
+            config.n_games_per_type * total_combinations * (1 - training_proportion)
+        )
+
     split_idx = total_samples - val_size
 
     train_data = torch.utils.data.Subset(dataset, range(split_idx))
@@ -1535,11 +1554,15 @@ def setup_model_and_data(
     print(f"Total samples: {total_samples}")
     if config.is_single_agent_mode():
         print(f"Single-agent mode: 1 agent type")
-        print(f"Samples per epoch: {samples_per_epoch} (n_games_per_type={config.n_games_per_type})")
+        print(
+            f"Samples per epoch: {samples_per_epoch} (n_games_per_type={config.n_games_per_type})"
+        )
     else:
         total_combinations = len(config.achiever_types) * len(config.blocker_types)
         print(f"Total combinations: {total_combinations}")
-        print(f"Samples per epoch: {samples_per_epoch} (n_games_per_type * combinations)")
+        print(
+            f"Samples per epoch: {samples_per_epoch} (n_games_per_type * combinations)"
+        )
 
     # Training loader will be created dynamically each epoch
     train_loader = None  # Will be created in training loop
@@ -1618,33 +1641,37 @@ sys.path.append(
 # All imports will be done dynamically to avoid circular imports
 
 
-def spatialize_action(action_indices: torch.Tensor, height: int, width: int, action_space: int = 7) -> torch.Tensor:
+def spatialize_action(
+    action_indices: torch.Tensor, height: int, width: int, action_space: int = 7
+) -> torch.Tensor:
     """
     Convert action indices to spatial representation
-    
+
     Args:
         action_indices: (batch_size,) - action indices for each sample
         height, width: spatial dimensions
         action_space: Number of possible actions (default: 7)
-        
+
     Returns:
         Spatialized actions: (batch_size, 1, height, width)
     """
     batch_size = action_indices.size(0)
     device = action_indices.device
-    
+
     # Create spatial action maps
-    action_maps = torch.zeros(batch_size, 1, height, width, device=device, dtype=torch.float32)
-    
+    action_maps = torch.zeros(
+        batch_size, 1, height, width, device=device, dtype=torch.float32
+    )
+
     # Vectorized approach for better performance
     if action_space > 1:
         action_values = action_indices
     else:
         action_values = torch.zeros_like(action_indices, dtype=torch.float32)
-        
+
     # Broadcast to spatial dimensions
     action_maps[:, 0, :, :] = action_values.view(-1, 1, 1)
-    
+
     return action_maps
 
 
@@ -1876,21 +1903,19 @@ def load_test_data_all_combinations(config, test_data_dir_base=None):
     return load_data_all_combinations(config, test_data_dir_base, data_type="test")
 
 
-
-
 def combine_all_combinations_data(all_data_dict):
     """
     Combine data from all achiever-blocker combinations into a single dataset.
     Expects all data to be in pre-processed numpy array format.
-    
+
     Args:
         all_data_dict: Dictionary with (achiever_type, blocker_type) -> chunk_metadata mapping
-        
+
     Returns:
         dict: Combined dataset with concatenated numpy arrays
     """
     import numpy as np
-    
+
     combined_self_states = []
     combined_self_actions = []
     combined_goals = []
@@ -1901,19 +1926,21 @@ def combine_all_combinations_data(all_data_dict):
     combined_sr_labels = []
     combined_oppo_states = []
     combined_oppo_actions = []
-    
+
     print("Combining data from all achiever-blocker combinations...")
-    
+
     for (achiever_type, blocker_type), chunk_metadata in all_data_dict.items():
         print(f"  Loading data for {achiever_type}_{blocker_type}...")
-        
+
         # Load chunked data for this combination
         data = _load_chunks_memory_efficient(chunk_metadata)
-        
+
         # Data is expected to be in pre-processed numpy array format
         if not (isinstance(data, dict) and "self_states" in data):
-            raise ValueError(f"Data for combination {achiever_type}_{blocker_type} is not in expected format. Expected dictionary with 'self_states' key.")
-            
+            raise ValueError(
+                f"Data for combination {achiever_type}_{blocker_type} is not in expected format. Expected dictionary with 'self_states' key."
+            )
+
         # Add pre-processed arrays to combined lists
         combined_self_states.append(data["self_states"])
         combined_self_actions.append(data["self_actions"])
@@ -1923,7 +1950,7 @@ def combine_all_combinations_data(all_data_dict):
         combined_types.append(data["types"])
         combined_consumption_labels.append(data["consumption_labels"])
         combined_sr_labels.append(data["sr_labels"])
-        
+
         # Add opponent data if available
         if "oppo_states" in data and data["oppo_states"] is not None:
             combined_oppo_states.append(data["oppo_states"])
@@ -1931,20 +1958,22 @@ def combine_all_combinations_data(all_data_dict):
             # Create dummy opponent states for consistency
             dummy_oppo_states = np.zeros_like(data["self_states"])
             combined_oppo_states.append(dummy_oppo_states)
-            
+
         if "oppo_actions" in data and data["oppo_actions"] is not None:
             combined_oppo_actions.append(data["oppo_actions"])
         else:
             # Create dummy opponent actions for consistency
             dummy_oppo_actions = np.zeros_like(data["self_actions"])
             combined_oppo_actions.append(dummy_oppo_actions)
-            
+
         print(f"    Added {data['self_states'].shape[0]} samples")
-    
+
     # Check if we have any data to concatenate
     if not combined_self_states:
-        raise ValueError("No test data found for any combinations. Please generate test data first using --test_data flag.")
-    
+        raise ValueError(
+            "No test data found for any combinations. Please generate test data first using --test_data flag."
+        )
+
     # Concatenate all data
     combined_data = {
         "self_states": np.concatenate(combined_self_states, axis=0),
@@ -1958,22 +1987,22 @@ def combine_all_combinations_data(all_data_dict):
         "oppo_states": np.concatenate(combined_oppo_states, axis=0),
         "oppo_actions": np.concatenate(combined_oppo_actions, axis=0),
     }
-    
+
     total_samples = combined_data["self_states"].shape[0]
     print(f"Combined dataset contains {total_samples} total samples")
-    
+
     # Print distribution statistics
     achiever_count = np.sum(combined_data["agents"] == 0)
     blocker_count = np.sum(combined_data["agents"] == 1)
     print(f"  Achiever samples: {achiever_count}")
     print(f"  Blocker samples: {blocker_count}")
-    
+
     # Print type distribution
     unique_types = np.unique(combined_data["types"])
     for type_id in unique_types:
         type_count = np.sum(combined_data["types"] == type_id)
         print(f"  Type {type_id} samples: {type_count}")
-    
+
     return combined_data
 
 

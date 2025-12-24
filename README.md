@@ -15,12 +15,6 @@ Multi-agent reinforcement learning with belief modeling (ToMnet).
    - Novel `e_opp2` embedding: models "what agents believe others believe"
    - Extends 2-stage ToMnet to 3-stage architecture with cross-attention
 
-## References
-
-- Rabinowitz, N., et al. "Machine Theory of Mind." *ICML*, 2018. [[paper]](https://arxiv.org/abs/1802.07740)
-- gym-minigrid: https://github.com/mit-acl/gym-minigrid
-- gymnasium: https://gymnasium.farama.org/
-
 ## Directory Structure
 
 | Directory | Purpose |
@@ -53,3 +47,10 @@ Multi-agent reinforcement learning with belief modeling (ToMnet).
 - `evaluate.py` - Model evaluation
 - `tomnet.py` - ToMnet architecture
 - `visualize.py` - Result visualization
+
+
+## References
+
+- Rabinowitz, N., et al. "Machine Theory of Mind." *ICML*, 2018. [[paper]](https://arxiv.org/abs/1802.07740)
+- gym-minigrid: https://github.com/mit-acl/gym-minigrid
+- gymnasium: https://gymnasium.farama.org/

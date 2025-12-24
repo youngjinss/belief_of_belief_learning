@@ -47,6 +47,8 @@ class BaseValueAgent:
         temperature=0.1,
         q_value_clip=100,
         role="achiever",
+        grid_width=None,
+        grid_height=None,
     ):
         """
         Initialize base value agent for partial observation
@@ -67,9 +69,9 @@ class BaseValueAgent:
         self.agent_pos = None
         self.grid = None
 
-        # Grid dimensions - will be set from observations
-        self.width = None
-        self.height = None
+        # Grid dimensions - set from parameters or will be determined from observations
+        self.width = grid_width
+        self.height = grid_height
 
         # Value iteration parameters
         self.movement_cost = movement_cost
@@ -86,6 +88,10 @@ class BaseValueAgent:
         # Memory system for partial observation
         self.memory = {}  # Stores discovered key/door positions
         self.discovered_positions = set()  # Track all discovered positions
+        self.wall_positions = set()  # Track discovered wall positions
+        
+        # Add debug flag to track memory issues
+        self._debug_memory = os.getenv("DEBUG_MODE")
         
         # Exploration state for clockwise wall-following
         self.last_direction = None  # Last attempted direction
@@ -148,10 +154,17 @@ class BaseValueAgent:
         """
         if obs is None or agent_pos is None:
             return
-            
+        
+        # Debug memory persistence 
+        if self._debug_memory and hasattr(self, '_last_memory_size'):
+            if len(self.memory) < self._last_memory_size:
+                print(f"DEBUG: WARNING - Memory shrank from {self._last_memory_size} to {len(self.memory)}!")
+                print(f"DEBUG: Current memory: {list(self.memory.keys())}")
+        
         # In partial observation, use both grid scanning AND observation data
         if self.observability == "partial":
             # Method 1: Use observation data for visible objects (more reliable)
+            # Handle achiever observations
             if "achiever_visible_keys" in obs:
                 for color, pos in obs["achiever_visible_keys"].items():
                     if pos is not None:
@@ -163,6 +176,21 @@ class BaseValueAgent:
                         self.memory[f"door_{color}"] = tuple(pos)
                         if os.getenv("DEBUG_MODE"):
                             print(f"DEBUG: Saved door_{color} at {tuple(pos)} to memory")
+                            print(f"DEBUG: Memory now has: {list(self.memory.keys())}")
+            
+            # Handle blocker observations
+            if "blocker_visible_keys" in obs:
+                for color, pos in obs["blocker_visible_keys"].items():
+                    if pos is not None:
+                        self.memory[f"key_{color}"] = tuple(pos)
+                        
+            if "blocker_visible_doors" in obs:
+                for color, pos in obs["blocker_visible_doors"].items():
+                    if pos is not None:
+                        self.memory[f"door_{color}"] = tuple(pos)
+                        if os.getenv("DEBUG_MODE"):
+                            print(f"DEBUG: Saved door_{color} at {tuple(pos)} to memory")
+                            print(f"DEBUG: Memory now has: {list(self.memory.keys())}")
             
             # Method 2: Grid scanning as backup (in case obs data is not available)
             partial_view_size = 5  # Standard 5x5 view
@@ -187,8 +215,12 @@ class BaseValueAgent:
                         if self.grid is not None:
                             cell = self.grid.get(scan_x, scan_y)
                             
+                            # Store walls in memory
+                            if isinstance(cell, Wall):
+                                self.wall_positions.add(pos)
+                            
                             # Store keys in memory
-                            if isinstance(cell, Key):
+                            elif isinstance(cell, Key):
                                 key_color = cell.color
                                 self.memory[f"key_{key_color}"] = pos
                                 
@@ -198,6 +230,12 @@ class BaseValueAgent:
                                 self.memory[f"door_{door_color}"] = pos
                                 if os.getenv("DEBUG_MODE"):
                                     print(f"DEBUG: Grid scan saved door_{door_color} at {pos} to memory")
+        
+        # Track memory size for debugging
+        if self._debug_memory:
+            self._last_memory_size = len(self.memory)
+            if self.memory:
+                print(f"DEBUG: Memory now contains {len(self.memory)} items: {list(self.memory.keys())}")
         else:
             # In full observation, use observation data directly
             if "key_positions" in obs:
@@ -250,27 +288,70 @@ class BaseValueAgent:
 
     def _get_clockwise_direction(self, current_direction):
         """
-        Get next direction in clockwise rotation: up→right→down→left→up
+        Get next direction based on wall configuration.
         
-        Includes validation to ensure the new direction is walkable.
+        Strategy:
+        - Check all 4 directions for walkability
+        - Prioritize directions opposite to walls
+        - If all directions blocked -> raise error (environment bug)
         """
-        if current_direction is None:
-            return 0  # Start with up
+        if self.agent_pos is None:
+            return 0  # Default to up if no position
             
-        # Try all directions clockwise to avoid infinite recursion
-        for i in range(4):
-            next_dir = (current_direction + 1 + i) % 4
-            
-            # Verify the new direction is walkable
-            if self.agent_pos is not None:
-                dx, dy = self.direction_deltas[next_dir]
-                new_pos = (self.agent_pos[0] + dx, self.agent_pos[1] + dy)
-                
-                if self._is_walkable(new_pos):
-                    return next_dir
+        # Check walkability for all directions
+        walkable = [self._is_walkable((self.agent_pos[0] + dx, self.agent_pos[1] + dy)) 
+                    for dx, dy in self.direction_deltas]
         
-        # If all directions blocked, return stay action (will be handled by caller)
-        return 4  # Stay action
+        # Count walkable directions
+        walkable_count = sum(walkable)
+        
+        # If no walkable directions, this is an environment bug
+        if walkable_count == 0:
+            raise RuntimeError(
+                f"ERROR: Agent at position {self.agent_pos} has no walkable directions! "
+                f"This is a bug in the environment configuration."
+            )
+        
+        # If only one direction is walkable, choose it
+        if walkable_count == 1:
+            return walkable.index(True)
+        
+        # Calculate preference scores for each direction
+        # Higher score = more preferred
+        # Strategy: prefer directions away from walls
+        scores = [0] * 4
+        
+        for i in range(4):
+            if walkable[i]:
+                # Base score for walkable direction
+                scores[i] = 1
+                
+                # Add bonus for being opposite to blocked directions
+                opposite_dir = (i + 2) % 4
+                if not walkable[opposite_dir]:
+                    scores[i] += 2
+                
+                # Add small bonus for perpendicular blocked directions
+                perpendicular_dirs = [(i + 1) % 4, (i - 1) % 4]
+                for perp_dir in perpendicular_dirs:
+                    if not walkable[perp_dir]:
+                        scores[i] += 1
+                
+                # Prefer to continue in current direction if not stuck
+                if current_direction is not None and i == current_direction:
+                    scores[i] += 0.5
+        
+        # Choose direction with highest score
+        # In case of tie, this naturally follows array order (up, right, down, left)
+        best_score = max(scores)
+        best_directions = [i for i, score in enumerate(scores) if score == best_score]
+        
+        # If current direction is among best, keep it
+        if current_direction in best_directions:
+            return current_direction
+            
+        # Otherwise return first best direction
+        return best_directions[0]
 
     def _get_blocked_directions(self):
         """Get list of directions that are blocked (walls, boundaries, obstacles)"""
@@ -302,50 +383,77 @@ class BaseValueAgent:
         Returns True if agent should change direction due to obstacles or being stuck.
         """
         if self.agent_pos is None or self.last_direction is None:
-            print(f"DEBUG: _should_change_direction = True (pos={self.agent_pos}, dir={self.last_direction})")
+            if os.getenv("DEBUG_MODE"):
+                print(f"DEBUG: _should_change_direction = True (pos={self.agent_pos}, dir={self.last_direction})")
             return True
             
         # Check if current direction is blocked
         dx, dy = self.direction_deltas[self.last_direction]
         next_pos = (self.agent_pos[0] + dx, self.agent_pos[1] + dy)
         
-        print(f"DEBUG: Checking direction {self.last_direction} from {self.agent_pos} to {next_pos}")
+        if os.getenv("DEBUG_MODE"):
+            print(f"DEBUG: Checking direction {self.last_direction} from {self.agent_pos} to {next_pos}")
+            print(f"DEBUG: Grid bounds: width={self.width}, height={self.height}")
         
-        # Check boundaries and walkability
-        if (next_pos[0] <= 0 or next_pos[0] >= self.width-1 or 
-            next_pos[1] <= 0 or next_pos[1] >= self.height-1 or
-            not self._is_walkable(next_pos)):
-            print(f"DEBUG: _should_change_direction = True (blocked/boundary)")
+        # Check boundaries first
+        if next_pos[0] < 0 or next_pos[0] >= self.width or next_pos[1] < 0 or next_pos[1] >= self.height:
+            if os.getenv("DEBUG_MODE"):
+                print(f"DEBUG: _should_change_direction = True (boundary hit)")
             return True
             
-        print(f"DEBUG: _should_change_direction = False (path clear)")
+        # Then check walkability
+        if os.getenv("DEBUG_MODE") and next_pos == (1, 0):
+            print(f"DEBUG: About to call _is_walkable({next_pos})")
+        walkable = self._is_walkable(next_pos)
+        if os.getenv("DEBUG_MODE") and next_pos == (1, 0):
+            print(f"DEBUG: _is_walkable({next_pos}) returned {walkable}")
+        if not walkable:
+            if os.getenv("DEBUG_MODE"):
+                print(f"DEBUG: _should_change_direction = True (not walkable)")
+            return True
+            
+        if os.getenv("DEBUG_MODE"):
+            print(f"DEBUG: _should_change_direction = False (path clear)")
         return False
 
     def _explore_with_clockwise_pattern(self):
         """
-        Enhanced clockwise exploration with direction change detection
+        Enhanced exploration with intelligent direction selection
         
-        Uses systematic clockwise wall-following: up→right→down→left→up
+        Uses wall configuration to choose optimal exploration direction
         """
-        print(f"DEBUG: _explore_with_clockwise_pattern at pos {self.agent_pos}")
-        print(f"DEBUG: last_direction={self.last_direction}")
+        if os.getenv("DEBUG_MODE"):
+            print(f"DEBUG: _explore_with_clockwise_pattern at pos {self.agent_pos}")
+            print(f"DEBUG: last_direction={self.last_direction}")
         
         should_change = self._should_change_direction()
-        print(f"DEBUG: _should_change_direction() = {should_change}")
+        if os.getenv("DEBUG_MODE"):
+            print(f"DEBUG: _should_change_direction() = {should_change}")
         
         if should_change:
-            old_direction = self.last_direction
-            self.last_direction = self._get_clockwise_direction(self.last_direction)
-            print(f"DEBUG: Changed direction from {old_direction} to {self.last_direction}")
+            try:
+                old_direction = self.last_direction
+                self.last_direction = self._get_clockwise_direction(self.last_direction)
+                if os.getenv("DEBUG_MODE"):
+                    print(f"DEBUG: Changed direction from {old_direction} to {self.last_direction}")
+            except RuntimeError as e:
+                # This should never happen in a properly configured environment
+                print(f"CRITICAL ERROR: {e}")
+                # Try to return a random valid action as last resort
+                import random
+                for _ in range(10):  # Try up to 10 random actions
+                    action = random.randint(0, 3)
+                    dx, dy = self.direction_deltas[action]
+                    new_pos = (self.agent_pos[0] + dx, self.agent_pos[1] + dy)
+                    if self._is_walkable(new_pos):
+                        return action
+                # If still no valid action, return stay
+                return 4
         
         final_action = self.last_direction if self.last_direction is not None else 0
         
-        # Handle stay action case (all directions blocked)
-        if final_action == 4:
-            final_action = 4  # Stay action
-            print(f"DEBUG: All directions blocked - returning stay action")
-        
-        print(f"DEBUG: Returning action {final_action}")
+        if os.getenv("DEBUG_MODE"):
+            print(f"DEBUG: Returning action {final_action}")
         return final_action
 
     def _plan_value_iteration(
@@ -611,20 +719,96 @@ class BaseValueAgent:
             return 4  # Stay
         return optimal_action
 
+    def _global_to_local_coords(self, global_pos):
+        """Convert global maze coordinates to local partial view coordinates"""
+        if self.grid is None or self.agent_pos is None:
+            return None
+            
+        gx, gy = global_pos
+        ax, ay = self.agent_pos
+        
+        # In partial observation, the grid is centered around the agent
+        # For a 6x6 grid, the agent is typically at position (2,2) or (3,3) in local coordinates
+        # This depends on the specific implementation, but commonly:
+        # - Grid size 6: agent at local position (2,2) [0-indexed]
+        
+        grid_size = self.grid.width  # Should be 6 for partial view
+        center = grid_size // 2  # For 6x6, center = 3, but 0-indexed means agent at (2,2)
+        
+        # Calculate local coordinates
+        local_x = gx - ax + center
+        local_y = gy - ay + center
+        
+        # Check if within local grid bounds
+        if 0 <= local_x < grid_size and 0 <= local_y < grid_size:
+            return (local_x, local_y)
+        else:
+            return None  # Outside partial view
+
     def _is_walkable(self, pos):
-        """Check if position is walkable"""
-        width = self.width if self.width is not None else 9
-        height = self.height if self.height is not None else 9
-        if pos[0] < 0 or pos[0] >= width or pos[1] < 0 or pos[1] >= height:
+        """Check if position is walkable - walls are not walkable, but doors are walkable"""
+        assert self.width is not None and self.height is not None, \
+            f"Grid dimensions not initialized! width={self.width}, height={self.height}"
+        
+        if os.getenv("DEBUG_MODE") and pos == (1, 0):
+            print(f"DEBUG _is_walkable: Checking global position {pos}")
+            print(f"DEBUG _is_walkable: Agent at global position {self.agent_pos}")
+            if self.grid is not None:
+                print(f"DEBUG _is_walkable: Local grid size = {self.grid.width}x{self.grid.height}")
+        
+        # Check global boundary first
+        if pos[0] < 0 or pos[0] >= self.width or pos[1] < 0 or pos[1] >= self.height:
+            if os.getenv("DEBUG_MODE") and pos == (1, 0):
+                print(f"DEBUG _is_walkable: {pos} is out of global bounds")
+            return False
+
+        # Check wall memory first (for positions we've seen before)
+        if tuple(pos) in self.wall_positions:
+            if os.getenv("DEBUG_MODE") and pos == (1, 0):
+                print(f"DEBUG _is_walkable: {pos} found in wall_positions memory")
             return False
 
         if self.grid is not None:
-            cell = self.grid.get(pos[0], pos[1])
-            if cell is not None and isinstance(cell, Wall):
+            # Convert global coordinates to local partial view coordinates
+            local_pos = self._global_to_local_coords(pos)
+            
+            if os.getenv("DEBUG_MODE") and pos == (1, 0):
+                print(f"DEBUG _is_walkable: Global {pos} -> Local {local_pos}")
+            
+            if local_pos is None:
+                # Position is outside partial view - treat as unknown/not walkable for safety
+                if os.getenv("DEBUG_MODE") and pos == (1, 0):
+                    print(f"DEBUG _is_walkable: {pos} outside partial view - treating as unwalkable")
                 return False
+            
+            local_x, local_y = local_pos
+            cell = self.grid.get(local_x, local_y)
+            
+            if os.getenv("DEBUG_MODE") and pos == (1, 0):
+                print(f"DEBUG _is_walkable: Local grid cell at {local_pos} = {cell}, type = {type(cell)}")
+            
+            # Import Wall and Door classes
+            from gym_minigrid.minigrid import Wall, Door
+            
+            # Walls are not walkable
+            if cell is not None and isinstance(cell, Wall):
+                if os.getenv("DEBUG_MODE") and pos == (1, 0):
+                    print(f"DEBUG _is_walkable: {pos} is a Wall - NOT walkable")
+                return False
+            # Doors are walkable (agents can move to door positions to break them)
+            if cell is not None and isinstance(cell, Door):
+                if os.getenv("DEBUG_MODE") and pos == (1, 0):
+                    print(f"DEBUG _is_walkable: {pos} is a Door - walkable")
+                return True
+            # Empty spaces and other objects are walkable
+            if os.getenv("DEBUG_MODE") and pos == (1, 0):
+                print(f"DEBUG _is_walkable: {pos} is empty/other - walkable")
             return True
 
-        return True
+        if os.getenv("DEBUG_MODE") and pos == (1, 0):
+            print(f"DEBUG _is_walkable: {pos} no grid available - treating as unwalkable")
+        # If no grid available, be conservative and treat as unwalkable
+        return False
 
     def _is_non_preferred_key_at_position(self, pos):
         """Check if there's a non-preferred key at the given position"""
@@ -652,5 +836,6 @@ class BaseValueAgent:
         self.grid = None
         self.memory = {}
         self.discovered_positions = set()
+        self.wall_positions = set()
         self.last_direction = None
         self.exploration_mode = True

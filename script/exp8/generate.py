@@ -910,6 +910,8 @@ def run_single_game(game_id, config_dict, save_dir, blocker_type=None):
             temperature=agent_config.get("temperature", 0.1),
             q_value_clip=agent_config.get("q_value_clip", 100),
             goal_rewards=goal_rewards,
+            grid_width=config_dict.get("grid_width"),
+            grid_height=config_dict.get("grid_height"),
         )
     elif achiever_type == "lv1va":
         agent_config = config_dict.get("achiever_configs", {}).get("lv1va", {})
@@ -965,6 +967,8 @@ def run_single_game(game_id, config_dict, save_dir, blocker_type=None):
                 gamma=blocker_config.get("gamma", 0.99),
                 temperature=blocker_config.get("temperature", 0.1),
                 q_value_clip=blocker_config.get("q_value_clip", 100),
+                grid_width=config_dict.get("grid_width"),
+                grid_height=config_dict.get("grid_height"),
             )
         elif current_blocker_type == "lv1vb":
             blocker_config = config_dict.get("blocker_configs", {}).get("lv1vb", {})
@@ -1357,6 +1361,9 @@ def generate_trajectories_for_combination(
         "achiever_type": achiever_type,
         "blocker_types": [blocker_type],  # Only use the specific blocker type
         "base_random_seed": random_seed,
+        # Grid dimensions from config
+        "grid_width": config.width,
+        "grid_height": config.height,
         # Agent-specific configs (complete configurations)
         "achiever_configs": config.achiever_configs,
         "blocker_configs": config.blocker_configs,

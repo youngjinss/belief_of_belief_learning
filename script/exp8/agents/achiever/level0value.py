@@ -41,6 +41,8 @@ class Level0ValueAchiever(BaseValueAgent):
         temperature=0.1,
         q_value_clip=100,
         goal_rewards=None,
+        grid_width=None,
+        grid_height=None,
     ):
         # Initialize base class
         super().__init__(
@@ -53,6 +55,8 @@ class Level0ValueAchiever(BaseValueAgent):
             temperature=temperature,
             q_value_clip=q_value_clip,
             role="achiever",
+            grid_width=grid_width,
+            grid_height=grid_height,
         )
 
         # Achiever-specific attributes
@@ -185,10 +189,10 @@ class Level0ValueAchiever(BaseValueAgent):
     def get_action(self, obs):
         """
         Get the next action for the agent using value iteration with partial observation strategy
-        
-        Note: Memory updates are handled by the base class act() method, 
-        so we don't need to call them again here.
         """
+        # Update observations and memory first
+        self.update_observation(obs)
+        self._update_memory(obs, self.agent_pos)
 
         # Set target door color in base class for consumption penalty
         self.set_target_door_color(self.target_door_color)

@@ -708,6 +708,42 @@ if "door_positions" in obs:
 
 **Result**: Agents now correctly transition from key collection to target door navigation, with persistent memory enabling efficient value iteration-based pathfinding in partial observation environments.
 
+### Coordinate System Mismatch Fix (2025-08-14)
+
+**Issue Analysis**: Agents were exhibiting repetitive action patterns in partial observation mode due to a critical coordinate system mismatch.
+
+**Root Cause**: The `_is_walkable()` method was using global maze coordinates (9x9) to query the local partial observation grid (6x6), causing incorrect wall detection and navigation failures.
+
+**Technical Details**:
+- **Problem**: Agent at global position (1,1) trying to check walkability of global position (1,0) by calling `self.grid.get(1,0)` on 6x6 partial view grid
+- **Symptom**: Position (1,0) returned `None` (treated as walkable) instead of detecting the wall, leading to invalid movement planning
+- **Discovery**: `self.grid.width = 6, self.grid.height = 6` (partial view) vs global maze dimensions of 9x9
+
+**Fix Implementation** (`value_agent.py:722-811`):
+1. **Added `_global_to_local_coords()` method**: Converts global maze coordinates to local partial view coordinates
+   ```python
+   def _global_to_local_coords(self, global_pos):
+       gx, gy = global_pos
+       ax, ay = self.agent_pos
+       grid_size = self.grid.width  # 6 for partial view
+       center = grid_size // 2      # Agent typically at center
+       local_x = gx - ax + center
+       local_y = gy - ay + center
+   ```
+
+2. **Modified `_is_walkable()` method**: Now properly converts coordinates before grid queries
+   - Global boundary checks using `self.width` and `self.height` (9x9 maze)
+   - Local grid queries using converted coordinates within 6x6 partial view
+   - Positions outside partial view treated as unwalkable for safety
+
+3. **Enhanced Debug Output**: Added comprehensive coordinate conversion logging to verify correct operation
+
+**Result**: 
+- ✅ Wall detection now works correctly in partial observation mode
+- ✅ Agents properly detect boundaries and obstacles using correct coordinate system  
+- ✅ Coordinate conversion successfully handles partial view window positioning
+- ✅ Debug logs confirm: "Global (1,0) -> Local None" and "(1,0) outside partial view - treating as unwalkable"
+
 ## Acknowledgments
 
 Built upon the exp6 unified single/multi-agent framework, extending it to include second-order belief modeling for enhanced theory of mind capabilities in competitive multi-agent environments.

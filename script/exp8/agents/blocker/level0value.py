@@ -41,6 +41,8 @@ class Level0ValueBlocker(BaseValueAgent):
         gamma=0.99,
         temperature=0.1,
         q_value_clip=100,
+        grid_width=None,
+        grid_height=None,
     ):
         # Initialize base class
         super().__init__(
@@ -52,6 +54,8 @@ class Level0ValueBlocker(BaseValueAgent):
             temperature=temperature,
             q_value_clip=q_value_clip,
             role="blocker",
+            grid_width=grid_width,
+            grid_height=grid_height,
         )
 
         # Blocker-specific attributes
@@ -137,8 +141,13 @@ class Level0ValueBlocker(BaseValueAgent):
                     discovered_doors.append(door_color)
                     
         # Also check current observations for additional doors
+        # Check both full observation format and blocker partial observation format
         if obs and "door_positions" in obs:
             for color, pos in obs["door_positions"].items():
+                if pos is not None and color not in self.tried_doors and color not in discovered_doors:
+                    discovered_doors.append(color)
+        if obs and "blocker_visible_doors" in obs:
+            for color, pos in obs["blocker_visible_doors"].items():
                 if pos is not None and color not in self.tried_doors and color not in discovered_doors:
                     discovered_doors.append(color)
 
@@ -155,6 +164,10 @@ class Level0ValueBlocker(BaseValueAgent):
                 for color, pos in obs["door_positions"].items():
                     if pos is not None and color not in discovered_doors:
                         discovered_doors.append(color)
+            if obs and "blocker_visible_doors" in obs:
+                for color, pos in obs["blocker_visible_doors"].items():
+                    if pos is not None and color not in discovered_doors:
+                        discovered_doors.append(color)
 
         # If we have discovered doors, randomly select one
         if discovered_doors:
@@ -163,8 +176,13 @@ class Level0ValueBlocker(BaseValueAgent):
             # Get position from memory first, then observations
             self.target_door_pos = self.memory.get(f"door_{self.target_inferred_color}")
             
+            # Check observations if position not found in memory
             if self.target_door_pos is None and obs and "door_positions" in obs:
                 door_pos = obs["door_positions"].get(self.target_inferred_color)
+                if door_pos is not None:
+                    self.target_door_pos = tuple(door_pos)
+            if self.target_door_pos is None and obs and "blocker_visible_doors" in obs:
+                door_pos = obs["blocker_visible_doors"].get(self.target_inferred_color)
                 if door_pos is not None:
                     self.target_door_pos = tuple(door_pos)
                     

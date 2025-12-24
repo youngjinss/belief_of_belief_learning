@@ -1,40 +1,55 @@
-## exp2 버전 기록
-[v0] synthetic data 연구
+# Belief MultiRL
 
-### exp2 results
-[20250610_2056] Alon, Nitay, et al (2023) 논문 실험 재현 (fix)
-[20250612_1803] Exploration Beta 1.1 (fix)
-[20250612_1947] Exploration Beta 1.5 (fix)
-[20250612_2121] multi Beta 1.5 ~ 3
+Multi-agent reinforcement learning with belief modeling (ToMnet).
 
+## Contributions
 
-/divider
- 
-### exp3 버전 기록
-- key door 환경에 a star, value, random 적용 후 ToMnet 적용
+1. **ToMnet Benchmark Re-implementation** (`lib/benchmark/`)
+   - Re-implemented ToMnet and ToMnet-family (ToMnetF)
 
-/divider
+2. **Multi-Agent Environment** (`lib/env/gym_minigrid/`)
+   - Custom AchieverBlocker environment for competitive multi-agent scenarios
+   - Built on gymnasium and gym-minigrid
 
-## exp1 버전 기록 (archive) 
-[v0] 시뮬레이션 기반 추론 연구
-[v1] 데이터 기반 예측 연구
-[v2] 데이터 탐색 (e.g., WRDS, COT, Binance, 등등)
-[v3] Binance TAQ 데이터 기준 데이터 정제 및 확인
-[v4] concatenate_ohlcv_w_pd.ipynb -> 개인, 기관별 klines(ohlcv) + position distribuiton concat
-[v5] train /inference model
+3. **Second Belief Embedding** (`script/exp7/`, `script/exp8/`)
+   - Novel `e_opp2` embedding: models "what agents believe others believe"
+   - Extends 2-stage ToMnet to 3-stage architecture with cross-attention
 
-[v6] 수식 결합 피드백 -> construction.py는 너무 복잡함 (돌리기엔 부적합))
+## References
 
-## 학습 기록
-1. [data 1, v5] 30m, i_df, -i_df 수정 후 기록
-2025-04-13 16:22:36: benchmark
-2025-04-13 16:24:02: proposed 
+- Rabinowitz, N., et al. "Machine Theory of Mind." *ICML*, 2018. [[paper]](https://arxiv.org/abs/1802.07740)
+- gym-minigrid: https://github.com/mit-acl/gym-minigrid
+- gymnasium: https://gymnasium.farama.org/
 
-2. [data 2, v5] 15m, top 20%
-2025-04-14 00:36:31 proposed
-2025-04-14 00:37:21 benchmark
+## Directory Structure
 
-## 데이터 가공 기록
-data 1: 30m, top 25%
-data 2: 15m, top 20%
-2025-04-13 23:37:00: 15분(900000) 가공
+| Directory | Purpose |
+|-----------|---------|
+| `config/` | Configuration files (hyperparameters, environment settings) |
+| `data/` | Generated/processed dataset storage |
+| `lib/` | Core library modules (environments, models, utilities) |
+| `notebook/` | Jupyter notebooks for analysis and experiments |
+| `script/` | Experiment scripts (exp1~exp8) |
+| `shell/` | Shell scripts for batch execution |
+| `visualize/` | Visualization tools and outputs |
+
+## Experiments (`script/`)
+
+| Exp | Name | Description |
+|-----|------|-------------|
+| exp1 | HBT Trading | Binance data preprocessing & HBT model training (archive) |
+| exp2 | Synthetic Simulation | Alon et al. (2023) replication with synthetic data |
+| exp3 | KeyDoor ToMnet | Single-agent ToMnet on 9x9 KeyDoor environment |
+| exp4 | AchieverBlocker | Multi-agent ToMnet with Achiever/Blocker competition |
+| exp5 | Enhanced Multi-Agent | 2/3-stage ToMnet, vectorized SR, parallel data generation |
+| exp6 | Unified Framework | Single/Multi-agent unified codebase with config-driven mode |
+| exp7 | Second-Order Belief | e_opp2 embedding for "belief about others' beliefs" |
+| exp8 | Second-Order Belief v2 | Modular agent structure with second-order belief |
+
+### Core Components (exp3~exp8)
+- `config.py` - Experiment configuration
+- `generate.py` - Trajectory data generation
+- `train.py` - ToMnet model training
+- `evaluate.py` - Model evaluation
+- `tomnet.py` - ToMnet architecture
+- `visualize.py` - Result visualization

@@ -1,6 +1,6 @@
 # Belief MultiRL
 
-Multi-agent reinforcement learning with belief modeling (ToMnet).
+Multi-agent reinforcement learning with belief modeling (Theory of Mind Network - (ToMnet)).
 
 ## Contributions
 

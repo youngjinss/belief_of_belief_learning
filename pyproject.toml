@@ -15,8 +15,10 @@ packages = [
     "beliefrl.agents.achiever",
     "beliefrl.agents.blocker",
     "beliefrl.config",
+    "beliefrl.data",
     "beliefrl.env",
     "beliefrl.model",
+    "beliefrl.train",
 ]
 
 # `pip install -e .` puts beliefrl on the path, after which the per-script

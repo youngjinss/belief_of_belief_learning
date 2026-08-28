@@ -51,6 +51,26 @@ each show up in a distinct place.
 | `env_version` | `v1` for exp5–exp7, `v2` for exp8, taken from that experiment's `Config` |
 | `agents.<module>.<Class>[mode]` | Status plus the 30-step action sequence from a fixed-seed rollout |
 
+`tests/golden/<exp>.train.json` — one epoch of one training step:
+
+| Field | Contents |
+|---|---|
+| `model_source` | `flat` for exp5–exp7, `beliefrl.model` for exp8 |
+| `loss_before` / `loss_after` | Every loss component before and after a single optimizer step |
+| `grad_norm`, `params_with_grad` | Gradient health after `.backward()` |
+| `loss_decreased` | Whether one step on the same batch actually reduced the loss |
+
+This mirrors the real step in `train.py`: forward, `ToMnetLoss` over the same
+twelve arguments, backward, `optimizer.step()`. It exists because the config,
+model and agent probes never touch the training path, while Phase 2 moved code
+`train.py` depends on. Deliberately one step on synthetic tensors, so it runs in
+about a second.
+
+It earned its place immediately: exp7 (its own flat `tomnet.py`) and exp8 (the
+extracted `beliefrl.model`) produce identical numbers — grad norm `3.118`, loss
+`5.6025 -> 5.5706`, every component matching — confirming the model extraction
+preserved behaviour through the full training path, not just a forward pass.
+
 Since Phase 2 moved the agents into `beliefrl.agents`, the probe records both
 sets for exp5–exp7: that experiment's own flat `achievers`/`blockers` modules
 **and** the core agents, run against the same v1 environment and seed. That

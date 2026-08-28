@@ -18,12 +18,13 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GOLDEN_DIR = os.path.join(REPO_ROOT, "tests", "golden")
 PROBE = os.path.join(REPO_ROOT, "tests", "_probe.py")
 AGENT_PROBE = os.path.join(REPO_ROOT, "tests", "_probe_agents.py")
+TRAIN_PROBE = os.path.join(REPO_ROOT, "tests", "_probe_train.py")
 
 # Two probes per experiment: "" is the config/model probe, "agents" rolls every
 # agent out in a fixed-seed environment. Agent behaviour is not observable from
 # the config/model probe, and Phase 2 changes agent imports, so it needs its own
 # contract.
-KINDS = ("", "agents")
+KINDS = ("", "agents", "train")
 
 EXPERIMENTS = ("exp5", "exp6", "exp7", "exp8")
 
@@ -42,7 +43,7 @@ def run_probe(experiment, kind=""):
     # order produce a different action sequence on every run.
     env = dict(os.environ, PYTHONHASHSEED="0")
     proc = subprocess.run(
-        [sys.executable, AGENT_PROBE if kind == "agents" else PROBE],
+        [sys.executable, {"agents": AGENT_PROBE, "train": TRAIN_PROBE}.get(kind, PROBE)],
         cwd=cwd,
         capture_output=True,
         text=True,
@@ -105,7 +106,17 @@ def record():
             with open(golden_path(experiment, kind), "w") as handle:
                 json.dump(document, handle, indent=2, sort_keys=True)
                 handle.write("\n")
-            if kind == "agents":
+            if kind == "train":
+                t = document["train"]
+                if t["status"] == "ok":
+                    print(
+                        f"recorded {experiment}.train: 1 step, "
+                        f"loss {t['loss_before']['loss']} -> {t['loss_after']['loss']}, "
+                        f"grad_norm {t['grad_norm']} (model from {t['model_source']})"
+                    )
+                else:
+                    print(f"recorded {experiment}.train: {t['status']} {t.get('error','')[:60]}")
+            elif kind == "agents":
                 agents = document["agents"]
                 ok = sum(1 for v in agents.values() if v["status"] == "ok")
                 print(

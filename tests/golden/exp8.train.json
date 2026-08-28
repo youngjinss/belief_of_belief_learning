@@ -1,0 +1,30 @@
+{
+  "experiment": "exp8",
+  "seed": 7777,
+  "train": {
+    "grad_norm": 3.118,
+    "loss_after": {
+      "action_loss": 1.9254,
+      "agent_loss": 0.6767,
+      "consumption_loss": 0.6922,
+      "goal_loss": 1.4116,
+      "loss": 5.5706,
+      "sr_loss": 0.1689,
+      "type_loss": 0.6958
+    },
+    "loss_before": {
+      "action_loss": 1.9286,
+      "agent_loss": 0.6886,
+      "consumption_loss": 0.6919,
+      "goal_loss": 1.4292,
+      "loss": 5.6025,
+      "sr_loss": 0.1713,
+      "type_loss": 0.693
+    },
+    "loss_decreased": true,
+    "model_source": "beliefrl.model",
+    "n_parameters": 5134746,
+    "params_with_grad": 228,
+    "status": "ok"
+  }
+}

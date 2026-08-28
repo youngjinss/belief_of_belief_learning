@@ -1,0 +1,30 @@
+{
+  "experiment": "exp5",
+  "seed": 7777,
+  "train": {
+    "grad_norm": 5.016,
+    "loss_after": {
+      "action_loss": 1.9377,
+      "agent_loss": 0.6127,
+      "consumption_loss": 0.692,
+      "goal_loss": 1.4346,
+      "loss": 5.5194,
+      "sr_loss": 0.166,
+      "type_loss": 0.6765
+    },
+    "loss_before": {
+      "action_loss": 1.966,
+      "agent_loss": 0.6181,
+      "consumption_loss": 0.6919,
+      "goal_loss": 1.4576,
+      "loss": 5.6033,
+      "sr_loss": 0.1723,
+      "type_loss": 0.6975
+    },
+    "loss_decreased": true,
+    "model_source": "flat",
+    "n_parameters": 3808218,
+    "params_with_grad": 158,
+    "status": "ok"
+  }
+}

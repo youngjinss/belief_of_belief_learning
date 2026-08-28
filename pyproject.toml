@@ -19,6 +19,7 @@ packages = [
     "beliefrl.env",
     "beliefrl.model",
     "beliefrl.train",
+    "beliefrl.viz",
 ]
 
 # `pip install -e .` puts beliefrl on the path, after which the per-script

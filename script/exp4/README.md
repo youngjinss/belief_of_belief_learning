@@ -1,317 +1,166 @@
-# AchieverBlocker Experiment 4 - Multi-Agent ToMnet Implementation
+# Experiment 4 — AchieverBlocker Multi-Agent ToMnet
 
-This directory contains a complete multi-agent ToMnet implementation for the AchieverBlocker environment with strategic interaction between two agent types.
+This experiment trains a single ToMnet on trajectories from a two-agent competitive environment: an Achiever that seeks a preferred key/door pair, and a Blocker that must infer the Achiever's goal from observed behavior and race to block it.
 
-## Overview
+## Purpose
 
-AchieverBlocker Experiment 4 implements a competitive multi-agent environment where:
-1. **Achiever agents** navigate a 9x9 grid to collect preferred keys and open corresponding doors
-2. **Blocker agents** observe achiever behavior, infer their goals, and strategically block access
-3. **Strategic interaction** creates theory of mind requirements for successful blocking
+Experiments 1–3 model a single agent acting in an environment. Experiment 4 extends the ToMnet to a competitive two-agent setting where a correct theory of mind is not just descriptive but instrumentally useful: the Blocker's only way to win is to infer the Achiever's target door color before the Achiever reaches it. The same ToMnet is used to model both roles, with an added agent-classification head so the network also learns to distinguish "I'm watching an achiever" from "I'm watching a blocker" from behavior alone.
 
-The implementation extends exp3's ToMnet architecture for multi-agent scenarios with:
-- **Dual-agent observations** with role differentiation
-- **Agent type prediction** as an additional learning task
-- **Strategic blocking behavior** with competitive dynamics
-- **Enhanced data generation** for multi-agent trajectories
+## Environment
 
-## Project Structure
+The environment lives outside this directory, at `lib/env/gym_minigrid/envs/achiever_blocker.py` (`AchieverBlockerEnv`, registered as `MiniGrid-AchieverBlocker-{5x5,9x9,11x11}-v1`; exp4's default is 9x9). It is a `MiniGridEnv` subclass with 4 colored keys/doors (red, green, blue, yellow) and two agents that share full observability and cannot occupy the same cell.
 
-```
-script/exp4/
-├── config.py              # Configuration for multi-agent experiments
-├── generate.py            # Multi-agent trajectory data generation
-├── train.py               # Enhanced ToMnet training with agent prediction
-├── evaluate.py            # Multi-agent evaluation and metrics
-├── visualize.py           # Results visualization and plotting
-├── visualize_sr.py        # Successor representation visualization
-├── tomnet.py              # Extended ToMnet with agent classification head
-├── achievers.py           # Achiever agent implementations (A*, Value, Random)
-├── blockers.py            # Blocker agent implementations (Random, GoalDirect)
-├── data_generation.py     # Multi-agent data processing utilities
-├── simulate_game.py       # Multi-agent game simulation with GUI
-└── simulate_trajectory.py # Multi-agent trajectory visualization
-```
+**Actions.** The Achiever has 7 actions: up, right, down, left, stay, pickup, toggle. The Blocker has 6: up, right, down, left, stay, and `broken` (an explicit "attempt to block here" action). `pickup` and `toggle` are actually handled automatically on movement (see below); the Achiever's action space still reserves those two slots.
 
-## Key Features
+**Goal assignment.** Each episode randomizes a `preference` value per color (one random color is set to 1.0, the rest drawn uniform in [0, 1)) and a `cost` value per color (four values summing to 1.0). The color with the highest preference becomes `target_door_color` — the door the Achiever is trying to open and the Blocker is trying to block.
 
-### 🎯 **Multi-Agent Competitive Environment**
-- **Achiever agents**: Navigate to collect preferred keys and open doors (7 actions: up, right, down, left, stay, pickup, toggle)
-- **Blocker agents**: Infer achiever goals and strategically block access (6 actions: up, right, down, left, stay, broken)
-- **Strategic dynamics**: Theory of mind requirements for successful blocking
-- **Game termination**: Blockers can end game early when positioned at predicted target door
+**Reward structure** (`AchieverBlockerEnv.step`):
+- Auto key pickup (stepping onto a key): `+0.5` if the key matches `target_door_color`, otherwise `-cost[color]`.
+- Auto door open (stepping onto a locked door while holding its key): `+preference[door_color]`.
+- Achiever reaches the target door once it is open: `+10.0` to the Achiever, `-5.0` to the Blocker, episode terminates.
+- Blocker plays `broken` while standing on the target door: `+1.0` to the Blocker, `-1.0` to the Achiever, episode terminates. Playing `broken` on the wrong door: `-1.0` to the Blocker, episode continues (no termination).
+- Shaping reward: `+0.1` to the Blocker each step it stays within Chebyshev distance 1 of the target door's position.
 
-### 🧠 **Enhanced ToMnet Architecture**
-- **Agent classification head**: Predicts whether observing achiever (0) or blocker (1)
-- **Multi-agent observations**: Each agent receives full state information about both agents
-- **Extended loss function**: Action, goal, agent type, consumption, and successor representation losses
-- **Dual-agent training**: Learns behaviors and intentions for both agent types
+## Architecture
 
-### 📊 **Advanced Data Processing**
-- **Multi-agent trajectory generation**: Two samples per trajectory (one per agent)
-- **Agent type labeling**: Each sample tagged with agent role
-- **Vectorized SR calculation**: Optimized successor representation computation
-- **Enhanced data paths**: Combined naming scheme for agent type pairs
+`tomnet.py` defines a `ToMnet` that supports two architecture variants via `use_mentalnet`:
+- `use_mentalnet=True` (default in `config.py`): the original three-stage pipeline, `CharNet → MentalNet → PredNet`.
+- `use_mentalnet=False`: a two-stage pipeline, `CharNet → PredNet`, where the character embedding is broadcast spatially and concatenated directly with the current state (no recent-trajectory encoding step).
 
-### 🚀 **Strategic Agent Types**
+`CharNet` encodes past episodes into a character embedding (`n_echar`); `MentalNet` (when enabled) encodes the current episode's history into a mental-state embedding (`n_ement`) via a `ConvLSTM2d`; `PredNet` combines these with the current-state grid (a `ResidualBlock`-based CNN) to produce five outputs:
+- `action_logits` — next-action distribution (achiever: 7-way, blocker: 6-way, sharing one head sized to the larger space)
+- `goal_logits` — 4-way predicted target-door color
+- `agent_logits` — 2-way: is this trajectory an Achiever (0) or a Blocker (1)?
+- `consumption_logits` — binary, whether a key/door interaction occurs
+- `sr_pred` — predicted successor representation over the grid
 
-#### Achiever Agents
-- **Value Agent**: Strategic navigation with preference optimization
-- **A* Agent**: Optimal pathfinding with goal-directed behavior  
-- **Random Agent**: Baseline exploration behavior
-
-#### Blocker Agents
-- **GoalDirect Agent**: Infers achiever goals from observed key collection patterns
-- **Random Agent**: Baseline blocking behavior
-
-## Quick Start
-
-### 1. Multi-Agent Data Generation
-```bash
-# Generate training data with value achiever and goal-directed blocker
-python script/exp4/generate.py --achiever_type value --blocker_type goal_direct
-
-# Generate test data with different agent combinations
-python script/exp4/generate.py --n_games 2000 --achiever_type astar --blocker_type random --test_data
-
-# Generate data for all agent combinations
-python script/exp4/generate.py --achiever_type value --blocker_type goal_direct
-python script/exp4/generate.py --achiever_type astar --blocker_type random
-```
-
-### 2. Multi-Agent Game Simulation
-```bash
-# Run competitive simulation with visualization
-python script/exp4/simulate_game.py --episodes 1 --render --achiever_type value --blocker_type goal_direct
-
-# Save gameplay as animated GIF
-python script/exp4/simulate_trajectory.py --episodes 5 --gif_output achiever_blocker_demo
-
-# Visualize multi-agent successor representation
-python script/exp4/visualize_sr.py --data_file data/MiniGrid-AchieverBlocker-9x9-v1/value_goal_direct/test0.txt
-```
-
-### 3. Enhanced Model Training
-```bash
-# Train with multi-agent data (default: value achiever + goal_direct blocker)
-python script/exp4/train.py --save_dir ./results/exp4/
-
-# Custom training with agent type weighting
-python script/exp4/train.py \
-    --epochs 100 --batch_size 1024 --lr 0.0001 \
-    --agent_weight 1.5 --device cuda:0 --save_dir ./results/exp4/
-```
-
-### 4. Multi-Agent Evaluation
-```bash
-# Evaluate multi-agent model performance
-python script/exp4/evaluate.py \
-    --model_path ./results/exp4/best_model.pth \
-    --result_dir ./results/exp4/
-
-# Generate multi-agent visualizations
-python script/exp4/visualize.py \
-    --result_dir ./results/exp4/ \
-    --plot_type all
-```
+`ToMnetLoss` combines these five heads with independently weighted losses (`action_weight`, `goal_weight`, `agent_weight`, `consumption_weight`, `sr_weight`, all default to 1.0 in `config.py`'s `training_process_config`): cross-entropy for action/goal/agent, BCE-with-logits for consumption, and a KL-divergence term (`calculate_sr_loss_kl_divergence`, defined in `train.py`) for the SR prediction.
 
 ## Configuration
 
-All parameters are centralized in `config.py` for multi-agent experiments:
+`config.py`'s `Config` class centralizes every setting used across the pipeline; scripts read it directly and only accept CLI overrides behind `--config_override` (see Running). Selected defaults:
 
-### Environment Settings
 ```python
-self.env_name = "MiniGrid-AchieverBlocker-{size}-v1"
-self.achiever_type = "value"      # "astar", "random", "value"
-self.blocker_type = "goal_direct" # "random", "goal_direct"
-self.width = 9
-self.height = 9
-self.max_steps = 500
+# Environment / agents
+achiever_type = "value"       # "astar", "value", "random"
+blocker_type  = "goal_direct" # "random", "goal_direct"
+width, height = 9, 9
+max_steps     = 500
+
+# model_config
+use_mentalnet = True   # False switches to the 2-stage CharNet→PredNet variant
+residual_blocks = 5
+n_echar, n_ement = 256, 256
+achiever_action_space, blocker_action_space = 7, 6
+goal_space = 4
+
+# training_config
+batch_size = 1024
+epochs = 300
+lr = 0.0001
+device = "cuda:3"
+use_parallel = True        # DataParallel across training_config["device_ids"]
+use_amp = True              # mixed precision
+
+# training_process_config (loss weights, all default 1.0)
+action_weight = goal_weight = agent_weight = consumption_weight = sr_weight = 1.0
+early_stopping_patience = 30
 ```
 
-### Model Architecture
-```python
-self.model_config = {
-    "use_mentalnet": True,           # Enable Mental Network
-    "residual_blocks": 5,
-    "n_echar": 128,                  # Character embedding size
-    "n_ement": 128,                  # Mental state embedding size
-    "achiever_action_space": 7,      # Achiever actions
-    "blocker_action_space": 6,       # Blocker actions
-    "goal_space": 4,                 # 4 colored goals
-    "agent_space": 2,                # Achiever (0) or Blocker (1)
-}
+`Config.get_data_path(is_test=False)` derives the trajectory directory as `{save_dir}/{env_name}/{achiever_type}_{blocker_type}/[test/]`, and `Config.get_agent_pair_name()` returns the `{achiever_type}_{blocker_type}` string used throughout as a directory/label suffix.
+
+## Files
+
+```
+script/exp4/
+├── config.py              # Central Config class: env, agent, model, training,
+│                           #   data-processing, evaluation settings
+├── achievers.py            # Achiever policies: AStarAgent, ValueAgent, RandomAgent
+├── blockers.py              # Blocker policies: GoalDirectAgent, RandomAgent
+├── generate.py              # Multi-process self-play trajectory generation
+├── data_generation.py       # DataGenerator: parses trajectory .txt files into
+│                           #   achiever/blocker training samples
+├── tomnet.py                # ToMnet model, ToMnetLoss, create_model()
+├── train.py                 # Training loop, SR-loss utilities, checkpoint saving
+├── evaluate.py               # Loads a checkpoint, scores it on held-out data
+├── visualize.py              # Plots from training history / evaluation output
+├── visualize_sr.py           # Standalone SR-parsing helpers for a trajectory file
+├── simulate_trajectory.py    # Replays a saved trajectory .txt file (GameSimulation)
+└── simulate_game.py          # Live single-agent rollout viewer (see Limitations)
 ```
 
-### Training Configuration
-```python
-self.training_config = {
-    "batch_size": 1024,
-    "epochs": 200,
-    "lr": 0.0001,
-    "device": "cuda:3",
-    "agent_weight": 1.0,             # Weight for agent classification loss
-    "early_stopping_patience": 30,
-}
-```
+### Achiever policies (`achievers.py`)
+- **`AStarAgent`** — shortest-path planner: navigate to the preferred key, then to its door.
+- **`ValueAgent`** — value-iteration planner with a movement cost, wall penalty, and temperature-controlled stochastic action selection (`config.achiever_configs["value"]`).
+- **`RandomAgent`** — movement-probability-controlled random baseline.
 
-## Environment Details
+### Blocker policies (`blockers.py`)
+- **`GoalDirectAgent`** — stays put until the Achiever picks up its first key, infers `target_door_color` from that key's color, paths to the corresponding door, then plays `broken`.
+- **`RandomAgent`** — samples uniformly from all 6 actions, including `broken`.
 
-The AchieverBlocker environment creates strategic interaction between two agents:
+## Running
 
-### Achiever Objectives:
-1. Navigate the 9x9 grid with 4 colored keys and doors
-2. Collect the preferred key (based on goal preferences)
-3. Open the corresponding door to win the game
+Every entry point built on `Config` (`generate.py`, `train.py`, `evaluate.py`, `visualize.py`) only applies its CLI flags when `--config_override` is passed — without it, the script runs with `config.py`'s defaults (`achiever_type="value"`, `blocker_type="goal_direct"`, `env_size="9x9"`) regardless of other flags given.
 
-### Blocker Objectives:
-1. Observe achiever's movement and key collection patterns
-2. Infer achiever's goal preferences through theory of mind
-3. Position at the predicted target door and use "broken" action to block access
-
-### Game Dynamics:
-- **Turn-based**: Agents act sequentially each timestep
-- **Full observability**: Each agent observes both agent positions and states
-- **Collision avoidance**: Agents cannot occupy the same grid cell
-- **Multiple termination**: Game ends when achiever succeeds OR blocker successfully blocks
-
-## Strategic Agent Implementations
-
-### Achiever Agents (`achievers.py`)
-
-#### Value Achiever
-- **Strategic planning**: Uses value iteration with goal preferences
-- **Preference optimization**: Maximizes reward based on colored door preferences
-- **Anti-blocking**: May adapt strategy if blocked repeatedly
-
-#### A* Achiever  
-- **Optimal pathfinding**: Finds shortest path to preferred goals
-- **Deterministic behavior**: Predictable for blocker agents to analyze
-- **Two-phase strategy**: Collect key → navigate to door
-
-#### Random Achiever
-- **Exploration baseline**: Random movement with goal bias
-- **Unpredictable behavior**: Difficult for blockers to predict
-
-### Blocker Agents (`blockers.py`)
-
-#### GoalDirect Blocker
-- **Theory of mind**: Infers achiever preferences from key collection behavior
-- **Strategic positioning**: Moves to predicted target doors
-- **Game termination**: Uses "broken" action when positioned optimally
-
-#### Random Blocker
-- **Baseline behavior**: Random actions across the environment
-- **No strategic reasoning**: Provides comparison baseline
-
-## Data Structure
-
-### Generated Data Paths
-```
-data/
-└── MiniGrid-AchieverBlocker-9x9-v1/
-    └── value_goal_direct/              # Training data for agent pair
-        ├── test0.txt                   # Individual trajectory files
-        ├── test1.txt
-        ├── ...
-        ├── processed_data_exp4.pkl     # Cached processed data
-        └── test/                       # Test data
-            ├── test0.txt
-            ├── test1.txt
-            ├── ...
-            └── processed_test_data_exp4.pkl
-```
-
-### Multi-Agent Trajectory Format
-Each trajectory file contains dual-agent information:
-- **Maze representation**: 9x9 grid with both agents and objects
-- **Achiever actions**: 7-dimensional action space [up, right, down, left, stay, pickup, toggle]
-- **Blocker actions**: 6-dimensional action space [up, right, down, left, stay, broken]
-- **Agent positions**: (x, y) coordinates for both achiever and blocker
-- **Agent states**: Inventory and goal information
-- **Agent labels**: Achiever (0) or Blocker (1) for each observation
-- **Strategic outcomes**: Success/failure and blocking effectiveness
-
-## Model Training
-
-### Enhanced Architecture Options
+**1. Generate trajectory data**
 ```bash
-# Benchmark model (CharNet + PredNet only)
-python script/exp4/train.py --use_mentalnet False
+python script/exp4/generate.py --config_override \
+    --achiever_type value --blocker_type goal_direct --n_games 100000
 
-# Proposed model (CharNet + MentalNet + PredNet)  
-python script/exp4/train.py --use_mentalnet True
+python script/exp4/generate.py --config_override \
+    --achiever_type astar --blocker_type random --n_games 2000 --test_data
+```
+Generation is parallelized with `multiprocessing.Pool` (`--n_processes`, default: CPU count − 1).
+
+**2. Train**
+```bash
+python script/exp4/train.py --config_override \
+    --save_dir ./results/exp4/ --batch_size 1024 --epochs 300 --lr 0.0001 --device cuda:0
+```
+`--data_dir` is optional; if omitted, `train_tomnet` derives it from `config.get_data_path()` (i.e. `./data/{env_name}/{achiever_type}_{blocker_type}/`). Multi-GPU (`DataParallel`) is available via `--use_parallel --device_ids 2 3` (also configurable through `training_config` in `config.py`).
+
+**3. Evaluate**
+```bash
+python script/exp4/evaluate.py --config_override \
+    --model_path ./results/exp4/best_model.pth --result_dir ./results/exp4/ --plot_type all
 ```
 
-### Extended Loss Components
-- **Action loss**: Cross-entropy for both achiever and blocker actions
-- **Goal loss**: Cross-entropy for goal preference prediction
-- **Agent loss**: Cross-entropy for agent type classification (NEW)
-- **Consumption loss**: Binary cross-entropy for key collection
-- **SR loss**: KL divergence for successor representation
+**4. Visualize**
+```bash
+python script/exp4/visualize.py --config_override \
+    --result_dir ./results/exp4/ --plot_dir ./results/exp4/plots --plot_type all
+```
+`--plot_type` accepts `training`, `confusion`, `likelihood`, `embeddings`, `n_past`, or `all`.
 
-### Multi-Agent Training Features
-- **Dual-agent samples**: Each trajectory generates samples for both agent types
-- **Agent classification**: Neural network learns to distinguish achiever vs blocker behavior
-- **Strategic loss weighting**: Configurable emphasis on agent prediction accuracy
-- **Competitive dynamics**: Model learns both cooperative and adversarial behaviors
+**5. Replay a saved trajectory**
+```bash
+python script/exp4/simulate_trajectory.py --data_file data/MiniGrid-AchieverBlocker-9x9-v1/value_goal_direct/test0.txt --summary
+```
+Drop `--summary` to render the animation; add `--save_gif` to export it.
 
-## Evaluation Metrics
+## Outputs
 
-### Standard Multi-Agent Metrics
-- **Achiever action accuracy**: Action prediction for achiever agents
-- **Blocker action accuracy**: Action prediction for blocker agents  
-- **Goal inference accuracy**: Goal prediction from observed behavior
-- **Agent classification accuracy**: Distinguishing achiever vs blocker (NEW)
+**Data** (`generate.py`, under `config.save_dir`, default `data/`):
+```
+data/MiniGrid-AchieverBlocker-9x9-v1/value_goal_direct/
+├── test0.txt, test1.txt, ...      # one trajectory per file
+└── test/                          # test-split trajectories (from --test_data)
+    └── test0.txt, ...
+```
+Each trajectory yields two training samples once processed by `DataGenerator.process_directory` — one Achiever sample, one Blocker sample — cached to `processed_data_exp4.pkl` (train split) / `processed_test_data_exp4.pkl` (test split) inside the same directory so re-runs skip re-parsing.
 
-### Strategic Analysis
-- **Blocking effectiveness**: Success rate of blocker interference
-- **Theory of mind accuracy**: How well blockers predict achiever goals
-- **Multi-agent confusion matrices**: Detailed error analysis for both agent types
-- **Strategic adaptation**: How agents respond to opponent behavior
+**Training** (`train.py`, under `--save_dir`):
+- `best_model.pth`, `final_model.pth` — model state dicts
+- `training_history.json`, `training_history.png`
+- `model_config.json`, `full_config.json`
 
-## Performance Optimizations
+**Evaluation** (`evaluate.py`, under `--result_dir`):
+- `evaluation_results_exp4.json` — accuracy/precision/recall/F1 for action, goal, and agent-type predictions
+- `predictions.pkl`
+- `n_past_evaluation_results.json`, `action_likelihood_analysis.pkl`, `action_likelihood_stats.json`
 
-### Multi-Agent Data Processing
-- **Vectorized SR calculation**: Optimized for dual-agent scenarios
-- **Efficient trajectory parsing**: Handles complex multi-agent state representations
-- **Enhanced caching**: Separate processed data for different agent combinations
-- **Memory optimization**: Efficient storage for expanded state spaces
+## Notes and Limitations
 
-### Training Optimizations
-- **Balanced sampling**: Equal representation of achiever and blocker samples
-- **Strategic batch composition**: Ensures diverse agent type combinations
-- **Loss balancing**: Automated weighting for stable multi-task learning
-- **Early stopping**: Monitors all loss components for optimal convergence
-
-## Troubleshooting
-
-### Common Multi-Agent Issues
-
-1. **Agent imbalance in training**:
-   ```bash
-   python script/exp4/train.py --agent_weight 2.0 --batch_size 512
-   ```
-
-2. **No multi-agent data found**:
-   ```bash
-   # Generate small dataset for testing
-   python script/exp4/generate.py --n_games 100 --achiever_type value --blocker_type random
-   ```
-
-3. **Strategic behavior not emerging**:
-   ```bash
-   # Try different agent combinations
-   python script/exp4/generate.py --achiever_type astar --blocker_type goal_direct
-   ```
-
-4. **Multi-agent environment errors**:
-   ```bash
-   # Test environment with simple simulation
-   python script/exp4/simulate_game.py --episodes 1
-   ```
-
-### Experiment History:
-- 20250714_021705 -> multi-agent value vs goaldirected (small parameter)
-- 20250714_182233 -> multi-agent value vs goaldirected (large parameter) with 2 GPU
-->> 버그 있었음 (generate.py에 blocker의 interaction 조건이 의도와 다름, blocker-door 좌표가 같아야하고, broken(5)를 선택해야 "0", "1"로 분류가 가능한데, 지금은 그렇게 안되어 있었음 (추론 잘 하면 끝)))
+- `simulate_game.py` does `from agents import AStarAgent, RandomAgent, ValueAgent`, but no `agents.py` module exists in this directory (the actual policy classes live in `achievers.py`/`blockers.py`). Running it currently raises `ModuleNotFoundError: No module named 'agents'`. It also only instantiates a single Achiever policy and calls `env.step()` with what appears to be a single action, while `AchieverBlockerEnv.step()` expects an `(achiever_action, blocker_action)` pair — this script looks like an unported carryover from an earlier single-agent experiment and is not currently usable for AchieverBlocker rollouts.
+- `visualize_sr.py` has no `argparse` interface; its `if __name__ == "__main__":` block calls `analyze_test_file()` with a hardcoded absolute path from a different machine/repo layout. Its parsing functions (`parse_maze`, `parse_sr_data`, `analyze_test_file`) are usable when imported directly, but the file cannot be run as a CLI tool as-is.
+- The `action_logits` head is sized for the larger of the two action spaces; Blocker samples (6-way) and Achiever samples (7-way) share this single head, so action-loss/accuracy figures should be interpreted per agent type rather than pooled, if pooled numbers are reported anywhere downstream.

@@ -1,307 +1,159 @@
-# Experiment 7 - Second-Order Belief (Second Belief) Implementation
+# Experiment 7 — Second-Order Belief (e_opp2)
 
-This directory implements second-order belief modeling (second belief) in the ToMnet architecture for the belief trading system. The second belief embedding (e_opp2) represents an agent's belief about what others believe about other agents.
+This directory implements a Theory-of-Mind (ToM) network for the Achiever–Blocker multi-agent environment, extending the 3-stage ToMnet (CharNet → MentalNet → PredNet) with a fully implemented `SecondBeliefNet` that produces a second-order belief embedding, `e_opp2` — a representation of what an agent infers about its opponent's recent behavior, fused into prediction via cross-attention.
 
 ## Purpose
 
-Experiment 7 extends the ToMnet architecture to include second-order belief modeling, enabling more sophisticated theory of mind capabilities. The main objectives are:
+1. **Second-Order Belief Modeling** — `e_opp2` is a learned embedding derived from the opponent's recent trajectory (states + actions), fused with the agent's own mental state.
+2. **Enhanced ToM Architecture** — extends the existing 2-/3-stage ToMnet with an optional cross-attention stage that combines character, mental, and second-belief embeddings before prediction.
+3. **Opponent Trajectory Integration** — data generation extracts the opponent's recent trajectory from the same game log via perspective switching (achiever samples use blocker data as "opponent", and vice versa).
+4. **Comparative Evaluation** — `use_second_belief` and `use_mentalnet` are independent boolean flags, so 2-stage/3-stage architectures with or without second-order belief can all be trained and compared from the same codebase.
 
-1. **Second-Order Belief Modeling**: Implement e_opp2 embedding to capture what agents believe others believe
-2. **Enhanced ToM Architecture**: Extend the existing 2-stage ToMnet to a 3-stage architecture with cross-attention
-3. **Opponent Trajectory Integration**: Use opponent's recent trajectories to inform second belief formation  
-4. **Comprehensive Evaluation**: Compare performance with and without second-order belief modeling
+## Environment
 
-## Second Belief Architecture Overview
+- Multi-agent **AchieverBlocker** environment (`MiniGrid-AchieverBlocker-{size}-v1`), 9×9 by default (`config.py`).
+- When no blocker types are configured, the code falls back to a single-agent **KeyDoor** environment (`MiniGrid-KeyDoor-{size}-v1`), detected via `Config.is_single_agent_mode()`.
+- Achiever types include `lv0va`, `lv1va` (level-k reasoning), `astar`, `random`, `value`; blocker types include `lv0vb`, `lv1vb`, `random`, `goal_direct`, `randomly_selected`, `rule_based`.
+- Grid state is encoded as 10 channels: 8 original game-state channels (walls, keys, doors, etc.) plus channel 8 (self position) and channel 9 (opponent position, zero in single-agent mode).
+- Action spaces differ per role: achiever has 7 actions (up/right/down/left/stay/pickup/toggle), blocker has 6 (up/right/down/left/stay/broken).
 
-### Three Core Embeddings
+## Architecture
 
-1. **e_char** (Character Embedding) - ✅ Implemented
-   - **Input**: Past trajectories from historical episodes
-   - **Network**: CharNet  
-   - **Output**: 64-dimensional vector encoding behavioral patterns
-   - **Purpose**: Captures agent's long-term characteristics and tendencies
+### Embeddings
 
-2. **e_mental** (Mental State Embedding) - ✅ Implemented
-   - **Input**: Recent trajectory and actions
-   - **Network**: MentalNet
-   - **Output**: Spatial embedding (channels × H × W)
-   - **Purpose**: Encodes agent's current mental state from recent behavior
+| Embedding | Network | Input | Output | Status |
+|---|---|---|---|---|
+| `e_char` | `CharNet` | Past episode trajectories | `(batch, n_echar)` vector | Implemented |
+| `e_mental` | `MentalNet` | Recent self states + actions | `(batch, n_ement, H, W)` spatial map | Implemented |
+| `e_opp2` | `SecondBeliefNet` | Mental state + opponent's recent states/actions | `(batch, n_eopp2)` vector | Implemented |
 
-3. **e_opp2** (Second Belief Embedding) - 🚧 **TO BE IMPLEMENTED**
-   - **Input**: Concatenation of [e_mental, opponent_recent_trajectory]
-   - **Network**: SecondBeliefNet (new component)
-   - **Output**: 64-dimensional vector
-   - **Purpose**: Models what the agent believes about others' beliefs
+`SecondBeliefNet` (`tomnet.py`) mirrors `MentalNet`'s trajectory encoder — a conv stem, 5 residual blocks, and a `ConvLSTM2d` over the opponent's spatialized state+action sequence — then fuses the resulting features with the agent's own spatial `e_mental` via a concatenation + conv fusion layer, projects to `n_eopp2` channels, and global-average-pools to a vector. Dropout (0.1) is applied to the output.
 
-### Architecture Evolution
+`ToMnet` exposes two independent flags:
+- `use_mentalnet`: `False` → 2-stage (`CharNet → PredNet`); `True` → 3-stage (`CharNet → MentalNet → PredNet`).
+- `use_second_belief`: adds `SecondBeliefNet` and switches `PredNet` to combine embeddings via `CrossAttentionModule` instead of simple channel concatenation.
 
-#### Current Architecture (2-stage)
+When `use_second_belief=True`, `oppo_states`/`oppo_actions` are optional at the `forward()` call site — if omitted (single-agent samples), `second_belief` is set to a zero vector so the rest of the pipeline runs unchanged.
+
+### Cross-Attention (when `use_second_belief=True`)
+
+`CrossAttentionModule` projects `e_char`, pooled `e_mental`, and `e_opp2` to a shared `attention_hidden` dimension, stacks them as a 3-token sequence, and attends to them using a query built from the current-state features (`nn.MultiheadAttention`, `attention_heads` heads). The attended output is broadcast spatially and concatenated with the current state before entering `PredNet`'s convolutional torso.
+
 ```
-Past Episodes → CharNet → e_char ↘  
-                                   → PredNet → Predictions
-Recent Trajectory → MentalNet → e_mental ↗
-```
-
-#### Target Architecture (3-stage with Second Belief)
-```
-Past Episodes → CharNet → e_char ↘
-                                   ↘
-Recent Trajectory → MentalNet → e_mental → [concat with opponent_recent_trajectory] → SecondBeliefNet → e_opp2
-                                           ↗                                                              ↓
-                                          PredNet ← Cross-Attention ← [e_char, e_mental, e_opp2] ←────┘
-```
-
-## Implementation Plan
-
-### Phase 1: Data Preparation
-- [ ] Modify `_create_trajectory_tensor` to support perspective switching
-- [ ] Add `opponent_recent_trajectory` extraction in sample creation functions
-- [ ] Update data loader to include opponent trajectory fields
-- [ ] Verify data generation with unit tests
-
-### Phase 2: Model Architecture  
-- [ ] Implement `SecondBeliefNet` class
-- [ ] Implement `CrossAttentionModule` class
-- [ ] Modify `PredNet` to accept three embeddings via cross-attention
-- [ ] Update `ToMnet` class with new components and `use_second_belief` flag
-
-### Phase 3: Training Integration
-- [ ] Update training loop to pass opponent trajectories
-- [ ] Ensure backward compatibility (optional opponent data)
-- [ ] Update model checkpointing for new parameters
-- [ ] Add second belief evaluation metrics
-
-### Phase 4: Evaluation & Visualization
-- [ ] Implement e_opp2 visualization functions
-- [ ] Create attention weight visualizations  
-- [ ] Update existing plots to include second belief analysis
-- [ ] Compare performance with/without second-order belief modeling
-
-## Key Implementation Components
-
-### SecondBeliefNet Architecture
-The core component for second-order belief modeling:
-
-```python
-class SecondBeliefNet(nn.Module):
-    def __init__(self, n_ement, n_eopp2, channels_in, hidden_size=128):
-        # 1. Trajectory encoder (Conv + ResNet blocks)
-        # 2. Mental state processor (handles spatial e_mental)  
-        # 3. Fusion layer (combines trajectory and mental state)
-        # 4. LSTM for temporal processing
-        # 5. Output projection to n_eopp2
+Past Episodes ──────────────► CharNet ──────► e_char ─────────────┐
+                                                                    │
+Recent Self States/Actions ─► MentalNet ────► e_mental ─┬──────────┤
+                                                          │          │
+Opponent Recent States/Actions ─► SecondBeliefNet ◄──────┘          │
+                              │                                     │
+                              └────────────► e_opp2 ────────────────┤
+                                                                     ▼
+                                              Current State + [e_char, e_mental, e_opp2]
+                                                          │
+                                                  CrossAttentionModule
+                                                          │
+                                                        PredNet
+                                                          │
+                          action / goal / agent / type / consumption logits, SR map
 ```
 
-### Cross-Attention Mechanism
-Combines all three embeddings for enhanced prediction:
+When `use_second_belief=False`, `PredNet` falls back to plain channel-concatenation of the current state with `e_mental` (if `use_mentalnet`) and `e_char` — no attention module is built.
 
-```python
-class CrossAttentionModule(nn.Module):
-    def __init__(self, n_echar, n_ement, n_eopp2, hidden_dim):
-        # Multi-head attention between embeddings
-        # Query: current state features
-        # Keys/Values: [e_char, e_mental, e_opp2]
-```
+### PredNet outputs
 
-### Configuration Updates
-```python
-model_config = {
-    "n_eopp2": 64,  # Second belief embedding dimension
-    "use_second_belief": True,  # Enable second belief modeling
-    "second_belief_hidden": 128,  # Hidden size for SecondBeliefNet
-    "attention_heads": 8,  # Number of attention heads
-    "attention_hidden": 256,  # Hidden dimension for attention
-}
-```
+A shared conv torso (conv → 3 residual blocks → conv, `out_channels` filters) feeds pooled features into five heads — action logits, goal logits, agent-identity logits (achiever/blocker), type logits (level/depth), and consumption logits (4 keys + 4 doors) — plus a convolutional successor-representation (SR) head producing a softmax-normalized spatial map for 3 discount factors.
 
-## Data Structure Enhancements
+### Trajectory file format
 
-### Opponent Trajectory Integration
-The implementation requires extracting opponent trajectories with perspective switching:
+`DataGenerator.parse_trajectory_file` (`data_generation.py`) reads raw text logs and matches each step line against a pre-compiled regex. The multi-agent format is:
 
-```python
-def create_achiever_sample(self, parsed_data):
-    # ... existing code ...
-    # Add opponent's recent trajectory  
-    opponent_trajectory = self._create_trajectory_tensor(
-        parsed_data["maze"],
-        parsed_data["trajectory_steps"], 
-        "blocker",  # Opponent perspective
-        parsed_data["trajectory_length"]
-    )
-    return {
-        # ... existing fields ...
-        "opponent_recent_trajectory": opponent_trajectory,
-        "opponent_actions": blocker_actions,
-    }
-```
-
-### Trajectory File Structure
-Current trajectory files contain both agents' data, enabling opponent extraction:
 ```
 [achiever_x, achiever_y][blocker_x, blocker_y] : achiever_action,blocker_action : achiever_interaction,blocker_interaction
 ```
 
-For opponent trajectory extraction:
-1. **Achiever samples**: Use blocker positions/actions as opponent data
-2. **Blocker samples**: Use achiever positions/actions as opponent data
+A single-agent (KeyDoor) log uses the shorter form `[x, y] : action : interaction`. Perspective switching for `SecondBeliefNet` follows directly from this shared log: an achiever sample's `oppo_states`/`oppo_actions` are built from the same file's blocker positions and actions (and vice versa for blocker samples), via `_create_trajectory_tensor(..., "blocker", ...)` / `(..., "achiever", ...)`.
 
-### Backward Compatibility
-- Make `opponent_recent_trajectory` optional in data loading
-- Add `use_second_belief` configuration flag (default: False for existing models)
-- Skip SecondBeliefNet computation when flag is disabled
-- Maintain existing PredNet path for backward compatibility
+## Files
 
-## Expected Performance Improvements
+- `config.py` — central `Config` class: environment, model, data, and training settings; `get_model_kwargs()` builds the `ToMnet` constructor arguments; `update_from_args()` applies CLI overrides.
+- `tomnet.py` — model definitions: `ResidualBlock`, `LSTM`, `CharNet`, `ConvLSTM2d`, `MentalNet`, `SecondBeliefNet`, `CrossAttentionModule`, `PredNet`, `ToMnet`, `ToMnetLoss`, plus `create_model()` and `count_parameters()` helpers. Running the file directly (`python tomnet.py`) exercises all four architecture combinations (2-/3-stage × with/without second belief) with a forward pass and shape checks.
+- `data_generation.py` — `DataGenerator` class: parses raw trajectory text files, builds per-timestep state tensors (`_create_trajectory_tensor`), and creates achiever/blocker training samples via `create_achiever_sample` / `create_blocker_sample`, including the opponent's trajectory (`oppo_states`, `oppo_actions`) extracted from the opponent's perspective for `SecondBeliefNet`.
+- `generate.py` — CLI entry point that drives simulated games and `DataGenerator` to produce trajectory data on disk.
+- `train.py` — training loop: batches data (including `oppo_states`/`oppo_actions`), computes `ToMnetLoss`, runs validation, early stopping, and checkpointing.
+- `evaluate.py` — loads a trained checkpoint, computes accuracy/precision/recall/F1 and confusion matrices for each prediction head, and can produce `char_embeddings`/`mental_embeddings`/`n_past` plots (`--plot_type`).
+- `visualize.py` — plotting utilities, including a unified `EmbeddingExtractor` (supports `"character"`, `"mental"`, and `"second_belief"` embedding types) and dedicated `plot_second_belief_embeddings*` functions (PCA/t-SNE by agent and by goal).
+- `simulate_game.py`, `simulate_trajectory.py` — interactive/episode-level game simulation and rendering.
+- `value_agent.py`, `achievers.py`, `blockers.py` — agent policy implementations (value-based, level-k, rule-based, random, etc.) used to generate trajectories.
+- `visualize_sr.py` — successor-representation-specific plotting.
+- `utils.py` — shared helpers, including `spatialize_action` (turns a discrete action index into a spatial one-hot channel, used identically by `MentalNet` and `SecondBeliefNet`).
+- `unit_test/` — `analyze_interactions.py`, `find_long_trajectories.py` — data-inspection scripts, not a pytest suite.
 
-### Theory of Mind Enhancement
-With second-order belief modeling, we expect:
+## Running
 
-1. **Better Opponent Prediction**: Agents can model what opponents believe, leading to more accurate predictions of opponent behavior
-2. **Strategic Awareness**: Enhanced understanding of multi-step strategic interactions  
-3. **Improved Competition**: Better performance in competitive multi-agent scenarios
-4. **Richer Mental Models**: More sophisticated internal representations of other agents
+The pipeline is orchestrated by `shell/exp7/run_exp7.sh`:
 
-### Evaluation Metrics
-- **Prediction Accuracy**: Compare action prediction accuracy with/without e_opp2
-- **Attention Analysis**: Visualize which embeddings contribute most to predictions
-- **Second Belief Accuracy**: Track how well e_opp2 predicts opponent behavior
-- **Computational Overhead**: Measure additional computational cost of second belief processing
-
-## Technical Considerations
-
-### Memory Usage
-- Adding opponent trajectories doubles trajectory data storage
-- Consider lazy loading and shared storage with perspective indexing
-- Implement efficient data structures for opponent trajectory access
-
-### Single-Agent Mode Handling
-- Set `opponent_recent_trajectory` to None in single-agent episodes
-- SecondBeliefNet should gracefully handle None inputs
-- Use zero vector or learned "no-opponent" embedding when opponent absent
-
-### Computational Efficiency  
-- Cross-attention mechanism adds computational overhead
-- Profile and optimize attention bottlenecks
-- Consider efficient attention implementations (e.g., sparse attention)
-- Monitor training time and memory usage increases
-
-### Interpretability
-- Implement visualization tools for attention weights
-- Add debugging capabilities to inspect e_opp2 embeddings
-- Create comparative analysis tools (with/without second belief)
-
-## Usage 
-
-### Running Second Belief Training
 ```bash
-# Enable second belief in config.py
-config.model_config["use_second_belief"] = True
-
-# Run training with second belief
-python script/exp7/train.py
-
-# Run complete pipeline
-bash shell/exp7/run_exp7.sh all
+bash shell/exp7/run_exp7.sh all              # full pipeline: data gen → test data gen → train → evaluate → visualize
+bash shell/exp7/run_exp7.sh debug            # same pipeline at reduced scale (config.enable_debug_mode())
+bash shell/exp7/run_exp7.sh data_generation  # generate training trajectories only
+bash shell/exp7/run_exp7.sh train            # train only (expects existing data)
+bash shell/exp7/run_exp7.sh evaluate         # evaluate a trained checkpoint
+bash shell/exp7/run_exp7.sh visualize        # produce plots only
 ```
 
-### Configuration for Second Belief
+Each stage can also be invoked directly, e.g.:
+
+```bash
+python script/exp7/generate.py --config_override
+python script/exp7/train.py --config_override --save_dir results/exp7/<run>
+python script/exp7/evaluate.py --config_override --model_dir results/exp7/<run> --result_dir results/exp7/<run> --plot_type all
+python script/exp7/visualize.py --config_override --result_dir results/exp7/<run> --plot_dir results/exp7/<run>/plots --plot_type all
+```
+
+`train.py`, `evaluate.py`, and `visualize.py` all take `--config_override` plus specific flags (batch size, device, residual blocks, embedding dimensions, etc.) that overwrite the corresponding `Config` fields — see each script's `argparse` section for the full list. There is no CLI flag to toggle `use_second_belief`/`use_mentalnet`; they are set directly in `config.py`'s `model_config` (both default to `True`).
+
+### Key config fields (`config.py`, `model_config`)
+
 ```python
-# In config.py
-model_config = {
-    # ... existing config ...
-    "n_eopp2": 64,  # Second belief embedding dimension
-    "use_second_belief": True,  # Enable second belief modeling
-    "second_belief_hidden": 128,  # Hidden size for SecondBeliefNet
-    "attention_heads": 8,  # Number of attention heads
-    "attention_hidden": 256,  # Hidden dimension for attention
-}
+"use_mentalnet": True,        # 2-stage vs 3-stage
+"use_second_belief": True,    # enable SecondBeliefNet + cross-attention
+"residual_blocks": 5,
+"n_echar": 128,
+"n_ement": 128,
+"n_eopp2": 128,                # second-belief embedding dimension
+"second_belief_hidden": 64,    # SecondBeliefNet hidden width
+"attention_hidden": 256,       # cross-attention projection dimension
+"attention_heads": 8,
 ```
 
-### Comparative Evaluation
-```bash
-# Train baseline model (without second belief)
-python script/exp7/train.py --config_override --use_second_belief false
+### Training config (`config.py`, `training_config`)
 
-# Train enhanced model (with second belief)  
-python script/exp7/train.py --config_override --use_second_belief true
-
-# Compare results
-python script/exp7/evaluate.py --compare_models baseline enhanced
+```python
+"batch_size": 512,
+"epochs": 300,
+"lr": 0.0001,
+"weight_decay": 0.001,
+"training_proportion": 0.9,
+"use_amp": True,                     # automatic mixed precision
+"gradient_accumulation_steps": 2,
+"use_parallel": True,                # multi-GPU training
+"device_ids": [2, 3],
+"optimizer": "adam",
 ```
 
-## Testing Strategy
+`training_process_config` additionally sets early-stopping patience (100 epochs, `min_delta=0.001`), gradient-norm clipping (`max_grad_norm=1.0`), and per-head loss weights (`action_weight`, `goal_weight`, etc.) consumed by `ToMnetLoss`.
 
-### Unit Tests
-1. **Perspective Switching**: Test trajectory creation from opponent's perspective
-2. **SecondBeliefNet Architecture**: Test network with various input sizes and configurations
-3. **Cross-Attention Mechanism**: Validate attention computation and gradient flow
-4. **Backward Compatibility**: Ensure existing models work without second belief
+## Outputs
 
-### Integration Tests
-1. **Full Forward Pass**: Test complete model pipeline with second belief enabled
-2. **Training Loop**: Verify training step with enhanced architecture
-3. **Data Loading**: Test opponent trajectory extraction and loading
-4. **Evaluation Pipeline**: Test model evaluation with/without second belief
+- `results/exp7/<run>/best_model.pth` — best checkpoint (by validation loss / early stopping).
+- `results/exp7/<run>/evaluation_results_exp7.json` — accuracy/F1/confusion-matrix summary produced by `evaluate.py`.
+- `results/exp7/<run>/plots/` — training curves, confusion matrices, and embedding visualizations, including `second_belief_embeddings_by_agent_exp7.png` and `second_belief_embeddings_by_goal_exp7.png` from `visualize.py --plot_type second_belief_embeddings` (or `all`).
+- `log/exp7/<run>/*.log` — per-stage logs (data generation, training, evaluation, visualization) written by `run_exp7.sh`.
 
-### Performance Tests
-1. **Prediction Accuracy**: Compare accuracy improvements with second belief
-2. **Computational Overhead**: Measure training/inference time increases
-3. **Memory Usage**: Monitor memory consumption of enhanced architecture
-4. **Attention Analysis**: Validate attention patterns and interpretability
+## Notes and Limitations
 
-## Visualization Enhancements
-
-### Second Belief Embeddings
-- **3D Embedding Space**: Visualize e_char, e_mental, e_opp2 relationships
-- **Cluster Analysis**: Group embeddings by agent type and strategic context
-- **Embedding Evolution**: Track how e_opp2 changes during training
-
-### Attention Analysis
-- **Attention Weight Heatmaps**: Show which embeddings influence predictions
-- **Cross-Attention Patterns**: Visualize attention flow between embedding types
-- **Strategic Context Analysis**: Compare attention patterns in different game scenarios
-
-### Performance Metrics
-- **Comparative Accuracy**: Track prediction improvements with second belief
-- **Computational Profiling**: Monitor training time and memory usage
-- **Ablation Studies**: Analyze contribution of individual components
-
-## Version History
-
-- **v1.0** (Initial): Based on exp6 unified single/multi-agent framework
-- **v2.0** (Planned): Second-order belief implementation
-  - SecondBeliefNet architecture
-  - Cross-attention mechanism
-  - Opponent trajectory integration
-  - Enhanced evaluation and visualization
-- **v2.1** (2025-08-04): Major refactoring and bug fixes
-  - Moved `spatialize_action` function to `utils.py` to prevent code duplication
-  - Renamed variables for clarity: `trajectory→self_states`, `opponent_trajectory→oppo_states`, `actions→self_actions`, `opponent_actions→oppo_actions`
-  - Removed `extract_actions_from_trajectory` function from all networks
-  - Fixed critical bug where models were using zero-filled actions instead of real action data
-  - Networks now properly concatenate states with spatialized actions using `spatialize_action` from utils
-  - Updated all function signatures and calls across exp7 scripts
-  - Fixed tensor shape mismatches in MentalNet and SecondBeliefNet
-  - Comprehensive testing validates all ToMnet configurations work correctly
-
-## Research Applications
-
-### Theory of Mind Studies
-- Compare performance across different levels of theory of mind
-- Analyze attention patterns to understand belief formation
-- Study emergence of strategic reasoning in competitive environments
-
-### Multi-Agent Learning
-- Investigate how second-order beliefs affect learning dynamics
-- Compare convergence properties with/without second belief
-- Analyze stability of multi-agent training with enhanced ToM  
-
-### Cognitive Science Insights
-- Model human-like theory of mind development
-- Study computational requirements of second-order belief modeling
-- Investigate scalability to higher-order beliefs (third-order, etc.)
-
-## Acknowledgments
-
-Built upon the exp6 unified single/multi-agent framework, extending it to include second-order belief modeling for enhanced theory of mind capabilities in competitive multi-agent environments.
+- `use_second_belief` and `use_mentalnet` can be combined in any of the four ways, but `SecondBeliefNet` is only meaningfully exercised when opponent trajectory data is available (multi-agent games); in single-agent (KeyDoor) samples `e_opp2` is a zero vector.
+- `evaluate.py`'s `--plot_type` choices (`basic`, `char_embeddings`, `mental_embeddings`, `n_past`, `all`) do not include a second-belief-specific option — second-belief embedding plots are generated only through `visualize.py`.
+- `CrossAttentionModule.forward` instantiates a fresh `nn.Linear` on the fly whenever the query feature dimension differs from `attention_hidden`, rather than as a registered submodule; this works but means that projection's weights are re-initialized on every call rather than trained.
+- Variable naming for trajectory data was standardized in an August 2025 refactor: `trajectory → self_states`, `opponent_trajectory → oppo_states`, `actions → self_actions`, `opponent_actions → oppo_actions`, and `spatialize_action` was consolidated into `utils.py` to avoid duplication between `MentalNet` and `SecondBeliefNet`.
+- exp8 (`script/exp8/`) carries a near-identical `tomnet.py` (same class set: `SecondBeliefNet`, `CrossAttentionModule`, etc.) but its `data_generation.py` adds `_apply_partial_observation_masking` and a `_create_state_tensor` method not present in exp7, suggesting exp8 extends this architecture toward partial-observability settings.

@@ -1,341 +1,136 @@
-# ToMnetF Implementation
+# ToMnetF Re-implementation
 
-This directory contains the refactored ToMnetF (Theory of Mind Network with CNN Features) implementation, organized following the ToMnet_impl structure for better maintainability and extensibility.
+CNN/ResNet-based Theory of Mind Network that predicts a gridworld agent's next action, terminal object consumption, and successor representation from observed trajectories, following the character-net / prediction-net split of "Machine Theory of Mind" (Rabinowitz et al., 2018, ICML). Environment, A* agent, and value agent are adapted from [Nik-Kras/ToMnet-N](https://github.com/Nik-Kras/ToMnet-N) (Nikita Krasnytskyi); the CNN architecture, training pipeline, evaluation, and visualization tooling were rewritten by Filip Borowiak.
 
-## Overview
+## Purpose
 
-ToMnetF is a CNN-based implementation of Theory of Mind Networks that learns to predict agent behavior in gridworld environments. This implementation uses ResNet blocks and LSTM networks to process trajectory data and predict actions.
+Given a handful of an agent's past episodes in a 13x13 gridworld with four differently-valued goals, ToMnetF infers a character embedding and uses it, together with the current state, to predict:
+- the agent's next action,
+- which of the four goals it will end up consuming,
+- its successor representation (discounted future state-occupancy) under three discount factors.
 
-## Directory Structure
+The directory holds five successive experiments (`experiment1` through `experiment5`), each a self-contained copy of the pipeline with an evolving agent type, environment configuration, and set of prediction heads.
+
+## Architecture
+
+### CharNet
+Processes only past episodes (the current/query episode is not fed to CharNet). For each past episode:
+1. `Conv2d(in=10, out=32, 3x3)` on every timestep of the episode (episodes with all-zero content are treated as padding and skipped)
+2. A stack of `ResidualBlock`s (Conv-BN-ReLU, Conv-BN, skip-add, ReLU) — 5 blocks by default
+3. Spatial average pooling per timestep, then a single-layer LSTM (hidden size 64) over the time axis, keeping the last hidden state
+4. A linear layer to the character embedding size (`N_echar`, default 8)
+
+Per-episode embeddings are averaged over the valid (non-padded) episodes in the batch to produce `e_char`. When `use_n_past` is disabled or no past episodes are supplied, a learned default embedding is broadcast instead.
+
+### PredNet
+Takes the current-state tensor (6 channels: wall, player, 4 goals) concatenated with `e_char` spatially broadcast to every grid cell, and runs a shared torso:
+1. `Conv2d(6 + N_echar -> 32, 3x3)`
+2. The same `ResidualBlock` stack used in CharNet (5 blocks by default)
+3. `Conv2d(32 -> 32, 3x3)` + ReLU
+
+From the torso, three heads branch off:
+- **Action head**: global average pool -> 2 FC layers (32->32, ReLU) -> `Linear(32, 4)` logits over UP/RIGHT/DOWN/LEFT
+- **Consumption head**: same pooled features -> `Linear(32, 4)` logits (sigmoid applied at the loss, one per goal)
+- **SR head**: `Conv2d(32->32, 1x1)` + ReLU -> `Conv2d(32->3, 1x1)`, softmax independently over each of the 3 discount-factor channels (spatial 13x13 successor-representation maps)
+
+```
+past episodes ──► CharNet (Conv+ResBlocks per step ──► avg-pool ──► LSTM ──► FC) ──► e_char
+                                                                                       │
+current state (6ch) ──────────────────────────────────► concat, broadcast e_char ─────┘
+                                                                    │
+                                                              PredNet torso
+                                                        (Conv + N ResBlocks + Conv)
+                                                          │        │        │
+                                                     action-head  cons-head  SR-head
+                                                     (4 logits)  (4 logits) (3x13x13)
+```
+
+### Environment and agents
+`scripts/environment.py` builds a `labmaze`-backed 13x13 gridworld with a wall layer, a player, and four goals (A-D). Two agent types generate trajectories, both in `scripts/experiment{N}/agents.py`:
+- `AgentStar`: A* search toward the highest-value goal.
+- `ValueAgent` (introduced in experiment5): value iteration over movement cost, wall-collision penalty, and goal rewards, with a temperature-scaled softmax policy for stochastic behavior.
+
+## Differences from ToMnet
+
+Both `ToMnetF_impl` and `../ToMnet_impl` share the same upstream origin (Nik-Kras/ToMnet-N) but diverge in the character/prediction network:
+
+| | ToMnet (`../ToMnet_impl`) | ToMnetF (this directory) |
+|---|---|---|
+| CharNet spatial processing | MLP / small convnet per the paper's Figure 3 and Figure 5 specs | Full `ResidualBlock` stack (Conv-BN-ReLU x2 + skip) before pooling |
+| Temporal aggregation | Sum of per-episode embeddings (paper's Figure 5 recipe) | LSTM over per-episode features, averaged across valid past episodes |
+| Organization | Single flat `scripts/` directory, one experiment line reproducing paper figures 3 and 5 | Numbered `experiment1/` .. `experiment5/` packages, each with its own `config.py`, `agents.py`, `tomnet.py`, `generate.py`, `train.py`, `evaluate.py`, `visualize.py` |
+| Agents | `RandomAgent` (Dirichlet policy), `GoalDirectedAgent` (value iteration) | `AgentStar` (A* planner) in experiments 1-4; `ValueAgent` (value iteration + softmax policy) added in experiment5 |
+| Prediction targets | Action likelihood (Figure 3), action + consumption + SR (Figure 5 spec) | Action, consumption, and SR heads present from experiment2 onward; experiment1 predicts action only |
+
+Both codebases implement all three loss terms described in the paper (action NLL, consumption BCE, SR cross-entropy); ToMnetF wires all three into a shared PredNet torso rather than a Figure 3/Figure 5 split.
+
+## Files
 
 ```
 ToMnetF_impl/
 ├── scripts/
-│   ├── environment.py              # LabMaze GridWorld environment
-│   ├── data_generation.py          # Agnostic data processing and loading utilities
-│   └── experiment1/                # Experiment-specific implementations
-│       ├── config.py               # Environment configuration
-│       ├── agents.py               # A* and Random agents
-│       ├── tomnet.py               # ToMnetF CNN architecture
-│       ├── generate.py             # Experiment-specific trajectory generation
-│       ├── train.py                # Advanced training system
-│       ├── evaluate.py             # Cross-species evaluation and metrics
-│       └── visualize.py            # Publication-quality visualization
+│   ├── environment.py           # labmaze gridworld (shared across experiments)
+│   ├── data_generation.py       # generic trajectory loading/tensorization (used by experiment1)
+│   └── experiment{1..5}/
+│       ├── config.py            # Config object: env, model, and training hyperparameters
+│       ├── agents.py            # AgentStar and/or ValueAgent
+│       ├── tomnet.py            # CharNet / PredNet / ToMnet definitions
+│       ├── generate.py          # trajectory generation CLI (writes gameN.txt files)
+│       ├── data_generation.py   # experiment-local trajectory loader (experiment3-5 only)
+│       ├── train.py             # training loop, early stopping, checkpointing
+│       ├── evaluate.py          # accuracy / cross-species evaluation CLI
+│       └── visualize.py         # plotting CLI
 ├── shell/
-│   └── run_exp1.sh                 # Complete workflow automation
-├── data/experiment1/               # Training data
-├── models/experiment1/             # Trained models
-├── result/experiment1/             # Results and evaluations
-├── plots/experiment1/              # Generated plots
-└── log/                           # Execution logs
+│   └── run_exp{1..5}.sh         # per-experiment pipeline runner (data_generation/train/evaluate/visualize/all)
+└── (data/, models/, result/, plots/, log/ are created at run time under each experiment's directories)
 ```
 
-## Architecture
+`experiment1` reuses `scripts/data_generation.py` for preprocessing; `experiment3`, `experiment4`, and `experiment5` each carry their own `data_generation.py` because they add goal-rank labels and/or the n_past sampling logic described below. `experiment2` carries its own copy alongside its `tomnet.py`.
 
-### ToMnetF Model Components
+## Running
 
-1. **CharNet**: Character network that processes trajectory sequences
-   - Time-distributed CNN layers
-   - Residual blocks for deep feature extraction
-   - LSTM for temporal modeling
-   - Outputs character embeddings
-
-2. **PredNet**: Prediction network that combines character embeddings with current state
-   - CNN layers for spatial processing
-   - Residual blocks
-   - Fully connected layers for action prediction
-
-### Key Features
-
-- **CNN-based Architecture**: Uses convolutional layers for spatial processing
-- **Residual Connections**: Deep residual blocks for improved training
-- **Time-distributed Processing**: Handles variable-length trajectory sequences
-- **Character Embeddings**: Learns representations of agent behavior patterns
-
-## Usage
-
-### Quick Start
+Each experiment's shell script drives the full pipeline (checking for existing outputs and skipping completed steps):
 
 ```bash
-# Run complete pipeline
-bash shell/run_exp1.sh all
-
-# Or run individual components
-bash shell/run_exp1.sh data_generation
-bash shell/run_exp1.sh train
-bash shell/run_exp1.sh evaluate
-bash shell/run_exp1.sh visualize
+bash shell/run_exp5.sh all               # data_generation -> test_data_generation -> train -> evaluate -> visualize
+bash shell/run_exp5.sh data_generation
+bash shell/run_exp5.sh train
+bash shell/run_exp5.sh evaluate
+bash shell/run_exp5.sh visualize
 ```
 
-### Manual Usage
-
-#### 1. Data Generation
-```bash
-cd scripts/experiment1
-python generate.py --n_games 10000 --output_dir experiment1 --observability full --max_moves 50
-```
-
-#### 2. Data Preprocessing
-```bash
-cd scripts
-python data_generation.py --data_dir ../data/experiment1 --use_percentage 0.9 --experiment_no 1
-```
-
-#### 3. Training
-```bash
-cd scripts/experiment1
-python train.py --experiment_no 1 --epochs 50 --batch_size 512 --device cuda:0 --lr 1e-4
-```
-
-#### 4. Evaluation
-```bash
-cd scripts/experiment1
-python evaluate.py --model_paths ../../models/experiment1/exp1_best.pth \
-                   --test_data_paths ../../data/experiment1/processed_data_exp1.pkl \
-                   --experiment_no 1 --device cuda:0
-```
-
-#### 5. Visualization
-```bash
-cd scripts/experiment1
-python visualize.py --experiment_no 1 --plot_type all
-```
-
-### Python API Usage
-
-#### 1. Data Generation
-```python
-from scripts.experiment1.generate import generate_trajectories
-
-generate_trajectories(
-    n_games=10000,
-    output_dir="experiment1",
-    observability="full"
-)
-```
-
-#### 2. Data Preprocessing
-```python
-from scripts.data_generation import generate_input_data
-
-processed_data = generate_input_data(
-    data_dir="../data/experiment1",
-    use_percentage=0.9
-)
-```
-
-#### 3. Training
-```python
-from scripts.experiment1.train import train_tomnet
-
-model, history, results = train_tomnet(
-    experiment_no=1,
-    epochs=50,
-    batch_size=512,
-    device="cuda:0"
-)
-```
-
-#### 4. Evaluation
-```python
-from scripts.experiment1.evaluate import cross_species_evaluation
-
-results = cross_species_evaluation(
-    model_paths=["../../models/experiment1/exp1_best.pth"],
-    test_data_paths=["../../data/experiment1/processed_data_exp1.pkl"],
-    experiment_no=1
-)
-```
-
-#### 5. Visualization
-```python
-from scripts.experiment1.visualize import create_summary_report
-
-create_summary_report(experiment_no=1)
-```
-
-## Configuration
-
-### Model Parameters
-
-- **Batch Size**: 512 (default)
-- **Learning Rate**: 1e-4
-- **Epochs**: 50
-- **Trajectory Size**: 10 time steps
-- **Grid Size**: 13x13
-- **Input Channels**: 10 (1 wall + 1 player + 4 goals + 4 actions)
-- **Residual Blocks**: 5
-- **Character Embedding Size**: 8
-- **Output Channels**: 32
-
-### Environment Parameters
-
-- **Grid Size**: 13x13
-- **Max Moves**: 50 per episode
-- **Sight Radius**: 3 (for partial observability)
-- **Goals**: A, B, C, D with rewards [2, 4, 8, 16]
-- **Actions**: UP (0), RIGHT (1), DOWN (2), LEFT (3)
-
-## Experiment Types
-
-### Experiment 1 (Current Implementation)
-
-- **Agent Type**: A* optimal pathfinding agent
-- **Observability**: Full observability
-- **Goal Strategy**: Highest value goal selection
-- **Architecture**: CNN-based ToMnetF with ResNet blocks
-
-### Future Experiments
-
-The structure supports easy addition of new experiments by:
-1. Creating new experiment directories under `scripts/`
-2. Implementing experiment-specific agents and configurations
-3. Adding corresponding data and model directories
-
-## Output Files
-
-### Models
-- `exp1_best.pth`: Best model based on validation accuracy
-- `exp1_final.pth`: Final model after all epochs
-
-### Results
-- `exp1_training_history.json`: Training curves and metrics
-- `exp1_results.json`: Final training results and configuration
-- `cross_species_evaluation_exp1.json`: Cross-species evaluation results
-- `predictions.pkl`: Model predictions and probabilities
-
-### Plots
-- `training_curves_exp1.png`: Training and validation curves
-- `confusion_matrix_exp1.png`: Action prediction confusion matrix
-- `action_likelihood_exp1.png`: Likelihood distributions by action
-- `character_embeddings_exp1.png`: Character embedding visualizations
-
-## Dependencies
-
-```
-torch>=1.9.0
-torchvision
-numpy
-matplotlib
-seaborn
-scikit-learn
-pandas
-labmaze
-```
-
-## Installation
+Manual invocation of the experiment5 pipeline (adjust `experiment5` to the target experiment number):
 
 ```bash
-# Install dependencies
-pip install torch torchvision numpy matplotlib seaborn scikit-learn pandas
-
-# Install labmaze (for environment)
-pip install dm-labmaze
+cd scripts/experiment5
+python generate.py --n_games 20000 --save_dir ../../data/experiment5
+python train.py --experiment_no 5 --epochs 200 --batch_size 512 --lr 1e-4 --device cuda:0
+python evaluate.py --experiment_no 5 --device cuda:0
+python visualize.py --plot_type all
 ```
 
-## Differences from Original ToMnet
+`config.py` in each experiment directory holds the defaults (grid size, agent type, `N_GAMES`/`BATCH_SIZE`/`EPOCHS` env-var overrides, model hyperparameters); CLI flags on `generate.py`/`train.py`/`evaluate.py` override the corresponding `Config` fields when passed.
 
-### Architecture Changes
+### Key hyperparameters (experiment5 defaults, `config.py`)
 
-1. **CNN-based Processing**: Uses convolutional layers instead of MLPs
-2. **Residual Connections**: Deep residual blocks for improved gradient flow
-3. **Time-distributed Layers**: Explicit handling of temporal sequences
-4. **Character Embeddings**: Learned representations of agent behavior
+- Grid: 13x13, `max_moves`: 50, `time_step`: 20
+- Model: `residual_blocks=5`, `e_char=8`, `out_channels=32`, input depth 10 (1 wall + 1 player + 4 goals + 4 action one-hots)
+- Training: `batch_size=512`, `lr=1e-4`, `epochs=200`, early stopping (`patience=50`, `min_delta=0.001`, restores best weights)
+- `n_past_min=0` / `n_past_max=4`: number of past episodes sampled per training example for the character embedding
+- `rank_threshold`: how many top-ranked goals must match between two trajectories for one to be usable as a "past episode" source for the other, when past episodes are sampled from goal-rank labels within a batch (`train.py:generate_past_episodes_from_batch`)
 
-### Implementation Improvements
+## Outputs
 
-1. **Modular Design**: Experiment-specific organization
-2. **Comprehensive Logging**: Detailed training and evaluation logs
-3. **Advanced Visualization**: Publication-quality plots and analysis
-4. **Cross-species Evaluation**: Systematic evaluation framework
-5. **Automated Pipeline**: Shell scripts for complete workflow
+Written under each experiment's `models/`, `result/`, and `plots/` directories (paths configured in `config.py`):
 
-## Research Applications
+- **Models**: `exp{N}_best.pth` (best validation checkpoint), `exp{N}_final.pth` (final epoch)
+- **Results**: `exp{N}_training_history.json`, `exp{N}_results.json`, `cross_species_evaluation_exp{N}.json`, `predictions.pkl`, `n_past_evaluation_results.json`
+- **Plots**: `training_curves_exp{N}.png`, `confusion_matrix_exp{N}.png`, `action_likelihood_exp{N}.png`, `character_embeddings_by_goal_exp{N}.png`, `cross_species_results_exp{N}.png`, `accuracy_by_n_past.png`, `accuracy_heatmap_by_n_past.png`, plus per-experiment action/consumption/SR/past-episode training visualizations
 
-This implementation is suitable for:
+## Notes and Limitations
 
-- Theory of Mind research in artificial agents
-- Multi-agent behavior prediction
-- Transfer learning across different agent types
-- Representation learning for sequential decision making
-- Gridworld navigation and planning studies
-
-## Citation
-
-If you use this implementation, please cite the original ToMnet paper and acknowledge this implementation:
-
-```bibtex
-@article{rabinowitz2018machine,
-  title={Machine theory of mind},
-  author={Rabinowitz, Neil and Perbet, Frank and Song, Francis and Zhang, Chiyuan and Eslami, SM Ali and Botvinick, Matthew},
-  journal={International conference on machine learning},
-  year={2018}
-}
-```
-
-## Experiemnt history
-
-1. ** Exp1 **: ToMnet + A* star agent (only action prediction)
-2. ** Exp2 **: ToMnet + A* star agent (action prediction, SR, consumption) -> 결과는 더 안정적으로 나옴
-3. ** Exp3 **: ToMnet + A* star agent (action prediction, SR, consumption)
-    - SR label is computed by each step.
-    - N_past is not implemented in Exp2 -> have to fix it
-    - Consumption label is computed by each step.
-    - Charnet에 current trajectory를 지움 -> past trajectory 만
-4. ** Exp4 **: ToMnet + A* star agent (action prediction, SR, consumption) -> 테스트 중
-    - no_wall, random position, random reward 추가
-    - SR 수정 (loss가 argmax만 계산하는 문제)
-    - char embedding 결과
-    - n_past 소용이 없음 (batch별로 past epsiode 추출 구현 (goal-reward의 ranking에 따라))
-    - 코드 최적화 (vectorize 연산, ToMnet 구조 최적화)
-5. ** Exp5 **: ToMnet + value agent (+ Exp4) -> 구현 중
-    - 좀 더 stochastic agent를 사용해서 ToMnet의 성능 확인
-
-
-
-## Computation time analysis
-Primary Bottlenecks Identified:
-
-  1. PredNet Forward Pass (tomnet.py:332-371) - 99.8% of model computation
-
-  Most expensive operations:
-  - Lines 336-337: ResidualBlock processing in loop - multiple 3x3 convolutions
-  - Line 346: Global pooling torch.mean(x, [2, 3]) on 13x13x16 feature maps
-  - Lines 361-363: SR prediction convolutions on spatial features
-  - Lines 367-369: Softmax operations on reshaped tensors
-
-  2. Backward Pass (52% of training time)
-
-  - Gradient computation through ResidualBlocks is the main bottleneck
-  - Lines 336-337 in PredNet: Multiple residual blocks create deep computation graphs
-
-  3. Data Loading Bottlenecks (data_generation.py)
-
-  - Line 261 LoadAllGames(): Processing 7381 files takes significant time
-  - Line 402 generateDataFromGame(): Per-game tensor creation and augmentation
-  - Line 486 zeroPadding(): Zero-padding operations on large tensors
-  - Data memory usage: 189.5 MB for processed data
-
-  4. Memory Intensive Operations:
-
-  - Tensor concatenation (tomnet.py:450): torch.cat((input_current_state, e_char_spatial))
-  - Data preprocessing: Loading and processing 2939 samples uses 189.5 MB
-  - Batch processing: 8x10x13x13x10 input tensors
-
-  Specific Line-by-Line Analysis:
-
-  Highest computational cost functions:
-  1. PredNet.forward() (tomnet.py:332) - 0.0034s per batch
-  2. ResidualBlock processing (tomnet.py:336-337) - Multiple 3x3 convolutions
-  3. Data loading (data_generation.py:261) - 0.0479s for pickle loading
-  4. Backward pass - 0.0056s per batch (gradient computation)
-
-  Optimization recommendations:
-  - Reduce ResidualBlocks (currently 2, consider 1)
-  - Optimize SR prediction convolutions (lines 361-363)
-  - Implement gradient checkpointing for memory efficiency
-  - Use smaller batch sizes if memory constrained
-  - Cache processed data to avoid repeated file loading
-
-  The PredNet architecture dominates computation, particularly the residual block processing and spatial feature operations for SR
-  prediction.
+- `experiment1` predicts action only (single-head `PredNet`); consumption and SR heads appear starting with `experiment2`.
+- `experiment2`'s `CharNet` does not implement n_past-based character embedding aggregation: its `forward` takes a single trajectory, with no loop over a variable number of past episodes. The n_past mechanism (`n_past_min`/`n_past_max`, per-episode averaging) is introduced starting with `experiment3`.
+- The five experiment directories are largely independent copies rather than a shared library — changes made to one (e.g. a bugfix in `tomnet.py`) do not automatically propagate to the others.
+- `config.py` hardcodes `device = "cuda:3"` as the default in several experiments; override with `--device` for single-GPU or CPU machines.
+- Requires `torch`, `numpy`, `matplotlib`, `seaborn`, `scikit-learn`, `pandas`, and `dm-labmaze` (`pip install dm-labmaze` for the maze generator).

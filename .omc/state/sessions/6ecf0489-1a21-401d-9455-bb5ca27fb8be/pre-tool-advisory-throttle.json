@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "entries": {
+    "79a93d4a2f8f50b95f852280616242fee1855dc99a3c75211917f55e72e95fae": {
+      "last_emitted_at_ms": 1787930300037,
+      "message": "Use parallel execution for independent tasks. Use run_in_background for long operations (npm install, builds, tests)."
+    },
+    "445ed27a3872b681d98190bae61ccb84954e1bc4e140df5370be958dee776b3a": {
+      "last_emitted_at_ms": 1787929479050,
+      "message": "Verify changes work after editing. Test functionality before marking complete."
+    },
+    "5d2b7b073741e6da52136d1560f8e313a290bfb73d415072dd5437c196ec8602": {
+      "last_emitted_at_ms": 1787929412472,
+      "message": "Spawning agent: general-purpose (sonnet) | Task: Rewrite ToMnetF_impl README | Active agents: 7"
+    },
+    "4185776a46da140debc367d21ba4a513b3ce0e26279aa2785a6053228823ec7d": {
+      "last_emitted_at_ms": 1787929403646,
+      "message": "Spawning agent: general-purpose (sonnet) | Task: Rewrite ToMnet_impl README | Active agents: 6"
+    },
+    "e8366d24106f93773ed6583f9678c96b50d3d22a4a0a1db2cd3a289783837d76": {
+      "last_emitted_at_ms": 1787929396270,
+      "message": "Spawning agent: general-purpose (sonnet) | Task: Rewrite exp3 README | Active agents: 5"
+    },
+    "fe5fbefe7acee2818c0a60bce8064c7272fb7f3336cf3db5d3ee22c84a4a09aa": {
+      "last_emitted_at_ms": 1787929387120,
+      "message": "Spawning agent: general-purpose (sonnet) | Task: Rewrite exp4 README | Active agents: 4"
+    },
+    "d35af77235d368411800a2bf6e1882df5e3522413840f6087742259dd0049a45": {
+      "last_emitted_at_ms": 1787929379347,
+      "message": "Spawning agent: general-purpose (sonnet) | Task: Rewrite exp5 README | Active agents: 3"
+    },
+    "d8561f8f4ea54dadfba4b2f6fdc0da2c6c8ac641287ef31b63de2257ae0abba5": {
+      "last_emitted_at_ms": 1787929370885,
+      "message": "Spawning agent: general-purpose (sonnet) | Task: Rewrite exp6 README | Active agents: 2"
+    },
+    "89fa4c13649f9d2a041cc2b9073e9dec53efe1e9576479ff5910eb7d28f11f00": {
+      "last_emitted_at_ms": 1787929364030,
+      "message": "Spawning agent: general-purpose (sonnet) | Task: Rewrite exp7 README | Active agents: 1"
+    },
+    "466399dafa2d20f60587180bad0a07358eb7f2bce724df0ff682f038ad33f5ad": {
+      "last_emitted_at_ms": 1787929359584,
+      "message": "Read multiple files in parallel when possible for faster analysis."
+    },
+    "522496dabe11f0908aadaabfcd7aafc909d1e039125256272b204dcd077b3ae2": {
+      "last_emitted_at_ms": 1787929355381,
+      "message": "Spawning agent: general-purpose (sonnet) | Task: Rewrite exp8 README"
+    }
+  },
+  "updated_at": "2026-08-28T15:18:20.037Z"
+}

@@ -1,0 +1,179 @@
+{
+  "updatedAt": "2026-08-28T15:08:48.818Z",
+  "missions": [
+    {
+      "id": "session:6ecf0489-1a21-401d-9455-bb5ca27fb8be:none",
+      "source": "session",
+      "name": "none",
+      "objective": "Session mission",
+      "createdAt": "2026-08-28T15:02:35.640Z",
+      "updatedAt": "2026-08-28T15:08:48.818Z",
+      "status": "done",
+      "workerCount": 8,
+      "taskCounts": {
+        "total": 8,
+        "pending": 0,
+        "blocked": 0,
+        "inProgress": 0,
+        "completed": 8,
+        "failed": 0
+      },
+      "agents": [
+        {
+          "name": "md-exp8:amd-exp",
+          "role": "md-exp8",
+          "ownership": "amd-exp8-83c976714b377365",
+          "status": "done",
+          "currentStep": null,
+          "latestUpdate": "completed",
+          "completedSummary": null,
+          "updatedAt": "2026-08-28T15:05:41.334Z"
+        },
+        {
+          "name": "md-exp7:amd-exp",
+          "role": "md-exp7",
+          "ownership": "amd-exp7-e00291e361039f26",
+          "status": "done",
+          "currentStep": null,
+          "latestUpdate": "completed",
+          "completedSummary": null,
+          "updatedAt": "2026-08-28T15:07:21.293Z"
+        },
+        {
+          "name": "md-exp6:amd-exp",
+          "role": "md-exp6",
+          "ownership": "amd-exp6-71f461a76e2045d5",
+          "status": "done",
+          "currentStep": null,
+          "latestUpdate": "completed",
+          "completedSummary": null,
+          "updatedAt": "2026-08-28T15:06:52.981Z"
+        },
+        {
+          "name": "md-exp5:amd-exp",
+          "role": "md-exp5",
+          "ownership": "amd-exp5-61ad3a7f04f29dad",
+          "status": "done",
+          "currentStep": null,
+          "latestUpdate": "completed",
+          "completedSummary": null,
+          "updatedAt": "2026-08-28T15:06:26.317Z"
+        },
+        {
+          "name": "md-exp4:amd-exp",
+          "role": "md-exp4",
+          "ownership": "amd-exp4-f85b4eab7d170ed1",
+          "status": "done",
+          "currentStep": null,
+          "latestUpdate": "completed",
+          "completedSummary": null,
+          "updatedAt": "2026-08-28T15:08:48.818Z"
+        },
+        {
+          "name": "md-exp3:amd-exp",
+          "role": "md-exp3",
+          "ownership": "amd-exp3-1cfe2cec7435cfa8",
+          "status": "done",
+          "currentStep": null,
+          "latestUpdate": "completed",
+          "completedSummary": null,
+          "updatedAt": "2026-08-28T15:07:06.625Z"
+        },
+        {
+          "name": "md-tomnet:amd-tom",
+          "role": "md-tomnet",
+          "ownership": "amd-tomnet-f6b7e5669c19332f",
+          "status": "done",
+          "currentStep": null,
+          "latestUpdate": "completed",
+          "completedSummary": null,
+          "updatedAt": "2026-08-28T15:08:31.991Z"
+        },
+        {
+          "name": "md-tomnetf:amd-tom",
+          "role": "md-tomnetf",
+          "ownership": "amd-tomnetf-573916073fbfeab2",
+          "status": "done",
+          "currentStep": null,
+          "latestUpdate": "completed",
+          "completedSummary": null,
+          "updatedAt": "2026-08-28T15:07:20.420Z"
+        }
+      ],
+      "timeline": [
+        {
+          "id": "session-stop:amd-tomnetf-573916073fbfeab2:2026-08-28T15:06:22.515Z",
+          "at": "2026-08-28T15:06:22.515Z",
+          "kind": "completion",
+          "agent": "md-tomnetf:amd-tom",
+          "detail": "completed",
+          "sourceKey": "session-stop:amd-tomnetf-573916073fbfeab2"
+        },
+        {
+          "id": "session-stop:amd-exp5-61ad3a7f04f29dad:2026-08-28T15:06:26.317Z",
+          "at": "2026-08-28T15:06:26.317Z",
+          "kind": "completion",
+          "agent": "md-exp5:amd-exp",
+          "detail": "completed",
+          "sourceKey": "session-stop:amd-exp5-61ad3a7f04f29dad"
+        },
+        {
+          "id": "session-start:amd-tomnetf-573916073fbfeab2:2026-08-28T15:06:36.207Z",
+          "at": "2026-08-28T15:06:36.207Z",
+          "kind": "update",
+          "agent": "md-tomnetf:amd-tom",
+          "detail": "started md-tomnetf:amd-tom",
+          "sourceKey": "session-start:amd-tomnetf-573916073fbfeab2"
+        },
+        {
+          "id": "session-stop:amd-exp6-71f461a76e2045d5:2026-08-28T15:06:52.981Z",
+          "at": "2026-08-28T15:06:52.981Z",
+          "kind": "completion",
+          "agent": "md-exp6:amd-exp",
+          "detail": "completed",
+          "sourceKey": "session-stop:amd-exp6-71f461a76e2045d5"
+        },
+        {
+          "id": "session-stop:amd-exp3-1cfe2cec7435cfa8:2026-08-28T15:07:06.625Z",
+          "at": "2026-08-28T15:07:06.625Z",
+          "kind": "completion",
+          "agent": "md-exp3:amd-exp",
+          "detail": "completed",
+          "sourceKey": "session-stop:amd-exp3-1cfe2cec7435cfa8"
+        },
+        {
+          "id": "session-stop:amd-tomnetf-573916073fbfeab2:2026-08-28T15:07:20.420Z",
+          "at": "2026-08-28T15:07:20.420Z",
+          "kind": "completion",
+          "agent": "md-tomnetf:amd-tom",
+          "detail": "completed",
+          "sourceKey": "session-stop:amd-tomnetf-573916073fbfeab2"
+        },
+        {
+          "id": "session-stop:amd-exp7-e00291e361039f26:2026-08-28T15:07:21.293Z",
+          "at": "2026-08-28T15:07:21.293Z",
+          "kind": "completion",
+          "agent": "md-exp7:amd-exp",
+          "detail": "completed",
+          "sourceKey": "session-stop:amd-exp7-e00291e361039f26"
+        },
+        {
+          "id": "session-stop:amd-tomnet-f6b7e5669c19332f:2026-08-28T15:08:31.991Z",
+          "at": "2026-08-28T15:08:31.991Z",
+          "kind": "completion",
+          "agent": "md-tomnet:amd-tom",
+          "detail": "completed",
+          "sourceKey": "session-stop:amd-tomnet-f6b7e5669c19332f"
+        },
+        {
+          "id": "session-stop:amd-exp4-f85b4eab7d170ed1:2026-08-28T15:08:48.818Z",
+          "at": "2026-08-28T15:08:48.818Z",
+          "kind": "completion",
+          "agent": "md-exp4:amd-exp",
+          "detail": "completed",
+          "sourceKey": "session-stop:amd-exp4-f85b4eab7d170ed1"
+        }
+      ]
+    }
+  ]
+}

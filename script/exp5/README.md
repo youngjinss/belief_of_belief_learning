@@ -1,676 +1,156 @@
-# AchieverBlocker Experiment 5 - Multi-Agent ToMnet Implementation
+# Experiment 5 — Enhanced Multi-Agent ToMnet
 
-This directory contains a comprehensive multi-agent Theory of Mind (ToMnet) implementation for the AchieverBlocker environment with strategic interactions between competitive agents.
+A competitive Achiever/Blocker MiniGrid environment paired with a ToMnet-style network that predicts both agents' actions, goals, and successor representations from observed trajectories.
 
-## Overview
+## Purpose
 
-AchieverBlocker Experiment 5 implements a competitive multi-agent environment where:
-1. **Achiever agents** navigate a 9x9 grid to collect keys and open corresponding doors
-2. **Blocker agents** observe achiever behavior, infer their goals, and strategically block access
-3. **Strategic interaction** creates theory of mind requirements for successful blocking
+An **Achiever** agent navigates a grid to collect a preferred key and open the matching door, while a **Blocker** agent observes the achiever's behavior, infers its goal, and tries to physically block the target door first. This adversarial setup requires the Blocker (and the ToMnet trained on the resulting data) to perform theory-of-mind inference: predicting what the achiever wants from partial observations of its movement.
 
-The implementation features an advanced ToMnet architecture with:
-- **Flexible architecture support** (2-stage and 3-stage variants)
-- **Multi-task learning** for actions, goals, agent types, and consumption prediction
-- **Vectorized successor representation** computation for efficient training
-- **Dual-agent observations** with comprehensive role differentiation
-- **Enhanced data generation** pipeline with parallel processing
+Compared to earlier experiments, exp5 adds:
+- A configurable **2-stage or 3-stage** ToMnet architecture (`use_mentalnet` flag)
+- Joint prediction of action, goal, agent identity (achiever vs. blocker), behavior type (Level-0 vs. Level-1), consumption, and successor representation (SR)
+- Vectorized SR computation and multiprocessing-based trajectory generation for throughput
 
-## Project Structure
+## Environment
+
+The environment is `MiniGrid-AchieverBlocker-{size}-v1`, defaulting to a 9x9 grid (`max_steps=50`; 5x5 and 11x11 variants are also defined in `config.py`).
+
+- **Turn-based**, fully observable by default (`observability="full"`); both agents see each other's positions and states.
+- **Achiever** actions (7): up, right, down, left, stay, pickup, toggle.
+- **Blocker** actions (6): up, right, down, left, stay, broken.
+- Agents cannot occupy the same cell.
+- The episode ends when the achiever reaches and opens its target door, or when the blocker uses "broken" on the correct target door. Breaking the wrong door gives a penalty but the episode continues, so a blocker can make multiple attempts.
+- Each of the 4 colored keys/doors carries a randomly generated preference reward and pickup cost per episode (`goal_reward_settings`, `cost_settings` in `config.py`), following the ToMnetF reward-randomization pattern.
+
+### Agent implementations
+
+**Achievers** (`achievers.py`, `value_agent.py`):
+- `AStarAgent` (`astar`) — deterministic shortest-path planner: collect key, then reach door.
+- `Level0ValueAchiever` (`lv0va`) — vectorized value iteration with a stochastic, temperature-controlled policy; collects the preferred key then opens its door.
+- `Level1ValueAchiever` (`lv1va`) — extends Level-0 with deception: collects a decoy key first and switches to its true target if the blocker moves toward any door.
+- `random` — `AchieverRandomAgent`, biased random movement.
+- The `value` CLI choice reuses `Level0ValueAchiever` with a different cost profile from `achiever_configs["value"]` (there is no separate `ValueAgent` class); `BaseValueAgent` in `value_agent.py` holds the shared value-iteration logic both Level-0/1 achievers and blockers inherit.
+
+**Blockers** (`blockers.py`):
+- `Level0ValueBlocker` (`lv0vb`) — value-iteration pathfinding to a randomly chosen door; retries other doors on a miss.
+- `Level1ValueBlocker` (`lv1vb`) — tracks the achiever's distance to each key over time to predict its target door before the key is collected, then moves to block it.
+- `RandomlySelectedAgent` (`randomly_selected`) — Level-0-style reasoning: BFS pathfinding to a randomly picked door, cycling through untried doors on misses.
+- `RuleBasedAgent` (`rule_based`) — Level-1-style reasoning: blocks a random door first, then infers the target from keys it has observed the achiever collect.
+- `GoalDirectAgent` (`goal_direct`) — waits until the achiever picks up a key, then infers and moves to block the corresponding door.
+- `RandomAgent` (`random`) — baseline, no inference.
+
+## Architecture
+
+`tomnet.py` implements a single `ToMnet` module that supports two architecture modes, selected by `model_config["use_mentalnet"]`:
+
+```
+use_mentalnet=True  (default): CharNet -> MentalNet -> PredNet   (3-stage, with a mental-state bottleneck)
+use_mentalnet=False:            CharNet -> PredNet                (2-stage, MentalNet bypassed)
+```
+
+- **CharNet**: consumes `n_past` past episode trajectories (residual conv blocks + an LSTM over time) and produces a character embedding `e_char` summarizing an agent's persistent behavioral style.
+- **MentalNet** (3-stage only): a `ConvLSTM2d`-based recurrent module that consumes the current episode's recent trajectory and actions to produce a spatial mental-state embedding `e_ment`, conditioned on `e_char`.
+- **PredNet**: takes the current observation plus (`e_ment`, `e_char`) — or, in 2-stage mode, `e_char` mixed directly with the current state via `forward_direct` — and outputs five heads:
+  - action logits (`achiever_action_space`=7 / `blocker_action_space`=6, model uses the max, 7)
+  - goal logits (4 colored doors)
+  - agent-type logits (achiever vs. blocker, 2-way)
+  - behavior-type logits (Level-0 vs. Level-1 reasoning, 2-way)
+  - consumption logits (8-dim binary vector: 4 keys + 4 doors)
+  - a successor-representation map, output per discount factor (γ = 0.5, 0.9, 0.99)
+
+Input maze tensors have 9 channels: 8 game-state channels (walls, keys, doors, both agents' positions/state) plus 1 heading-direction channel; PredNet's current-state input drops the heading channel (8 channels). `ToMnetLoss` combines cross-entropy losses for action/goal/agent/type, BCE for consumption, and KL divergence for SR, weighted by `training_process_config`.
+
+## Files
 
 ```
 script/exp5/
-├── config.py              # Configuration for multi-agent experiments
-├── generate.py            # Multi-agent trajectory data generation
-├── train.py               # Enhanced ToMnet training with agent prediction
-├── evaluate.py            # Multi-agent evaluation and metrics
-├── visualize.py           # Results visualization and plotting
-├── visualize_sr.py        # Successor representation visualization
-├── tomnet.py              # Extended ToMnet with agent classification head
-├── achievers.py           # Achiever agent implementations (A*, Value, Random)
-├── blockers.py            # Blocker agent implementations (Random, GoalDirect)
-├── data_generation.py     # Multi-agent data processing utilities
-├── simulate_game.py       # Multi-agent game simulation with GUI
-└── simulate_trajectory.py # Multi-agent trajectory visualization
+├── config.py               # Central Config class: env, agent, model, training, data settings
+├── achievers.py             # Achiever agents: AStarAgent, Level0/1ValueAchiever, RandomAgent
+├── blockers.py               # Blocker agents: Level0/1ValueBlocker, RandomlySelected, RuleBased, GoalDirect, Random
+├── value_agent.py           # BaseValueAgent: shared vectorized value-iteration logic
+├── generate.py               # Parallel multi-agent trajectory generation
+├── data_generation.py       # Trajectory-file parsing and sample construction (regex-based, multiprocessing worker)
+├── utils.py                  # Data loading/slicing, SR loss, memory-mapped datasets, training loop helpers
+├── tomnet.py                  # ToMnet model (CharNet/MentalNet/PredNet), ToMnetLoss
+├── train.py                    # Training entry point (always trains on combined data from all configured agent-type combinations)
+├── evaluate.py                # Evaluation: accuracy/F1/confusion metrics, N_past sweep, action-likelihood analysis
+├── visualize.py                # Plots: training curves, confusion matrices, action likelihood, character-embedding PCA/t-SNE
+├── visualize_sr.py            # Standalone SR heatmap visualization from a raw trajectory text file
+├── simulate_game.py            # Interactive/GUI game simulation between an achiever and blocker
+├── simulate_trajectory.py      # Trajectory playback / GIF export
+├── unit_test/                  # Unit tests
+└── results/                     # Default output location for trained models and plots
 ```
 
-## Key Features
+## Running
 
-### 🎯 **Multi-Agent Competitive Environment**
-- **Achiever agents**: Navigate to collect preferred keys and open doors (7 actions: up, right, down, left, stay, pickup, toggle)
-- **Blocker agents**: Infer achiever goals and strategically block access (6 actions: up, right, down, left, stay, broken)
-- **Strategic dynamics**: Theory of mind requirements for successful blocking
-- **Game termination**: Blockers can end game early when positioned at predicted target door
+All entry-point scripts read defaults from `Config` in `config.py`; passing `--config_override` is required for most CLI flags (e.g. `--achiever_type`, `--batch_size`) to actually override the config — without it, only the flags each script always honors (like `--test_data`, `--save_dir`, `--debug`) take effect.
 
-### 🧠 **Advanced ToMnet Architecture**
-- **Flexible Architecture**: Supports both 2-stage (CharNet→PredNet) and 3-stage (CharNet→MentalNet→PredNet) variants
-- **Multi-task Learning**: Simultaneous prediction of actions, goals, agent types, consumption patterns, and successor representations
-- **Agent Classification Head**: Distinguishes between achiever (0) and blocker (1) agents
-- **Type Classification Head**: Differentiates between agent behavior types (Level-0/1 reasoning) with accurate type parsing
-- **Consumption Prediction**: Uses slicing approach to predict all trajectory interactions from partial observations
-- **Enhanced Loss Functions**: Weighted combination of action, goal, agent, type, consumption, and SR losses
-- **Residual Blocks**: Deep residual connections for improved gradient flow
-- **ConvLSTM Integration**: Temporal sequence processing with convolutional memory
+### 1. Data generation
 
-### 📊 **Advanced Data Processing**
-- **Multi-agent trajectory generation**: Comprehensive dual-agent data with parallel processing
-- **Agent type labeling**: Each sample tagged with agent role and reasoning level (automatically parsed from trajectory files)
-- **Vectorized SR calculation**: Optimized successor representation computation across multiple discount factors
-- **Enhanced data paths**: Combined naming scheme for agent type pairs with efficient caching
-- **Trajectory slicing**: Dynamic sequence length handling for efficient training
-- **Parallel data generation**: Multiprocessing support for faster dataset creation
-- **Consumption Label Slicing**: Tracks all interactions throughout trajectory rather than just final state
-- **Multi-hot Goal Vectors**: Blocker inferred goals use 8-dimensional vector format for complete door attempt tracking
-
-### 🚀 **Strategic Agent Types**
-
-#### Achiever Agents
-- **Level0ValueAchiever (lv0va)**: Level-0 value-based agent using value iteration for direct pathfinding
-- **Level1ValueAchiever (lv1va)**: Level-1 value-based agent with deception strategies (collects decoy key first)
-- **AStarAgent (astar)**: Optimal pathfinding with A* algorithm
-- **ValueAgent**: Strategic navigation with preference optimization
-- **RandomAgent**: Baseline exploration behavior
-
-#### Blocker Agents
-- **Level0ValueBlocker (lv0vb)**: Level-0 value-based blocker with random door selection and value iteration
-- **Level1ValueBlocker (lv1vb)**: Level-1 value-based blocker with distance tracking and early target prediction
-- **RandomlySelectedAgent**: Level-0 reasoning - randomly selects target door and blocks it
-- **RuleBasedAgent**: Level-1 reasoning - first blocks random door, then infers target from achiever's key
-- **GoalDirectAgent**: Infers achiever goals from observed key collection patterns
-- **RandomAgent**: Baseline blocking behavior
-
-## Quick Start
-
-### 1. Multi-Agent Data Generation
 ```bash
-# Generate training data with level-0 value achiever and level-0 value blocker
-python script/exp5/generate.py --achiever_type lv0va --blocker_type lv0vb
+# Generate data using the current config.py agent-type settings
+python script/exp5/generate.py
 
-# Generate test data with different agent combinations
-python script/exp5/generate.py --n_games 2000 --achiever_type lv1va --blocker_type lv1vb --test_data
+# Override achiever/blocker type for this run
+python script/exp5/generate.py --config_override --achiever_type lv0va --blocker_type lv0vb
 
-# Generate data for all agent combinations
-python script/exp5/generate.py --achiever_type lv0va --blocker_type lv0vb
-python script/exp5/generate.py --achiever_type lv1va --blocker_type lv1vb
-python script/exp5/generate.py --achiever_type astar --blocker_type randomly_selected
-python script/exp5/generate.py --achiever_type value --blocker_type rule_based
+# Generate held-out test data, with parallel worker control
+python script/exp5/generate.py --config_override --achiever_type lv1va --blocker_type lv1vb --test_data --n_processes 8
 ```
 
-### 2. Multi-Agent Game Simulation
+The number of games generated per achiever/blocker type combination is controlled by `Config.achiever_types` / `Config.blocker_types` (dicts mapping type name to game count), not by a CLI flag.
+
+### 2. Game / trajectory simulation
+
 ```bash
-# Run competitive simulation with visualization
-python script/exp5/simulate_game.py --episodes 1 --render --achiever_type lv0va --blocker_type lv0vb
+# Watch one episode with rendering
+python script/exp5/simulate_game.py --render
 
-# Save gameplay as animated GIF
-python script/exp5/simulate_trajectory.py --episodes 5 --gif_output achiever_blocker_demo
+# Save an animated GIF of several episodes
+python script/exp5/simulate_trajectory.py --save_gif
 
-# Visualize multi-agent successor representation
-python script/exp5/visualize_sr.py --data_file data/MiniGrid-AchieverBlocker-9x9-v1/lv0va_lv0vb/test0.txt
+# Visualize successor-representation heatmaps from a saved trajectory file
+python script/exp5/visualize_sr.py data/MiniGrid-AchieverBlocker-9x9-v1/lv0va_lv0vb/test0.txt
 ```
 
-### 3. Enhanced Model Training
+### 3. Training
+
 ```bash
-# Train with multi-agent data (default: lv0va achiever + lv0vb blocker)
-python script/exp5/train.py --save_dir ./results/exp5/
+# Train with config.py defaults (3-stage ToMnet, combined data across all configured agent types)
+python script/exp5/train.py --save_dir ./results/exp5
 
-# Custom training with agent type weighting
-python script/exp5/train.py \
-    --epochs 300 --batch_size 750 --lr 0.0001 \
-    --agent_weight 0.1 --device cuda:3 --save_dir ./results/exp5/
+# Override training hyperparameters
+python script/exp5/train.py --config_override --epochs 300 --batch_size 512 --lr 0.0001 --device cuda:0 --save_dir ./results/exp5
 ```
 
-### 4. Multi-Agent Evaluation
+Training always aggregates data across every achiever-type/blocker-type combination present in `Config.achiever_types` × `Config.blocker_types` — there is no per-pair training mode.
+
+### 4. Evaluation
+
 ```bash
-# Evaluate multi-agent model performance
-python script/exp5/evaluate.py \
-    --model_path ./results/exp5/best_model.pth \
-    --result_dir ./results/exp5/
+python script/exp5/evaluate.py --model_path ./results/exp5/best_model.pth --result_dir ./results/exp5
 
-# Generate multi-agent visualizations
-python script/exp5/visualize.py \
-    --result_dir ./results/exp5/ \
-    --plot_type all
+python script/exp5/visualize.py --result_dir ./results/exp5 --plot_dir ./results/exp5/plots --plot_type all
 ```
 
-## Configuration
+`visualize.py --plot_type` accepts `training`, `confusion`, `likelihood`, `embeddings`, `n_past`, or `all`.
 
-All parameters are centralized in `config.py` for multi-agent experiments:
+## Outputs
 
-### Environment Settings
-```python
-self.env_name = "MiniGrid-AchieverBlocker-{size}-v1"
-self.achiever_types = {
-    "lv0va": self.n_games_per_type,
-    "lv1va": self.n_games_per_type,
-}  # Options: "lv0va", "lv1va", "astar", "random", "value"
-self.blocker_types = {
-    "lv0vb": self.n_games_per_type,
-    "lv1vb": self.n_games_per_type,
-}  # Options: "lv0vb", "lv1vb", "random", "goal_direct", "randomly_selected", "rule_based"
-self.width = 9
-self.height = 9
-self.max_steps = 50
-```
+`train.py` writes directly into `--save_dir` (default `./results/exp5`), with no automatic per-run timestamp subdirectory:
+- `best_model.pth`, `final_model.pth`, periodic `checkpoint_epoch_N.pth`
+- `training_history.json`, `model_config.json`, `full_config.json`
+- Training-curve plots via `save_training_plots`
 
-### Model Architecture
-```python
-self.model_config = {
-    "use_mentalnet": True,           # Enable Mental Network (3-stage) or False (2-stage)
-    "residual_blocks": 5,            # Number of residual blocks in CharNet
-    "n_echar": 128,                  # Character embedding size
-    "n_ement": 128,                  # Mental state embedding size
-    "out_channels": 64,              # Output channels for convolutional layers
-    "channels_in": 9,                # 8 original channels + 1 heading direction channel
-    "current_state_channels": 8,     # For MentalNet: 8 original channels (no heading direction)
-    "achiever_action_space": 7,      # Achiever actions: up, right, down, left, stay, pickup, toggle
-    "blocker_action_space": 6,       # Blocker actions: up, right, down, left, stay, broken
-    "goal_space": 4,                 # 4 colored goals: red, green, blue, yellow
-    "env_width": self.width,         # Environment width (9)
-    "env_height": self.height,       # Environment height (9)
-    "hidden_size_lstm": 64,          # LSTM hidden size for ConvLSTM
-    "n_past": 5,                     # Number of past episodes for character network
-    "n_recent": 20,                  # Number of recent timesteps for mental network
-}
-```
+`evaluate.py` writes metrics and, when `--save_predictions` is set, `predictions.pkl` (predictions, targets, probabilities, metrics) under `--result_dir`.
 
-### Training Configuration
-```python
-self.training_config = {
-    "batch_size": 750,
-    "epochs": 300,
-    "lr": 0.0001,
-    "weight_decay": 0.001,
-    "training_proportion": 0.9,
-    "device": "cuda:3",
-    "device_ids": [3, 2],            # GPU IDs for parallel training
-    "use_parallel": True,            # Enable DataParallel training
-    "use_amp": True,                 # Automatic Mixed Precision for memory efficiency
-    "gradient_accumulation_steps": 2, # Gradient accumulation for larger effective batch size
-    "pin_memory": True,              # Pin memory for faster data transfer
-    "num_workers": 4,                # DataLoader worker processes
-    "optimizer": "adam",             # Optimizer type
-    "scheduler": "cosine",           # Learning rate scheduler
-}
+`visualize.py` writes PNG plots (training curves, confusion matrices, action-likelihood, PCA/t-SNE character-embedding plots) under `--plot_dir`.
 
-# Training process configuration
-self.training_process_config = {
-    "early_stopping_patience": 30,
-    "early_stopping_min_delta": 0.001,
-    "max_grad_norm": 1.0,
-    "action_weight": 0.25,
-    "goal_weight": 0.25,
-    "agent_weight": 0.1,             # Weight for agent classification loss
-    "type_weight": 0.1,
-    "consumption_weight": 0.15,
-    "sr_weight": 0.15,
-}
-```
+Generated trajectory data is written under `data/MiniGrid-AchieverBlocker-9x9-v1/{achiever_type}_{blocker_type}/`, with per-episode `testN.txt` trajectory files, a cached `processed_data_exp5_{achiever_type}_{blocker_type}.pkl`, and a `test/` subdirectory holding the equivalent held-out split. Each trajectory file records, per timestep: the maze grid, both agents' actions and positions, an 8-dim consumption vector (4 keys + 4 doors), the blocker's inferred goal, and SR values for γ ∈ {0.5, 0.9, 0.99}.
 
-## Environment Details
+## Notes and Limitations
 
-The AchieverBlocker environment creates strategic interaction between two agents:
-
-### Achiever Objectives:
-1. Navigate the 9x9 grid with 4 colored keys and doors
-2. Collect the preferred key (based on goal preferences)
-3. Open the corresponding door to win the game
-
-### Blocker Objectives:
-1. Observe achiever's movement and key collection patterns
-2. Infer achiever's goal preferences through theory of mind
-3. Position at the predicted target door and use "broken" action to block access
-
-### Game Dynamics:
-- **Turn-based**: Agents act sequentially each timestep
-- **Full observability**: Each agent observes both agent positions and states
-- **Collision avoidance**: Agents cannot occupy the same grid cell
-- **Multiple termination**: Game ends when achiever succeeds OR blocker successfully blocks
-
-## Strategic Agent Implementations
-
-### Achiever Agents (`achievers.py`)
-
-#### Level0ValueAchiever (lv0va)
-- **Vectorized Value Iteration**: Efficient planning using vectorized operations for optimal pathfinding
-- **Stochastic Policy**: Temperature-based action selection with configurable exploration
-- **Two-phase Strategy**: Collect preferred key → navigate to corresponding door
-- **Automatic Key Pickup**: Keys are automatically collected when stepping on them
-- **Cost Functions**: Configurable movement, wall, conflict, and consumption penalties
-- **Q-value Clipping**: Prevents numerical instability with bounded Q-values
-
-#### Level1ValueAchiever (lv1va)
-- **Sophisticated Deception**: Collects decoy key first to mislead blockers about true preferences
-- **Adaptive Strategy**: Monitors blocker movements and switches to target key if blocker moves to any door
-- **Dual-phase Planning**: Uses value iteration for both deception and goal achievement phases
-- **Strategic Reasoning**: Level-1 reasoning to model and deceive Level-0 blocker opponents
-- **Dynamic Target Selection**: Adjusts strategy based on blocker behavior and positioning
-
-#### AStarAgent (astar)
-- **Optimal pathfinding**: Finds shortest path using A* algorithm
-- **Deterministic behavior**: Predictable for blocker agents to analyze
-- **Two-phase strategy**: Collect key → navigate to door
-
-#### ValueAgent
-- **Strategic planning**: Uses value iteration with goal preferences
-- **Preference optimization**: Maximizes reward based on colored door preferences
-
-#### RandomAgent
-- **Exploration baseline**: Random movement with goal bias
-- **Unpredictable behavior**: Difficult for blockers to predict
-
-### Blocker Agents (`blockers.py`)
-
-#### Level0ValueBlocker (lv0vb)
-- **Random Door Selection**: Chooses target door randomly from available options
-- **Multi-attempt Strategy**: Tracks tried doors and attempts different ones if wrong
-- **Vectorized Value Iteration**: Uses efficient pathfinding to reach selected doors
-- **Strategic Positioning**: Moves to predicted target doors and uses "broken" action to block
-- **Game Continuation**: Continues playing after wrong door attempts with penalty
-
-#### Level1ValueBlocker (lv1vb)
-- **Distance Tracking**: Monitors achiever's distance to different keys over time
-- **Early Prediction**: Predicts target door based on movement patterns before key collection
-- **Multi-phase Strategy**: Random door → observation → inference → strategic blocking
-- **Theory of Mind**: Infers achiever preferences from observed behavior and key collection patterns
-- **Adaptive Blocking**: Adjusts strategy based on achiever's deceptive behaviors
-
-#### RandomlySelectedAgent
-- **Level-0 reasoning**: Randomly selects target door and blocks it
-- **Multi-attempt tracking**: Tracks tried doors and attempts others if wrong
-- **BFS pathfinding**: Uses breadth-first search for navigation
-
-#### RuleBasedAgent
-- **Level-1 reasoning**: First blocks random door, then infers target from achiever's key
-- **Key observation**: Stores observed keys from achiever
-- **Multi-attempt strategy**: Cycles through observed keys if wrong
-
-#### GoalDirectAgent
-- **Theory of mind**: Infers achiever preferences from key collection behavior
-- **Wait strategy**: Waits until achiever picks up first key
-- **Strategic positioning**: Moves to predicted target doors
-
-#### RandomAgent
-- **Baseline behavior**: Random actions across the environment
-- **No strategic reasoning**: Provides comparison baseline
-
-## Data Structure
-
-### Generated Data Paths
-```
-data/
-└── MiniGrid-AchieverBlocker-9x9-v1/
-    └── lv0va_lv0vb/                    # Training data for agent pair
-        ├── test0.txt                   # Individual trajectory files
-        ├── test1.txt
-        ├── ...
-        ├── processed_data_exp5_lv0va_lv0vb.pkl     # Cached processed data
-        └── test/                       # Test data
-            ├── test0.txt
-            ├── test1.txt
-            ├── ...
-            └── processed_test_data_exp5_lv0va_lv0vb.pkl
-```
-
-### Multi-Agent Trajectory Format
-Each trajectory file contains comprehensive dual-agent information:
-- **Maze Representation**: 9x9 grid with both agents, keys, doors, and walls
-- **Achiever Actions**: 7-dimensional action space [up=0, right=1, down=2, left=3, stay=4, pickup=5, toggle=6]
-- **Blocker Actions**: 6-dimensional action space [up=0, right=1, down=2, left=3, stay=4, broken=5]
-- **Agent Positions**: (x, y) coordinates for both achiever and blocker at each timestep
-- **Agent States**: Inventory information, collected keys, and goal preferences
-- **Agent Labels**: Achiever (0) or Blocker (1) for each observation sample
-- **Type Labels**: Behavior type classification (parsed from trajectory files for accurate agent type tracking)
-- **Consumption Labels**: 8-dimensional binary vector tracking all key/door interactions throughout trajectory
-- **Blocker Interactions**: Door colors ("a", "b", "c", "d", "X") for actual door-breaking behavior
-- **Inferred Goals**: Multi-hot vector format `[key_red, key_green, key_blue, key_yellow, door_red, door_green, door_blue, door_yellow]`
-- **Successor Representation**: Vectorized SR data for multiple discount factors (0.5, 0.9, 0.99)
-- **Goal Rankings**: Preference rankings for different colored doors
-- **Strategic Outcomes**: Success/failure rates and blocking effectiveness metrics
-- **Interaction Results**: Detailed analysis of blocker attempts using actual door colors
-
-## Model Training
-
-### Enhanced Architecture Options
-```bash
-# Benchmark model (CharNet + PredNet only)
-python script/exp5/train.py --use_mentalnet False
-
-# Proposed model (CharNet + MentalNet + PredNet)  
-python script/exp5/train.py --use_mentalnet True
-```
-
-### Extended Loss Components
-- **Action Loss**: Cross-entropy for both achiever (7-class) and blocker (6-class) action prediction
-- **Goal Loss**: Cross-entropy for goal preference prediction (4 colored doors)
-- **Agent Loss**: Cross-entropy for agent type classification (achiever vs blocker)
-- **Type Loss**: Cross-entropy for agent behavior type classification (Level-0 vs Level-1 reasoning)
-- **Consumption Loss**: Binary cross-entropy predicting all interactions throughout trajectory (slicing approach)
-- **SR Loss**: KL divergence for successor representation prediction across multiple discount factors
-- **Weighted Combination**: Configurable loss weights for balanced multi-task learning
-- **Trajectory Slicing**: Dynamic sequence length handling for efficient training
-
-### Multi-Agent Training Features
-- **Trajectory Slicing**: Dynamic sequence length handling with multiple samples from each trajectory
-- **Consumption Label Slicing**: Predicts all interactions throughout trajectory based on partial observations
-  - Each sliced sample uses the same consumption labels (full trajectory interactions)
-  - Model learns temporal patterns from partial trajectory to full interaction prediction
-  - Compatible with `prepare_data_for_training` in utils.py for efficient sample generation
-- **Agent Classification**: Neural network learns to distinguish achiever vs blocker behavior patterns
-- **Type Classification**: Distinguishes between different reasoning levels (Level-0 vs Level-1)
-- **Strategic Loss Weighting**: Configurable emphasis on different prediction tasks with automatic balancing
-- **Competitive Dynamics**: Model learns both cooperative and adversarial multi-agent behaviors
-- **Parallel Training**: Multi-GPU support with DataParallel for faster training
-- **Mixed Precision**: Automatic mixed precision (AMP) for memory efficiency and speed
-- **Gradient Accumulation**: Larger effective batch sizes through gradient accumulation
-- **Early Stopping**: Monitors validation loss with configurable patience and delta thresholds
-- **Vectorized Operations**: Efficient batch processing of SR computation and loss calculations
-
-## Evaluation Metrics
-
-### Standard Multi-Agent Metrics
-- **Action Accuracy**: Action prediction accuracy for both achiever and blocker agents
-- **Goal Inference Accuracy**: Goal prediction accuracy from observed behavior patterns
-- **Agent Classification Accuracy**: Distinguishing between achiever and blocker agents
-- **Type Classification Accuracy**: Distinguishing between Level-0 and Level-1 reasoning patterns
-- **Consumption Prediction Accuracy**: Predicting key collection patterns and resource consumption
-- **SR Prediction Accuracy**: Successor representation prediction quality across discount factors
-- **Per-Agent Metrics**: Separate evaluation for each agent type with detailed breakdowns
-
-### Strategic Analysis
-- **Blocking Effectiveness**: Success rate of blocker interference and strategic positioning
-- **Theory of Mind Accuracy**: How well model predicts achiever goals from blocker perspective
-- **Multi-agent Confusion Matrices**: Detailed error analysis for both agent types
-- **Strategic Adaptation**: How agents respond to opponent behavior and strategy changes
-- **N_past Analysis**: Performance evaluation across different numbers of past episodes
-- **Character Embedding Analysis**: PCA and t-SNE visualization of learned agent representations
-- **Training Dynamics**: Analysis of loss component convergence and learning curves
-
-## Performance Optimizations
-
-### Multi-Agent Data Processing
-- **Vectorized SR Calculation**: Optimized numpy operations for dual-agent scenarios with parallel processing
-- **Efficient Trajectory Parsing**: Handles complex multi-agent state representations with minimal memory overhead
-- **Enhanced Caching**: Separate processed data files for different agent combinations with pickle serialization
-- **Memory Optimization**: Efficient storage for expanded state spaces using sparse representations
-- **Parallel Data Generation**: Multiprocessing support for faster dataset creation
-- **Batch Processing**: Vectorized operations for processing multiple trajectories simultaneously
-
-### Training Optimizations
-- **Balanced Sampling**: Equal representation of achiever and blocker samples in training batches
-- **Strategic Batch Composition**: Ensures diverse agent type combinations and reasoning levels
-- **Loss Balancing**: Automated weighting for stable multi-task learning with configurable coefficients
-- **Early Stopping**: Monitors all loss components for optimal convergence with patience control
-- **Gradient Clipping**: Prevents gradient explosion with configurable maximum norm
-- **Learning Rate Scheduling**: Cosine annealing and step decay for optimal convergence
-- **Memory Efficient Loading**: DataLoader optimizations with pin_memory and num_workers
-
-## Troubleshooting
-
-### Common Multi-Agent Issues
-
-1. **Agent imbalance in training**:
-   ```bash
-   python script/exp5/train.py --agent_weight 2.0 --batch_size 512
-   ```
-
-2. **No multi-agent data found**:
-   ```bash
-   # Generate small dataset for testing
-   python script/exp5/generate.py --n_games 100 --achiever_type lv0va --blocker_type lv0vb
-   ```
-
-3. **Strategic behavior not emerging**:
-   ```bash
-   # Try different agent combinations
-   python script/exp5/generate.py --achiever_type lv1va --blocker_type lv1vb
-   ```
-
-4. **Multi-agent environment errors**:
-   ```bash
-   # Test environment with simple simulation
-   python script/exp5/simulate_game.py --episodes 1
-   ```
-
-## Recent Updates and Improvements
-
-### Architecture Enhancements
-- **Dual Architecture Support**: Added support for both 2-stage and 3-stage ToMnet variants
-- **Enhanced Model Components**: Improved CharNet with residual blocks and ConvLSTM integration
-- **Multi-task Learning**: Extended to predict actions, goals, agent types, consumption, and SR simultaneously
-- **Trajectory Slicing**: Dynamic sequence length handling for more efficient training
-- **Vectorized Operations**: Optimized SR computation and loss calculations for better performance
-
-### Agent Implementation Updates
-- **Value-based Agents**: Implemented Level-0 and Level-1 value agents with sophisticated strategies
-- **Deception Mechanisms**: Level-1 achiever agents use decoy key collection to mislead blockers
-- **Theory of Mind**: Level-1 blocker agents track achiever behavior patterns for better prediction
-- **Multi-attempt Strategy**: Blockers can attempt multiple doors with proper tracking and penalties
-- **Vectorized Planning**: Efficient value iteration implementation for all value-based agents
-
-### Data Processing Improvements
-- **Parallel Data Generation**: Multiprocessing support for faster dataset creation
-- **Enhanced Caching**: Separate processed data files for different agent combinations
-- **Comprehensive Labeling**: Rich trajectory data with SR, consumption, and interaction labels
-- **Memory Optimization**: Efficient storage using sparse representations and vectorized operations
-- **Batch Processing**: Vectorized operations for processing multiple trajectories simultaneously
-
-### Training and Evaluation Features
-- **Mixed Precision Training**: Automatic mixed precision for memory efficiency and speed
-- **Multi-GPU Support**: DataParallel training with gradient accumulation
-- **Advanced Metrics**: Comprehensive evaluation including N_past analysis and embedding visualization
-- **Early Stopping**: Monitors all loss components with configurable patience
-- **Learning Rate Scheduling**: Cosine annealing and step decay for optimal convergence
-
-## exp5 Version History
-- Multi-blocker type AchieverBlocker environment with multi-attempt game mechanics
-
-### Agent Rule Fixes (exp5) - fixed
-**RandomlySelectedAgent (Level-0 Reasoning)**:
-- Fixed multi-attempt tracking system to allow breaking multiple wrong doors before finding target
-- Added `tried_doors` set to track attempted doors across multiple break attempts
-- Implemented proper reset mechanism after each wrong door break attempt
-- Game continues after breaking wrong doors (with -1 penalty) until correct door is found
-
-**RuleBasedAgent (Level-1 Reasoning)**:
-- **Critical Bug Fix**: Fixed key observation logic in `_check_and_store_achiever_keys`
-- Previous bug: stored array indices instead of color names in `observed_keys`
-- Fixed to store actual color names ("red", "green", "blue", "yellow")
-- Implemented multi-attempt strategy using observed key sequence
-- Added proper cycling through `observed_keys` when wrong doors are broken
-
-**Environment Changes**:
-- Modified game termination rules: only ends when achiever reaches target OR blocker breaks actual target door
-- Breaking wrong doors gives -1 reward but game continues
-- Supports multiple break attempts per trajectory
-
-**Data Generation**:
-- Multi-blocker type support (Type 0: randomly_selected, Type 1: rule_based)
-- Even distribution across blocker types (50/50 split)
-- Trajectory-based interaction analysis processing all break attempts
-- Blocker interactions now use actual door colors ("a", "b", "c", "d", "X") for accurate tracking
-- Consumption labels based on observed door-breaking behavior throughout trajectory
-
-## 🚀 Performance Optimizations
-
-The exp5 codebase has been comprehensively optimized for time consumption with significant performance improvements across all major components:
-
-### **1. generate.py Optimizations**
-
-#### **Vectorized Successor Representation Calculation**
-- **Fully vectorized SR computation**: Replaced nested loops with NumPy broadcasting operations
-- **Batch processing**: Process multiple timesteps and gamma values simultaneously
-- **Memory-efficient batching**: Process trajectories in chunks to manage memory usage
-- **Optimized sparse conversion**: Efficient non-zero element detection and conversion
-- **Expected speedup**: 3-5x faster SR calculation
-
-#### **Memory Management**
-- **Explicit cleanup**: Added garbage collection after each game simulation
-- **Variable deletion**: Clear large objects (environments, agents, trajectories) immediately after use
-- **Multiprocessing optimization**: Added `maxtasksperchild=100` to prevent memory accumulation
-- **Chunked processing**: Optimized chunk sizes for better memory usage
-
-### **2. data_generation.py Optimizations**
-
-#### **Pre-compiled Regex Patterns**
-- **Compiled once, used many times**: 6 pre-compiled regex patterns for trajectory parsing
-- **Eliminated runtime compilation**: No more regex compilation overhead per file
-- **Patterns optimized**: `trajectory_pattern`, `timestep_pattern`, `sr_gamma_pattern`, etc.
-- **Expected speedup**: 2-3x faster trajectory file parsing
-
-#### **Vectorized Tensor Creation**
-- **Broadcast operations**: Replaced loops with NumPy broadcasting for maze tensor creation
-- **Efficient mask generation**: Pre-compute all static masks once and broadcast to all timesteps
-- **Vectorized position processing**: Process all agent positions simultaneously
-- **Memory optimization**: Use appropriate dtypes (float32, int32) for memory efficiency
-
-#### **Streamlined Processing**
-- **Removed exception handling**: Cleaner code flow without try-catch overhead
-- **Optimized cleanup**: Direct variable deletion with garbage collection
-- **Batch file processing**: More efficient file handling patterns
-
-### **3. train.py Optimizations**
-
-#### **Memory-Mapped Data Loading**
-- **Lazy loading**: Data loaded only when accessed, not all at once
-- **Memory mapping**: Files mapped to virtual memory for efficient access
-- **Reduced memory usage**: 50-80% reduction in peak memory consumption
-- **Backward compatibility**: Automatic fallback to pickle format when needed
-- **Custom Dataset class**: `MemoryMappedDataset` for efficient data access
-
-#### **Vectorized Batch Processing**
-- **Optimized effective length calculation**: Uses flip+argmax trick for efficient computation
-- **Advanced tensor indexing**: Vectorized current state extraction
-- **Batch operations**: Process multiple samples simultaneously
-- **Memory context management**: Strategic use of `torch.no_grad()` for memory efficiency
-
-#### **GPU Memory Optimization**
-- **Strategic cache clearing**: `torch.cuda.empty_cache()` at optimal intervals
-- **Gradient accumulation**: Larger effective batch sizes without memory overflow
-- **Mixed precision training**: Automatic mixed precision (AMP) for memory and speed
-- **Efficient cleanup**: Clear intermediate variables during training loops
-
-### **4. Cross-File Optimizations**
-
-#### **Comprehensive Memory Management**
-- **Garbage collection**: Strategic `gc.collect()` calls at key points
-- **Variable lifecycle management**: Explicit deletion of large objects
-- **Memory monitoring**: Added memory usage tracking and warnings
-- **Batch cleanup**: Regular cleanup during batch processing loops
-
-#### **Parallel Processing Improvements**
-- **Optimized multiprocessing**: Better chunk sizes and process management
-- **Reduced progress reporting**: Less frequent but more meaningful progress updates
-- **Process reuse**: Limited tasks per child process to prevent memory leaks
-- **Efficient data sharing**: Minimized data copying between processes
-
-### **5. Configuration Improvements**
-
-#### **Flexible Parameters**
-- **Configurable min_time_steps**: No longer hardcoded, adjustable via config
-- **Dynamic parameter adjustment**: Support for runtime parameter changes
-- **Backward compatibility**: Graceful fallbacks for missing parameters
-
-### **📊 Performance Improvements Summary**
-
-| Component | Optimization | Expected Speedup |
-|-----------|--------------|------------------|
-| **SR Calculation** | Vectorized computation | 3-5x faster |
-| **Data Loading** | Memory mapping | 3-5x faster startup |
-| **Trajectory Parsing** | Pre-compiled regex | 2-3x faster |
-| **Tensor Creation** | Vectorized operations | 2-3x faster |
-| **Memory Usage** | Efficient management | 50-80% reduction |
-| **Overall Runtime** | Combined optimizations | **5-10x speedup** |
-
-### **🎯 Key Optimization Strategies**
-
-1. **Vectorization**: Replace loops with NumPy/PyTorch operations
-2. **Memory Mapping**: Load data on-demand rather than all at once
-3. **Batch Processing**: Process multiple items simultaneously
-4. **Memory Management**: Explicit cleanup and garbage collection
-5. **Pre-computation**: Calculate reusable values once
-6. **Efficient Data Structures**: Use appropriate types and formats
-
-### **✅ Compatibility Notes**
-
-- **Logic Preservation**: All optimizations maintain exact original functionality
-- **Backward Compatibility**: Automatic fallbacks for older data formats
-- **Configuration Flexibility**: Easy to adjust optimization parameters
-- **Error Handling**: Robust handling of edge cases and failures
-
-These optimizations provide substantial performance improvements while maintaining full compatibility with existing code and data formats. The improvements are particularly beneficial for large-scale training runs and extensive data generation tasks.
-
-## Implementation Verification
-
-### **Consumption Labels Slicing Verification**
-The slicing implementation has been thoroughly tested and verified to work correctly:
-
-#### **✅ Data Structure Validation**
-- **Shape Maintained**: Consumption labels maintain `(8,)` binary vector format for training pipeline compatibility
-- **Content Structure**: `[key_A, key_B, key_C, key_D, door_A, door_B, door_C, door_D]` binary encoding
-- **Example Output**: 
-  - Achiever: `[0. 0. 1. 1. 0. 0. 1. 0.]` = collected keys C,D and opened door c
-  - Blocker: `[0. 0. 0. 0. 1. 1. 0. 0.]` = attempted doors a,b
-
-#### **✅ Training Pipeline Integration**
-- **Line 380 in `utils.py`**: `sample_consumption_labels.append(consumption)` - Same consumption labels used for each sliced sample
-- **Line 340-381**: Trajectory slicing creates multiple samples from one trajectory  
-- **Each sliced sample**: Uses identical consumption labels representing full trajectory interactions
-- **Model Compatibility**: Works with BCEWithLogitsLoss for multi-label binary classification
-
-#### **✅ Slicing Methodology Confirmed**
-- **Temporal Learning**: Model sees partial trajectory (timestep 3, 4, 5, etc.) but learns to predict full trajectory interactions
-- **Training Signal**: Each sliced sample shares the same consumption labels from the complete trajectory
-- **Prediction Task**: Model learns to predict what interactions will occur throughout the full trajectory based on partial observations
-
-#### **✅ Benefits Validated**
-1. **Richer Training Signal**: Tracks ALL interactions vs. binary success/failure of previous approach
-2. **Temporal Pattern Learning**: Model learns progression from partial to complete trajectory understanding
-3. **Backward Compatibility**: Maintains all existing functionality and data formats
-4. **Efficient Processing**: Vectorized operations with NumPy boolean masks
-
-The verification confirms that the slicing approach successfully shifts from "final consumed" (binary success/failure) to comprehensive interaction tracking, providing much richer training signals for the ToMnet model to learn theory of mind capabilities.
-
-## 🔧 Recent Code Refactoring and Fixes
-
-### **Code Unification and Legacy Cleanup (Latest)**
-
-#### **✅ Memory Efficiency Enhancement**
-- **Enhanced Memory Management**: Updated `setup_model_and_data_combined` to use `_load_chunks_memory_efficient` function for better memory allocation on different servers
-- **Chunked Data Loading**: All data loading now uses memory-efficient chunked processing to prevent memory allocation errors
-
-#### **✅ Legacy Code Removal**
-- **Removed Legacy Functions**: 
-  - Deleted `train_tomnet` function (old single-combination version) from `train.py`
-  - Deleted `setup_model_and_data` function (old single-combination version) from `utils.py`
-  - Deleted `get_data_for_combination` function from `utils.py` (no longer needed)
-- **Function Renaming**:
-  - Renamed `train_tomnet_combined` → `train_tomnet` in `train.py`
-  - Renamed `setup_model_and_data_combined` → `setup_model_and_data` in `utils.py`
-- **Import Cleanup**: Updated all import statements to remove references to deleted functions
-
-#### **✅ Unified Data Integration Approach**
-- **Training**: `train.py` now always uses combined data from all achiever-blocker combinations
-- **Evaluation**: `evaluate.py` updated to integrate all data combinations instead of single agent pairs
-- **Visualization**: `visualize.py` updated to work with combined data from all combinations
-
-#### **✅ Consistent Directory Structure**
-- **Results Path**: All scripts now save to `results/exp5/{timestamp}/` (no agent-specific subdirectories)
-- **Data Loading**: All scripts load from base environment directory and combine all agent combinations
-- **Unified API**: Single training/evaluation/visualization interface that handles all combinations automatically
-
-#### **✅ Benefits of Unification**
-1. **Simplified Codebase**: Eliminated redundant functions and maintained single source of truth
-2. **Memory Efficiency**: Enhanced memory management for large-scale training on different servers
-3. **Consistent Behavior**: All scripts (train/evaluate/visualize) follow the same data integration pattern
-4. **Backward Compatibility**: Configuration with single agent types still works (e.g., `{"lv0va": n_games}` produces same result)
-5. **Easier Maintenance**: Fewer functions to maintain and debug
-6. **Unified Results**: Training and evaluation use identical data distributions
-
-#### **✅ Architecture Changes**
-- **Before**: Separate functions for single vs. combined data loading
-- **After**: Single unified approach that automatically handles any number of combinations
-- **Configuration Flexibility**: Works with any combination of achiever and blocker types in config
-- **Memory Safety**: Enhanced memory management prevents allocation issues on resource-constrained servers
-
-This refactoring maintains all existing functionality while providing a cleaner, more efficient, and unified codebase for multi-agent ToMnet training and evaluation.
-
+- `use_mentalnet` defaults to `True` (3-stage CharNet→MentalNet→PredNet); the 2-stage `forward_direct` path exists in the same model and is toggled by setting `use_mentalnet=False` in `config.py`.
+- `generate.py` has no `--n_games` flag; the per-type episode count is fixed by `Config.achiever_types` / `Config.blocker_types` values in `config.py`.
+- `train.py` has no `--agent_weight` (or other individual loss-weight) CLI flag beyond `--action_weight` and `--goal_weight`; other loss weights (`agent_weight`, `type_weight`, `consumption_weight`, `sr_weight`) are set only through `training_process_config` in `config.py`.

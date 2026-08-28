@@ -1,0 +1,80 @@
+{
+  "agents": [
+    {
+      "agent_id": "amd-exp8-83c976714b377365",
+      "agent_type": "md-exp8",
+      "started_at": "2026-08-28T15:02:35.640Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-08-28T15:05:41.334Z",
+      "duration_ms": 185694
+    },
+    {
+      "agent_id": "amd-exp7-e00291e361039f26",
+      "agent_type": "md-exp7",
+      "started_at": "2026-08-28T15:02:44.377Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-08-28T15:07:21.293Z",
+      "duration_ms": 276916
+    },
+    {
+      "agent_id": "amd-exp6-71f461a76e2045d5",
+      "agent_type": "md-exp6",
+      "started_at": "2026-08-28T15:02:51.245Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-08-28T15:06:52.981Z",
+      "duration_ms": 241736
+    },
+    {
+      "agent_id": "amd-exp5-61ad3a7f04f29dad",
+      "agent_type": "md-exp5",
+      "started_at": "2026-08-28T15:02:59.577Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-08-28T15:06:26.317Z",
+      "duration_ms": 206740
+    },
+    {
+      "agent_id": "amd-exp4-f85b4eab7d170ed1",
+      "agent_type": "md-exp4",
+      "started_at": "2026-08-28T15:03:07.507Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-08-28T15:08:48.818Z",
+      "duration_ms": 341311
+    },
+    {
+      "agent_id": "amd-exp3-1cfe2cec7435cfa8",
+      "agent_type": "md-exp3",
+      "started_at": "2026-08-28T15:03:16.732Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-08-28T15:07:06.625Z",
+      "duration_ms": 229893
+    },
+    {
+      "agent_id": "amd-tomnet-f6b7e5669c19332f",
+      "agent_type": "md-tomnet",
+      "started_at": "2026-08-28T15:03:24.353Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-08-28T15:08:31.991Z",
+      "duration_ms": 307638
+    },
+    {
+      "agent_id": "amd-tomnetf-573916073fbfeab2",
+      "agent_type": "md-tomnetf",
+      "started_at": "2026-08-28T15:06:36.207Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-08-28T15:07:20.420Z",
+      "duration_ms": 44213
+    }
+  ],
+  "total_spawned": 9,
+  "total_completed": 9,
+  "total_failed": 0,
+  "last_updated": "2026-08-28T15:08:48.916Z"
+}

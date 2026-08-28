@@ -1,287 +1,129 @@
-# ToMnet Implementation for Reproduction
+# ToMnet Re-implementation
 
-## Overview
-This implementation reproduces the qualitative results of the "Machine Theory of Mind" paper (Rabinowitz et al., 2018). The focus is on demonstrating ToMnet's ability to infer character traits of random agents through observation of their behavioral trajectories.
+Re-implementation of core experiments from Rabinowitz et al., "Machine Theory of Mind" (ICML 2018), reproducing the qualitative results of Figure 3 (random-agent character inference) and Figure 5 (goal-directed agent prediction).
 
-The implementation provides a complete, production-ready system with enterprise-level automation, comprehensive evaluation capabilities, and publication-quality visualization tools.
+## Purpose
 
-## ToMnet Architecture for Figure 3 (from Appendix A.2)
+This module trains a ToMnet ("Theory of Mind network") to infer an agent's character from its past behavioral trajectories, then uses the inferred character embedding to predict the agent's behavior in a held-out gridworld. Two experiment configurations are implemented, mirroring two sections of the paper's appendix:
 
-**Data Configuration**:
-- Variable number of past episodes: $ N_{past} \sim U{0, 10}$
-- Each trajectory consists of a **single state-action pair** (length 1)
-- When $ N_{past} = 0$, character embedding is set to $ e_{char} = 0 $
+- **Figure 3** (Appendix A.2): random agents with fixed Dirichlet policies; ToMnet predicts only the next action.
+- **Figure 5** (Appendix A.3.2): goal-directed agents that plan with value iteration; ToMnet predicts the next action, which objects get consumed by episode end, and successor representations.
 
-### Core Mathematical Framework
-The ToMnet implementation for Figure 3 uses a simplified architecture focused on character inference:
+Neither configuration uses the paper's Mental State Net. `MentalStateNet` exists in `tomnet.py`, but `create_tomnet` never instantiates it for either experiment.
 
-1. **Character Net ($f_\theta$)**: 
-   - Input: Single state/action pair per trajectory
-   - Output: $ e_{char, i} \in R^2 $
-      - Processes past episode trajectories $\{\tau_{ij}\}$ into character embeddings
-   - Function: $e_{char,ij} = f_\theta(\tau_{ij}^{obs})$
-   - Aggregation: $e_{char,i} = \sum_j e_{char,ij}$
-   - Implementation: 3-layer MLP with ReLU activations
-   - Output: 2D embeddings for visualization
-   - Processing pipeline:
-        1. Spatialize action and concatenate with state
-        2. 1-layer convnet with 8 feature planes and ReLU
-        3. Convolutional LSTM processing sequence indexed by j
-        4. Average pooling
-        5. Fully-connected layer to 2D embedding space
+## Environment
 
-2. **Mental State Net**:
-   - **Omitted in Figure 3 experiments** as specified in the paper
-   - This simplification focuses on character-level inference only
+`environment.py` implements `GridWorld`: a grid with random walls, several consumable objects, and one agent.
 
-3. **Prediction Net** (only action prediction head):
-   - Input: Spatialized $ e_{char,i} $ concatenated with query state
-   - Outputs action probabilities: $\hat{\pi}(a_t \mid x_t^{obs}, e_{char})$
-   - Function: concatenates current state with character embedding
-   - Implementation: 2-layer MLP with softmax output for 5 actions
-       - 2-layer convnet with 32 feature planes and ReLUs
-       - Average pooling
-       - Fully-connected layer to 5-dim logits
-       - Softmax for action probabilities
+- Actions: up, down, left, right, stay (5 total).
+- State representation: a `(size, size, 6)` array — channel 0 is walls, channels 1-4 are one per object type (only as many as `n_objects` get populated), channel 5 is the agent's position.
+- An episode ends when the agent steps onto an object or `max_steps` is reached.
+- Movement carries a small negative reward (-0.01); hitting a wall or the boundary subtracts an additional -0.05.
+- Module-level defaults (`SIZE`, `MAX_WALLS`, `MAX_STEPS`, `N_OBJECTS` in `environment.py`) are `3`, `2`, `31`, and `2` — a smaller board than the paper's 11×11 grid with 4 objects, likely kept small for faster experiments. All four are also constructor arguments, so the board can be scaled back up.
 
-4. **Training Details**:
-    - Optimizer: Adam with learning rate 10⁻⁴
-    - Batch size: 16
-    - Training iterations: 40k minibatches
+`agents.py` provides two agent types:
 
+- **`RandomAgent`**: samples a fixed categorical policy from `Dirichlet(α, α, α, α, α)` at construction and never updates it. `α` controls how peaked the policy is (near-deterministic at `α=0.01`, near-uniform at `α=3.0`).
+- **`GoalDirectedAgent`**: samples a reward vector over 4 object types from `Dirichlet(α_reward)`, then plans with value iteration (`plan()`) to obtain a softmax-over-Q policy for a given `GridWorld` instance. A move penalty, a wall-collision penalty, and an optional higher "greedy" movement cost (assigned to a `high_cost_ratio` fraction of agents) shape the reward. `get_successor_representation()` estimates the SR by Monte Carlo rollout, with both a serial and a multiprocessing-parallel implementation.
 
-## Loss Function
-The ToMnet is trained with the following loss components:
+## Architecture
 
-### Action Prediction Loss
-The negative log-likelihood of the true action taken by the agent under the predicted policy:
-$$ L_{action} = -\log \hat{\pi}(a_t^{obs} \mid x_t^{obs}, e_{char}) $$
+`tomnet.py` defines the network building blocks and a factory, `create_tomnet(experiment_type, ...)`, that assembles the right combination for `"figure3"` or `"figure5"`.
 
-### Consumption Prediction Loss
-For each object, k, the negative log-likelihood that the object is/isn’t consumed:
-$$  L_{consumption,i} = \sum_k -\log p_{c_k}(c_k \mid x_t^{obs}, e_{char,i}, e_{mental,i}) $$
+```
+past trajectories (N_past episodes, 1 state+action pair each)
+        │
+        ▼
+  CharacterNet  (Figure3CharacterNet | Figure5CharacterNet)
+        │  per-episode embedding, summed over N_past → e_char
+        ▼
+  PredictionNet (Figure3PredictionNet | Figure5PredictionNet)
+        │  spatializes e_char, concatenates with the query state
+        ▼
+  action logits  [, consumption logits, successor-representation logits]
+```
 
-### Successor Representation Loss
-The loss here is then the cross-entropy between the predicted successor representation and the empirical one:
-$$ L_{SR,i} = \sum \tau \sum_s -{SR} \tau(s) \log \hat{SR} \tau(s) $$ 
-where $ {SR} \tau(s) = (1/Z) \sum_(\Delta t=0)^{T-t} \tau^{\Delta t} I(s_{t + \Delta t} = s) $
+- **`Figure3CharacterNet`**: a 1-layer conv (8 feature maps) over the spatialized state+action, followed by an LSTM (hidden size 128) and a fully-connected layer to a character embedding (default 2-D, for direct visualization). Per-episode embeddings are summed over past episodes.
+- **`Figure5CharacterNet`**: an initial conv + batch-norm to 32 channels, then **3** `ResidualBlock`s, average pooling, and a fully-connected layer to an embedding (default 8-D), also summed over past episodes. The class docstring cites the paper's 5-layer ResNet, but an in-code comment notes the block count was "reduced for simple 3x3 maze".
+- **`Figure3PredictionNet`**: concatenates the spatialized character embedding with the query state, runs a 2-layer conv (32 channels), average-pools, and outputs 5 action logits (softmax).
+- **`Figure5PredictionNet`**: a shared torso (conv + batch-norm + 3 `ResidualBlock`s, same reduction as above) feeding three heads — action (conv → avgpool → FC → softmax over 5 actions), object consumption (conv → avgpool → FC → sigmoid over `n_objects`), and successor representation (two convs → 3 output channels, one per discount factor γ ∈ {0.5, 0.9, 0.99}, softmaxed over spatial position).
+- **`ToMnet`** wraps a character net, an optional mental-state net, and a prediction net. `forward()` returns a dict of predictions plus the character (and mental, if enabled) embedding; `compute_loss()` sums whichever of action cross-entropy, consumption binary cross-entropy, and SR cross-entropy losses have matching targets in the batch.
+- The generic `CharacterNet` and `PredictionNet` classes, plus `MentalStateNet`, are implemented but unused by `create_tomnet` — both `figure3` and `figure5` set `use_mental_state=False`.
+- For all three character nets (`CharacterNet`, `Figure3CharacterNet`, `Figure5CharacterNet`), `N_past=0` returns a zero embedding. Two of them also define an unused `no_past_embedding` learnable parameter whose docstring claims it replaces the zero embedding — the forward pass does not reference it.
 
-
-## Implementation Components
-
-### Environment (environment.py, Gridworld Environment)
-- Grid size: 11×11
-- Walls: Randomly sampled between endpoints (can be diagonal)
-  - Sections 3.1-3.2: 0-4 walls
-  - Sections 3.3-3.5: 0-6 walls
-- Objects: 4 consumable terminal objects
-- Episode termination:
-  - Object consumption
-  - Timeout: 31 steps (Sections 3.1-3.2) or 51 steps (Sections 3.3-3.5)
-
-
-### Agents (agents.py)
-**RandomAgent Class**:
-- **Policy Generation**: Samples fixed policy $\pi_i ~ Dirichlet(\alpha, \alpha, \alpha, \alpha, \alpha)$ at initialization
-- **Behavior**: Uses fixed policy throughout all episodes (no learning)
-- **Species Parameter**: $\alpha$ controls stochasticity ($\alpha=0.01$: near-deterministic, $\alpha=3.0$: highly stochastic)
-- **Dominant Action**: Tracks $\argmax(\pi_i)$ for embedding visualization coloring
-- No reward function
-- Policy sampled from Dirichlet(α)
-
-**GoalDirectedAgent Class** (for completeness, not used in Figure 3):
-- **Planning**: Uses value iteration to compute optimal policy for each environment
-- **Rewards**: Sampled from Dirichlet distribution over 4 object types
-- **Policy**: Softmax over Q-values with temperature parameter
-- Rewards: ri ~ Dirichlet(α=0.01) for object preferences
-- Move penalty: -0.01
-- Wall collision penalty: 0.05
-- Greedy variant: move penalty 0.5
-- Planning: Value iteration with γ = 1
-
-**Deep RL Agents (Sections 3.3-3.5)**:
-- Additional subgoal object (non-terminal)
-- Move penalty: -0.005
-- Wall collision penalty: 0.05
-- Episode end without object penalty: -1
-- Subgoal reward: +1
-- Preferred object reward: +1
-- Other objects: 0 reward (but terminal)
-
-## Directory Structure
-
-The implementation uses experiment-specific directories for better organization and extensibility:
+## Files
 
 ```
 ToMnet_impl/
-├── scripts/                       # Core implementation
-│   ├── tomnet.py                 # ToMnet architecture
-│   ├── environment.py            # GridWorld environment
-│   ├── agents.py                 # RandomAgent and GoalDirectedAgent
-│   ├── data_generation.py        # Trajectory collection and batch formation
-│   ├── train.py                  # Advanced training system
-│   ├── evaluate.py               # Cross-species evaluation and metrics
-│   └── visualize_figure3.py      # Publication-quality visualization
-├── shell/                        # Automation scripts
-│   ├── run_exp3.sh              # Complete workflow automation
-│   └── visualize_figure3.sh     # Visualization pipeline
-├── notebook/                     # Interactive analysis
-│   └── visualize_figure3.ipynb  # Detailed figure reproduction
-├── data/{experiment_type}/       # Training data organized by experiment
-│   ├── alpha_0.01.pkl
-│   ├── alpha_0.03.pkl
-│   └── ...
-├── models/{experiment_type}/     # Trained models organized by experiment
-│   ├── 0.01_best.pth
-│   ├── 0.03_best.pth
-│   └── mixed_best.pth
-├── result/{experiment_type}/     # Results organized by experiment
-│   ├── training_results.json
-│   ├── evaluation_results.pkl
-│   ├── model_paths.json
-│   ├── data_paths.json
-│   └── run_cross_species_evaluation.sh
-├── plots/{experiment_type}/      # Generated plots organized by experiment
-│   ├── figure3a_action_likelihood.png
-│   ├── figure3b_character_embeddings.png
-│   ├── figure3c_cross_species_kl.png
-│   └── figure3d_mixed_species.png
-└── log/                         # Execution logs with timestamps
-    ├── training/{timestamp}/
-    ├── evaluation/{timestamp}/
-    └── visualization/{timestamp}/
+├── scripts/
+│   ├── environment.py            # GridWorld
+│   ├── agents.py                 # RandomAgent, GoalDirectedAgent
+│   ├── data_generation.py        # DataGenerator, ToMnetDataset, collate_fn
+│   ├── tomnet.py                 # network modules + create_tomnet factory
+│   ├── tomnet_backup.py          # byte-identical snapshot of tomnet.py
+│   ├── train.py                  # Figure 3 training (per-alpha + mixed-species)
+│   ├── train_enhanced.py         # Figure 3 training variant with larger datasets
+│   ├── train_figure5.py          # Figure 5 training (action + consumption + SR)
+│   ├── generate_figure5_data.py  # standalone Figure 5 data-generation CLI
+│   ├── evaluate.py               # Bayes-optimal baseline, KL/JS metrics, cross-species eval (Figure 3)
+│   ├── evaluate_figure5.py       # Figure 5 evaluation
+│   ├── visualize_figure3.py      # Figure 3a/3b/3c plots
+│   ├── visualize_figure5.py      # Figure 5b/5d plots
+│   ├── visualize_env_random.py   # standalone GridWorld rendering smoke test
+│   ├── visualize_env_goal.py     # standalone GridWorld + GoalDirectedAgent smoke test
+│   └── debug/debug_embeddings.py # embedding-inspection script (stale paths, see Notes)
+├── shell/
+│   ├── run_exp3.sh, run_exp3_parallel.sh  # train/evaluate/visualize Figure 3 end to end
+│   ├── run_exp5.sh                        # same, for Figure 5
+│   ├── train_enhanced.sh                  # wraps train_enhanced.py
+│   ├── visualize_figure3.sh, visualize_figure5.sh
+│   ├── show_structure.sh                  # prints/logs the directory tree
+│   └── debug/test_likelihood_exp3.sh
+├── notebook/
+│   └── visualize_figure3.ipynb   # interactive companion to visualize_figure3.py
+└── README.md
 ```
 
-## Publication-Quality Visualization (scripts/visualize_figure3.py)
+## Running
 
-### Figure 3 Target Results
+Figure 3 (random agents):
 
-#### Experimental Conditions
-1. **Near-deterministic agents**: $\alpha = 0.01$ (concentrated policies)
-2. **Stochastic agents**: $\alpha = 3.0$ (uniform-like policies) 
-3. **Mixed species training**: Agents from both $\alpha$ values in same dataset
-4. **Full alpha range**: $\alpha \in \{0.01, 0.03, 0.1, 0.3, 1.0, 3.0\}$ for comprehensive evaluation
+```bash
+python scripts/train.py --experiment figure3 --n_agents 100 --n_episodes_per_agent 100 \
+    --alpha_values 0.01 0.03 0.1 0.3 1.0 3.0 [--mixed_training]
+python scripts/visualize_figure3.py --results_path result/figure3/cross_species_results.pkl --save_plots
+```
 
-#### Generated Figures
-1. **Figure 3a**: Action likelihood vs training alpha
-   - X-axis: Training $\alpha$ values $\{0.01, 0.03, 0.1, 0.3, 1.0, 3.0\}$
-   - Y-axis: Action likelihood
-   - Multiple lines for $N_{past} = 0, 1, 5$ showing learning progression
-   - Includes Bayes-optimal baseline comparison
-   - Professional styling with error bars and annotations
+or via the wrapper script: `bash shell/run_exp3.sh all` (`bash shell/run_exp3.sh help` lists sub-commands; `run_exp3_parallel.sh` trains the alpha sweep concurrently instead of sequentially).
 
-2. **Figure 3b**: 2D character embedding scatter plot
-   - X-axis: Normalized $e_1$, Y-axis: Normalized $e_2$
-   - Colored by dominant action with intensity based on frequency
-   - Automatic PCA reduction if embeddings > 2D
-   - Shows clustering patterns for $N_{past} = 10$
+Figure 5 (goal-directed agents):
 
-3. **Figure 3c**: Cross-species KL divergence matrix
-   - Training species vs test species performance comparison
-   - Multiple lines showing how models trained on different alphas generalize
-   - Within-species vs between-species performance differences
-   - Statistical significance indicators
+```bash
+python scripts/generate_figure5_data.py --n_agents 100 --n_episodes_per_agent 100
+python scripts/train_figure5.py --n_agents 100 --n_episodes_per_agent 100 --n_epochs 100
+python scripts/visualize_figure5.py --results_path result/figure5/figure5_results.pkl --save_plots
+```
 
-4. **Figure 3d**: Mixed species training performance
-   - Comparison of single-species vs mixed-species training
-   - Shows improved generalization of mixed training
-   - Performance across different test alpha values
+or `bash shell/run_exp5.sh all`.
 
-### Data Generation Pipeline (data_generation.py)
-**Trajectory Collection**:
-1. **Agent Sampling**: Creates agents with specified $\alpha$ parameters
-2. **Environment Sampling**: Generates random 11×11 gridworlds for each episode
-3. **Trajectory Recording**: Records (state, action, reward) tuples until episode termination
-4. **Data Splitting**: Separates past episodes (for character inference) from query episodes (for prediction)
-5. **Batch Formation**: Creates batches with variable $N_{past}$ for meta-learning
+`train.py` defaults: `--batch_size 64`, `--learning_rate 1e-3`, `--n_epochs 100`; device is auto-selected (`mps` on macOS if available, `cuda:3` on Linux with CUDA, otherwise `cpu`). `train_figure5.py` defaults: `--batch_size 512`, `--learning_rate 1e-1`, `--device cuda:3`. Per-experiment settings — character embedding dimension (10 for Figure 3, 8 for Figure 5), dropout rate (0.3 for both), and early-stopping patience (30 epochs for Figure 3, 10 for Figure 5) — are fixed in `ExperimentConfig` / `Figure5ExperimentConfig` inside `train.py` / `train_figure5.py` rather than exposed as CLI flags.
 
-### Evaluation Metrics
-1. **Action Likelihood**: $Likelihood = \hat{\pi}(a_t^{obs} \mid x_t^{obs}, e_{char})$
-2. **KL Divergence**: $D_{KL}(\pi || \hat{\pi}) = \sum_a \pi(a) \log(\pi(a) / \hat{\pi}(a))$
-   - where $\pi$ is the true policy and $\hat{\pi}$ is the predicted policy
-3. **Jensen-Shannon Divergence**: Alternative symmetric distance metric
-4. **Character Embedding Analysis**: 2D visualization and clustering metrics
+## Outputs
 
-# ToMnet Architecture Details for Figure 5 (from Appendix A.3.2)
+Scripts write into directories created at runtime; none of these are checked into the repository:
 
-**Data Configuration**:
-- Character embedding from many past episodes: Npast ~ U{0, 10}
-- **Key difference**: Only single observation-action pair (snapshot) from each past episode
-- No full trajectories - just one time point per past episode
+- `data/<experiment>/*.pkl` — generated trajectory datasets.
+- `models/<experiment>/*.pth` — trained checkpoints (e.g. `0.01_best.pth`, `mixed_best.pth`).
+- `result/<experiment>/` — `training_results.json`, evaluation pickles (`cross_species_results.pkl`, `figure5_results.pkl`), and, for Figure 3, an auto-generated `run_cross_species_evaluation.sh`.
+- `plots/<experiment>/` — PNGs: `figure3a_action_likelihood.png`, `figure3b_character_embeddings.png`, `figure3c_cross_species_kl.png`; `figure5b_n_past_vs_likelihood.png`, `figure5d_embedding_space.png`.
+- `log/...` — timestamped logs written by the shell wrapper scripts.
 
-**Character Net Architecture**:
-- Input: Single state/action pair from each past trajectory τij
-- Processing per pair:
-  1. Spatialize and concatenate (same as Experiment 1)
-  2. 5-layer ResNet with 32 channels, ReLU, batch-norm
-  3. Average pooling
-  4. Fully-connected layer to echar,ij ∈ R²
-- Aggregation: echar,i = ΣNpast(j=1) echar,ij
+## Notes and Limitations
 
-**Mental Net**: None
-
-**Prediction Net**: 
-In this and subsequent experiments, we make three predictions: next-step action, which objects are consumed by the end of the episode, and successor representations. We use a shared torso for these predictions, from which separate heads branch off.
-
-- Shared Torso: 
-    - Spatialize echar,i and concatenate with the query state.
-    - Pass through 5-layer ResNet with 32 channels, ReLU nonlinearities, and batch-norm
-
-- Action Prediction Head:
-    - From the torso output: 1-layer convnet with 32 channels and ReLUs Average pooling
-    - Fully-connected layer to 5-dim logits
-    - Softmax to get predicted policy π̂
-
-- Consumption Prediction Head:
-    - From the torso output: 1-layer convnet with 32 channels and ReLUs
-    - Average pooling
-    - Fully-connected layer to 4-dims
-    - Sigmoid to get Bernoulli probabilities that each of the four objects will be consumed by the end of the episode (ĉ)
-
-- Successor Representation Prediction Head:
-    - From the torso output: 1-layer convnet with 32 channels and ReLUs
-    - 1-layer convnet with 3 channels
-    - Softmax over each channel independently
-    - Gives predicted normalized SRs for three discount factors: γ = 0.5, 0.9, 0.99
-
-### Goal-Directed Agent Environment (Section 3.2)
-
-- Gridworld: 11×11 size with randomly-sampled walls (0-4 walls)
-- Objects: 4 different consumable objects placed in random locations
-- Agent rewards: Each agent has unique reward function ri,a ∈ (0,1) for consuming object a
-    - Reward vectors sampled from Dirichlet distribution with α = 0.01
-    - Move penalty: -0.01 per step
-    - Wall collision penalty: 0.05
-
-
-- Agent behavior: Plans using value iteration with discount factor γ = 1
-- Episode termination: When agent consumes an object or after 31 steps
-
-### Figure 5 Specific Setup
-
-- Partial observations: ToMnet sees only single observation-action pairs from past episodes
-- Past episodes: Npast ~ U{0, 10} (uniformly sampled between 0 and 10)
-Training data: 1000 agents per experiment, each generating behavioral traces on random POMDPs
-- Task: Predict agent's initial action in a new POMDP based on past observations
-
-### Figure 5(b) - Action Prediction vs Npast
-
-- X-axis: Number of past observations (Npast from 0 to 10)
-- Y-axis: Average posterior probability assigned to the true action π̂(at|·)
-- Metric: Shows how prediction accuracy improves with more past observations
-- Baseline: Even at Npast=0, accuracy > chance due to shared policy structure
-
-### Figure 5(d) - Character Embeddings
-
-- Embedding dimension: 2D character embedding space (echar ∈ R²)
-- Visualization: 100 different test agents plotted
-- Color coding: Agents colored by ground-truth preferred object (4 colors)
-- Saturation: Increases with Npast (grey dots at center = Npast=0)
-- Architecture: Only character net used (no mental state net)
-
-### Key Implementation Notes
-
-- Character net aggregates past trajectories: echar,i = ΣNpast(j=1) echar,ij
-- For partial trajectories, each past observation is just a single state-action pair
-- ToMnet learns Bayes-optimal inference specialized to Dirichlet(α=0.01) prior
-- Expected to see clustering in embedding space by preferred object
+- The Mental State Net is implemented but not wired into either experiment; both currently run character-only inference.
+- `Figure5CharacterNet` and the `Figure5PredictionNet` torso use 3 residual blocks rather than the paper's 5, per an in-code comment about the smaller default grid.
+- Figure 3d ("mixed species training") has a plotting function defined but commented out in `visualize_figure3.py`; only 3a, 3b, and 3c are currently generated by that script.
+- The default environment (3×3 grid, 2 objects, up to 2 walls) is much smaller than the paper's 11×11/4-object setup. `create_goal_directed_agents` still samples reward vectors over 4 components regardless of the environment's actual `N_OBJECTS`.
+- `scripts/debug/debug_embeddings.py` hardcodes `state_dim = 11 * 11 * 6` and a `models/figure3_0.01_best.pth` path, neither of which matches the current default 3×3 environment or the `models/<experiment>/` output layout.
+- `tomnet_backup.py` is a byte-for-byte copy of `tomnet.py` and is not imported by any other script.
+- No dependency manifest (`requirements.txt`, etc.) is present in this directory; scripts import `torch`, `numpy`, `scipy`, `scikit-learn`, `matplotlib`, `seaborn`, and `tqdm` directly.

@@ -1,0 +1,684 @@
+{
+  "config": {
+    "attributes": {
+      "achiever_configs": {
+        "astar": {
+          "action_space": 7,
+          "debug": false,
+          "observability": "full"
+        },
+        "lv0va": {
+          "action_space": 7,
+          "conflict_penalty": 10.0,
+          "consumption_penalty": 1.0,
+          "gamma": 0.99,
+          "movement_cost": 0.1,
+          "observability": "full",
+          "q_value_clip": 100,
+          "temperature": 0.05,
+          "wall_penalty": 10.0
+        },
+        "lv1va": {
+          "action_space": 7,
+          "conflict_penalty": 10.0,
+          "consumption_penalty": 1.0,
+          "gamma": 0.99,
+          "movement_cost": 0.1,
+          "observability": "full",
+          "q_value_clip": 100,
+          "temperature": 0.05,
+          "wall_penalty": 10.0
+        },
+        "random": {
+          "action_space": 7,
+          "exploration_bias": 0.1,
+          "movement_prob": 0.8
+        },
+        "value": {
+          "action_space": 7,
+          "consumption_penalty": 1.0,
+          "gamma": 0.99,
+          "movement_cost": 0.1,
+          "observability": "full",
+          "temperature": 0.1,
+          "wall_penalty": 10.0
+        },
+        "value_deterministic": {
+          "action_space": 7,
+          "consumption_penalty": 1.0,
+          "gamma": 0.99,
+          "movement_cost": 0.1,
+          "observability": "full",
+          "temperature": 0.0,
+          "wall_penalty": 10.0
+        },
+        "value_stochastic": {
+          "action_space": 7,
+          "consumption_penalty": 1.0,
+          "gamma": 0.99,
+          "movement_cost": 0.1,
+          "observability": "full",
+          "temperature": 0.5,
+          "wall_penalty": 10.0
+        }
+      },
+      "achiever_type_map": {
+        "astar": 2,
+        "lv0va": 0,
+        "lv1va": 1,
+        "random": 3,
+        "value": 4
+      },
+      "achiever_types": {
+        "lv0va": 12500,
+        "lv1va": 12500
+      },
+      "blocker_configs": {
+        "goal_direct": {
+          "action_space": 6,
+          "gamma": 0.99,
+          "movement_cost": 0.05,
+          "observability": "full",
+          "temperature": 0.1,
+          "wall_penalty": 10.0
+        },
+        "lv0vb": {
+          "action_space": 6,
+          "conflict_penalty": 0.0,
+          "gamma": 0.99,
+          "movement_cost": 0.1,
+          "observability": "full",
+          "q_value_clip": 100,
+          "temperature": 0.05,
+          "wall_penalty": 10.0
+        },
+        "lv1vb": {
+          "action_space": 6,
+          "conflict_penalty": 0.0,
+          "gamma": 0.99,
+          "movement_cost": 0.1,
+          "observability": "full",
+          "q_value_clip": 100,
+          "temperature": 0.05,
+          "wall_penalty": 10.0
+        },
+        "random": {
+          "action_space": 6,
+          "exploration_bias": 0.1,
+          "movement_prob": 0.8
+        },
+        "randomly_selected": {
+          "action_space": 6,
+          "gamma": 0.99,
+          "movement_cost": 0.05,
+          "observability": "full",
+          "stay_probability": 0.1,
+          "temperature": 0.1,
+          "wall_penalty": 10.0
+        },
+        "rule_based": {
+          "action_space": 6,
+          "gamma": 0.99,
+          "movement_cost": 0.05,
+          "observability": "full",
+          "stay_probability": 0.1,
+          "temperature": 0.1,
+          "wall_penalty": 10.0
+        }
+      },
+      "blocker_type_map": {
+        "goal_direct": 5,
+        "lv0vb": 0,
+        "lv1vb": 1,
+        "random": 4,
+        "randomly_selected": 2,
+        "rule_based": 3
+      },
+      "blocker_types": {
+        "lv0vb": 12500,
+        "lv1vb": 12500
+      },
+      "cost_settings": {
+        "default_costs": [
+          0.1,
+          0.1,
+          0.1,
+          0.1
+        ],
+        "max_cost": 0.7,
+        "min_cost": 0.05,
+        "total_cost_sum": 1.0,
+        "use_random_costs": true
+      },
+      "data_config": {
+        "chunk_size": 5000,
+        "max_n_past": 10,
+        "maze_depth": 10,
+        "maze_height": 9,
+        "maze_width": 9,
+        "n_past_max": 10,
+        "n_past_min": 0,
+        "rank_threshold": 4,
+        "time_step": 10
+      },
+      "debug": false,
+      "debug_mode": false,
+      "env_name": "MiniGrid-AchieverBlocker-{size}-v1",
+      "env_size": "9x9",
+      "env_variants": {
+        "11x11": {
+          "grid_size": 11,
+          "max_steps": 100
+        },
+        "3x3": {
+          "grid_size": 3,
+          "max_steps": 100
+        },
+        "5x5": {
+          "grid_size": 5,
+          "max_steps": 100
+        },
+        "9x9": {
+          "grid_size": 9,
+          "max_steps": 100
+        }
+      },
+      "episodes": 1,
+      "evaluation_config": {
+        "batch_size": 32,
+        "device": "auto",
+        "n_samples": 1000,
+        "save_predictions": true,
+        "use_percentage": 1.0
+      },
+      "experiment_name": "exp7",
+      "experiment_no": 7,
+      "gif_output": null,
+      "goal_reward_settings": {
+        "default_rewards": [
+          1.0,
+          0.4,
+          0.1,
+          0.2
+        ],
+        "max_reward": 1.0,
+        "min_reward": 0.1,
+        "total_reward_sum": 2,
+        "use_random_rewards": true
+      },
+      "height": 9,
+      "log_actions": false,
+      "log_debug": false,
+      "log_dir": "log/exp7",
+      "log_rewards": false,
+      "max_steps": 100,
+      "model_config": {
+        "achiever_action_space": 7,
+        "attention_heads": 8,
+        "attention_hidden": 256,
+        "blocker_action_space": 6,
+        "channels_in": 10,
+        "env_height": 9,
+        "env_width": 9,
+        "fc_layer_sizes": [
+          64,
+          32
+        ],
+        "goal_space": 4,
+        "hidden_size_lstm": 64,
+        "kernel_size": 3,
+        "n_echar": 128,
+        "n_ement": 128,
+        "n_eopp2": 128,
+        "out_channels": 64,
+        "padding": 1,
+        "residual_blocks": 5,
+        "second_belief_hidden": 64,
+        "stride": 1,
+        "use_mentalnet": true,
+        "use_second_belief": true
+      },
+      "model_dir": "results/exp7",
+      "movement_prob": 0.8,
+      "n_games_per_type": 12500,
+      "n_past_evaluation": {
+        "n_past_infer": 10,
+        "n_past_max": 10,
+        "n_past_min": 0
+      },
+      "observability": "full",
+      "output_dir": "results/exp7/",
+      "pause": 0.1,
+      "plot_dir": "results/exp7/plots",
+      "render": true,
+      "result_dir": "results/exp7",
+      "save_dir": "data",
+      "seed": 42,
+      "sr_settings": {
+        "gammas": [
+          0.5,
+          0.9,
+          0.99
+        ],
+        "grid_size": 9
+      },
+      "test_data_dir": null,
+      "training_config": {
+        "batch_size": 512,
+        "device": "cuda:3",
+        "device_ids": [
+          2,
+          3
+        ],
+        "epochs": 300,
+        "gradient_accumulation_steps": 2,
+        "lr": 0.0001,
+        "num_workers": 2,
+        "optimizer": "adam",
+        "pin_memory": true,
+        "training_proportion": 0.9,
+        "use_amp": true,
+        "use_parallel": true,
+        "weight_decay": 0.001
+      },
+      "training_process_config": {
+        "action_weight": 1,
+        "agent_weight": 0,
+        "consumption_weight": 1,
+        "early_stopping_min_delta": 0.001,
+        "early_stopping_patience": 100,
+        "goal_weight": 1,
+        "max_grad_norm": 1.0,
+        "sr_weight": 1,
+        "type_weight": 0
+      },
+      "width": 9
+    },
+    "getters": {
+      "get_action_config": {
+        "achiever_action_names": [
+          "Up",
+          "Right",
+          "Down",
+          "Left",
+          "Stay",
+          "Pickup",
+          "Toggle"
+        ],
+        "achiever_num_actions": 7,
+        "blocker_action_names": [
+          "Up",
+          "Right",
+          "Down",
+          "Left",
+          "Stay",
+          "Broken"
+        ],
+        "blocker_num_actions": 6
+      },
+      "get_agent_config": {
+        "achiever_types": {
+          "lv0va": 12500,
+          "lv1va": 12500
+        },
+        "blocker_types": {
+          "lv0vb": 12500,
+          "lv1vb": 12500
+        },
+        "observability": "full"
+      },
+      "get_costs": {
+        "blue": 0.21856424275892994,
+        "green": 0.35719867366183244,
+        "red": 0.3742727734062613,
+        "yellow": 0.049964310172976416
+      },
+      "get_data_config": {
+        "chunk_size": 5000,
+        "max_n_past": 10,
+        "maze_depth": 10,
+        "maze_height": 9,
+        "maze_width": 9,
+        "n_past_max": 10,
+        "n_past_min": 0,
+        "rank_threshold": 4,
+        "time_step": 10
+      },
+      "get_env_config": {
+        "max_steps": 100,
+        "name": "MiniGrid-AchieverBlocker-9x9-v1",
+        "seed": 42,
+        "size": "9x9"
+      },
+      "get_env_name": "MiniGrid-AchieverBlocker-9x9-v1",
+      "get_evaluation_config": {
+        "batch_size": 32,
+        "device": "auto",
+        "n_samples": 1000,
+        "save_predictions": true,
+        "use_percentage": 1.0
+      },
+      "get_experiment_config": {
+        "log_actions": false,
+        "log_debug": false,
+        "log_rewards": false,
+        "name": "exp7",
+        "output_dir": "results/exp7/"
+      },
+      "get_goal_config": {
+        "goal_colors": [
+          "red",
+          "green",
+          "blue",
+          "yellow"
+        ],
+        "goal_names": [
+          "Goal A (Red)",
+          "Goal B (Green)",
+          "Goal C (Blue)",
+          "Goal D (Yellow)"
+        ],
+        "num_goals": 4
+      },
+      "get_goal_rewards": [
+        0.3745401188473625,
+        1.0,
+        0.7319939418114051,
+        0.5986584841970366
+      ],
+      "get_history_config": {
+        "history_files": [
+          "training_history.json",
+          "history.json",
+          "train_history.json"
+        ]
+      },
+      "get_model_config": {
+        "achiever_action_space": 7,
+        "attention_heads": 8,
+        "attention_hidden": 256,
+        "blocker_action_space": 6,
+        "channels_in": 10,
+        "env_height": 9,
+        "env_width": 9,
+        "fc_layer_sizes": [
+          64,
+          32
+        ],
+        "goal_space": 4,
+        "hidden_size_lstm": 64,
+        "kernel_size": 3,
+        "n_echar": 128,
+        "n_ement": 128,
+        "n_eopp2": 128,
+        "out_channels": 64,
+        "padding": 1,
+        "residual_blocks": 5,
+        "second_belief_hidden": 64,
+        "stride": 1,
+        "use_mentalnet": true,
+        "use_second_belief": true
+      },
+      "get_model_kwargs": {
+        "action_space": 7,
+        "attention_heads": 8,
+        "attention_hidden": 256,
+        "batch": 512,
+        "channels_in": 10,
+        "env_height": 9,
+        "env_width": 9,
+        "goal_space": 4,
+        "hidden_size_lstm": 64,
+        "max_n_past": 10,
+        "n_echar": 128,
+        "n_ement": 128,
+        "n_eopp2": 128,
+        "out_channels": 64,
+        "residual_blocks": 5,
+        "second_belief_hidden": 64,
+        "time_step": 10,
+        "use_mentalnet": true,
+        "use_n_past": true,
+        "use_second_belief": true
+      },
+      "get_n_past_config": {
+        "n_past_results_file": "n_past_evaluation_results.json"
+      },
+      "get_n_past_evaluation_config": {
+        "n_past_infer": 10,
+        "n_past_max": 10,
+        "n_past_min": 0
+      },
+      "get_prediction_config": {
+        "prediction_files": [
+          "predictions.pkl",
+          "test_predictions.pkl",
+          "eval_predictions.pkl"
+        ]
+      },
+      "get_test_data_proportion": 0.09999999999999998,
+      "get_training_config": {
+        "batch_size": 512,
+        "device": "cuda:3",
+        "device_ids": [
+          2,
+          3
+        ],
+        "epochs": 300,
+        "gradient_accumulation_steps": 2,
+        "lr": 0.0001,
+        "num_workers": 2,
+        "optimizer": "adam",
+        "pin_memory": true,
+        "training_proportion": 0.9,
+        "use_amp": true,
+        "use_parallel": true,
+        "weight_decay": 0.001
+      },
+      "get_training_kwargs": {
+        "batch_size": 512,
+        "device": "cuda:3",
+        "epochs": 300,
+        "lr": 0.0001,
+        "max_n_past": 10,
+        "min_delta": 0.001,
+        "patience": 100,
+        "time_step": 10,
+        "training_proportion": 0.9
+      },
+      "get_training_process_config": {
+        "action_weight": 1,
+        "agent_weight": 0,
+        "consumption_weight": 1,
+        "early_stopping_min_delta": 0.001,
+        "early_stopping_patience": 100,
+        "goal_weight": 1,
+        "max_grad_norm": 1.0,
+        "sr_weight": 1,
+        "type_weight": 0
+      },
+      "get_visualization_config": {
+        "agent_colors": [
+          "blue",
+          "orange"
+        ],
+        "agent_names": [
+          "Achiever",
+          "Blocker"
+        ],
+        "debug": false,
+        "embedding_plots": {
+          "alpha": 0.6,
+          "combined_figsize": [
+            20,
+            12
+          ],
+          "marker_size": 50,
+          "pca_figsize": [
+            20,
+            6
+          ],
+          "tsne_figsize": [
+            20,
+            6
+          ]
+        },
+        "episodes": 1,
+        "gif_output": null,
+        "goal_colors": [
+          "red",
+          "green",
+          "blue",
+          "yellow"
+        ],
+        "goal_letters": [
+          "A",
+          "B",
+          "C",
+          "D"
+        ],
+        "goal_names": [
+          "Red",
+          "Green",
+          "Blue",
+          "Yellow"
+        ],
+        "pause": 0.1,
+        "render": true
+      },
+      "is_single_agent_mode": false
+    }
+  },
+  "experiment": "exp7",
+  "model": {
+    "constructor_params": [
+      "action_space",
+      "attention_heads",
+      "attention_hidden",
+      "batch",
+      "channels_in",
+      "env_height",
+      "env_width",
+      "goal_space",
+      "hidden_size_lstm",
+      "max_n_past",
+      "n_echar",
+      "n_ement",
+      "n_eopp2",
+      "out_channels",
+      "residual_blocks",
+      "second_belief_hidden",
+      "time_step",
+      "use_mentalnet",
+      "use_n_past",
+      "use_second_belief"
+    ],
+    "forward": {
+      "outputs": {
+        "action_logits": {
+          "shape": [
+            2,
+            7
+          ],
+          "sum": 0.4994
+        },
+        "agent_logits": {
+          "shape": [
+            2,
+            2
+          ],
+          "sum": -0.3411
+        },
+        "character_embedding": {
+          "shape": [
+            2,
+            128
+          ],
+          "sum": 2.6486
+        },
+        "consumption_logits": {
+          "shape": [
+            2,
+            8
+          ],
+          "sum": -0.6322
+        },
+        "goal_logits": {
+          "shape": [
+            2,
+            4
+          ],
+          "sum": -0.444
+        },
+        "mental_state": {
+          "shape": [
+            2,
+            128,
+            9,
+            9
+          ],
+          "sum": -11.8683
+        },
+        "second_belief": {
+          "shape": [
+            2,
+            128
+          ],
+          "sum": -0.2471
+        },
+        "sr_pred": {
+          "shape": [
+            2,
+            3,
+            9,
+            9
+          ],
+          "sum": 6.0
+        },
+        "type_logits": {
+          "shape": [
+            2,
+            2
+          ],
+          "sum": 0.3628
+        }
+      },
+      "status": "ok"
+    },
+    "forward_params": [
+      "past_trajectories",
+      "self_states",
+      "self_actions",
+      "current_state",
+      "oppo_states",
+      "oppo_actions"
+    ],
+    "kwargs_dropped": [],
+    "kwargs_used": {
+      "action_space": 7,
+      "attention_heads": 8,
+      "attention_hidden": 256,
+      "batch": 2,
+      "channels_in": 10,
+      "env_height": 9,
+      "env_width": 9,
+      "goal_space": 4,
+      "hidden_size_lstm": 64,
+      "max_n_past": 2,
+      "n_echar": 128,
+      "n_ement": 128,
+      "n_eopp2": 128,
+      "out_channels": 64,
+      "residual_blocks": 5,
+      "second_belief_hidden": 64,
+      "time_step": 4,
+      "use_mentalnet": true,
+      "use_n_past": true,
+      "use_second_belief": true
+    },
+    "n_parameters": 5134746,
+    "n_tensors": 229,
+    "param_shapes_sha256": "81b2b5934c961b1f4c89420580c7f68d18ad6502416b914f68b5707c406755f9"
+  },
+  "seed": 12345
+}

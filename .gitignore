@@ -70,3 +70,6 @@ __pycache__/
 
 # 모든 하위 폴더의 .pytest_cache 폴더 무시
 .pytest_cache/
+
+# Claude Code / oh-my-claudecode 세션 상태 파일 무시
+.omc/

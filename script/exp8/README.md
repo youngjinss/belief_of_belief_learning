@@ -186,6 +186,27 @@ watching or replaying a single episode; they are not part of the training pipeli
 - No `shell/exp8/` wrapper script exists in this repository; run each stage with `python` directly
   as shown above.
 
+## Replaying a game as video
+
+`beliefrl/viz/replay.py` renders a saved trajectory as an animated GIF: the
+maze, the keys and doors, **both** agents moving, and each agent's successor
+representation as a heatmap beside the grid.
+
+```bash
+python -m beliefrl.viz.replay data/MiniGrid-AchieverBlocker-9x9-v2/lv0va_lv0vb/test/test0.txt -o replay.gif
+python -m beliefrl.viz.replay <file> --gamma 0.5 --fps 6 --max-steps 40
+```
+
+It reads the trajectory file directly rather than replaying through MiniGrid,
+which is what makes a two-player view possible. `simulate_trajectory.py` cannot:
+its renderer draws only the achiever, its frames barely change so PIL collapses
+101 captured frames to 9, it builds a `-v1` environment for `-v2` data, and its
+SR parser returns no timesteps. Only PIL and matplotlib are needed — no ffmpeg.
+
+Note that in the checked-in datasets the SR collapses to a single cell after
+about six steps, because the achiever stops moving. That is the degenerate
+policy described under *Known agent issues* below, not a rendering fault.
+
 ## Known agent issues
 
 Found by the golden-output harness in `tests/` (`pytest` from the repo root).

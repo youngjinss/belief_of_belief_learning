@@ -52,7 +52,7 @@ identical between them now lives in one place:
 | `beliefrl/config/` | `BaseConfig` — the 21 accessor methods every experiment shared |
 | `beliefrl/data/` | Trajectory generation helpers and dataset loading |
 | `beliefrl/train/` | Early stopping, epoch reporting, training-curve plots |
-| `beliefrl/viz/` | Successor-representation plotting |
+| `beliefrl/viz/` | SR heatmaps, shared embedding/metric plots, and two-player trajectory replay (`replay.py`) |
 | `beliefrl/env/` | Single bootstrap making `lib/env` importable |
 
 Each experiment's `Config` subclasses `BaseConfig` and its modules re-export the shared

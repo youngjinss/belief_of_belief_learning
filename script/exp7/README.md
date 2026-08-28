@@ -86,7 +86,7 @@ A single-agent (KeyDoor) log uses the shorter form `[x, y] : action : interactio
 - `value_agent.py`, `achievers.py`, `blockers.py` — agent policy implementations (value-based, level-k, rule-based, random, etc.) used to generate trajectories.
 - `visualize_sr.py` — successor-representation-specific plotting.
 - `utils.py` — shared helpers, including `spatialize_action` (turns a discrete action index into a spatial one-hot channel, used identically by `MentalNet` and `SecondBeliefNet`).
-- `unit_test/` — `analyze_interactions.py`, `find_long_trajectories.py` — data-inspection scripts, not a pytest suite.
+- Data-inspection scripts live in `script/tools/` (`analyze_interactions.py`, `find_long_trajectories.py`); they scan the whole `data/` tree and are shared by every experiment.
 
 ## Running
 

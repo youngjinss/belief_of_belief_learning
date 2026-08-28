@@ -94,7 +94,7 @@ def main():
     """Main function to run the trajectory length analysis."""
     # Get the base directory (project root)
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    base_dir = os.path.join(script_dir, "..", "..", "..")  # Go up to project root
+    base_dir = os.path.join(script_dir, "..", "..")  # Go up to project root
     base_dir = os.path.abspath(base_dir)
 
     print(f"Base directory: {base_dir}")

@@ -78,7 +78,7 @@ Recorded on first run, worth knowing before the refactor moves anything:
   (`81b2b593…`, 5,134,746 parameters, 229 tensors). Their `tomnet.py` files
   differ by 143 lines that have no effect on the model.
 - exp5 and exp6 differ by only 576 parameters (3,808,218 vs 3,808,794).
-- `script/exp8/simulate_game.py` does not import: it does
-  `from achievers import ...`, but exp8 has no `achievers.py`. It is excluded
-  from the harness because it is already dead code, scheduled for deletion in
-  Phase 1.
+- `script/exp8/simulate_game.py` used to fail to import: it did
+  `from achievers import ...`, but exp8 replaced exp7's flat `achievers.py`
+  with the `agents/achiever/` package. Phase 1 repointed those imports, so all
+  eleven exp8 modules now import cleanly.

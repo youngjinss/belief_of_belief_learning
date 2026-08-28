@@ -787,29 +787,6 @@ class DataGenerator:
             goal_tensor[self.LETTER_TO_IDX[goal_letter]] = 1.0
         return goal_tensor
 
-    def process_file_batch(self, file_batch: List[str]) -> List[Dict[str, Any]]:
-        """Process a batch of files in parallel worker"""
-        batch_samples = []
-
-        for filepath in file_batch:
-            # Parse trajectory file
-            parsed_data = self.parse_trajectory_file(filepath)
-
-            # Create achiever sample
-            achiever_sample = self.create_achiever_sample(parsed_data)
-            batch_samples.append(achiever_sample)
-
-            # Create blocker sample
-            blocker_sample = self.create_blocker_sample(parsed_data)
-            batch_samples.append(blocker_sample)
-
-            # Clean up after each file processing
-            del parsed_data, achiever_sample, blocker_sample
-
-        # Collect garbage once per batch instead of per file
-        gc.collect()
-        return batch_samples
-
     def process_directory(
         self, data_dir: str, n_processes: int = None, use_multiprocessing: bool = True
     ) -> List[Dict[str, Any]]:

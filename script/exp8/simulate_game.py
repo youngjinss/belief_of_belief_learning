@@ -28,9 +28,18 @@ import gym_minigrid
 
 print("Successfully imported gym_minigrid")
 
+# Add the repo root to the path so the agents package resolves, matching
+# generate.py. exp8 replaced exp7's flat achievers.py with agents/achiever/.
+sys.path.append(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+)
+
 # Import our modules
 from config import Config
-from achievers import AStarAgent, RandomAgent, Level0ValueAchiever, Level1ValueAchiever
+from script.exp8.agents.achiever.astar import AStarAgent
+from script.exp8.agents.achiever.random import RandomAgent
+from script.exp8.agents.achiever.level0value import Level0ValueAchiever
+from script.exp8.agents.achiever.level1value import Level1ValueAchiever
 
 # Set seed using Config default value
 config = Config()

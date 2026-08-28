@@ -54,11 +54,7 @@ script/exp3/
 ├── visualize_sr.py             # Standalone SR-heatmap plotting helpers (no CLI, see Notes)
 ├── simulate_game.py            # Live GUI rollout of one agent in the environment
 ├── simulate_trajectory.py      # Replays a saved trajectory file and renders/animates it
-├── tomnet.py                    # Model architecture (CharNet, MentalNet, PredNet, ToMnet, ToMnetLoss)
-└── backup/                      # Ad hoc scripts used during environment setup, not part of the pipeline
-    ├── simple_test.py            # Smoke-test that gym_minigrid imports and registers envs
-    ├── test_keydoor.py           # Manual KeyDoor env sanity check
-    └── visualize_gotodoor.py     # Older visualizer for a predecessor "go to door" task
+└── tomnet.py                    # Model architecture (CharNet, MentalNet, PredNet, ToMnet, ToMnetLoss)
 ```
 
 ## Running
@@ -173,6 +169,5 @@ All three expose `get_action(obs)` / `update_observation(obs)` / `reset()` and r
 
 - `visualize_sr.py` has no `argparse` CLI; its `if __name__ == "__main__":` block hardcodes an absolute path (`/Users/youngjins/.../belief_trading/data/exp3/test98.txt`, from a different, earlier repo) and calls `analyze_test_file()` on it directly. Its plotting functions (`parse_maze`, `parse_sr_data`, etc.) are usable as a library from other scripts, but the file is not runnable as-is without editing that path.
 - Most scripts gate CLI overrides behind `--config_override`: without that flag, flags other than each script's directly-read path arguments (e.g. `train.py --save_dir`/`--data_dir`, `evaluate.py --model_path`) are silently ignored and `config.py`'s defaults are used instead.
-- `backup/` contains standalone scripts from early environment setup/debugging (import smoke tests, a manual KeyDoor sanity check, and a visualizer for an earlier "go to door" task variant); they are not part of the generate → train → evaluate pipeline.
 - `training_config["device"]` defaults to `"cuda:3"` — adjust via `--device` (with `--config_override`) for machines without that GPU index.
 - The KeyDoor environment itself (`MiniGrid-KeyDoor-{size}-v0`) is defined outside this directory, under `lib/env/gym_minigrid/`.

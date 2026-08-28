@@ -18,7 +18,7 @@ class InteractionAnalyzer:
     def __init__(self, base_dir):
         self.base_dir = base_dir
         self.data_dir = os.path.join(
-            base_dir, "data", "MiniGrid-AchieverBlocker-9x9-v1"
+            base_dir, "data", "MiniGrid-AchieverBlocker-9x9-v2"
         )
 
         # Define interaction types (updated for new door color format)
@@ -312,6 +312,7 @@ class InteractionAnalyzer:
                 avg_length = sum(results["trajectory_lengths"]) / len(
                     results["trajectory_lengths"]
                 )
+                max_length = max(results["trajectory_lengths"])
                 print(f"Average trajectory length: {avg_length:.1f}")
                 print(
                     f"Min/Max trajectory length: {min(results['trajectory_lengths'])}/{max(results['trajectory_lengths'])}"
@@ -405,7 +406,9 @@ class InteractionAnalyzer:
                     avg_length = sum(results["trajectory_lengths"]) / len(
                         results["trajectory_lengths"]
                     )
+                    max_length = max(results["trajectory_lengths"])
                     f.write(f"Average trajectory length: {avg_length:.1f}\n")
+                    f.write(f"Max trajectory length: {max_length:.1f}\n")
 
                 # Detailed interaction counts
                 f.write("\nAchiever interactions:\n")
@@ -479,7 +482,7 @@ def main():
     """Main function to run the interaction analysis."""
     # Get the base directory (project root)
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    base_dir = os.path.join(script_dir, "..", "..", "..")  # Go up to project root
+    base_dir = os.path.join(script_dir, "..", "..")  # Go up to project root
     base_dir = os.path.abspath(base_dir)
 
     print(f"Base directory: {base_dir}")

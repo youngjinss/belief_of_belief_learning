@@ -1709,13 +1709,6 @@ def set_seed(seed: int = 42):
     return seed_worker
 
 
-def load_data_mmap(filepath):
-    """Load data using memory mapping for faster access"""
-    data = np.load(filepath, mmap_mode="r")
-    print(f"Loaded memory-mapped data from {filepath}")
-    return data
-
-
 def load_data_efficient(filepath):
     """Load data efficiently from pickle or chunk metadata"""
     # Load pickle file (now contains chunk metadata)
@@ -2156,59 +2149,3 @@ def load_chunked_data_for_training(
     return combined_data
 
 
-def validate_data_shape(data, data_type="data"):
-    """
-    Validate that data has the expected shape and structure
-
-    Args:
-        data: Data dictionary to validate
-        data_type: Type of data (for error messages)
-
-    Returns:
-        bool: True if data is valid
-    """
-    if not isinstance(data, dict):
-        raise ValueError(f"{data_type} must be a dictionary")
-
-    required_keys = [
-        "self_states",
-        "self_actions",
-        "goals",
-        "goal_ranks",
-        "agents",
-        "types",
-        "consumption_labels",
-        "sr_labels",
-    ]
-
-    for key in required_keys:
-        if key not in data:
-            raise ValueError(f"{data_type} missing required key: {key}")
-
-    total_samples = data["self_states"].shape[0]
-
-    print(f"{data_type} validation:")
-    print(f"  Total samples: {total_samples}")
-
-    if total_samples == 0:
-        raise ValueError(
-            f"No {data_type} found. Please generate {data_type} first using appropriate flags."
-        )
-
-    return True
-
-
-def log_data_shapes(data, data_type="data"):
-    """
-    Log the shapes of all data arrays for verification
-
-    Args:
-        data: Data dictionary
-        data_type: Type of data (for logging)
-    """
-    print(f"{data_type} shapes:")
-    for key, value in data.items():
-        if hasattr(value, "shape"):
-            print(f"  {key}: {value.shape}")
-        else:
-            print(f"  {key}: {type(value)}")

@@ -1269,32 +1269,6 @@ class RuleBasedAgent:
         if len(achiever_keys) > 0 and achiever_keys.sum() > 0:
             self.achiever_has_key = True
 
-    def _infer_final_target_door(self, obs):
-        """Infer final target door color from achiever's first key."""
-        achiever_keys = obs["achiever_keys"]
-        if len(achiever_keys) > 0 and achiever_keys.sum() > 0:
-            # Find first key collected (first non-zero index)
-            # Color mapping: 0=red, 1=green, 2=blue, 3=yellow
-            color_map = ["red", "green", "blue", "yellow"]
-            first_key_idx = None
-            for i, has_key in enumerate(achiever_keys):
-                if has_key > 0:
-                    first_key_idx = i
-                    break
-
-            if first_key_idx is not None and first_key_idx < len(color_map):
-                first_key_color = color_map[first_key_idx]
-                self.final_target_color = first_key_color
-                door_pos = self._find_door_position_from_obs(first_key_color, obs)
-                self.final_target_pos = tuple(door_pos) if door_pos else None
-
-                # Plan path to final target door
-                if self.final_target_pos:
-                    self.path_to_door = self._find_path_to_door(
-                        self.final_target_pos, obs
-                    )
-                    self.current_path_index = 0
-
     def _find_door_position_from_obs(self, color, obs):
         """Find position of door with given color from observations."""
         # Use door positions from observations

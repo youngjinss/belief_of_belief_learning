@@ -90,7 +90,7 @@ The same `ToMnet` / `ToMnetLoss` classes and the same `train_tomnet()` loop run 
 | `simulate_game.py` / `simulate_trajectory.py` | CLI tools to run and render (GIF/step-through) a single episode. |
 | `utils.py` | Shared helpers consolidated from `train.py`/`evaluate.py`/`visualize.py` — dataset loading, SR loss, plotting, memory/parallel-processing utilities. |
 | `test_integration.py` | Smoke test that exercises the single-agent and multi-agent config paths. |
-| `unit_test/` | `analyze_interactions.py`, `find_long_trajectories.py` — ad-hoc data-inspection scripts. |
+| `script/tools/` | `analyze_interactions.py`, `find_long_trajectories.py` — ad-hoc data-inspection scripts, shared by every experiment. |
 | `shell/exp6/run_exp6.sh` | Pipeline driver (data generation → training → evaluation → visualization); lives outside this directory but is exp6's usual entry point. |
 
 ## Running

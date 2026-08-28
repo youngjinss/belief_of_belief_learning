@@ -349,29 +349,6 @@ class Config:
         else:
             return base_path
 
-    def get_training_data_path(self, achiever_type, blocker_type, is_test=False):
-        """
-        Get training data path that always uses 'data' as base directory, regardless of save_dir modifications
-
-        Args:
-            achiever_type (str): Type of achiever agent
-            blocker_type (str): Type of blocker agent
-            is_test (bool): If True, returns path for test data with /test suffix
-
-        Returns:
-            str: Training data path in format ./data/{env_name}/{achiever_type}_{blocker_type}/
-        """
-        import os
-
-        env_name = self.get_env_name()
-        agent_combination = self.get_agent_pair_name(achiever_type, blocker_type)
-        base_path = os.path.join("data", env_name, agent_combination)
-
-        if is_test:
-            return os.path.join(base_path, "test")
-        else:
-            return base_path
-
     def get_test_data_dir(self, achiever_type, blocker_type):
         """Get test data directory path"""
         return self.get_data_path(achiever_type, blocker_type, is_test=True)

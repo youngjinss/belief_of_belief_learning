@@ -252,40 +252,6 @@ class BaseValueAgent:
         """Get action - to be implemented by subclasses"""
         raise NotImplementedError("Subclasses must implement get_action")
 
-    def _find_preferred_targets(self, obs):
-        """
-        Find preferred targets considering already collected keys
-        
-        Returns preferred target positions that the agent should pursue,
-        taking into account keys already collected to avoid redundant collection.
-        """
-        targets = []
-        
-        # Check if we have key inventory information
-        collected_keys = set()
-        if self.role == "achiever" and "achiever_keys" in obs:
-            achiever_keys = obs["achiever_keys"]
-            color_map = ["red", "green", "blue", "yellow"]
-            for i, has_key in enumerate(achiever_keys):
-                if has_key > 0 and i < len(color_map):
-                    collected_keys.add(color_map[i])
-        
-        # Find target key (avoid already collected keys)
-        if self._preferred_door_color:
-            # First priority: target key if not already collected
-            if self._preferred_door_color not in collected_keys:
-                key_pos = self.memory.get(f"key_{self._preferred_door_color}")
-                if key_pos:
-                    targets.append(key_pos)
-            
-            # Second priority: target door if we have the key
-            if self._preferred_door_color in collected_keys:
-                door_pos = self.memory.get(f"door_{self._preferred_door_color}")
-                if door_pos:
-                    targets.append(door_pos)
-        
-        return targets
-
     def _get_clockwise_direction(self, current_direction):
         """
         Get next direction based on wall configuration.
@@ -352,29 +318,6 @@ class BaseValueAgent:
             
         # Otherwise return first best direction
         return best_directions[0]
-
-    def _get_blocked_directions(self):
-        """Get list of directions that are blocked (walls, boundaries, obstacles)"""
-        blocked = []
-        if self.agent_pos is None:
-            return blocked
-            
-        x, y = self.agent_pos
-        
-        for direction, (dx, dy) in enumerate(self.direction_deltas):
-            new_pos = (x + dx, y + dy)
-            
-            # Check boundaries
-            if (new_pos[0] < 0 or new_pos[0] >= (self.width or 9) or 
-                new_pos[1] < 0 or new_pos[1] >= (self.height or 9)):
-                blocked.append(direction)
-                continue
-                
-            # Check walkability
-            if not self._is_walkable(new_pos):
-                blocked.append(direction)
-                
-        return blocked
 
     def _should_change_direction(self):
         """

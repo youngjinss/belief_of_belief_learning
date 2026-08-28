@@ -1402,42 +1402,6 @@ class ToMnet(nn.Module):
                 )
                 return torch.zeros(batch_size, self.n_ement, device=device)
 
-    def validate_configuration(self) -> bool:
-        """
-        Validate the model configuration for common issues.
-
-        Returns:
-            bool: True if configuration is valid, False otherwise
-        """
-        issues = []
-
-        # Check second belief configuration
-        if self.use_second_belief and not hasattr(self, "second_belief_net"):
-            issues.append("SecondBeliefNet enabled but not initialized")
-
-        # Check mental net configuration
-        if self.use_mentalnet and not hasattr(self, "mental_net"):
-            issues.append("MentalNet enabled but not initialized")
-
-        # Check embedding dimensions
-        if self.n_echar <= 0:
-            issues.append(f"Invalid character embedding dimension: {self.n_echar}")
-
-        if self.n_ement <= 0:
-            issues.append(f"Invalid mental embedding dimension: {self.n_ement}")
-
-        if self.use_second_belief and self.n_eopp2 <= 0:
-            issues.append(f"Invalid second belief embedding dimension: {self.n_eopp2}")
-
-        # Report issues
-        if issues:
-            print("Model configuration issues:")
-            for issue in issues:
-                print(f"  - {issue}")
-            return False
-
-        return True
-
     def get_model_info(self) -> dict:
         """
         Get detailed information about the model configuration.

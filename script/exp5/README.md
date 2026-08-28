@@ -78,7 +78,6 @@ script/exp5/
 ├── visualize_sr.py            # Standalone SR heatmap visualization from a raw trajectory text file
 ├── simulate_game.py            # Interactive/GUI game simulation between an achiever and blocker
 ├── simulate_trajectory.py      # Trajectory playback / GIF export
-├── unit_test/                  # Unit tests
 └── results/                     # Default output location for trained models and plots
 ```
 

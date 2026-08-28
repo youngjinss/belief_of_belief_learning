@@ -115,11 +115,13 @@ script/exp8/
 │       ├── goaldirected.py        # GoalDirectAgent — moves toward achiever's visible key
 │       ├── rulebased.py           # RuleBasedAgent — multi-phase heuristic strategy
 │       ├── level0value.py         # Level0ValueBlocker — random door selection + inference
-│       └── level1value.py         # Level1ValueBlocker — achiever tracking + target inference
-└── unit_test/
-    ├── find_long_trajectories.py    # Finds generated trajectory files above a length threshold
-    └── analyze_interactions.py       # Computes interaction/win-rate stats over generated data
+    └── level1value.py         # Level1ValueBlocker — achiever tracking + target inference
 ```
+
+Data-inspection scripts are shared across experiments and live in `script/tools/`:
+`find_long_trajectories.py` (finds generated trajectory files above a length threshold)
+and `analyze_interactions.py` (computes interaction/win-rate stats over generated data).
+Both scan the whole `data/` tree, so they are not specific to exp8.
 
 Each agent module exposes one policy class. `Level0*` agents plan with value iteration and no
 opponent modeling; `Level1*` agents add opponent inference (blocker) or deceptive movement

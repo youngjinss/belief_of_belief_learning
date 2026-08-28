@@ -1,25 +1,13 @@
-import os
-import sys
 from typing import Tuple
 
 import torch
 from torch import nn
 import torch.nn.functional as F
 
-# Add lib to path for imports
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from utils import set_seed, calculate_sr_loss_kl_divergence
-
-# Add current directory for utils import
-from utils import spatialize_action
-
-# Add current directory for config import
-sys.path.append(os.path.dirname(__file__))
-from config import Config
-
-# Set seed using Config default value
-config = Config()
-set_seed(config.seed)
+from beliefrl.model.functional import (
+    calculate_sr_loss_kl_divergence,
+    spatialize_action,
+)
 
 """
 Integrated ToMnet architecture for KeyDoor environment with second-order belief modeling (exp8)

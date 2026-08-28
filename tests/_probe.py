@@ -89,7 +89,12 @@ def probe_model(cfg):
     import numpy as np
     import torch
 
-    from tomnet import ToMnet
+    # exp8's model was extracted into beliefrl.model in Phase 2; exp5-exp7
+    # still carry their own tomnet.py next to their config.
+    try:
+        from tomnet import ToMnet
+    except ImportError:
+        from beliefrl.model import ToMnet
 
     torch.manual_seed(SEED)
     np.random.seed(SEED)

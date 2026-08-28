@@ -14,7 +14,7 @@ from torch.utils.data import DataLoader, TensorDataset
 
 sys.path.append(os.path.dirname(__file__))
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from tomnet import create_model
+from beliefrl.model import create_model
 from config import Config
 from utils import generate_past_episodes_from_batch
 from utils import (

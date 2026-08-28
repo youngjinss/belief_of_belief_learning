@@ -4,10 +4,23 @@ version = "0.1.0"
 description = "Multi-agent RL with belief modeling, built on the ToMnet architecture"
 requires-python = ">=3.9"
 
-# The `beliefrl` core package is introduced in Phase 2 of the refactor, when the
-# shared core is extracted from script/exp8. Until then this file exists to
-# carry tool configuration only, and deliberately declares no build backend so
-# that nothing about the current import behaviour changes.
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = [
+    "beliefrl",
+    "beliefrl.agents",
+    "beliefrl.agents.achiever",
+    "beliefrl.agents.blocker",
+    "beliefrl.config",
+    "beliefrl.env",
+    "beliefrl.model",
+]
+
+# `pip install -e .` puts beliefrl on the path, after which the per-script
+# sys.path bootstraps under script/ become unnecessary.
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

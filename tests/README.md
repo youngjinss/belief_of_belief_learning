@@ -51,6 +51,16 @@ each show up in a distinct place.
 | `env_version` | `v1` for exp5–exp7, `v2` for exp8, taken from that experiment's `Config` |
 | `agents.<module>.<Class>[mode]` | Status plus the 30-step action sequence from a fixed-seed rollout |
 
+Since Phase 2 moved the agents into `beliefrl.agents`, the probe records both
+sets for exp5–exp7: that experiment's own flat `achievers`/`blockers` modules
+**and** the core agents, run against the same v1 environment and seed. That
+side-by-side is the evidence Phase 3 needs, and it already shows where the work
+is: six of the ten agents (AStar, both `RandomAgent`s, `GoalDirectAgent`,
+`RandomlySelectedAgent`, `RuleBasedAgent`) produce byte-identical action
+sequences and migrate for free, while the four value agents
+(`Level0`/`Level1` × achiever/blocker) differ, because exp8 rewrote them for
+partial observability.
+
 Agent behaviour is invisible to the config/model probe, and Phase 2 rewires
 agent imports, so it needs its own contract. Agents that currently raise are
 recorded as raising — the goldens pin what the code *does*, not what it should

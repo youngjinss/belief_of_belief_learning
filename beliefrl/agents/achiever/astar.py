@@ -1,29 +1,9 @@
-import numpy as np
 import heapq
-from collections import deque
-import sys
 import os
 
-# Add the lib directory to the path
-lib_path = os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "lib")
-sys.path.insert(0, lib_path)
+import numpy as np
 
-# Add the env directory to the path
-env_path = os.path.join(lib_path, "env")
-sys.path.insert(0, env_path)
-
-from gym_minigrid.minigrid import Key, Door, Wall
-from utils import set_seed
-
-# Add current directory for config import
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from config import Config
-
-# Set seed using Config default value
-config = Config()
-set_seed(config.seed)
-
-
+from beliefrl.env.minigrid import Door, Key, Wall
 class Node:
     """
     A node class for A* Pathfinding

@@ -95,16 +95,16 @@ def load_agents():
                 found[f"{module_name}.{class_name}"] = obj
 
     package = [
-        ("agents.achiever.astar", "AStarAgent"),
-        ("agents.achiever.random", "RandomAgent"),
-        ("agents.achiever.level0value", "Level0ValueAchiever"),
-        ("agents.achiever.level1value", "Level1ValueAchiever"),
-        ("agents.blocker.random", "RandomAgent"),
-        ("agents.blocker.goaldirected", "GoalDirectAgent"),
-        ("agents.blocker.randomlyselect", "RandomlySelectedAgent"),
-        ("agents.blocker.rulebased", "RuleBasedAgent"),
-        ("agents.blocker.level0value", "Level0ValueBlocker"),
-        ("agents.blocker.level1value", "Level1ValueBlocker"),
+        ("beliefrl.agents.achiever.astar", "AStarAgent"),
+        ("beliefrl.agents.achiever.random", "RandomAgent"),
+        ("beliefrl.agents.achiever.level0value", "Level0ValueAchiever"),
+        ("beliefrl.agents.achiever.level1value", "Level1ValueAchiever"),
+        ("beliefrl.agents.blocker.random", "RandomAgent"),
+        ("beliefrl.agents.blocker.goaldirected", "GoalDirectAgent"),
+        ("beliefrl.agents.blocker.randomlyselect", "RandomlySelectedAgent"),
+        ("beliefrl.agents.blocker.rulebased", "RuleBasedAgent"),
+        ("beliefrl.agents.blocker.level0value", "Level0ValueBlocker"),
+        ("beliefrl.agents.blocker.level1value", "Level1ValueBlocker"),
     ]
     for module_path, class_name in package:
         try:

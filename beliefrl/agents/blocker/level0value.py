@@ -1,20 +1,6 @@
 import numpy as np
-import sys
-import os
 
-# Add parent directories to path for imports
-script_dir = os.path.dirname(__file__)
-project_root = os.path.abspath(os.path.join(script_dir, '..', '..', '..', '..'))
-lib_path = os.path.join(project_root, 'lib', 'env')
-sys.path.insert(0, lib_path)
-sys.path.append(os.path.join(script_dir, '..'))
-sys.path.append(os.path.join(project_root, 'lib'))
-sys.path.append(os.path.join(project_root))
-
-from gym_minigrid.minigrid import Key, Door
-from value_agent import BaseValueAgent
-
-
+from beliefrl.agents.value_agent import BaseValueAgent
 class Level0ValueBlocker(BaseValueAgent):
     """
     Level-0 Value-based Blocker Agent for partial observation with random selection
@@ -78,7 +64,7 @@ class Level0ValueBlocker(BaseValueAgent):
     def _update_grid_reference(self, obs):
         """Update grid reference from observations"""
         if "blocker" in obs and obs["blocker"] and "image" in obs["blocker"]:
-            from gym_minigrid.minigrid import Grid
+            from beliefrl.env.minigrid import Grid
             self.grid = Grid.decode(obs["blocker"]["image"])
 
     def _get_opponent_position(self, obs):

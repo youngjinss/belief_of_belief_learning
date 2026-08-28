@@ -1,27 +1,8 @@
 import os
-import sys
+
 import numpy as np
 
-# Add the lib directory to the path
-lib_path = os.path.join(os.path.dirname(__file__), "..", "..", "..", "lib")
-sys.path.insert(0, lib_path)
-
-# Add the env directory to the path
-env_path = os.path.join(lib_path, "env")
-sys.path.insert(0, env_path)
-
-try:
-    from gym_minigrid.minigrid import Key, Door, Wall
-except ImportError:
-    # Fallback for different import structure
-    import sys
-    import os
-    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-    lib_path = os.path.join(project_root, "lib", "env")
-    sys.path.insert(0, lib_path)
-    from gym_minigrid.minigrid import Key, Door, Wall
-
-
+from beliefrl.env.minigrid import Door, Key, Wall
 class BaseValueAgent:
     """
     Base Value-based Agent class for partial observation environments
@@ -731,7 +712,7 @@ class BaseValueAgent:
                 print(f"DEBUG _is_walkable: Local grid cell at {local_pos} = {cell}, type = {type(cell)}")
             
             # Import Wall and Door classes
-            from gym_minigrid.minigrid import Wall, Door
+            from beliefrl.env.minigrid import Wall, Door
             
             # Walls are not walkable
             if cell is not None and isinstance(cell, Wall):

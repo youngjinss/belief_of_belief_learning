@@ -36,10 +36,10 @@ sys.path.append(
 
 # Import our modules
 from config import Config
-from script.exp8.agents.achiever.astar import AStarAgent
-from script.exp8.agents.achiever.random import RandomAgent
-from script.exp8.agents.achiever.level0value import Level0ValueAchiever
-from script.exp8.agents.achiever.level1value import Level1ValueAchiever
+from beliefrl.agents.achiever.astar import AStarAgent
+from beliefrl.agents.achiever.random import RandomAgent
+from beliefrl.agents.achiever.level0value import Level0ValueAchiever
+from beliefrl.agents.achiever.level1value import Level1ValueAchiever
 
 # Set seed using Config default value
 config = Config()

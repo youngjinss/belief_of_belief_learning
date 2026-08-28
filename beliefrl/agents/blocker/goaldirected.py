@@ -1,68 +1,33 @@
-import numpy as np
-import sys
-import os
 from collections import deque
-
-# Add the lib directory to the path
-lib_path = os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "lib")
-sys.path.insert(0, lib_path)
-
-# Add the env directory to the path
-env_path = os.path.join(lib_path, "env")
-sys.path.insert(0, env_path)
-
-from utils import set_seed
-
-# Add current directory for config import
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from config import Config
-
-# Set seed using Config default value
-config = Config()
-set_seed(config.seed)
-
-
-class RandomlySelectedAgent:
+class GoalDirectAgent:
     """
-    Randomly selected Blocker Agent for AchieverBlocker environment.
-    Level-0 Reasoning Algorithm
+    Goal-directed Blocker Agent for AchieverBlocker environment.
 
-    Strategy (Multi-attempt):
-    1. Select the target color randomly from remaining doors
-    2. Navigate to target door
-    3. Use break action (5) to attempt breaking
-    4. If game continues (wrong door), select from remaining doors and repeat
+    Strategy:
+    1. Stay (action 4) until achiever picks up first key
+    2. Infer target door color from achiever's first key
+    3. Navigate to target door
+    4. Use break action (5) to end game
     """
 
-    def __init__(self, stay_probability=0.7):
-        """
-        Initialize randomly selected blocker agent.
-        """
+    def __init__(self):
+        """Initialize goal-directed blocker agent."""
         self.target_door_color = None
         self.target_door_pos = None
+        self.achiever_has_key = False
         self.path_to_door = []
         self.current_path_index = 0
         self.grid = None
         self.blocker_pos = None
         self.achiever_pos = None
-        self.target_selected = False
 
         # Grid dimensions - will be set from observations
         self.width = None
         self.height = None
 
-        # Stay probability during navigation
-        self.stay_probability = stay_probability
-
-        # Multi-attempt tracking
-        self.tried_doors = set()  # Track which doors have been attempted
-        self.available_doors = {"red", "green", "blue", "yellow"}
-        self.just_attempted_break = False
-        self.last_action = None
-
     def get_action(self, obs):
         """
-        Get action for randomly selected blocker agent.
+        Get action for goal-directed blocker agent.
 
         Args:
             obs: Environment observation dict with keys:
@@ -70,7 +35,6 @@ class RandomlySelectedAgent:
                 - 'achiever_keys': array of keys achiever has collected
                 - 'achiever_pos': achiever's position
                 - 'blocker_pos': blocker's position
-                - 'door_positions': dict of door positions by color
 
         Returns:
             action: Movement action (0-4) or break action (5)
@@ -81,29 +45,24 @@ class RandomlySelectedAgent:
         # Update internal state from observations
         self._update_from_obs(obs)
 
-        # Check if we just attempted to break and game is still continuing
-        if self.just_attempted_break:
-            # Game didn't end, so we broke the wrong door
-            # Mark current target as tried and select new target
-            if self.target_door_color:
-                self.tried_doors.add(self.target_door_color)
-            self._reset_for_new_attempt()
-            self.just_attempted_break = False
+        # Check if achiever has picked up a key for the first time
+        if not self.achiever_has_key:
+            self._check_achiever_key_pickup(obs)
 
-        # Select target door randomly if not already selected
-        if not self.target_selected:
-            self._select_random_target_door(obs)
+        # If achiever hasn't picked up a key yet, stay in place
+        if not self.achiever_has_key:
+            return 4  # Stay
+
+        # If we don't have a target yet, infer it from achiever's key
+        if self.target_door_color is None:
+            self._infer_target_door(obs)
 
         # If we're at the target door, break it
         if self._at_target_door():
-            self.just_attempted_break = True
-            self.last_action = 5
             return 5  # Break action
 
         # Navigate to target door
-        action = self._navigate_to_door(obs)
-        self.last_action = action
-        return action
+        return self._navigate_to_door(obs)
 
     def _update_from_obs(self, obs):
         """Update internal state from observations."""
@@ -117,43 +76,44 @@ class RandomlySelectedAgent:
         # Extract grid from blocker's visual observation
         self.grid = obs["blocker"]
 
-    def _select_random_target_door(self, obs):
-        """Select target door color randomly from remaining untried doors."""
-        # Get remaining doors that haven't been tried
-        remaining_doors = list(self.available_doors - self.tried_doors)
+    def _check_achiever_key_pickup(self, obs):
+        """Check if achiever has picked up any key."""
+        achiever_keys = obs["achiever_keys"]
+        if len(achiever_keys) > 0 and achiever_keys.sum() > 0:
+            self.achiever_has_key = True
 
-        if not remaining_doors:
-            # All doors have been tried, reset and start over
-            self.tried_doors.clear()
-            remaining_doors = list(self.available_doors)
+    def _infer_target_door(self, obs):
+        """Infer target door color from achiever's first key."""
+        achiever_keys = obs["achiever_keys"]
+        if len(achiever_keys) > 0 and achiever_keys.sum() > 0:
+            # Find first key collected (first non-zero index)
+            # Color mapping: 0=red, 1=green, 2=blue, 3=yellow
+            color_map = ["red", "green", "blue", "yellow"]
+            first_key_idx = None
+            for i, has_key in enumerate(achiever_keys):
+                if has_key > 0:
+                    first_key_idx = i
+                    break
 
-        # Randomly select a door color from remaining doors
-        self.target_door_color = np.random.choice(remaining_doors)
+            if first_key_idx is not None and first_key_idx < len(color_map):
+                first_key_color = color_map[first_key_idx]
+                self.target_door_color = first_key_color
+                self.target_door_pos = self._find_door_position_from_obs(
+                    first_key_color, obs
+                )
 
-        # Find the position of the selected door
-        self.target_door_pos = self._find_door_position_from_obs(
-            self.target_door_color, obs
-        )
-
-        # Plan path to target door if position is found
-        if self.target_door_pos:
-            self.path_to_door = self._find_path_to_door(obs)
-            self.current_path_index = 0
-            self.target_selected = True
-
-    def _reset_for_new_attempt(self):
-        """Reset targeting state for a new attempt."""
-        self.target_selected = False
-        self.target_door_color = None
-        self.target_door_pos = None
-        self.path_to_door = []
-        self.current_path_index = 0
+                # Plan path to target door
+                if self.target_door_pos:
+                    self.path_to_door = self._find_path_to_door(obs)
+                    self.current_path_index = 0
 
     def _find_door_position_from_obs(self, color, obs):
         """Find position of door with given color from observations."""
         # Use door positions from observations
         if obs and "door_positions" in obs:
             return obs["door_positions"].get(color, None)
+
+        # No fallback - if door positions aren't in observations, return None
         return None
 
     def _at_target_door(self):
@@ -274,14 +234,12 @@ class RandomlySelectedAgent:
         """Reset agent state for new episode."""
         self.target_door_color = None
         self.target_door_pos = None
+        self.achiever_has_key = False
         self.path_to_door = []
         self.current_path_index = 0
         self.grid = None
         self.blocker_pos = None
         self.achiever_pos = None
-        self.target_selected = False
-        # Reset multi-attempt state
-        self.tried_doors.clear()
-        self.just_attempted_break = False
-        self.last_action = None
         # Keep width/height since they don't change between episodes
+        # self.width = None
+        # self.height = None

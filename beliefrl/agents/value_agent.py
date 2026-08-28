@@ -66,6 +66,11 @@ class BaseValueAgent:
         # Target door color for consumption penalty (preferred key)
         self._preferred_door_color = None
 
+        # World grid, rebuilt each step under full observability from the
+        # positions the environment reports. None under partial observability,
+        # where only the agent-relative view is available.
+        self.world_grid = None
+
         # Memory system for partial observation
         self.memory = {}  # Stores discovered key/door positions
         self.discovered_positions = set()  # Track all discovered positions
@@ -116,6 +121,35 @@ class BaseValueAgent:
 
         # Update grid reference (subclasses should override this)
         self._update_grid_reference(obs)
+
+        # Under full observability the environment reports the whole layout;
+        # assemble it so positions can be checked in global coordinates.
+        self._update_world_grid(obs)
+
+    def _update_world_grid(self, obs):
+        """Rebuild self.world_grid from the layout the observation reports."""
+        if self.observability != "full" or not obs:
+            self.world_grid = None
+            return
+        if "wall_positions" not in obs:
+            self.world_grid = None
+            return
+
+        from beliefrl.env.minigrid import Grid
+
+        width = self.width if self.width is not None else 9
+        height = self.height if self.height is not None else 9
+        grid = Grid(width, height)
+        for x, y in obs.get("wall_positions", []):
+            if 0 <= x < width and 0 <= y < height:
+                grid.set(int(x), int(y), Wall())
+        for color, pos in (obs.get("key_positions") or {}).items():
+            if pos is not None:
+                grid.set(int(pos[0]), int(pos[1]), Key(color))
+        for color, pos in (obs.get("door_positions") or {}).items():
+            if pos is not None:
+                grid.set(int(pos[0]), int(pos[1]), Door(color, is_locked=True))
+        self.world_grid = grid
 
     def _update_agent_position(self, obs):
         """Update agent position - to be overridden by subclasses"""
@@ -669,70 +703,50 @@ class BaseValueAgent:
         else:
             return None  # Outside partial view
 
+    def _cell_at_global(self, pos):
+        """Return (cell, known) for a GLOBAL position.
+
+        Under full observability the world grid is indexed directly, because
+        global coordinates are exactly what it is keyed by. Under partial
+        observability self.grid is the agent-relative observation image, so the
+        position must be converted first and anything outside the view is
+        unknown.
+
+        Previously this distinction did not exist: _is_walkable always applied
+        the egocentric transform, so in full observability it read an
+        agent-relative image at offset coordinates and saw walls where the
+        world has open floor. Agents concluded they were boxed in and stayed
+        put for the rest of the episode.
+        """
+        if self.observability == "full" and self.world_grid is not None:
+            x, y = int(pos[0]), int(pos[1])
+            if 0 <= x < self.world_grid.width and 0 <= y < self.world_grid.height:
+                return self.world_grid.get(x, y), True
+            return None, False
+
+        if self.grid is None:
+            return None, False
+        local_pos = self._global_to_local_coords(pos)
+        if local_pos is None:
+            return None, False
+        return self.grid.get(*local_pos), True
+
     def _is_walkable(self, pos):
-        """Check if position is walkable - walls are not walkable, but doors are walkable"""
+        """Walls are not walkable; doors, keys and empty floor are."""
         assert self.width is not None and self.height is not None, \
             f"Grid dimensions not initialized! width={self.width}, height={self.height}"
-        
-        if os.getenv("DEBUG_MODE") and pos == (1, 0):
-            print(f"DEBUG _is_walkable: Checking global position {pos}")
-            print(f"DEBUG _is_walkable: Agent at global position {self.agent_pos}")
-            if self.grid is not None:
-                print(f"DEBUG _is_walkable: Local grid size = {self.grid.width}x{self.grid.height}")
-        
-        # Check global boundary first
+
         if pos[0] < 0 or pos[0] >= self.width or pos[1] < 0 or pos[1] >= self.height:
-            if os.getenv("DEBUG_MODE") and pos == (1, 0):
-                print(f"DEBUG _is_walkable: {pos} is out of global bounds")
             return False
 
-        # Check wall memory first (for positions we've seen before)
         if tuple(pos) in self.wall_positions:
-            if os.getenv("DEBUG_MODE") and pos == (1, 0):
-                print(f"DEBUG _is_walkable: {pos} found in wall_positions memory")
             return False
 
-        if self.grid is not None:
-            # Convert global coordinates to local partial view coordinates
-            local_pos = self._global_to_local_coords(pos)
-            
-            if os.getenv("DEBUG_MODE") and pos == (1, 0):
-                print(f"DEBUG _is_walkable: Global {pos} -> Local {local_pos}")
-            
-            if local_pos is None:
-                # Position is outside partial view - treat as unknown/not walkable for safety
-                if os.getenv("DEBUG_MODE") and pos == (1, 0):
-                    print(f"DEBUG _is_walkable: {pos} outside partial view - treating as unwalkable")
-                return False
-            
-            local_x, local_y = local_pos
-            cell = self.grid.get(local_x, local_y)
-            
-            if os.getenv("DEBUG_MODE") and pos == (1, 0):
-                print(f"DEBUG _is_walkable: Local grid cell at {local_pos} = {cell}, type = {type(cell)}")
-            
-            # Import Wall and Door classes
-            from beliefrl.env.minigrid import Wall, Door
-            
-            # Walls are not walkable
-            if cell is not None and isinstance(cell, Wall):
-                if os.getenv("DEBUG_MODE") and pos == (1, 0):
-                    print(f"DEBUG _is_walkable: {pos} is a Wall - NOT walkable")
-                return False
-            # Doors are walkable (agents can move to door positions to break them)
-            if cell is not None and isinstance(cell, Door):
-                if os.getenv("DEBUG_MODE") and pos == (1, 0):
-                    print(f"DEBUG _is_walkable: {pos} is a Door - walkable")
-                return True
-            # Empty spaces and other objects are walkable
-            if os.getenv("DEBUG_MODE") and pos == (1, 0):
-                print(f"DEBUG _is_walkable: {pos} is empty/other - walkable")
-            return True
-
-        if os.getenv("DEBUG_MODE") and pos == (1, 0):
-            print(f"DEBUG _is_walkable: {pos} no grid available - treating as unwalkable")
-        # If no grid available, be conservative and treat as unwalkable
-        return False
+        cell, known = self._cell_at_global(pos)
+        if not known:
+            # Outside the observable view: stay conservative.
+            return False
+        return not isinstance(cell, Wall)
 
     def _is_non_preferred_key_at_position(self, pos):
         """Check if there's a non-preferred key at the given position"""
@@ -744,8 +758,8 @@ class BaseValueAgent:
         if pos[0] < 0 or pos[0] >= width or pos[1] < 0 or pos[1] >= height:
             return False
 
-        cell = self.grid.get(pos[0], pos[1])
-        if isinstance(cell, Key):
+        cell, known = self._cell_at_global(pos)
+        if known and isinstance(cell, Key):
             return cell.color != self._preferred_door_color
 
         return False
@@ -758,6 +772,7 @@ class BaseValueAgent:
         """Reset agent state for new episode"""
         self.agent_pos = None
         self.grid = None
+        self.world_grid = None
         self.memory = {}
         self.discovered_positions = set()
         self.wall_positions = set()

@@ -4,6 +4,35 @@ Multi-agent reinforcement learning with belief modeling, built on the Theory of 
 Network (ToMnet; Rabinowitz et al., 2018) architecture and extended with a second-order
 belief embedding.
 
+<p align="center">
+  <img src="docs/assets/achiever_blocker_replay.gif" width="480"
+       alt="A replayed AchieverBlocker game: the achiever and blocker moving through the grid">
+</p>
+
+*An AchieverBlocker game*, drawn by the environment's own MiniGrid renderer. Coloured
+doors are set into the walls and their matching keys sit inside the room. The
+**achiever** (red triangle) races to collect the key for its preferred door while the
+**blocker** (blue triangle) tries to break that door first.
+
+```bash
+PYTHONHASHSEED=0 python -m beliefrl.viz.replay --live --size 9x9 --seed 1
+PYTHONHASHSEED=0 python -m beliefrl.viz.replay <trajectory.txt>   # replay a saved game
+```
+
+### Results
+
+<p align="center">
+  <img src="docs/assets/action_acc_achiever.png" width="760"
+       alt="Achiever action accuracy across training epochs for each agent-pair configuration">
+</p>
+
+*Achiever action-prediction accuracy over 300 epochs.* Solid lines are validation,
+shaded bands the training range. Each curve is one achiever/blocker level pairing —
+the single-agent condition `(0)` is easiest to predict, while pairings involving a
+level-1 agent are harder, and `cross` is the cross-condition evaluation. Produced by
+each experiment's `visualize.py`; the full set lives in `visualize/`, which is not
+tracked in git.
+
 ## Contributions
 
 1. **ToMnet benchmark re-implementations** (`lib/benchmark/`)

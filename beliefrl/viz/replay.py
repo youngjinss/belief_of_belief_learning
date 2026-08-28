@@ -1,8 +1,11 @@
 """Two-player trajectory replay: grid, both agents, and their SR beliefs.
 
-Renders a saved AchieverBlocker trajectory as an animated GIF showing the maze,
-the keys and doors, *both* agents moving, and each agent's successor
-representation as a heatmap alongside.
+Renders a saved AchieverBlocker trajectory as an animated GIF.
+
+By default it drives the environment's own MiniGrid renderer, so the output is
+the real game image: doors set into the walls, key icons in the room, and both
+agents as triangles. `--schematic` switches to a matplotlib diagram instead,
+which is what `--sr` needs to show each agent's successor representation.
 
 This exists because `script/exp*/simulate_trajectory.py` cannot produce such a
 video. It replays through MiniGrid's own renderer, which draws only the achiever
@@ -13,7 +16,7 @@ and its SR parser returns nothing. Rendering straight from the trajectory file
 sidesteps all four problems: the file already holds everything needed.
 
     python -m beliefrl.viz.replay data/.../test0.txt -o replay.gif
-    python -m beliefrl.viz.replay data/.../test0.txt --gamma 0.9 --fps 5
+    python -m beliefrl.viz.replay data/.../test0.txt --sr --gamma 0.9 --fps 5
 """
 
 import argparse
@@ -29,10 +32,11 @@ import matplotlib.patches as patches
 import matplotlib.pyplot as plt
 from matplotlib.animation import PillowWriter
 
-# Door letters map to colours in the order the experiments use throughout:
-# config's door_colors / goal_names are red, green, blue, yellow.
-DOOR_COLORS = {"A": "red", "B": "green", "C": "blue", "D": "gold"}
-KEY_COLORS = {"a": "red", "b": "green", "c": "blue", "d": "gold"}
+# Letter case follows env_to_maze_format in beliefrl/data/generation.py:
+# keys are written UPPERCASE and sit inside the room, doors are lowercase and
+# sit in the surrounding wall. Colours are red, green, blue, yellow in order.
+KEY_COLORS = {"A": "red", "B": "green", "C": "blue", "D": "gold"}
+DOOR_COLORS = {"a": "red", "b": "green", "c": "blue", "d": "gold"}
 
 WALL = "#"
 
@@ -179,15 +183,21 @@ def _draw_grid(ax, traj: Trajectory, step: int) -> None:
         ax.add_patch(
             patches.Rectangle(
                 (x - 0.5, y - 0.5), 1, 1,
-                facecolor=DOOR_COLORS[ch], edgecolor="black",
-                linewidth=1.5, alpha=0.85,
+                facecolor=DOOR_COLORS[ch], edgecolor="black", linewidth=1.5,
             )
         )
-        ax.text(x, y, ch, ha="center", va="center", fontsize=9, fontweight="bold")
+        # Show the exact character the trajectory file uses for this door.
+        ax.text(
+            x, y, ch, ha="center", va="center",
+            fontsize=10, fontweight="bold", color="white",
+        )
 
     for ch, (x, y) in traj.keys.items():
         ax.add_patch(
-            patches.Circle((x, y), 0.22, facecolor=KEY_COLORS[ch], edgecolor="black")
+            patches.Circle(
+                (x, y), 0.26, facecolor=KEY_COLORS[ch],
+                edgecolor="black", linewidth=1.2,
+            )
         )
 
     ax.add_patch(
@@ -241,8 +251,14 @@ def render_gif(
     gamma: Optional[str] = None,
     fps: int = 4,
     max_steps: Optional[int] = None,
+    dpi: int = 110,
+    show_sr: bool = False,
 ) -> str:
-    """Write the replay as an animated GIF. Returns the path written."""
+    """Write the replay as an animated GIF. Returns the path written.
+
+    By default this renders the game alone. Pass show_sr=True to add each
+    agent's successor-representation heatmap beside the grid.
+    """
     available = traj.gammas()
     if gamma is None:
         gamma = available[-1] if available else None
@@ -255,14 +271,14 @@ def render_gif(
     if n_steps == 0:
         raise ValueError("trajectory contains no steps to render")
 
-    has_sr = bool(available)
+    has_sr = show_sr and bool(available)
     n_panels = 3 if has_sr else 1
-    fig, axes = plt.subplots(1, n_panels, figsize=(4.2 * n_panels, 4.6))
+    fig, axes = plt.subplots(1, n_panels, figsize=(5.2 if n_panels == 1 else 4.2 * n_panels, 5.2 if n_panels == 1 else 4.6))
     if n_panels == 1:
         axes = [axes]
 
     writer = PillowWriter(fps=fps)
-    with writer.saving(fig, out_path, dpi=110):
+    with writer.saving(fig, out_path, dpi=dpi):
         for step in range(n_steps):
             _draw_grid(axes[0], traj, step)
             if has_sr:
@@ -274,11 +290,199 @@ def render_gif(
     return out_path
 
 
+# --- native MiniGrid rendering -------------------------------------------
+
+# The v2 environment's own render() draws both agents (achiever as a red
+# triangle, blocker as a blue one) through gym_minigrid.rendering.Renderer.
+# Driving it directly gives the real game image rather than a schematic.
+# The "shows only achiever" comment in script/exp*/simulate_trajectory.py
+# refers to the v1 environment that script builds, not to v2.
+
+_KEY_LETTER_COLORS = {"A": "red", "B": "green", "C": "blue", "D": "yellow"}
+_DOOR_LETTER_COLORS = {"a": "red", "b": "green", "c": "blue", "d": "yellow"}
+
+
+def _build_env(traj: "Trajectory"):
+    """Recreate the environment for this maze, with its grid rebuilt exactly."""
+    import numpy as np
+
+    from beliefrl.env import _LIB_ENV  # noqa: F401  (puts lib/env on sys.path)
+    from gym_minigrid.envs.achiever_blocker_v2 import (
+        AchieverBlocker5x5EnvV2,
+        AchieverBlocker9x9EnvV2,
+        AchieverBlocker11x11EnvV2,
+    )
+    from gym_minigrid.minigrid import Door, Grid, Key, Wall
+
+    sizes = {5: AchieverBlocker5x5EnvV2, 9: AchieverBlocker9x9EnvV2,
+             11: AchieverBlocker11x11EnvV2}
+    if traj.width not in sizes:
+        raise ValueError(f"no v2 environment for a {traj.width}x{traj.height} maze")
+
+    env = sizes[traj.width](
+        preference={"red": 1.0, "green": 0.5, "blue": 0.25, "yellow": 0.125},
+        cost={"red": 0.25, "green": 0.25, "blue": 0.25, "yellow": 0.25},
+        max_steps=max(traj.length, 1) + 1,
+        observability="full",
+        partial_view_size=3,
+    )
+    env.seed(0)
+    env.reset()
+
+    env.grid = Grid(traj.width, traj.height)
+    for y, row in enumerate(traj.maze):
+        for x, ch in enumerate(row):
+            if ch == WALL:
+                env.grid.set(x, y, Wall())
+            elif ch in _KEY_LETTER_COLORS:
+                env.grid.set(x, y, Key(_KEY_LETTER_COLORS[ch]))
+            elif ch in _DOOR_LETTER_COLORS:
+                env.grid.set(x, y, Door(_DOOR_LETTER_COLORS[ch], is_locked=True))
+            else:
+                env.grid.set(x, y, None)
+    return env, np
+
+
+def render_gif_native(
+    traj: "Trajectory",
+    out_path: str,
+    fps: int = 4,
+    max_steps: Optional[int] = None,
+    scale: int = 3,
+) -> str:
+    """Render the replay through the environment's own MiniGrid renderer."""
+    from PIL import Image
+
+    env, np = _build_env(traj)
+
+    n_steps = len(traj.achiever_pos)
+    if max_steps is not None:
+        n_steps = min(n_steps, max_steps)
+    if n_steps == 0:
+        raise ValueError("trajectory contains no steps to render")
+
+    frames = []
+    for step in range(n_steps):
+        env.achiever_pos = np.array(traj.achiever_pos[step])
+        env.blocker_pos = np.array(traj.blocker_pos[step])
+        array = env.render(mode="rgb_array")
+        image = Image.fromarray(array)
+        if scale != 1:
+            image = image.resize(
+                (image.width * scale, image.height * scale), Image.NEAREST
+            )
+        frames.append(image)
+
+    frames[0].save(
+        out_path, save_all=True, append_images=frames[1:],
+        duration=int(1000 / max(fps, 1)), loop=0,
+    )
+    return out_path
+
+
+def render_gif_live(
+    out_path: str,
+    size: str = "9x9",
+    seed: int = 42,
+    fps: int = 4,
+    max_steps: int = 40,
+    scale: int = 3,
+    observability: str = "full",
+) -> str:
+    """Play a fresh game with the value agents and render it.
+
+    The trajectory files under data/ were generated before the agents' grid
+    frame was fixed, so replaying them shows agents that stall. This runs the
+    current agents live instead.
+    """
+    import numpy as np
+    from PIL import Image
+
+    from beliefrl.agents.achiever.level0value import Level0ValueAchiever
+    from beliefrl.agents.blocker.level0value import Level0ValueBlocker
+    from beliefrl.env import _LIB_ENV  # noqa: F401
+    from gym_minigrid.envs.achiever_blocker_v2 import (
+        AchieverBlocker5x5EnvV2,
+        AchieverBlocker9x9EnvV2,
+        AchieverBlocker11x11EnvV2,
+    )
+
+    envs = {"5x5": AchieverBlocker5x5EnvV2, "9x9": AchieverBlocker9x9EnvV2,
+            "11x11": AchieverBlocker11x11EnvV2}
+    preference = {"red": 0.32, "green": 0.14, "blue": 1.0, "yellow": 0.16}
+    cost = {"red": 0.5, "green": 0.1, "blue": 0.16, "yellow": 0.22}
+
+    # The value agents sample actions from np.random, so the RNGs must be
+    # seeded too -- seeding only the environment leaves the rollout
+    # non-reproducible. Launch with PYTHONHASHSEED=0 as well: several agents
+    # branch on set iteration order, which no in-process seeding can pin.
+    import random as _random
+
+    _random.seed(seed)
+    np.random.seed(seed)
+
+    env = envs[size](
+        preference=preference, cost=cost, max_steps=max_steps + 1,
+        observability=observability, partial_view_size=6,
+    )
+    env.seed(seed)
+    reset = env.reset()
+    obs = reset[0] if isinstance(reset, tuple) else reset
+
+    achiever = Level0ValueAchiever(
+        observability=observability, goal_rewards=preference
+    )
+    blocker = Level0ValueBlocker(observability=observability)
+    achiever.reset()
+    blocker.reset()
+
+    frames = []
+    for _ in range(max_steps):
+        array = env.render(mode="rgb_array")
+        image = Image.fromarray(array)
+        if scale != 1:
+            image = image.resize(
+                (image.width * scale, image.height * scale), Image.NEAREST
+            )
+        frames.append(image)
+
+        achiever.update_observation(obs)
+        blocker.update_observation(obs)
+        # env.step unpacks `achiever_action, blocker_action = actions`.
+        obs, _, terminated, truncated, _ = env.step(
+            (achiever.get_action(obs), blocker.get_action(obs))
+        )
+        if terminated or truncated:
+            array = env.render(mode="rgb_array")
+            image = Image.fromarray(array)
+            if scale != 1:
+                image = image.resize(
+                    (image.width * scale, image.height * scale), Image.NEAREST
+                )
+            frames.append(image)
+            break
+
+    frames[0].save(
+        out_path, save_all=True, append_images=frames[1:],
+        duration=int(1000 / max(fps, 1)), loop=0,
+    )
+    return out_path
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Render a two-player AchieverBlocker trajectory as a GIF."
     )
-    parser.add_argument("data_file", help="Path to a trajectory .txt file")
+    parser.add_argument(
+        "data_file", nargs="?", default=None,
+        help="Path to a trajectory .txt file (omit when using --live)",
+    )
+    parser.add_argument(
+        "--live", action="store_true",
+        help="Play a fresh game with the current agents instead of replaying a file",
+    )
+    parser.add_argument("--size", default="9x9", choices=["5x5", "9x9", "11x11"])
+    parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("-o", "--output", default=None, help="Output .gif path")
     parser.add_argument(
         "--gamma", default=None,
@@ -288,7 +492,32 @@ def main() -> None:
     parser.add_argument(
         "--max-steps", type=int, default=None, help="Render only the first N steps"
     )
+    parser.add_argument("--dpi", type=int, default=110, help="Output resolution")
+    parser.add_argument(
+        "--sr", action="store_true",
+        help="Schematic mode only: also show each agent's SR heatmap",
+    )
+    parser.add_argument(
+        "--schematic", action="store_true",
+        help="Use the matplotlib schematic instead of the game's own renderer",
+    )
+    parser.add_argument(
+        "--scale", type=int, default=3,
+        help="Native mode only: integer upscale of the game image",
+    )
     args = parser.parse_args()
+
+    if args.live:
+        out = args.output or f"live_{args.size}.gif"
+        path = render_gif_live(
+            out, size=args.size, seed=args.seed, fps=args.fps,
+            max_steps=args.max_steps or 40, scale=args.scale,
+        )
+        print(f"wrote       : {path}")
+        return
+
+    if not args.data_file:
+        parser.error("a trajectory file is required unless --live is given")
 
     traj = parse_trajectory(args.data_file)
     out = args.output or os.path.splitext(os.path.basename(args.data_file))[0] + ".gif"
@@ -297,9 +526,15 @@ def main() -> None:
     print(f"steps       : {len(traj.achiever_pos)}")
     print(f"keys/doors  : {sorted(traj.keys)} / {sorted(traj.doors)}")
     print(f"SR gammas   : {traj.gammas() or 'none in file'}")
-    path = render_gif(
-        traj, out, gamma=args.gamma, fps=args.fps, max_steps=args.max_steps
-    )
+    if args.schematic or args.sr:
+        path = render_gif(
+            traj, out, gamma=args.gamma, fps=args.fps, max_steps=args.max_steps,
+            dpi=args.dpi, show_sr=args.sr,
+        )
+    else:
+        path = render_gif_native(
+            traj, out, fps=args.fps, max_steps=args.max_steps, scale=args.scale,
+        )
     print(f"wrote       : {path}")
 
 

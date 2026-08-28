@@ -172,7 +172,10 @@ def rollout(agent_class, observability):
         # views plus shared state (achiever_pos, blocker_pos, key_positions,
         # door_positions, wall_positions, grid_info). Narrowing it to one
         # agent's sub-dict breaks every blocker and every Level1 agent.
-        step_result = env.step({"achiever": action, "blocker": 0})
+        # env.step unpacks `achiever_action, blocker_action = actions`, so it
+        # needs a pair. Passing a dict silently unpacked its keys as actions,
+        # leaving the world frozen for the whole rollout.
+        step_result = env.step((action, 0))
         obs = step_result[0]
         done = step_result[2] if len(step_result) > 2 else False
         if done:

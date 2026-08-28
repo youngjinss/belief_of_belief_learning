@@ -75,28 +75,34 @@ getter. That is a property of the probe only; the experiment code is unchanged.
   class, only in that `reset()`. Fixed by deleting the dead block. The repaired
   action sequence matches exp8's already-working version exactly.
 - **Runs were not reproducible across processes.** See `PYTHONHASHSEED` above.
+- **Value agents never moved.** `_is_walkable` always applied the partial-view
+  egocentric transform, even under full observability, so it indexed the
+  agent-relative observation image at offset coordinates and reported walls
+  where the world has open floor. Agents concluded they were boxed in and
+  emitted `stay` for the rest of the episode. Fixed by building a world grid
+  from the layout the environment reports and indexing it globally when
+  observability is full; the egocentric path now runs only for partial views.
+  The achiever walks straight to its preferred key again and the blocker to the
+  matching door.
+- **The agent probe stepped the environment with a dict.** `env.step` unpacks
+  `achiever_action, blocker_action = actions`, so a dict silently unpacked its
+  *keys* as actions and the world never advanced. Fixed to pass a pair.
 
 ## Open issues, deliberately not fixed
 
-- **`self.grid` is read in two coordinate frames.** `BaseValueAgent` indexes it
-  with world coordinates at `value_agent.py:216` and `:766`, but with local
-  egocentric coordinates at `:678` and `:728`, while
-  `Grid.decode(obs[role]["image"])` returns an agent-relative view. Predates the
-  refactor and affects `Level0` and `Level1` alike. The symptom is a degenerate
-  policy: under full observability both achiever value agents emit one repeated
-  action for 30 steps, while the blockers vary normally. Resolving it is a
-  modelling decision, not a mechanical fix.
 - **Four exp8 agents still treat the observation dict as a grid** —
   `achiever/astar.py:120`, `blocker/randomlyselect.py:118`,
   `blocker/goaldirected.py:100`, `blocker/rulebased.py:195`. They do not crash,
   because none reads `.width`, but they retain the silent `dict.get` corruption.
   exp3–exp7 use the same form throughout, left untouched so those frozen
   experiments keep the behaviour that produced their results.
-- **The checked-in datasets are not implicated by the fixed defect.**
-  `data/MiniGrid-AchieverBlocker-{5x5,9x9}-v2/lv0va_lv0vb` came from exp8's
-  `Level0` agents, which already decoded the grid correctly. They are subject to
-  the coordinate-frame issue like all value agents. Whether to regenerate is
-  open.
+- **The checked-in datasets are stale.**
+  `data/MiniGrid-AchieverBlocker-{5x5,9x9}-v2/lv0va_lv0vb` was generated before
+  the walkability fix, by agents that froze after a handful of steps: in the 9x9
+  episodes the achiever stops moving at step 6 and never reaches its key. They
+  should be regenerated before being used for training or reported results.
+  `python -m beliefrl.viz.replay --live` plays a fresh game with the current
+  agents without touching `data/`.
 - **`lib/benchmark/` was not refactored.** It carries the same
   copy-per-experiment duplication (~3,700 lines between ToMnetF experiment4 and
   experiment5 alone), but it is a self-contained reference re-implementation,

@@ -1,4 +1,4 @@
-# Belief MultiRL
+# Belief of Belief in Multiplayer Simulation employing RL
 
 Multi-agent reinforcement learning with belief modeling, built on the Theory of Mind
 Network (ToMnet; Rabinowitz et al., 2018) architecture and extended with a second-order

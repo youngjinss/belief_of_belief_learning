@@ -38,7 +38,7 @@ belief embedding.
 | `visualize/` | Standalone visualization tools (version1–version3) |
 
 Note that `config/` does **not** hold hyperparameters for the ToMnet experiments. Each of
-exp3–exp8 carries its own `config.py`.
+exp3–exp8 carries its own `config.py`, now subclassing `beliefrl.config.BaseConfig`.
 
 ### The `beliefrl` core
 

@@ -75,7 +75,6 @@ script/exp5/
 ├── train.py                    # Training entry point (always trains on combined data from all configured agent-type combinations)
 ├── evaluate.py                # Evaluation: accuracy/F1/confusion metrics, N_past sweep, action-likelihood analysis
 ├── visualize.py                # Plots: training curves, confusion matrices, action likelihood, character-embedding PCA/t-SNE
-├── visualize_sr.py            # Standalone SR heatmap visualization from a raw trajectory text file
 ├── simulate_game.py            # Interactive/GUI game simulation between an achiever and blocker
 ├── simulate_trajectory.py      # Trajectory playback / GIF export
 └── results/                     # Default output location for trained models and plots
@@ -110,7 +109,7 @@ python script/exp5/simulate_game.py --render
 python script/exp5/simulate_trajectory.py --save_gif
 
 # Visualize successor-representation heatmaps from a saved trajectory file
-python script/exp5/visualize_sr.py data/MiniGrid-AchieverBlocker-9x9-v1/lv0va_lv0vb/test0.txt
+python beliefrl/viz/sr.py data/MiniGrid-AchieverBlocker-9x9-v1/lv0va_lv0vb/test0.txt
 ```
 
 ### 3. Training
@@ -147,6 +146,19 @@ python script/exp5/visualize.py --result_dir ./results/exp5 --plot_dir ./results
 `visualize.py` writes PNG plots (training curves, confusion matrices, action-likelihood, PCA/t-SNE character-embedding plots) under `--plot_dir`.
 
 Generated trajectory data is written under `data/MiniGrid-AchieverBlocker-9x9-v1/{achiever_type}_{blocker_type}/`, with per-episode `testN.txt` trajectory files, a cached `processed_data_exp5_{achiever_type}_{blocker_type}.pkl`, and a `test/` subdirectory holding the equivalent held-out split. Each trajectory file records, per timestep: the maze grid, both agents' actions and positions, an 8-dim consumption vector (4 keys + 4 doors), the blocker's inferred goal, and SR values for γ ∈ {0.5, 0.9, 0.99}.
+
+
+## Shared core
+
+Code that was byte-identical across experiments now lives in
+[`beliefrl`](../../beliefrl): the config accessors (`Config` subclasses
+`beliefrl.config.BaseConfig`), trajectory-generation helpers, dataset loading,
+seeding, early stopping, epoch reporting, and SR plotting. This directory keeps
+only what is specific to this experiment. Existing imports such as
+`from utils import set_seed` still work — the shared names are re-exported here.
+
+Run `pytest` from the repo root to check every experiment against the golden
+recordings made before the refactor.
 
 ## Notes and Limitations
 

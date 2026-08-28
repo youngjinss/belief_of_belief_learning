@@ -84,7 +84,6 @@ script/exp4/
 ├── train.py                 # Training loop, SR-loss utilities, checkpoint saving
 ├── evaluate.py               # Loads a checkpoint, scores it on held-out data
 ├── visualize.py              # Plots from training history / evaluation output
-├── visualize_sr.py           # Standalone SR-parsing helpers for a trajectory file
 ├── simulate_trajectory.py    # Replays a saved trajectory .txt file (GameSimulation)
 └── simulate_game.py          # Live single-agent rollout viewer (see Limitations)
 ```
@@ -159,8 +158,21 @@ Each trajectory yields two training samples once processed by `DataGenerator.pro
 - `predictions.pkl`
 - `n_past_evaluation_results.json`, `action_likelihood_analysis.pkl`, `action_likelihood_stats.json`
 
+
+## Shared core
+
+Code that was byte-identical across experiments now lives in
+[`beliefrl`](../../beliefrl): the config accessors (`Config` subclasses
+`beliefrl.config.BaseConfig`), trajectory-generation helpers, dataset loading,
+seeding, early stopping, epoch reporting, and SR plotting. This directory keeps
+only what is specific to this experiment. Existing imports such as
+`from utils import set_seed` still work — the shared names are re-exported here.
+
+Run `pytest` from the repo root to check every experiment against the golden
+recordings made before the refactor.
+
 ## Notes and Limitations
 
 - `simulate_game.py` does `from agents import AStarAgent, RandomAgent, ValueAgent`, but no `agents.py` module exists in this directory (the actual policy classes live in `achievers.py`/`blockers.py`). Running it currently raises `ModuleNotFoundError: No module named 'agents'`. It also only instantiates a single Achiever policy and calls `env.step()` with what appears to be a single action, while `AchieverBlockerEnv.step()` expects an `(achiever_action, blocker_action)` pair — this script looks like an unported carryover from an earlier single-agent experiment and is not currently usable for AchieverBlocker rollouts.
-- `visualize_sr.py` has no `argparse` interface; its `if __name__ == "__main__":` block calls `analyze_test_file()` with a hardcoded absolute path from a different machine/repo layout. Its parsing functions (`parse_maze`, `parse_sr_data`, `analyze_test_file`) are usable when imported directly, but the file cannot be run as a CLI tool as-is.
+- SR-parsing helpers moved to `beliefrl/viz/sr.py` — all six experiments carried an identical copy. There is no `argparse` interface and the `__main__` block hardcodes an absolute path from a different repo layout, so it is importable but not runnable as a CLI.
 - The `action_logits` head is sized for the larger of the two action spaces; Blocker samples (6-way) and Achiever samples (7-way) share this single head, so action-loss/accuracy figures should be interpreted per agent type rather than pooled, if pooled numbers are reported anywhere downstream.

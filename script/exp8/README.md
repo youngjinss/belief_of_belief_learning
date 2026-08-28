@@ -2,8 +2,8 @@
 
 exp8 extends the ToMnet architecture used in earlier experiments with a second-order belief
 embedding (`e_opp2`), computed by a dedicated `SecondBeliefNet` and fused into prediction via
-cross-attention. It also reorganizes the hand-coded game agents (achiever/blocker) into a
-modular `agents/` subpackage.
+cross-attention. It also reorganized the hand-coded game agents (achiever/blocker) into a
+modular per-agent package, which has since moved into the shared `beliefrl` core.
 
 ## Purpose
 
@@ -15,8 +15,9 @@ modular `agents/` subpackage.
 3. **Opponent Trajectory Integration** — data generation extracts each agent's recent trajectory
    from the *opponent's* perspective so `SecondBeliefNet` has real opponent behavior to condition on.
 4. **Modular Agent Architecture** — the achiever/blocker heuristic and value-based policies used
-   to generate training data live in `agents/`, one file per agent type, instead of monolithic
-   `achievers.py` / `blockers.py` files.
+   to generate training data are one file per agent type rather than monolithic
+   `achievers.py` / `blockers.py` files. They now live in `beliefrl/agents/`, shared with the
+   other experiments.
 
 ## Environment
 
@@ -36,7 +37,7 @@ plus a self-position channel and an opponent-position channel (zeroed out in sin
 
 ## Architecture
 
-`tomnet.py` defines the network stack. `ToMnet` composes up to four sub-networks depending on
+`beliefrl/model/tomnet.py` defines the network stack. `ToMnet` composes up to four sub-networks depending on
 `use_mentalnet` / `use_second_belief`:
 
 ```
@@ -78,45 +79,39 @@ Recent Self Traj+Actions ► MentalNet ────► e_mental ──┼─► 
 When `use_second_belief=True` but no opponent trajectory is available for a sample, the model
 substitutes a zero vector for `e_opp2` rather than skipping the attention path.
 
-`ToMnetLoss` (also in `tomnet.py`) combines the six prediction losses; per-head weights are set
+`ToMnetLoss` (also in `beliefrl/model/tomnet.py`) combines the six prediction losses; per-head weights are set
 in `Config.training_process_config`.
 
 ## Files
 
 ```
 script/exp8/
-├── config.py              # Config: env, agent, model, training, data, evaluation settings
-├── generate.py             # Runs games between configured achiever/blocker agents, writes
-│                            #   raw trajectory files (agent selection via agents/ subpackage)
-├── data_generation.py       # Parses raw trajectory files into ToMnet training tensors,
-│                            #   including opponent-perspective trajectories for e_opp2
-├── tomnet.py                # Network definitions: CharNet, MentalNet, SecondBeliefNet,
-│                            #   CrossAttentionModule, PredNet, ToMnet, ToMnetLoss
-├── train.py                 # Training loop, checkpointing, plotting hooks
-├── evaluate.py               # Loads a trained model, runs evaluation/analysis, produces plots
-├── visualize.py              # Plotting utilities: embeddings (including e_opp2), attention,
-│                             #   SR maps, per-agent/goal breakdowns
-├── visualize_sr.py            # Standalone SR-map plotting from parsed maze/SR text data
-├── simulate_game.py            # Runs and renders a single live episode (debug/demo)
-├── simulate_trajectory.py       # Replays a saved trajectory file, optionally to GIF
-├── utils.py                     # Shared helpers: seeding, data loading/chunking, SR loss,
-│                                #   spatialize_action, training-plot utilities
-├── agents/
-│   ├── value_agent.py            # BaseValueAgent: vectorized value iteration, memory of
-│   │                              #   discovered keys/doors, clockwise wall-following exploration
-│   ├── achiever/
-│   │   ├── astar.py               # AStarAgent — A* pathfinding baseline
-│   │   ├── random.py              # RandomAgent
-│   │   ├── level0value.py         # Level0ValueAchiever — value iteration, no deception
-│   │   └── level1value.py         # Level1ValueAchiever — value iteration + deceptive decoy play
-│   └── blocker/
-│       ├── random.py              # RandomAgent
-│       ├── randomlyselect.py      # RandomlySelectedAgent — random door selection among found doors
-│       ├── goaldirected.py        # GoalDirectAgent — moves toward achiever's visible key
-│       ├── rulebased.py           # RuleBasedAgent — multi-phase heuristic strategy
-│       ├── level0value.py         # Level0ValueBlocker — random door selection + inference
-    └── level1value.py         # Level1ValueBlocker — achiever tracking + target inference
+├── config.py                # Config(BaseConfig): env, agent, model, training, data settings
+├── generate.py               # Runs games between configured achiever/blocker agents, writes
+│                              #   raw trajectory files
+├── data_generation.py         # Parses raw trajectory files into ToMnet training tensors,
+│                              #   including opponent-perspective trajectories for e_opp2
+├── train.py                   # Training loop, checkpointing, plotting hooks
+├── evaluate.py                 # Loads a trained model, runs evaluation/analysis, produces plots
+├── visualize.py                # exp8-specific plots; the shared ones come from beliefrl.viz
+├── simulate_game.py             # Runs and renders a single live episode (debug/demo)
+├── simulate_trajectory.py        # Replays a saved trajectory file, optionally to GIF
+└── utils.py                       # exp8-specific data preparation; shared helpers re-exported
+                                   #   from beliefrl
 ```
+
+The model, the agents, and everything else exp8 shared with the other experiments now live in
+the [`beliefrl`](../../beliefrl) core:
+
+| Module | Contents |
+|--------|----------|
+| `beliefrl/model/tomnet.py` | CharNet, MentalNet, SecondBeliefNet, CrossAttentionModule, PredNet, ToMnet, ToMnetLoss |
+| `beliefrl/agents/value_agent.py` | `BaseValueAgent` — vectorized value iteration, memory of discovered keys/doors, clockwise wall-following exploration |
+| `beliefrl/agents/achiever/` | `astar.py`, `random.py`, `level0value.py`, `level1value.py` |
+| `beliefrl/agents/blocker/` | `random.py`, `randomlyselect.py`, `goaldirected.py`, `rulebased.py`, `level0value.py`, `level1value.py` |
+| `beliefrl/config/base.py` | `BaseConfig` — the config accessors every experiment shared |
+| `beliefrl/viz/` | `sr.py` (SR heatmaps) and `plots.py` (embedding and metric plots shared with exp7) |
+| `beliefrl/data/`, `beliefrl/train/`, `beliefrl/utils.py` | Generation helpers, dataset loading, early stopping, epoch reporting, seeding |
 
 Data-inspection scripts are shared across experiments and live in `script/tools/`:
 `find_long_trajectories.py` (finds generated trajectory files above a length threshold)
@@ -126,7 +121,7 @@ Both scan the whole `data/` tree, so they are not specific to exp8.
 Each agent module exposes one policy class. `Level0*` agents plan with value iteration and no
 opponent modeling; `Level1*` agents add opponent inference (blocker) or deceptive movement
 (achiever). All `Level*Value*` agents inherit shared exploration/memory logic from
-`BaseValueAgent` in `agents/value_agent.py`, including clockwise wall-following when exploring
+`BaseValueAgent` in `beliefrl/agents/value_agent.py`, including clockwise wall-following when exploring
 unknown areas under partial observation.
 
 ## Running

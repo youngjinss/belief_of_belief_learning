@@ -84,7 +84,7 @@ A single-agent (KeyDoor) log uses the shorter form `[x, y] : action : interactio
 - `visualize.py` — plotting utilities, including a unified `EmbeddingExtractor` (supports `"character"`, `"mental"`, and `"second_belief"` embedding types) and dedicated `plot_second_belief_embeddings*` functions (PCA/t-SNE by agent and by goal).
 - `simulate_game.py`, `simulate_trajectory.py` — interactive/episode-level game simulation and rendering.
 - `value_agent.py`, `achievers.py`, `blockers.py` — agent policy implementations (value-based, level-k, rule-based, random, etc.) used to generate trajectories.
-- `visualize_sr.py` — successor-representation-specific plotting.
+- `beliefrl/viz/sr.py` — successor-representation plotting, shared by every experiment.
 - `utils.py` — shared helpers, including `spatialize_action` (turns a discrete action index into a spatial one-hot channel, used identically by `MentalNet` and `SecondBeliefNet`).
 - Data-inspection scripts live in `script/tools/` (`analyze_interactions.py`, `find_long_trajectories.py`); they scan the whole `data/` tree and are shared by every experiment.
 
@@ -149,6 +149,19 @@ python script/exp7/visualize.py --config_override --result_dir results/exp7/<run
 - `results/exp7/<run>/evaluation_results_exp7.json` — accuracy/F1/confusion-matrix summary produced by `evaluate.py`.
 - `results/exp7/<run>/plots/` — training curves, confusion matrices, and embedding visualizations, including `second_belief_embeddings_by_agent_exp7.png` and `second_belief_embeddings_by_goal_exp7.png` from `visualize.py --plot_type second_belief_embeddings` (or `all`).
 - `log/exp7/<run>/*.log` — per-stage logs (data generation, training, evaluation, visualization) written by `run_exp7.sh`.
+
+
+## Shared core
+
+Code that was byte-identical across experiments now lives in
+[`beliefrl`](../../beliefrl): the config accessors (`Config` subclasses
+`beliefrl.config.BaseConfig`), trajectory-generation helpers, dataset loading,
+seeding, early stopping, epoch reporting, and SR plotting. This directory keeps
+only what is specific to this experiment. Existing imports such as
+`from utils import set_seed` still work — the shared names are re-exported here.
+
+Run `pytest` from the repo root to check every experiment against the golden
+recordings made before the refactor.
 
 ## Notes and Limitations
 

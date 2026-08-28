@@ -83,7 +83,7 @@ The same `ToMnet` / `ToMnetLoss` classes and the same `train_tomnet()` loop run 
 | `train.py` | Training loop, checkpointing (`best_model.pth`, periodic `checkpoint_epoch_*.pth`), history/config logging, final model save. |
 | `evaluate.py` | Loads a trained model and computes accuracy, an n_past sweep, character/mental embedding extraction, and action-likelihood analysis. |
 | `visualize.py` | Plots training curves, confusion matrices, action likelihood, and character/mental embeddings (agent-based, goal-based, type-based). |
-| `visualize_sr.py` | Standalone script to render successor-representation heatmaps from a maze text dump. |
+| `beliefrl/viz/sr.py` | Successor-representation heatmaps from a maze text dump — shared by every experiment. |
 | `achievers.py` | Achiever policies: `AStarAgent`, `Level0ValueAchiever`, `Level1ValueAchiever`, `RandomAgent`. |
 | `blockers.py` | Blocker policies: `RandomAgent`, `RandomlySelectedAgent`, `GoalDirectAgent`, `Level0ValueBlocker`, `Level1ValueBlocker`, `RuleBasedAgent`. |
 | `value_agent.py` | `BaseValueAgent` — shared value-iteration logic used by the value-based achievers and blockers. |
@@ -136,6 +136,19 @@ bash shell/exp6/run_exp6.sh train    # run a single stage
 - **Training results**: `results/exp6/<run>/` — `best_model.pth`, `checkpoint_epoch_*.pth`, `final_model.pth`, `training_history.json`, `model_config.json`, `full_config.json`, plus training-curve plots saved during training.
 - **Evaluation/visualization**: plots and metrics written under `results/exp6/<run>/plots/` (confusion matrices, action-likelihood, character/mental embedding scatterplots, n_past accuracy curves).
 - **Logs**: `log/exp6/<timestamp>/{execution,train_data_generation,test_data_generation,training,evaluation,visualization}.log` when run through `run_exp6.sh`.
+
+
+## Shared core
+
+Code that was byte-identical across experiments now lives in
+[`beliefrl`](../../beliefrl): the config accessors (`Config` subclasses
+`beliefrl.config.BaseConfig`), trajectory-generation helpers, dataset loading,
+seeding, early stopping, epoch reporting, and SR plotting. This directory keeps
+only what is specific to this experiment. Existing imports such as
+`from utils import set_seed` still work — the shared names are re-exported here.
+
+Run `pytest` from the repo root to check every experiment against the golden
+recordings made before the refactor.
 
 ## Notes and Limitations
 

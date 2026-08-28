@@ -51,7 +51,6 @@ script/exp3/
 ├── train.py                   # Data prep, training loop, ToMnet loss, checkpointing
 ├── evaluate.py                 # Loads a trained model, computes accuracy/F1/N_past metrics
 ├── visualize.py                # Training curves, confusion matrices, embedding plots (t-SNE/PCA)
-├── visualize_sr.py             # Standalone SR-heatmap plotting helpers (no CLI, see Notes)
 ├── simulate_game.py            # Live GUI rollout of one agent in the environment
 ├── simulate_trajectory.py      # Replays a saved trajectory file and renders/animates it
 └── tomnet.py                    # Model architecture (CharNet, MentalNet, PredNet, ToMnet, ToMnetLoss)
@@ -84,7 +83,7 @@ python script/exp3/simulate_game.py --agent_type value --episodes 3 --pause 0.5
 # Replay a saved trajectory file
 python script/exp3/simulate_trajectory.py --data_file data/MiniGrid-KeyDoor-9x9-v0/value/test0.txt
 ```
-`visualize_sr.py` has no CLI — see Notes and Limitations.
+SR-heatmap plotting now lives in `beliefrl/viz/sr.py`, shared by every experiment.
 
 ### 3. Training (`train.py`)
 
@@ -165,9 +164,22 @@ All three expose `get_action(obs)` / `update_observation(obs)` / `reset()` and r
 
 `generate.py` writes trajectory text files (`test0.txt`, `test1.txt`, …) plus a cached `processed_data_exp3.pkl` (or `processed_test_data_exp3.pkl` under `test/`) to `data/<env_name>/<agent_type>/`.
 
+
+## Shared core
+
+Code that was byte-identical across experiments now lives in
+[`beliefrl`](../../beliefrl): the config accessors (`Config` subclasses
+`beliefrl.config.BaseConfig`), trajectory-generation helpers, dataset loading,
+seeding, early stopping, epoch reporting, and SR plotting. This directory keeps
+only what is specific to this experiment. Existing imports such as
+`from utils import set_seed` still work — the shared names are re-exported here.
+
+Run `pytest` from the repo root to check every experiment against the golden
+recordings made before the refactor.
+
 ## Notes and Limitations
 
-- `visualize_sr.py` has no `argparse` CLI; its `if __name__ == "__main__":` block hardcodes an absolute path (`/Users/youngjins/.../belief_trading/data/exp3/test98.txt`, from a different, earlier repo) and calls `analyze_test_file()` on it directly. Its plotting functions (`parse_maze`, `parse_sr_data`, etc.) are usable as a library from other scripts, but the file is not runnable as-is without editing that path.
+- SR-heatmap plotting moved to `beliefrl/viz/sr.py` — all six experiments carried an identical copy. It has no `argparse` CLI, and its `if __name__ == "__main__":` block hardcodes an absolute path from a different, earlier repo, so it is usable as a library but not runnable as-is.
 - Most scripts gate CLI overrides behind `--config_override`: without that flag, flags other than each script's directly-read path arguments (e.g. `train.py --save_dir`/`--data_dir`, `evaluate.py --model_path`) are silently ignored and `config.py`'s defaults are used instead.
 - `training_config["device"]` defaults to `"cuda:3"` — adjust via `--device` (with `--config_override`) for machines without that GPU index.
 - The KeyDoor environment itself (`MiniGrid-KeyDoor-{size}-v0`) is defined outside this directory, under `lib/env/gym_minigrid/`.

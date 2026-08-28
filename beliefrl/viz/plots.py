@@ -22,6 +22,7 @@ import seaborn as sns
 import torch
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
+from sklearn.metrics import confusion_matrix
 
 def plot_accuracy_by_n_past(
     results_by_n_past,
@@ -1590,3 +1591,511 @@ def plot_second_belief_embeddings_by_goal(
     )
     print(f"Second belief goal embedding plot saved to {output_dir}")
     plt.close()
+
+
+def plot_training_curves(history_path, output_dir, config=None, experiment_no=None):
+    """
+    Plot training curves from training history
+
+    Args:
+        history_path: Path to training history JSON file
+        output_dir: Directory to save plots
+        config: Configuration object containing experiment settings
+        experiment_no: Experiment number (defaults to config.experiment_no)
+    """
+    if config is None:
+        raise ValueError(
+            "config is required: the shared plots cannot construct an "
+            "experiment Config. Pass the experiment's config object."
+        )
+
+    if experiment_no is None:
+        experiment_no = config.experiment_no
+    plt.style.use("seaborn-v0_8")
+
+    # Load training history
+    if not os.path.exists(history_path):
+        print(f"Training history not found at: {history_path}")
+        return
+
+    with open(history_path, "r") as f:
+        history = json.load(f)
+
+    # Check if component losses are available
+    has_component_losses = (
+        "train_action_loss" in history
+        and "train_consumption_loss" in history
+        and "train_sr_loss" in history
+    )
+
+    if has_component_losses:
+        # Create 3x2 subplot grid for comprehensive visualization (matching experiment 5)
+        fig, axes = plt.subplots(3, 2, figsize=(15, 15))
+        ax1, ax2 = axes[0]
+        ax3, ax4 = axes[1]
+        ax5, ax6 = axes[2]
+    else:
+        # Fallback to 2x2 layout for basic metrics
+        fig, axes = plt.subplots(2, 2, figsize=(15, 10))
+        ax1, ax2 = axes[0]
+        ax3, ax4 = axes[1]
+
+    title_prefix = (
+        "Single-Agent"
+        if config and config.is_single_agent_mode()
+        else "AchieverBlocker"
+    )
+    fig.suptitle(
+        f"{title_prefix} ToMnet Training History (Experiment {experiment_no})",
+        fontsize=16,
+    )
+
+    epochs = history["epoch"]
+
+    # Total accuracy plot
+    ax1.plot(
+        epochs,
+        history["train_action_accuracy"],
+        label="Training",
+        linewidth=2,
+        marker="o",
+        markersize=4,
+    )
+    ax1.plot(
+        epochs,
+        history["val_action_accuracy"],
+        label="Validation",
+        linewidth=2,
+        marker="s",
+        markersize=4,
+    )
+    ax1.set_xlabel("Epoch", fontsize=12)
+    ax1.set_ylabel("Accuracy (%)", fontsize=12)
+    ax1.set_title("Model Accuracy", fontsize=14, fontweight="bold")
+    ax1.legend(fontsize=11)
+    ax1.grid(True, alpha=0.3)
+    ax1.set_xlim(0, max(epochs))
+
+    # Total Loss plot
+    ax2.plot(
+        epochs,
+        history["train_loss"],
+        label="Training",
+        linewidth=2,
+        marker="o",
+        markersize=4,
+    )
+    ax2.plot(
+        epochs,
+        history["val_loss"],
+        label="Validation",
+        linewidth=2,
+        marker="s",
+        markersize=4,
+    )
+    ax2.set_xlabel("Epoch", fontsize=12)
+    ax2.set_ylabel("Loss", fontsize=12)
+    ax2.set_title("Total Loss", fontsize=14, fontweight="bold")
+    ax2.legend(fontsize=11)
+    ax2.grid(True, alpha=0.3)
+    ax2.set_xlim(0, max(epochs))
+
+    if has_component_losses:
+        # Action Loss plot
+        ax3.plot(
+            epochs,
+            history["train_action_loss"],
+            label="Training",
+            linewidth=2,
+            marker="o",
+            markersize=4,
+            color="green",
+        )
+        ax3.plot(
+            epochs,
+            history["val_action_loss"],
+            label="Validation",
+            linewidth=2,
+            marker="s",
+            markersize=4,
+            color="lightgreen",
+        )
+        ax3.set_xlabel("Epoch", fontsize=12)
+        ax3.set_ylabel("Loss", fontsize=12)
+        ax3.set_title("Action Loss", fontsize=14, fontweight="bold")
+        ax3.legend(fontsize=11)
+        ax3.grid(True, alpha=0.3)
+        ax3.set_xlim(0, max(epochs))
+
+        # Consumption Loss plot
+        ax4.plot(
+            epochs,
+            history["train_consumption_loss"],
+            label="Training",
+            linewidth=2,
+            marker="o",
+            markersize=4,
+            color="red",
+        )
+        ax4.plot(
+            epochs,
+            history["val_consumption_loss"],
+            label="Validation",
+            linewidth=2,
+            marker="s",
+            markersize=4,
+            color="salmon",
+        )
+        ax4.set_xlabel("Epoch", fontsize=12)
+        ax4.set_ylabel("Loss", fontsize=12)
+        ax4.set_title("Consumption Loss", fontsize=14, fontweight="bold")
+        ax4.legend(fontsize=11)
+        ax4.grid(True, alpha=0.3)
+        ax4.set_xlim(0, max(epochs))
+
+        # SR Loss plot
+        ax5.plot(
+            epochs,
+            history["train_sr_loss"],
+            label="Training",
+            linewidth=2,
+            marker="o",
+            markersize=4,
+            color="purple",
+        )
+        ax5.plot(
+            epochs,
+            history["val_sr_loss"],
+            label="Validation",
+            linewidth=2,
+            marker="s",
+            markersize=4,
+            color="plum",
+        )
+        ax5.set_xlabel("Epoch", fontsize=12)
+        ax5.set_ylabel("Loss", fontsize=12)
+        ax5.set_title("Successor Representation Loss", fontsize=14, fontweight="bold")
+        ax5.legend(fontsize=11)
+        ax5.grid(True, alpha=0.3)
+        ax5.set_xlim(0, max(epochs))
+
+        # Goal accuracy plot (moved to 6th position)
+        ax6.plot(
+            epochs,
+            history["train_goal_accuracy"],
+            label="Training",
+            linewidth=2,
+            marker="o",
+            markersize=4,
+            color="orange",
+        )
+        ax6.plot(
+            epochs,
+            history["val_goal_accuracy"],
+            label="Validation",
+            linewidth=2,
+            marker="s",
+            markersize=4,
+            color="moccasin",
+        )
+        ax6.set_xlabel("Epoch", fontsize=12)
+        ax6.set_ylabel("Accuracy", fontsize=12)
+        ax6.set_title("Goal Accuracy", fontsize=14, fontweight="bold")
+        ax6.legend(fontsize=11)
+        ax6.grid(True, alpha=0.3)
+        ax6.set_xlim(0, max(epochs))
+    else:
+        # Fallback to basic goal accuracy and loss components
+        # Goal accuracy curves
+        ax3.plot(
+            history["epoch"],
+            history["train_goal_accuracy"],
+            label="Train Goal Acc",
+            marker="o",
+        )
+        ax3.plot(
+            history["epoch"],
+            history["val_goal_accuracy"],
+            label="Val Goal Acc",
+            marker="s",
+        )
+        ax3.set_title("Goal Accuracy")
+        ax3.set_xlabel("Epoch")
+        ax3.set_ylabel("Accuracy")
+        ax3.legend()
+        ax3.grid(True, alpha=0.3)
+
+        # Loss components
+        ax4.plot(
+            history["epoch"],
+            history["train_action_loss"] if "train_action_loss" in history else [],
+            label="Train Action Loss",
+            marker="o",
+        )
+        ax4.plot(
+            history["epoch"],
+            history["train_goal_loss"] if "train_goal_loss" in history else [],
+            label="Train Goal Loss",
+            marker="s",
+        )
+        ax4.plot(
+            history["epoch"],
+            history["val_action_loss"] if "val_action_loss" in history else [],
+            label="Val Action Loss",
+            marker="^",
+        )
+        ax4.plot(
+            history["epoch"],
+            history["val_goal_loss"] if "val_goal_loss" in history else [],
+            label="Val Goal Loss",
+            marker="v",
+        )
+        ax4.set_title("Loss Components")
+        ax4.set_xlabel("Epoch")
+        ax4.set_ylabel("Loss")
+        ax4.legend()
+        ax4.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+
+    # Save plot
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+        plt.savefig(
+            os.path.join(
+                output_dir, f"achieverblocker_training_curves_exp{experiment_no}.png"
+            ),
+            dpi=300,
+            bbox_inches="tight",
+        )
+
+    plt.show()
+
+    # Print training summary
+    title_prefix = (
+        "Single-Agent"
+        if config and config.is_single_agent_mode()
+        else "AchieverBlocker"
+    )
+    print(f"\n{title_prefix} Training Summary (Experiment {experiment_no}):")
+    print("-" * 50)
+    print(f"Total epochs: {len(history['epoch'])}")
+    print(f"Best validation loss: {min(history['val_loss']):.4f}")
+    print(f"Best validation action accuracy: {max(history['val_action_accuracy']):.4f}")
+    print(f"Best validation goal accuracy: {max(history['val_goal_accuracy']):.4f}")
+
+    # Print component loss summaries if available
+    if has_component_losses:
+        if "val_consumption_loss" in history:
+            print(
+                f"Best validation consumption loss: {min(history['val_consumption_loss']):.4f}"
+            )
+        if "val_sr_loss" in history:
+            print(f"Best validation SR loss: {min(history['val_sr_loss']):.4f}")
+
+
+def plot_confusion_matrix(
+    predictions_path, output_dir, config=None, experiment_no=None
+):
+    """
+    Plot confusion matrix from predictions
+
+    Args:
+        predictions_path: Path to predictions pickle file
+        output_dir: Directory to save plots
+        config: Configuration object containing experiment settings
+        experiment_no: Experiment number (defaults to config.experiment_no)
+    """
+    if config is None:
+        raise ValueError(
+            "config is required: the shared plots cannot construct an "
+            "experiment Config. Pass the experiment's config object."
+        )
+
+    if experiment_no is None:
+        experiment_no = config.experiment_no
+
+    plt.style.use("seaborn-v0_8")
+
+    # Load predictions
+    if not os.path.exists(predictions_path):
+        print(f"Predictions not found at: {predictions_path}")
+        return
+
+    with open(predictions_path, "rb") as f:
+        predictions_data = pickle.load(f)
+
+    targets = np.array(predictions_data["targets"])
+    predictions = np.array(predictions_data["predictions"])
+
+    # Create confusion matrix
+    cm = confusion_matrix(targets, predictions)
+
+    # Get action information from config
+    action_config = config.get_action_config()
+    action_names = action_config.get(
+        "action_names",
+        ["Up", "Right", "Down", "Left", "Stay", "Pickup", "Toggle", "Broken"],
+    )
+
+    # Plot confusion matrix
+    fig, ax = plt.subplots(figsize=(10, 8))
+    sns.heatmap(
+        cm,
+        annot=True,
+        fmt="d",
+        cmap="Blues",
+        xticklabels=action_names,
+        yticklabels=action_names,
+        ax=ax,
+    )
+
+    title_prefix = (
+        "Single-Agent"
+        if config and config.is_single_agent_mode()
+        else "AchieverBlocker"
+    )
+    ax.set_title(
+        f"{title_prefix}: Confusion Matrix (Experiment {experiment_no})",
+        fontsize=14,
+        fontweight="bold",
+    )
+    ax.set_xlabel("Predicted Action", fontsize=12)
+    ax.set_ylabel("True Action", fontsize=12)
+
+    plt.tight_layout()
+
+    # Save plot
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+        plt.savefig(
+            os.path.join(
+                output_dir, f"achieverblocker_confusion_matrix_exp{experiment_no}.png"
+            ),
+            dpi=300,
+            bbox_inches="tight",
+        )
+
+    plt.show()
+
+    # Print confusion matrix statistics
+    title_prefix = (
+        "Single-Agent"
+        if config and config.is_single_agent_mode()
+        else "AchieverBlocker"
+    )
+    print(f"\n{title_prefix} Confusion Matrix Statistics (Experiment {experiment_no}):")
+    print("-" * 60)
+    for i, action in enumerate(action_names):
+        if i < len(cm):
+            precision = cm[i, i] / cm[:, i].sum() if cm[:, i].sum() > 0 else 0
+            recall = cm[i, i] / cm[i, :].sum() if cm[i, :].sum() > 0 else 0
+            print(f"{action:8s}: Precision={precision:.3f}, Recall={recall:.3f}")
+
+
+def plot_action_likelihood(
+    predictions_path, output_dir, config=None, experiment_no=None
+):
+    """
+    Plot action likelihood distributions
+
+    Args:
+        predictions_path: Path to predictions pickle file
+        output_dir: Directory to save plots
+        config: Configuration object containing experiment settings
+        experiment_no: Experiment number (defaults to config.experiment_no)
+    """
+    if config is None:
+        raise ValueError(
+            "config is required: the shared plots cannot construct an "
+            "experiment Config. Pass the experiment's config object."
+        )
+
+    if experiment_no is None:
+        experiment_no = config.experiment_no
+
+    plt.style.use("seaborn-v0_8")
+
+    # Load predictions
+    if not os.path.exists(predictions_path):
+        print(f"Predictions not found at: {predictions_path}")
+        return
+
+    with open(predictions_path, "rb") as f:
+        predictions_data = pickle.load(f)
+
+    targets = np.array(predictions_data["targets"])
+    probabilities = np.array(predictions_data["probabilities"])
+
+    # Get action information from config
+    action_config = config.get_action_config()
+    action_names = action_config.get(
+        "action_names",
+        ["Up", "Right", "Down", "Left", "Stay", "Pickup", "Toggle", "Broken"],
+    )
+
+    # Create figure with subplots
+    fig, axes = plt.subplots(2, 4, figsize=(16, 8))
+    title_prefix = (
+        "Single-Agent"
+        if config and config.is_single_agent_mode()
+        else "AchieverBlocker"
+    )
+    fig.suptitle(
+        f"{title_prefix}: Action Likelihood Distributions (Experiment {experiment_no})",
+        fontsize=16,
+    )
+
+    num_actions = len(action_names)
+    for action in range(num_actions):
+        row = action // 4
+        col = action % 4
+        ax = axes[row, col]
+
+        # Get likelihood values for this action
+        action_mask = targets == action
+        if np.sum(action_mask) > 0:
+            likelihoods = probabilities[action_mask, action]
+
+            # Plot histogram
+            ax.hist(
+                likelihoods, bins=30, alpha=0.7, color=f"C{action}", edgecolor="black"
+            )
+            ax.set_title(f"{action_names[action]}")
+            ax.set_xlabel("Likelihood")
+            ax.set_ylabel("Frequency")
+            ax.grid(True, alpha=0.3)
+
+            # Add statistics
+            mean_likelihood = np.mean(likelihoods)
+            ax.axvline(
+                mean_likelihood,
+                color="red",
+                linestyle="--",
+                label=f"Mean: {mean_likelihood:.3f}",
+            )
+            ax.legend()
+        else:
+            ax.text(
+                0.5, 0.5, "No samples", ha="center", va="center", transform=ax.transAxes
+            )
+            ax.set_title(f"{action_names[action]}")
+
+    # Remove empty subplot
+    if len(axes.flat) > 7:
+        axes.flat[7].remove()
+
+    plt.tight_layout()
+
+    # Save plot
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+        plt.savefig(
+            os.path.join(
+                output_dir, f"achieverblocker_action_likelihood_exp{experiment_no}.png"
+            ),
+            dpi=300,
+            bbox_inches="tight",
+        )
+
+    plt.show()

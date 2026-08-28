@@ -1,0 +1,8 @@
+{
+  "experiment": "exp4",
+  "seed": 7777,
+  "train": {
+    "error": "forward did not return a dict",
+    "status": "raises"
+  }
+}

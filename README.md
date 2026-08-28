@@ -42,7 +42,7 @@ exp3–exp8 carries its own `config.py`.
 
 ### The `beliefrl` core
 
-exp5–exp8 previously carried near-identical copies of the same code. What is provably
+exp3–exp8 previously carried near-identical copies of the same code. What is provably
 identical between them now lives in one place:
 
 | Package | Contents |
@@ -57,6 +57,9 @@ identical between them now lives in one place:
 
 Each experiment's `Config` subclasses `BaseConfig` and its modules re-export the shared
 names, so `from utils import set_seed` and `from blockers import RandomAgent` still work.
+
+Every removal was gated the same way: a definition moved only when its AST was identical
+to the core's, and the golden harness had to stay green afterwards without re-recording.
 
 What did **not** move is as informative as what did. `tomnet.py`, `data_generation.py`,
 `train.py`, `visualize.py`, and most agent classes genuinely differ between experiments —
@@ -100,8 +103,8 @@ pytest                         # from the repo root
 python tests/golden.py check   # same checks, no pytest dependency
 ```
 
-Twelve golden-output checks, roughly ten seconds: each experiment's configuration, model,
-50 agent rollouts, and a one-step training smoke test are compared against recordings made
+Eighteen golden-output checks across exp3–exp8: each experiment's configuration, model,
+agent rollouts, and a one-step training smoke test are compared against recordings made
 before the refactor. See [tests/README.md](tests/README.md), which also lists the defects
 the harness uncovered and the open issues it documents.
 

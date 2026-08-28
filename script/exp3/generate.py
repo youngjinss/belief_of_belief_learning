@@ -33,6 +33,16 @@ Adapted from experiment 5 for KeyDoor environment with 4 keys and 4 doors
 """
 
 
+
+import os as _os, sys as _sys
+_R=_os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+if _R not in _sys.path: _sys.path.insert(0,_R)
+from beliefrl.data.generation import (  # noqa: F401
+    calculate_consumption_labels,
+    calculate_key_door_rank,
+)
+
+
 def calculate_successor_representation(
     positions, query_time_t, grid_size=9, gammas=None, num_rollouts=1
 ):
@@ -112,72 +122,6 @@ def calculate_sr_labels_for_trajectory(positions, grid_size=9, gammas=None):
         sr_labels_per_timestep.append(sr_sparse)
 
     return sr_labels_per_timestep
-
-
-def calculate_key_door_rank(
-    keys_collected, doors_opened, target_door_color, goal_rewards
-):
-    """
-    Calculate the rank of keys and doors based on reward values
-
-    Args:
-        keys_collected: List of key colors collected in order
-        doors_opened: List of door colors opened in order
-        target_door_color: The target door color
-        goal_rewards: Dictionary of color -> reward value
-
-    Returns:
-        key_door_rank: List of ranks [rank_key0, rank_key1, rank_key2, rank_key3]
-                      where 1 is the highest reward, 4 is lowest reward
-    """
-    colors = ["red", "green", "blue", "yellow"]
-
-    # Get reward values for each color
-    reward_values = [goal_rewards.get(color, 0) for color in colors]
-
-    # Create ranking: highest reward gets rank 1, lowest gets rank 4
-    # Sort indices by reward value (descending order)
-    sorted_indices = sorted(
-        range(len(reward_values)), key=lambda i: reward_values[i], reverse=True
-    )
-
-    # Create ranking array
-    key_door_rank = [0] * 4
-    for rank, idx in enumerate(sorted_indices):
-        key_door_rank[idx] = rank + 1
-
-    return key_door_rank
-
-
-def calculate_consumption_labels(keys_collected, doors_opened):
-    """
-    Calculate consumption labels for keys and doors
-
-    Args:
-        keys_collected: List of key colors collected
-        doors_opened: List of door colors opened
-
-    Returns:
-        consumption_vector: Binary vector of length 8 (4 keys + 4 doors)
-                          [key_red, key_green, key_blue, key_yellow,
-                           door_red, door_green, door_blue, door_yellow]
-    """
-    consumption_vector = np.zeros(8, dtype=np.float32)
-    colors = ["red", "green", "blue", "yellow"]
-
-    # Mark collected keys
-    for key_color in keys_collected:
-        if key_color in colors:
-            idx = colors.index(key_color)
-            consumption_vector[idx] = 1.0
-
-    # Mark opened doors
-    for door_color in doors_opened:
-        if door_color in colors:
-            idx = colors.index(door_color)
-            consumption_vector[4 + idx] = 1.0
-
-    return consumption_vector
 
 
 def env_to_maze_format(env, agent_pos):

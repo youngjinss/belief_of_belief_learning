@@ -26,7 +26,9 @@ TRAIN_PROBE = os.path.join(REPO_ROOT, "tests", "_probe_train.py")
 # contract.
 KINDS = ("", "agents", "train")
 
-EXPERIMENTS = ("exp5", "exp6", "exp7", "exp8")
+# exp3 and exp4 are earlier, frozen experiments. They are covered so that the
+# shared code they still carry can be migrated with the same guarantees.
+EXPERIMENTS = ("exp3", "exp4", "exp5", "exp6", "exp7", "exp8")
 
 # Forward-pass sums are floating point; compare them with a tolerance rather
 # than by equality.

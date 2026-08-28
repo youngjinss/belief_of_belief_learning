@@ -41,6 +41,20 @@ Data generation for AchieverBlocker environment in ToMnet format
 """
 
 
+
+import os as _os, sys as _sys
+_R=_os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+if _R not in _sys.path: _sys.path.insert(0,_R)
+from beliefrl.data.generation import (  # noqa: F401
+    calculate_consumption_labels,
+    calculate_key_door_rank,
+    calculate_successor_representation,
+    env_to_maze_format,
+    generate_game_costs,
+    generate_game_rewards,
+)
+
+
 def calculate_successor_representation_vectorized(positions, grid_size=9, gammas=None):
     """
     Vectorized calculation of successor representation for all timesteps and gammas.
@@ -120,60 +134,6 @@ def calculate_successor_representation_vectorized(positions, grid_size=9, gammas
     return sr_labels_per_timestep
 
 
-def calculate_successor_representation(
-    positions, query_time_t, grid_size=9, gammas=None, num_rollouts=1
-):
-    """
-    Calculate successor representation from query time t onwards using the correct formula
-    SRγ(s) = 1/Z × Σ(from Δt=0 to T-t) γ^Δt × I(s_{t+Δt} = s)
-
-    Args:
-        positions: List of positions visited in the episode
-        query_time_t: Current timestep t to calculate SR from
-        grid_size: Size of the grid (9x9 for AchieverBlocker)
-        gammas: List of discount factors (defaults to [0.5, 0.9, 0.99])
-        num_rollouts: Number of rollouts (for stochastic agents, default 1)
-
-    Returns:
-        sr_maps_sparse: List of sparse representations [(position, value)] for each gamma
-    """
-    if gammas is None:
-        gammas = [0.5, 0.9, 0.99]
-
-    sr_maps_sparse = []
-
-    # Calculate SR for each discount factor
-    for gamma in gammas:
-        sr_map = np.zeros((grid_size, grid_size))
-
-        # Only consider future states from query_time_t onwards
-        if query_time_t < len(positions):
-            T_minus_t = len(positions) - query_time_t
-
-            # Count discounted future state visitations
-            for delta_t in range(T_minus_t):
-                future_timestep = query_time_t + delta_t
-                if future_timestep < len(positions):
-                    discount = gamma**delta_t
-                    future_pos = positions[future_timestep]
-                    sr_map[future_pos[0], future_pos[1]] += discount
-
-            # Normalize the SR map (Z normalization)
-            if sr_map.sum() > 0:
-                sr_map = sr_map / sr_map.sum()
-
-        # Convert to sparse format: [(position, value)] for non-zero values
-        sparse_sr = []
-        for i in range(grid_size):
-            for j in range(grid_size):
-                if sr_map[i, j] > 0:
-                    sparse_sr.append(((i, j), sr_map[i, j]))
-
-        sr_maps_sparse.append(sparse_sr)
-
-    return sr_maps_sparse
-
-
 def calculate_sr_labels_for_trajectory(positions, grid_size=9, gammas=None):
     """
     Calculate SR labels for each timestep in the trajectory
@@ -188,117 +148,6 @@ def calculate_sr_labels_for_trajectory(positions, grid_size=9, gammas=None):
     """
     # Use the vectorized implementation for better performance
     return calculate_successor_representation_vectorized(positions, grid_size, gammas)
-
-
-def calculate_key_door_rank(
-    keys_collected, doors_opened, target_door_color, goal_rewards
-):
-    """
-    Calculate the rank of keys and doors based on reward values
-
-    Args:
-        keys_collected: List of key colors collected in order
-        doors_opened: List of door colors opened in order
-        target_door_color: The target door color
-        goal_rewards: Dictionary of color -> reward value
-
-    Returns:
-        key_door_rank: List of ranks [rank_key0, rank_key1, rank_key2, rank_key3]
-                      where 1 is the highest reward, 4 is lowest reward
-    """
-    colors = ["red", "green", "blue", "yellow"]
-
-    # Get reward values for each color
-    reward_values = [goal_rewards.get(color, 0) for color in colors]
-
-    # Create ranking: highest reward gets rank 1, lowest gets rank 4
-    # Sort indices by reward value (descending order)
-    sorted_indices = sorted(
-        range(len(reward_values)), key=lambda i: reward_values[i], reverse=True
-    )
-
-    # Create ranking array
-    key_door_rank = [0] * 4
-    for rank, idx in enumerate(sorted_indices):
-        key_door_rank[idx] = rank + 1
-
-    return key_door_rank
-
-
-def calculate_consumption_labels(keys_collected, doors_opened):
-    """
-    Calculate consumption labels for keys and doors
-
-    Args:
-        keys_collected: List of key colors collected
-        doors_opened: List of door colors opened
-
-    Returns:
-        consumption_vector: Binary vector of length 8 (4 keys + 4 doors)
-                          [key_red, key_green, key_blue, key_yellow,
-                           door_red, door_green, door_blue, door_yellow]
-    """
-    consumption_vector = np.zeros(8, dtype=np.float32)
-    colors = ["red", "green", "blue", "yellow"]
-
-    # Mark collected keys
-    for key_color in keys_collected:
-        if key_color in colors:
-            idx = colors.index(key_color)
-            consumption_vector[idx] = 1.0
-
-    # Mark opened doors
-    for door_color in doors_opened:
-        if door_color in colors:
-            idx = colors.index(door_color)
-            consumption_vector[4 + idx] = 1.0
-
-    return consumption_vector
-
-
-def env_to_maze_format(env, achiever_pos, blocker_pos):
-    """
-    Convert AchieverBlocker environment to maze format with both agents
-
-    Args:
-        env: AchieverBlocker environment
-        achiever_pos: Current achiever position
-        blocker_pos: Current blocker position
-
-    Returns:
-        maze_str: String representation of the maze with O (achiever) and X (blocker)
-    """
-    maze_lines = []
-    width, height = env.width, env.height
-
-    # Process each row
-    for j in range(height):
-        row = ""
-        for i in range(width):
-            cell = env.grid.get(i, j)
-
-            if achiever_pos == (i, j):
-                row += "O"  # Achiever
-            elif blocker_pos == (i, j):
-                row += "X"  # Blocker
-            elif cell is None:
-                row += "-"  # Empty space
-            elif cell.type == "wall":
-                row += "#"  # Wall
-            elif cell.type == "key":
-                # Map key colors to letters A, B, C, D
-                color_map = {"red": "A", "green": "B", "blue": "C", "yellow": "D"}
-                row += color_map.get(cell.color, "?")
-            elif cell.type == "door":
-                # Use lowercase for doors
-                color_map = {"red": "a", "green": "b", "blue": "c", "yellow": "d"}
-                row += color_map.get(cell.color, "?")
-            else:
-                row += "?"  # Unknown
-
-        maze_lines.append(row)
-
-    return maze_lines
 
 
 def save_game_with_labels(
@@ -503,102 +352,6 @@ def save_game_with_labels(
                     [f"{pos[0]},{pos[1]}:{val}" for pos, val in sparse_sr]
                 )
                 f.write(f"SR_gamma_{gamma}: {sparse_str}\n")
-
-
-def generate_game_rewards(config_dict, game_id):
-    """
-    Generate goal rewards for this game based on config settings
-    """
-    # Set seed for consistent reward generation for this game
-    np.random.seed(config_dict["base_random_seed"] + game_id + 1000)
-
-    reward_settings = config_dict.get("goal_reward_settings", {})
-
-    if reward_settings.get("use_random_rewards", True):
-        # Generate 4 random rewards from uniform [0,1]
-        rewards = np.random.uniform(0, 1, 4).tolist()
-
-        # Find the maximum value
-        max_value = max(rewards)
-
-        # Find all indices with the maximum value
-        max_indices = [i for i, val in enumerate(rewards) if val == max_value]
-
-        # If there are ties, randomly select one
-        if len(max_indices) > 1:
-            selected_index = np.random.choice(max_indices)
-        else:
-            selected_index = max_indices[0]
-
-        # Set only the selected maximum to 1.0
-        rewards[selected_index] = 1.0
-    else:
-        # Use default rewards
-        rewards = reward_settings.get("default_rewards", [0.5, 1.0, 1.5, 1.0])
-
-    # Map to color names
-    colors = ["red", "green", "blue", "yellow"]
-    return {colors[i]: rewards[i] for i in range(len(colors))}
-
-
-def generate_game_costs(config_dict, game_id):
-    """
-    Generate random costs for this game based on config settings
-    """
-    # Set seed for consistent cost generation for this game
-    np.random.seed(config_dict["base_random_seed"] + game_id + 2000)
-
-    cost_settings = config_dict.get("cost_settings", {})
-
-    if cost_settings.get("use_random_costs", True):
-        # Generate random costs that sum to 1.0
-        min_cost = cost_settings.get("min_cost", 0.05)
-        max_cost = cost_settings.get("max_cost", 0.7)
-        total_cost_sum = cost_settings.get("total_cost_sum", 1.0)
-
-        # Generate 3 random split points between 0 and 1
-        splits = np.random.uniform(0, 1, 3)
-        splits = np.sort(splits)
-
-        # Create 4 proportions from splits
-        proportions = [
-            splits[0],
-            splits[1] - splits[0],
-            splits[2] - splits[1],
-            1 - splits[2],
-        ]
-
-        # Scale to total cost sum (1.0)
-        costs = [prop * total_cost_sum for prop in proportions]
-
-        # Ensure minimum cost constraint
-        for i in range(len(costs)):
-            if costs[i] < min_cost:
-                costs[i] = min_cost
-
-        # Rescale to maintain sum constraint
-        current_sum = sum(costs)
-        if current_sum != total_cost_sum:
-            scale_factor = total_cost_sum / current_sum
-            costs = [c * scale_factor for c in costs]
-
-        # Ensure no cost exceeds maximum
-        for i in range(len(costs)):
-            if costs[i] > max_cost:
-                costs[i] = max_cost
-
-        # Final rescaling to maintain exact sum
-        current_sum = sum(costs)
-        if current_sum != total_cost_sum:
-            scale_factor = total_cost_sum / current_sum
-            costs = [c * scale_factor for c in costs]
-    else:
-        # Use default costs
-        costs = cost_settings.get("default_costs", [0.1, 0.2, 0.3, 0.4])
-
-    # Map to color names
-    colors = ["red", "green", "blue", "yellow"]
-    return {colors[i]: costs[i] for i in range(len(colors))}
 
 
 def run_single_game(game_id, config_dict, save_dir):

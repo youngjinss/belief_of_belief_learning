@@ -24,10 +24,13 @@ belief embedding.
 
 | Directory | Contents |
 |-----------|----------|
+| `beliefrl/` | Shared core: agents, ToMnet model, config base, data and training helpers |
+| `script/` | Experiment code, one directory per experiment (exp1–exp8) |
+| `script/tools/` | Data-inspection scripts shared by every experiment |
+| `tests/` | Golden-output regression harness (`pytest` from the repo root) |
 | `lib/env/` | Environment implementations, including AchieverBlocker (v1 and v2) |
 | `lib/benchmark/` | ToMnet and ToMnetF re-implementations |
-| `lib/model/`, `lib/policy/` | Archived trading models and policy code from exp1 |
-| `script/` | Experiment code, one directory per experiment (exp1–exp8) |
+| `lib/policy/` | Archived policy code from exp1 |
 | `data/` | Generated trajectory datasets, named by environment variant |
 | `shell/` | Batch run scripts (exp1–exp7) |
 | `config/` | YAML configuration — used only by exp1's trading pipeline |
@@ -36,6 +39,32 @@ belief embedding.
 
 Note that `config/` does **not** hold hyperparameters for the ToMnet experiments. Each of
 exp3–exp8 carries its own `config.py`.
+
+### The `beliefrl` core
+
+exp5–exp8 previously carried near-identical copies of the same code. What is provably
+identical between them now lives in one place:
+
+| Package | Contents |
+|---------|----------|
+| `beliefrl/agents/` | Achiever and blocker policies, including `BaseValueAgent` |
+| `beliefrl/model/` | ToMnet architecture and its tensor helpers |
+| `beliefrl/config/` | `BaseConfig` — the 21 accessor methods every experiment shared |
+| `beliefrl/data/` | Trajectory generation helpers and dataset loading |
+| `beliefrl/train/` | Early stopping, epoch reporting, training-curve plots |
+| `beliefrl/viz/` | Successor-representation plotting |
+| `beliefrl/env/` | Single bootstrap making `lib/env` importable |
+
+Each experiment's `Config` subclasses `BaseConfig` and its modules re-export the shared
+names, so `from utils import set_seed` and `from blockers import RandomAgent` still work.
+
+What did **not** move is as informative as what did. `tomnet.py`, `data_generation.py`,
+`train.py`, `visualize.py`, and most agent classes genuinely differ between experiments —
+they are not copy-paste, so each experiment keeps its own. In particular exp7 and exp8
+share a parameter count and architecture hash but their `forward` implementations differ.
+
+Run `pip install -e .` to put `beliefrl` on the path; without it each experiment's
+`config.py` and `utils.py` add the repo root to `sys.path` themselves.
 
 ## Experiments
 
@@ -57,12 +86,24 @@ exp7 and exp8 share a near-identical `tomnet.py`. The substantive difference is 
 
 | File | Role |
 |------|------|
-| `config.py` | All experiment parameters |
+| `config.py` | Experiment parameters; exp5–exp8 subclass `beliefrl.config.BaseConfig` |
 | `generate.py` | Trajectory data generation |
 | `train.py` | ToMnet training |
 | `evaluate.py` | Evaluation and metrics |
-| `tomnet.py` | Model architecture |
+| `tomnet.py` | Model architecture (exp8 uses `beliefrl.model` instead) |
 | `visualize.py` | Result plots |
+
+## Tests
+
+```bash
+pytest                         # from the repo root
+python tests/golden.py check   # same checks, no pytest dependency
+```
+
+Twelve golden-output checks, roughly ten seconds: each experiment's configuration, model,
+50 agent rollouts, and a one-step training smoke test are compared against recordings made
+before the refactor. See [tests/README.md](tests/README.md), which also lists the defects
+the harness uncovered and the open issues it documents.
 
 ## Running Experiments
 

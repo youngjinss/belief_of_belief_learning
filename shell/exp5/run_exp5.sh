@@ -5,6 +5,10 @@
 
 set -e  # Exit on error
 
+# Pin hash randomisation: several agents branch on set/dict iteration
+# order, so without this runs are not reproducible even with a fixed seed.
+export PYTHONHASHSEED=0
+
 # Configuration
 EXPERIMENT_NO=5
 VALIDATION_GAMES=2000  # Reduced from 2000 for testing

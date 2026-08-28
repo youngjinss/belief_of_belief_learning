@@ -1670,8 +1670,21 @@ def set_seed(seed: int = 42):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
-    # Environment variables for additional reproducibility
-    os.environ["PYTHONHASHSEED"] = str(seed)
+    # PYTHONHASHSEED deliberately not assigned here. CPython fixes hash
+    # randomisation at interpreter startup, so setting it at runtime has no
+    # effect and merely looks reproducible. Several agents branch on set/dict
+    # iteration order, so without it the same seed yields different action
+    # sequences from process to process. Warn rather than pretend.
+    import warnings
+
+    if sys.flags.hash_randomization and "PYTHONHASHSEED" not in os.environ:
+        warnings.warn(
+            f"PYTHONHASHSEED is unset, so hash randomisation is active and runs "
+            f"are not reproducible across processes despite seed={seed}. "
+            f"Launch with PYTHONHASHSEED=0 for reproducible results.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
 
     # For DataLoader workers
     def seed_worker(worker_id):

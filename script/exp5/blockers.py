@@ -1418,13 +1418,6 @@ class RuleBasedAgent:
         self.just_attempted_break = False
         self.last_action = None
 
-        # Reset distance tracking
-        self.distance_history.clear()
-        self.reduction_rates.clear()
-        self.consecutive_reductions.clear()
-        self.timestep_counter = 0
-        self.predicted_target_color = None
-
         # Keep width/height since they don't change between episodes
 
     def _check_and_store_achiever_keys(self, obs):

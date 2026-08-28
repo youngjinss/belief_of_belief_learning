@@ -82,8 +82,18 @@ class Level1ValueBlocker(BaseValueAgent):
             self.agent_pos = new_pos
 
     def _update_grid_reference(self, obs):
-        """Update grid reference from observations"""
-        self.grid = obs.get("blocker")
+        """Update grid reference from observations.
+
+        obs["blocker"] is the MiniGrid observation dict (image/direction/mission),
+        not a Grid. Assigning it directly left self.grid as a dict, so
+        BaseValueAgent's self.grid.width raised AttributeError and
+        self.grid.get(x, y) silently resolved to dict.get, returning the y
+        argument instead of a cell. Decode the image, matching level0value.py.
+        """
+        if "blocker" in obs and obs["blocker"] and "image" in obs["blocker"]:
+            from gym_minigrid.minigrid import Grid
+
+            self.grid = Grid.decode(obs["blocker"]["image"])
 
     def _get_opponent_position(self, obs):
         """Get achiever position for conflict penalty and tracking"""
